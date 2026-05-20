@@ -1,0 +1,20 @@
+{
+  "name": "MaliPhone",
+  "short_name": "MaliPhone",
+  "description": "AI mobile-style interface installable as a web app.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fce4ec",
+  "theme_color": "#f48fb1",
+  "lang": "zh-TW",
+  "icons": [
+    {
+      "src": "./pwa/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
