@@ -1899,17 +1899,18 @@ ${recent}`,
             {tc.model==="__custom"&&<div className="mp-row"><div className="mp-lbl">自訂模型名稱</div><input className="mp-sinp" onChange={e=>setTempConfig(c=>({...c,model:e.target.value}))} placeholder="model-name" /></div>}
             <div style={{display:"flex",gap:8}}>
               <button className="mp-save" style={{flex:1}} onClick={()=>{setApiConfig(tc);showToast("設定已儲存");}}>儲存設定</button>
-              <button className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#90caf9,#42a5f5)"}} onClick={()=>setPresetSavePickerOpen(true)}>另存預設</button>
+              <button type="button" className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#90caf9,#42a5f5)"}} onClick={()=>setPresetSavePickerOpen(true)}>另存預設</button>
             </div>
             </>}
           </div>
           {presetSavePickerOpen && (
-            <div className="mp-overlay" onClick={() => setPresetSavePickerOpen(false)}>
+            <div className="mp-overlay" style={{zIndex:120}} onClick={() => setPresetSavePickerOpen(false)}>
               <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
                 <div className="mp-modal-t">另存 API 預設</div>
                 <div style={{display:"grid",gap:8}}>
                   {[0,1,2].map((idx) => (
                     <button
+                      type="button"
                       key={idx}
                       className="mp-ibtn-chat"
                       onClick={() => {
@@ -1924,7 +1925,7 @@ ${recent}`,
                   ))}
                 </div>
                 <div style={{marginTop:10}}>
-                  <button className="mp-save" style={{background:"linear-gradient(135deg,#b0bec5,#90a4ae)"}} onClick={() => setPresetSavePickerOpen(false)}>取消</button>
+                  <button type="button" className="mp-save" style={{background:"linear-gradient(135deg,#b0bec5,#90a4ae)"}} onClick={() => setPresetSavePickerOpen(false)}>取消</button>
                 </div>
               </div>
             </div>
