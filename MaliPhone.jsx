@@ -1841,6 +1841,23 @@ ${recent}`,
       });
       showToast(`已儲存到預設 ${idx + 1}`);
     };
+    const clearSiteCache = async () => {
+      try {
+        if (!window.confirm("確定要清除網站快取並重新載入嗎？")) return;
+        if ("caches" in window) {
+          const keys = await caches.keys();
+          await Promise.all(keys.map((k) => caches.delete(k)));
+        }
+        if ("serviceWorker" in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map((r) => r.unregister()));
+        }
+        showToast("快取已清除，正在重新載入");
+        setTimeout(() => window.location.reload(), 250);
+      } catch (err) {
+        showToast(`清除快取失敗：${err?.message || "未知錯誤"}`);
+      }
+    };
     return (
       <div className="mp-page">
         <div className="mp-hdr"><div className="mp-back" onClick={closeApp}>←</div><div className="mp-htitle">設定</div></div>
@@ -1931,7 +1948,13 @@ ${recent}`,
             </div>
           )}
             <div className="mp-sg"><div className="mp-sg-t">版本資訊</div><div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.7}}><strong>MaliPhone</strong> v{VERSION}<br/>AI 角色互動小手機介面</div></div>
-            <div className="mp-sg"><div className="mp-sg-t">重置資料</div><button className="mp-save" style={{background:"linear-gradient(135deg,#ef9a9a,#e53935)"}} onClick={()=>{if(confirm("確定要清空所有資料嗎？")){setCharacters([]);setActiveCharId(null);setChatHistory({});setPosts([]);setMemories({});setLorebooks([]);setActiveLorebookId(null);setPhoneInboxCache({});showToast("資料已清空");}}}>清空全部資料</button></div>
+            <div className="mp-sg">
+              <div className="mp-sg-t">重置資料</div>
+              <div style={{display:"grid",gap:8}}>
+                <button className="mp-save" style={{background:"linear-gradient(135deg,#ef9a9a,#e53935)"}} onClick={()=>{if(confirm("確定要清空所有資料嗎？")){setCharacters([]);setActiveCharId(null);setChatHistory({});setPosts([]);setMemories({});setLorebooks([]);setActiveLorebookId(null);setPhoneInboxCache({});showToast("資料已清空");}}}>清空全部資料</button>
+                <button type="button" className="mp-save" style={{background:"linear-gradient(135deg,#b0bec5,#78909c)"}} onClick={clearSiteCache}>清除快取</button>
+              </div>
+            </div>
           </div>
         </div>
       );
