@@ -1902,6 +1902,32 @@ ${recent}`,
             </div>
             </>}
           </div>
+          {presetSavePickerOpen && (
+            <div className="mp-overlay" onClick={() => setPresetSavePickerOpen(false)}>
+              <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
+                <div className="mp-modal-t">另存 API 預設</div>
+                <div style={{display:"grid",gap:8}}>
+                  {[0,1,2].map((idx) => (
+                    <button
+                      key={idx}
+                      className="mp-ibtn-chat"
+                      onClick={() => {
+                        const ok = window.confirm(`確定要覆寫 P${idx + 1} 嗎？`);
+                        if (!ok) return;
+                        saveApiPreset(idx);
+                        setPresetSavePickerOpen(false);
+                      }}
+                    >
+                      存到 P{idx + 1}
+                    </button>
+                  ))}
+                </div>
+                <div style={{marginTop:10}}>
+                  <button className="mp-save" style={{background:"linear-gradient(135deg,#b0bec5,#90a4ae)"}} onClick={() => setPresetSavePickerOpen(false)}>取消</button>
+                </div>
+              </div>
+            </div>
+          )}
             <div className="mp-sg"><div className="mp-sg-t">版本資訊</div><div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.7}}><strong>MaliPhone</strong> v{VERSION}<br/>AI 角色互動小手機介面</div></div>
             <div className="mp-sg"><div className="mp-sg-t">重置資料</div><button className="mp-save" style={{background:"linear-gradient(135deg,#ef9a9a,#e53935)"}} onClick={()=>{if(confirm("確定要清空所有資料嗎？")){setCharacters([]);setActiveCharId(null);setChatHistory({});setPosts([]);setMemories({});setLorebooks([]);setActiveLorebookId(null);setPhoneInboxCache({});showToast("資料已清空");}}}>清空全部資料</button></div>
           </div>
@@ -2043,32 +2069,6 @@ ${recent}`,
           )}
         </div>
       </div>
-      {presetSavePickerOpen && (
-        <div className="mp-overlay" onClick={() => setPresetSavePickerOpen(false)}>
-          <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="mp-modal-t">另存 API 預設</div>
-            <div style={{display:"grid",gap:8}}>
-              {[0,1,2].map((idx) => (
-                <button
-                  key={idx}
-                  className="mp-ibtn-chat"
-                  onClick={() => {
-                    const ok = window.confirm(`確定要覆寫 P${idx + 1} 嗎？`);
-                    if (!ok) return;
-                    saveApiPreset(idx);
-                    setPresetSavePickerOpen(false);
-                  }}
-                >
-                  存到 P{idx + 1}
-                </button>
-              ))}
-            </div>
-            <div style={{marginTop:10}}>
-              <button className="mp-save" style={{background:"linear-gradient(135deg,#b0bec5,#90a4ae)"}} onClick={() => setPresetSavePickerOpen(false)}>取消</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 
@@ -2144,9 +2144,13 @@ ${recent}`,
                   <div className="mp-icon-c">{renderAppIcon({ id: "chat", name: "聊天", icon: "💬" })}</div>
                   <span className="mp-icon-l">聊天</span>
                 </button>
-                {["📷","🗂️","⚙️"].map((icon, idx) => (
+                {[
+                  { icon: "📷", label: "相機" },
+                  { icon: "🗂️", label: "檔案" },
+                  { icon: "⚙️", label: "設定" },
+                ].map((item, idx) => (
                   <div key={idx} className="mp-icon" style={{opacity:.45,background:"rgba(255,255,255,.45)"}}>
-                    <div className="mp-icon-c">{renderAppIcon({ name: l, icon })}</div>
+                    <div className="mp-icon-c">{renderAppIcon({ name: item.label, icon: item.icon })}</div>
                     <span className="mp-icon-l">鎖定</span>
                   </div>
                 ))}
