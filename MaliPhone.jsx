@@ -1361,18 +1361,19 @@ ${recent}`,
     const x = e.clientX || 0;
     const edge = 28;
     let dir = null;
+    const maxPage = Math.max(0, homePages.length - 1);
     if (x <= edge && homePage > 0) dir = -1;
-    else if (x >= vw - edge && homePage < 2) dir = 1;
+    else if (x >= vw - edge && homePage < maxPage) dir = 1;
     if (dir !== edgeTurnDirRef.current) {
       clearTimeout(edgeTurnTimerRef.current);
       edgeTurnTimerRef.current = null;
       edgeTurnDirRef.current = dir;
       if (dir) {
         edgeTurnTimerRef.current = setTimeout(() => {
-          setHomePage((p) => Math.max(0, Math.min(2, p + dir)));
+          setHomePage((p) => Math.max(0, Math.min(maxPage, p + dir)));
           edgeTurnTimerRef.current = null;
           edgeTurnDirRef.current = null;
-        }, 1500);
+        }, 450);
       }
     }
   };
@@ -1597,7 +1598,7 @@ ${recent}`,
               <div className="mp-inp-bar">
                 <button className="mp-btn mp-btn-img" onClick={()=>fileInputRef.current?.click()}>🖼</button>
                 <input type="file" ref={fileInputRef} accept="image/*" style={{display:"none"}} onChange={handleImgUp} />
-                <input className="mp-inp" placeholder="輸入訊息..." value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage();}}} />
+                <input className="mp-inp" placeholder="輸入訊息..." value={chatInput} autoComplete="off" autoCorrect="off" autoCapitalize="sentences" spellCheck={false} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage();}}} />
                 <button className="mp-btn mp-btn-send" onClick={sendMessage}>➤</button>
               </div>
             </div>
@@ -2263,6 +2264,9 @@ ${recent}`,
       y: e.clientY || 0,
       moved: false,
     });
+    try {
+      e.currentTarget?.setPointerCapture?.(e.pointerId);
+    } catch (_) {}
   };
   const cancelPointerDrag = () => {
     setPointerDrag(null);
@@ -2313,8 +2317,9 @@ ${recent}`,
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX;
     const edge = 28;
+    const maxPage = Math.max(0, homePages.length - 1);
     if (x <= rect.left + edge) setHomePage(p => Math.max(0, p - 1));
-    else if (x >= rect.right - edge) setHomePage(p => Math.min(2, p + 1));
+    else if (x >= rect.right - edge) setHomePage(p => Math.min(maxPage, p + 1));
   };
   return (<><style>{css}</style><div className="mp-wrap"><div className="mp-phone">
     <div className="mp-desk" onTouchStart={onHomeTouchStart} onTouchEnd={onHomeTouchEnd} onMouseDown={onHomeMouseDown} onMouseUp={onHomeMouseUp} onPointerDown={onHomePointerDown} onPointerUp={onHomePointerUp} onPointerMove={onHomePointerMove} onPointerCancel={cancelPointerDrag} onDragOver={onHomeDragOverPageEdge}><BarClock ft={ft} /><div className="mp-desk-scroll">
