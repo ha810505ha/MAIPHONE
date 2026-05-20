@@ -1330,9 +1330,6 @@ ${recent}`,
       if (slotEl) {
         const slot = Number(slotEl.getAttribute("data-drop-slot"));
         if (!Number.isNaN(slot)) moveAppToHomeSlot(dragging.appId, slot);
-      } else if (dockEl) {
-        const idx = Number(dockEl.getAttribute("data-drop-dock"));
-        if (!Number.isNaN(idx)) moveAppToDock(dragging.appId, idx);
       } else if (dockWrap) {
         const rect = dockWrap.getBoundingClientRect();
         const relX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
@@ -1340,6 +1337,9 @@ ${recent}`,
         const ratio = relX / rect.width;
         const targetIndex = Math.max(0, Math.min(dockApps.length, Math.round(ratio * slotCount)));
         moveAppToDock(dragging.appId, targetIndex);
+      } else if (dockEl) {
+        const idx = Number(dockEl.getAttribute("data-drop-dock"));
+        if (!Number.isNaN(idx)) moveAppToDock(dragging.appId, idx);
       }
       return;
     }
