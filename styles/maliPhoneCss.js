@@ -46,6 +46,8 @@ body{position:fixed;inset:0;}
 .mp-icon:hover{filter:brightness(1.04);}
 .mp-icon:active{transform:scale(.95);}
 .mp-icon-c{width:56px;height:56px;border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:24px;background:var(--mp-glass);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid var(--mp-glass-b);box-shadow:0 4px 14px rgba(0,0,0,.05);transition:box-shadow .2s;}
+.mp-icon-c-img{overflow:hidden;}
+.mp-app-icon-img{display:block;object-fit:contain;}
 .mp-icon-c:hover{box-shadow:0 8px 18px rgba(244,143,177,.2);}
 .mp-icon-l{font-size:11px;color:var(--mp-txt);font-weight:600;text-align:center;}
 .mp-page-dots{position:absolute;left:0;right:0;bottom:98px;display:flex;align-items:center;justify-content:center;gap:7px;z-index:31;}
@@ -54,6 +56,7 @@ body{position:fixed;inset:0;}
 .mp-grid-empty{grid-column:1 / -1;text-align:center;padding:28px 6px;font-size:12px;color:var(--mp-txt-l);background:rgba(255,255,255,.18);border-radius:14px;border:1px dashed rgba(255,255,255,.35);}
 .mp-dock{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);width:calc(100% - 40px);max-width:328px;background:var(--mp-glass);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);border:1px solid var(--mp-glass-b);border-radius:28px;padding:12px 16px;display:flex;justify-content:space-between;gap:12px;box-shadow:0 12px 34px rgba(0,0,0,.08);z-index:30;}
 .mp-dock-i{width:56px;height:56px;border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:24px;cursor:pointer;background:rgba(255,255,255,.3);border:1px solid rgba(255,255,255,.4);transition:transform .14s ease,background .15s,box-shadow .18s;touch-action:none;}
+.mp-dock-i .mp-app-icon-img{border-radius:18px;}
 .mp-dock-i:active{transform:scale(.95);}
 .mp-dock-i:hover{background:rgba(255,255,255,.5);box-shadow:0 8px 16px rgba(255,255,255,.35);}
 .mp-page{position:absolute;inset:0;z-index:40;display:flex;flex-direction:column;background:linear-gradient(180deg,#fce4ec 0%,#fff 30%);transform-origin:center center;animation:mpAppOpen .24s cubic-bezier(.2,.8,.2,1);}

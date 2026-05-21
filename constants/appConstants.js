@@ -12,17 +12,17 @@ const API_PROVIDERS = [
 ];
 
 const DEFAULT_APPS = [
-  { id: "chat", name: "聊天", icon: "💬" },
-  { id: "status", name: "狀態", icon: "📊" },
-  { id: "social", name: "社交", icon: "📰" },
-  { id: "gallery", name: "相簿", icon: "🖼️" },
-  { id: "lorebook", name: "世界書", icon: "📚" },
-  { id: "player", name: "個人資料", icon: "🐱" },
-  { id: "wallet", name: "錢包", icon: "💳" },
-  { id: "notebook", name: "筆記", icon: "📒" },
-  { id: "settings", name: "設定", icon: "⚙️" },
-  { id: "characters", name: "聯絡人", icon: "👥" },
-  { id: "phone", name: "手機", icon: "📱" },
+  { id: "chat", name: "聊天", icon: "💬", iconUrl: "./app-icons/chat.png" },
+  { id: "status", name: "狀態", icon: "📊", iconUrl: "./app-icons/status.png" },
+  { id: "social", name: "社交", icon: "📰", iconUrl: "./app-icons/social.png" },
+  { id: "gallery", name: "相簿", icon: "🖼️", iconUrl: "./app-icons/album.png" },
+  { id: "lorebook", name: "世界書", icon: "📚", iconUrl: "./app-icons/worldbook.png" },
+  { id: "player", name: "個人資料", icon: "🐱", iconUrl: "./app-icons/profile.png" },
+  { id: "wallet", name: "錢包", icon: "💳", iconUrl: "./app-icons/wallet.png" },
+  { id: "notebook", name: "筆記", icon: "📒", iconUrl: "./app-icons/notes.png" },
+  { id: "settings", name: "設定", icon: "⚙️", iconUrl: "./app-icons/settings.png" },
+  { id: "characters", name: "聯絡人", icon: "👥", iconUrl: "./app-icons/contacts.png" },
+  { id: "phone", name: "手機", icon: "📱", iconUrl: "./app-icons/phone.png" },
 ];
 
 const DOCK_APPS = ["chat", "social", "characters", "settings"];

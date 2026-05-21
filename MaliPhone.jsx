@@ -1201,7 +1201,7 @@ ${recent}`,
   const appById = Object.fromEntries(DEFAULT_APPS.map(a => [a.id, a]));
   const renderAppIcon = (app, size = 26) => {
     if (app?.iconUrl) {
-      return <img src={app.iconUrl} alt={app?.name || ""} style={{ width: size, height: size, objectFit: "contain" }} />;
+      return <img className="mp-app-icon-img" src={app.iconUrl} alt={app?.name || ""} style={{ width: size, height: size }} />;
     }
     return app?.icon || "";
   };
@@ -2203,7 +2203,7 @@ ${recent}`,
               </div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:12,marginTop:16}}>
                 <button className="mp-icon" style={{background:"rgba(255,255,255,.62)"}} onClick={() => setPhonePage("chatlist")}>
-                  <div className="mp-icon-c">{renderAppIcon({ id: "chat", name: "聊天", icon: "💬" })}</div>
+                  <div className="mp-icon-c mp-icon-c-img">{renderAppIcon({ id: "chat", name: "聊天", icon: "💬", iconUrl: "./app-icons/chat.png" }, 56)}</div>
                   <span className="mp-icon-l">聊天</span>
                 </button>
                 {[
@@ -2403,7 +2403,7 @@ ${recent}`,
                       draggable={false}
                       onPointerDown={(e)=>app && onPointerDragStartApp(e, app.id, "home")}
                     >
-                      <div className="mp-icon-c">{app ? renderAppIcon(app) : ""}</div>
+                      <div className={`mp-icon-c ${app?.iconUrl ? "mp-icon-c-img" : ""}`}>{app ? renderAppIcon(app, app.iconUrl ? 56 : 26) : ""}</div>
                       <span className="mp-icon-l">{app ? app.name : ""}</span>
                     </div>
                   );
@@ -2428,7 +2428,7 @@ ${recent}`,
             draggable={false}
             onPointerDown={(e)=>onPointerDragStartApp(e, app.id, "dock")}
           >
-            {renderAppIcon(app, 24)}
+            {renderAppIcon(app, app.iconUrl ? 56 : 24)}
           </div>
         );
       })}
