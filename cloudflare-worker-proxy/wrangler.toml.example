@@ -1,0 +1,9 @@
+name = "maliphone-ai-proxy"
+main = "worker.js"
+compatibility_date = "2026-05-21"
+
+# 多個來源用逗號分隔。這版只給 Claude / Ollama Cloud 代理使用。
+# GitHub Pages 正式網址請填你的 MALIPHONE origin，例如：
+# ALLOWED_ORIGINS = "https://ha810505ha.github.io,http://localhost:5173"
+[vars]
+ALLOWED_ORIGINS = "https://ha810505ha.github.io,http://localhost:5173"
