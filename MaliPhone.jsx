@@ -223,6 +223,7 @@ export default function MaliPhone() {
   const lockStartYRef = useRef(null);
   const edgeTurnTimerRef = useRef(null);
   const edgeTurnDirRef = useRef(null);
+  const suppressAppClickUntilRef = useRef(0);
 
   useEffect(() => {
     let mounted = true;
@@ -1323,6 +1324,14 @@ ${recent}`,
       clearTimeout(edgeTurnTimerRef.current);
       edgeTurnTimerRef.current = null;
       edgeTurnDirRef.current = null;
+      const upDx = Math.abs((e.clientX || 0) - (dragging.startX || 0));
+      const upDy = Math.abs((e.clientY || 0) - (dragging.startY || 0));
+      const movedByDistance = (upDx + upDy) > 8;
+      if (!dragging.moved && !movedByDistance) {
+        openApp(dragging.appId);
+        return;
+      }
+      suppressAppClickUntilRef.current = Date.now() + 350;
       const el = document.elementFromPoint(e.clientX, e.clientY);
       const slotEl = el?.closest?.("[data-drop-slot]");
       const dockEl = el?.closest?.("[data-drop-dock]");
@@ -1598,7 +1607,22 @@ ${recent}`,
               <div className="mp-inp-bar">
                 <button className="mp-btn mp-btn-img" onClick={()=>fileInputRef.current?.click()}>🖼</button>
                 <input type="file" ref={fileInputRef} accept="image/*" style={{display:"none"}} onChange={handleImgUp} />
-                <input className="mp-inp" placeholder="輸入訊息..." value={chatInput} autoComplete="off" autoCorrect="off" autoCapitalize="sentences" spellCheck={false} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage();}}} />
+                <input
+                  className="mp-inp"
+                  placeholder="輸入訊息..."
+                  name="chat_message_input"
+                  autoComplete="new-password"
+                  autoCorrect="off"
+                  autoCapitalize="sentences"
+                  spellCheck={false}
+                  data-form-type="other"
+                  data-lpignore="true"
+                  value={chatInput}
+                  onFocus={(e)=>{ e.currentTarget.removeAttribute("readonly"); }}
+                  readOnly
+                  onChange={e=>setChatInput(e.target.value)}
+                  onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage();}}}
+                />
                 <button className="mp-btn mp-btn-send" onClick={sendMessage}>➤</button>
               </div>
             </div>
@@ -2365,7 +2389,7 @@ ${recent}`,
                       onDragOver={(e)=>e.preventDefault()}
                       onDrop={(e)=>onDropToHome(e, absoluteIdx)}
                       data-drop-slot={absoluteIdx}
-                      onClick={()=>app && !isDraggingApp && openApp(app.id)}
+                      onClick={()=>app && !isDraggingApp && Date.now() > suppressAppClickUntilRef.current && openApp(app.id)}
                       draggable={false}
                       onPointerDown={(e)=>app && onPointerDragStartApp(e, app.id, "home")}
                     >
@@ -2390,7 +2414,7 @@ ${recent}`,
             onDragOver={(e)=>e.preventDefault()}
             onDrop={(e)=>onDropToDock(e, idx)}
             data-drop-dock={idx}
-            onClick={()=>!isDraggingApp && openApp(app.id)}
+            onClick={()=>!isDraggingApp && Date.now() > suppressAppClickUntilRef.current && openApp(app.id)}
             draggable={false}
             onPointerDown={(e)=>onPointerDragStartApp(e, app.id, "dock")}
           >
