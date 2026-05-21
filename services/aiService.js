@@ -77,11 +77,18 @@
         : { role: m.role, content: m.content || "" }
     ),
   ];
+  const usesMaxCompletionTokens =
+    provider === "openai" ||
+    /^o\d/i.test(String(model || "")) ||
+    /^gpt-5/i.test(String(model || ""));
+  const completionLimit = usesMaxCompletionTokens
+    ? { max_completion_tokens: 1024 }
+    : { max_tokens: 1024 };
 
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ model, messages: apiMsgs, max_tokens: 1024 }),
+    body: JSON.stringify({ model, messages: apiMsgs, ...completionLimit }),
   });
 
   let data = null;
