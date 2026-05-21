@@ -194,8 +194,10 @@ export default function MaliPhone() {
   const [providerModelOptions, setProviderModelOptions] = useState({});
   const [fetchingModels, setFetchingModels] = useState(false);
   const [presetSavePickerOpen, setPresetSavePickerOpen] = useState(false);
+  const [clearCacheArmed, setClearCacheArmed] = useState(false);
   const [statusExpandedCharId, setStatusExpandedCharId] = useState(null);
   const [settingsApiOpen, setSettingsApiOpen] = useState(true);
+  const [settingsResetOpen, setSettingsResetOpen] = useState(false);
   const [editingLorebookEntry, setEditingLorebookEntry] = useState(null);
   const [editingLorebookBook, setEditingLorebookBook] = useState(null);
   const [activeLorebookId, setActiveLorebookId] = useState(null);
@@ -1866,6 +1868,13 @@ ${recent}`,
     };
     const clearSiteCache = async () => {
       try {
+        if (!clearCacheArmed) {
+          setClearCacheArmed(true);
+          showToast("再按一次清除快取");
+          setTimeout(() => setClearCacheArmed(false), 3000);
+          return;
+        }
+        setClearCacheArmed(false);
         if (!window.confirm("確定要清除網站快取並重新載入嗎？")) return;
         if ("caches" in window) {
           const keys = await caches.keys();
@@ -1972,11 +1981,16 @@ ${recent}`,
           )}
             <div className="mp-sg"><div className="mp-sg-t">版本資訊</div><div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.7}}><strong>MaliPhone</strong> v{VERSION}<br/>AI 角色互動小手機介面</div></div>
             <div className="mp-sg">
-              <div className="mp-sg-t">重置資料</div>
-              <div style={{display:"grid",gap:8}}>
-                <button className="mp-save" style={{background:"linear-gradient(135deg,#ef9a9a,#e53935)"}} onClick={()=>{if(confirm("確定要清空所有資料嗎？")){setCharacters([]);setActiveCharId(null);setChatHistory({});setPosts([]);setMemories({});setLorebooks([]);setActiveLorebookId(null);setPhoneInboxCache({});showToast("資料已清空");}}}>清空全部資料</button>
-                <button type="button" className="mp-save" style={{background:"linear-gradient(135deg,#b0bec5,#78909c)"}} onClick={clearSiteCache}>清除快取</button>
+              <div className="mp-sg-t" style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}} onClick={() => setSettingsResetOpen((v) => !v)}>
+                <span>重置資料</span>
+                <span>{settingsResetOpen ? "收合" : "展開"}</span>
               </div>
+              {settingsResetOpen && (
+                <div style={{display:"grid",gap:8}}>
+                  <button className="mp-save" style={{background:"linear-gradient(135deg,#ef9a9a,#e53935)"}} onClick={()=>{if(confirm("確定要清空所有資料嗎？")){setCharacters([]);setActiveCharId(null);setChatHistory({});setPosts([]);setMemories({});setLorebooks([]);setActiveLorebookId(null);setPhoneInboxCache({});showToast("資料已清空");}}}>清空全部資料</button>
+                  <button type="button" className="mp-save" style={{background:clearCacheArmed?"linear-gradient(135deg,#ffb74d,#f57c00)":"linear-gradient(135deg,#b0bec5,#78909c)"}} onClick={clearSiteCache}>{clearCacheArmed ? "再次確認清除快取" : "清除快取"}</button>
+                </div>
+              )}
             </div>
           </div>
         </div>
