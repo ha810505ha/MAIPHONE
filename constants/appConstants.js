@@ -1,13 +1,14 @@
 ﻿const VERSION = "1.1.1";
+const MALIPHONE_AI_PROXY = "https://orange-butterfly-8390.d778105.workers.dev";
 
 const API_PROVIDERS = [
   { id: "openai", name: "OpenAI", baseUrl: "https://api.openai.com/v1", models: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"] },
-  { id: "claude", name: "Claude", baseUrl: "https://api.anthropic.com/v1", models: ["claude-sonnet-4-20250514", "claude-haiku-4-5-20251001"] },
+  { id: "claude", name: "Claude", baseUrl: `${MALIPHONE_AI_PROXY}/claude`, models: ["claude-sonnet-4-20250514", "claude-haiku-4-5-20251001"] },
   { id: "gemini", name: "Gemini", baseUrl: "https://generativelanguage.googleapis.com/v1beta", models: ["gemini-2.0-flash", "gemini-1.5-pro"] },
   { id: "grok", name: "Grok", baseUrl: "https://api.x.ai/v1", models: ["grok-3-mini", "grok-3"] },
   { id: "novelai", name: "NovelAI", baseUrl: "https://text.novelai.net/oa/v1", models: ["kayra", "erato", "clio"] },
   { id: "openrouter", name: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1", models: ["auto"] },
-  { id: "ollama", name: "Ollama", baseUrl: "https://ollama.com/v1", models: ["gpt-oss:20b-cloud", "gpt-oss:120b-cloud", "llama3.1"] },
+  { id: "ollama", name: "Ollama", baseUrl: `${MALIPHONE_AI_PROXY}/ollama`, models: ["gpt-oss:20b-cloud", "gpt-oss:120b-cloud", "llama3.1"] },
   { id: "custom", name: "Custom", baseUrl: "", models: [] },
 ];
 
