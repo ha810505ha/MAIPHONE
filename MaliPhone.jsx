@@ -1568,7 +1568,7 @@ ${recent}`,
                               <div style={{ fontSize: 11, color: "var(--mp-txt-l)", marginBottom: 6 }}>
                                 來源：{share.meta.source || "-"}
                               </div>
-                              <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5, maxHeight: 180, overflowY: "auto", paddingRight: 2 }}>{share.body}</div>
+                              <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5, maxHeight: 180, overflowY: "auto", paddingRight: 2 }}>{applyUserPlaceholder(share.body)}</div>
                             </div>
                           ) : m.content}
                         </div>
@@ -1607,19 +1607,18 @@ ${recent}`,
               <div className="mp-inp-bar">
                 <button className="mp-btn mp-btn-img" onClick={()=>fileInputRef.current?.click()}>🖼</button>
                 <input type="file" ref={fileInputRef} accept="image/*" style={{display:"none"}} onChange={handleImgUp} />
-                <input
+                <textarea
                   className="mp-inp"
                   placeholder="輸入訊息..."
-                  name="chat_message_input"
-                  autoComplete="new-password"
+                  name="mali_chat_text"
+                  rows={1}
+                  autoComplete="off"
                   autoCorrect="off"
                   autoCapitalize="sentences"
                   spellCheck={false}
                   data-form-type="other"
                   data-lpignore="true"
                   value={chatInput}
-                  onFocus={(e)=>{ e.currentTarget.removeAttribute("readonly"); }}
-                  readOnly
                   onChange={e=>setChatInput(e.target.value)}
                   onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage();}}}
                 />
@@ -2312,9 +2311,6 @@ ${recent}`,
       y: e.clientY || 0,
       moved: false,
     });
-    try {
-      e.currentTarget?.setPointerCapture?.(e.pointerId);
-    } catch (_) {}
   };
   const cancelPointerDrag = () => {
     setPointerDrag(null);
