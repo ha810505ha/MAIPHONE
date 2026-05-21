@@ -1847,13 +1847,18 @@ ${recent}`,
     const tc = tempConfig || apiConfig;
     const cp = API_PROVIDERS.find(p=>p.id===tc.provider);
     const modelOptions = providerModelOptions[tc.provider] || cp?.models || [];
+    const getProviderBaseUrl = (provider, fallback = "") => {
+      const found = API_PROVIDERS.find((p) => p.id === provider);
+      return provider === "custom" ? fallback : (found?.baseUrl || fallback || "");
+    };
     const applyApiPreset = (idx) => {
       const p = apiPresets[idx];
       if (!p) return;
+      const provider = p.provider || "openai";
       setTempConfig((c) => ({
         ...(c || {}),
-        provider: p.provider || c?.provider || "openai",
-        baseUrl: p.baseUrl || c?.baseUrl || "",
+        provider,
+        baseUrl: getProviderBaseUrl(provider, p.baseUrl || c?.baseUrl || ""),
         apiKey: p.apiKey || "",
         model: p.model || c?.model || "",
       }));
@@ -1875,7 +1880,7 @@ ${recent}`,
           id: list[idx]?.id || fallback.id,
           name: list[idx]?.name || fallback.name,
           provider: p.provider,
-          baseUrl: p.baseUrl,
+          baseUrl: getProviderBaseUrl(p.provider, p.baseUrl),
           apiKey: p.apiKey,
           model: p.model,
         };
@@ -1930,8 +1935,8 @@ ${recent}`,
               <span>{settingsApiOpen ? "收合" : "展開"}</span>
             </div>
             {settingsApiOpen && <>
-            <div className="mp-row"><div className="mp-lbl">API 供應商</div><select className="mp-ssel" value={tc.provider} onChange={e=>{const p=API_PROVIDERS.find(x=>x.id===e.target.value);setTempConfig(c=>({...c,provider:p.id,baseUrl:p.baseUrl,model:p.models[0]||""}));}}>{API_PROVIDERS.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
-            <div className="mp-row"><div className="mp-lbl">Base URL</div><input className="mp-sinp" value={tc.baseUrl} onChange={e=>setTempConfig(c=>({...c,baseUrl:e.target.value}))} placeholder="https://..." /></div>
+            <div className="mp-row"><div className="mp-lbl">API 供應商</div><select className="mp-ssel" value={tc.provider} onChange={e=>{const p=API_PROVIDERS.find(x=>x.id===e.target.value);setTempConfig(c=>({...c,provider:p.id,baseUrl:getProviderBaseUrl(p.id,c?.baseUrl || ""),model:p.models[0]||""}));}}>{API_PROVIDERS.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+            {tc.provider === "custom" && <div className="mp-row"><div className="mp-lbl">Base URL</div><input className="mp-sinp" value={tc.baseUrl} onChange={e=>setTempConfig(c=>({...c,baseUrl:e.target.value}))} placeholder="https://..." /></div>}
             <div className="mp-row"><div className="mp-lbl">API Key</div><input className="mp-sinp" type="password" value={tc.apiKey} onChange={e=>setTempConfig(c=>({...c,apiKey:e.target.value}))} placeholder="sk-..." /></div>
             <div className="mp-row">
               <div className="mp-lbl" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
