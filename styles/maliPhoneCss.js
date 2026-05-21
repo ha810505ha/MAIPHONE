@@ -47,7 +47,7 @@ body{position:fixed;inset:0;}
 .mp-icon:active{transform:scale(.95);}
 .mp-icon-c{width:56px;height:56px;border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:24px;background:var(--mp-glass);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid var(--mp-glass-b);box-shadow:0 4px 14px rgba(0,0,0,.05);transition:box-shadow .2s;}
 .mp-icon-c-img{overflow:hidden;}
-.mp-app-icon-img{display:block;object-fit:contain;}
+.mp-app-icon-img{display:block;object-fit:contain;pointer-events:none;user-select:none;-webkit-user-select:none;-webkit-user-drag:none;-webkit-touch-callout:none;}
 .mp-icon-c:hover{box-shadow:0 8px 18px rgba(244,143,177,.2);}
 .mp-icon-l{font-size:11px;color:var(--mp-txt);font-weight:600;text-align:center;}
 .mp-page-dots{position:absolute;left:0;right:0;bottom:98px;display:flex;align-items:center;justify-content:center;gap:7px;z-index:31;}

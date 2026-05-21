@@ -1201,7 +1201,7 @@ ${recent}`,
   const appById = Object.fromEntries(DEFAULT_APPS.map(a => [a.id, a]));
   const renderAppIcon = (app, size = 26) => {
     if (app?.iconUrl) {
-      return <img className="mp-app-icon-img" src={app.iconUrl} alt={app?.name || ""} style={{ width: size, height: size }} />;
+      return <img className="mp-app-icon-img" src={app.iconUrl} alt={app?.name || ""} draggable={false} onContextMenu={(e)=>e.preventDefault()} style={{ width: size, height: size }} />;
     }
     return app?.icon || "";
   };
