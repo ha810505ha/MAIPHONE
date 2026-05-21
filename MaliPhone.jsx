@@ -515,6 +515,18 @@ export default function MaliPhone() {
     t = t.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
     return t || "嗯，我在。";
   };
+  const splitAssistantBubbles = (text) => {
+    const normalized = String(text || "")
+      .replace(/\\n/g, "\n")
+      .split(/\n+/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (normalized.length <= 1) return [String(text || "").trim()].filter(Boolean);
+    const maxBubbles = 6;
+    if (normalized.length <= maxBubbles) return normalized;
+    return [...normalized.slice(0, maxBubbles - 1), normalized.slice(maxBubbles - 1).join("\n")];
+  };
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const sortModelsByProvider = (provider, models) => {
     const list = [...(models || [])];
     if (provider !== "openrouter") return list;
@@ -790,7 +802,12 @@ export default function MaliPhone() {
           [cid]: (h[cid] || []).map((m) => (m.id === um.id ? { ...m, imageSummary } : m)),
         }));
       }
-      setChatHistory(h => ({ ...h, [cid]: [...(h[cid] || []), { id: gid(), role: "assistant", content: cleanReply, time: Date.now() }] }));
+      const bubbles = splitAssistantBubbles(cleanReply);
+      for (let i = 0; i < bubbles.length; i++) {
+        const delay = i === 0 ? 420 : Math.min(1200, 520 + bubbles[i].length * 18);
+        await wait(delay);
+        setChatHistory(h => ({ ...h, [cid]: [...(h[cid] || []), { id: gid(), role: "assistant", content: bubbles[i], time: Date.now() }] }));
+      }
     } catch (err) {
       const detail = sanitizeText(err?.message || "未知錯誤", 500);
       setChatHistory(h => ({ ...h, [cid]: [...(h[cid] || []), { id: gid(), role: "system_notice", content: `連線錯誤：${detail}`, time: Date.now() }] }));
