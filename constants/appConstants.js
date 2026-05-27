@@ -1,5 +1,16 @@
-﻿const VERSION = "1.1.1";
+﻿const VERSION = "1.1.2";
 const MALIPHONE_AI_PROXY = "https://orange-butterfly-8390.d778105.workers.dev";
+
+const CHANGELOG = {
+  "1.1.2": [
+    "05/28 更新",
+    "新增線上聊天 / 現實模式切換，並維持同一條角色時間線。",
+    "現實模式支援 AIRP 段落排版、角色內心斜體與台詞上色。",
+    "新增角色卡匯出 / 匯入，支援 MaliPhone 角色卡格式。",
+    "角色頭像支援裁切、縮放與自動壓縮，方便跨裝置分享。",
+    "社群發文會參考近期聊天主題，但避免公開私聊內容。",
+  ],
+};
 
 const API_PROVIDERS = [
   { id: "openai", name: "OpenAI", baseUrl: "https://api.openai.com/v1", models: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"] },
@@ -28,5 +39,5 @@ const DEFAULT_APPS = [
 
 const DOCK_APPS = ["chat", "social", "characters", "settings"];
 
-export { VERSION, API_PROVIDERS, DEFAULT_APPS, DOCK_APPS };
+export { VERSION, CHANGELOG, API_PROVIDERS, DEFAULT_APPS, DOCK_APPS };
 
