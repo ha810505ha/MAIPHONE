@@ -1,16 +1,22 @@
 ﻿import React, { useState, useEffect, useRef } from "react";
-import { VERSION, API_PROVIDERS, DEFAULT_APPS, DOCK_APPS } from "./constants/appConstants";
+import { VERSION, CHANGELOG, API_PROVIDERS, DEFAULT_APPS, DOCK_APPS } from "./constants/appConstants";
 import { gid, ft, fd, sanitizeText, sanitizeUserImageUrl } from "./utils/coreUtils";
 import { parseSillyTavernJSON, parseSillyTavernPNG, buildSystemPrompt } from "./utils/characterParser";
 import { callAI, fetchAvailableModels } from "./services/aiService";
 import { loadAppState, saveAppState } from "./utils/indexedDbStorage";
 import css from "./styles/maliPhoneCss";
 
-function AddCharModal({ setModal, addCharacter, updateCharacter, editingCharacter, sanitizeUserImageUrl }) {
+function AddCharModal({ setModal, setEditingCharacter, addCharacter, updateCharacter, exportCharacter, deleteCharacter, editingCharacter, sanitizeUserImageUrl }) {
   const [tab, setTab] = useState("manual");
   const [n, sn] = useState(""); const [d, sd] = useState(""); const [p, sp] = useState(""); const [rel, srel] = useState(""); const [av, sav] = useState("");
   const [importErr, setImportErr] = useState(""); const [importing, setImporting] = useState(false);
+  const [avatarCrop, setAvatarCrop] = useState(null);
+  const AVATAR_MAX_BYTES = 400 * 1024;
   const avRef = useRef(null); const importRef = useRef(null);
+  const closeModal = () => {
+    setModal(null);
+    setEditingCharacter?.(null);
+  };
   useEffect(() => {
     if (!editingCharacter) return;
     setTab("manual");
@@ -20,19 +26,137 @@ function AddCharModal({ setModal, addCharacter, updateCharacter, editingCharacte
     srel(editingCharacter.relationshipToUser || "");
     sav(editingCharacter.avatar || "");
   }, [editingCharacter]);
-  const onAv = (e) => { const f = e.target.files?.[0]; if(!f) return; const r = new FileReader(); r.onload = () => { const safe = sanitizeUserImageUrl(String(r.result || "")); if (safe) sav(safe); }; r.readAsDataURL(f); };
+  const onAv = (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => {
+      const safe = sanitizeUserImageUrl(String(r.result || ""));
+      if (!safe) {
+        alert("頭像格式不支援");
+        return;
+      }
+      const img = new Image();
+      img.onload = () => {
+        setAvatarCrop({ src: safe, width: img.width, height: img.height, zoom: 1, panX: 0, panY: 0, dragging: false, dragStartX: 0, dragStartY: 0, startPanX: 0, startPanY: 0 });
+      };
+      img.onerror = () => alert("頭像讀取失敗");
+      img.src = safe;
+    };
+    r.readAsDataURL(f);
+    e.target.value = "";
+  };
+  const applyAvatarCrop = () => {
+    if (!avatarCrop?.src) return;
+    const img = new Image();
+    img.onload = () => {
+        const candidates = [
+          { size: 512, quality: 0.82 },
+          { size: 448, quality: 0.76 },
+          { size: 384, quality: 0.7 },
+          { size: 320, quality: 0.64 },
+        ];
+        let picked = null;
+        for (const c of candidates) {
+          const canvas = document.createElement("canvas");
+          canvas.width = c.size;
+          canvas.height = c.size;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) continue;
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(0, 0, c.size, c.size);
+          const scale = Math.max(c.size / img.width, c.size / img.height) * Math.max(1, avatarCrop.zoom || 1);
+          const dw = img.width * scale;
+          const dh = img.height * scale;
+          const maxShiftX = Math.max(0, (dw - c.size) / 2);
+          const maxShiftY = Math.max(0, (dh - c.size) / 2);
+          const dx = (c.size - dw) / 2 + (maxShiftX * Number(avatarCrop.panX || 0)) / 100;
+          const dy = (c.size - dh) / 2 + (maxShiftY * Number(avatarCrop.panY || 0)) / 100;
+          ctx.drawImage(img, dx, dy, dw, dh);
+          const out = canvas.toDataURL("image/jpeg", c.quality);
+          const b64 = out.split(",")[1] || "";
+          const bytes = Math.ceil((b64.length * 3) / 4);
+          picked = { out, bytes, size: c.size };
+          if (bytes <= AVATAR_MAX_BYTES) break;
+        }
+        if (!picked || picked.bytes > AVATAR_MAX_BYTES) {
+          alert("頭像壓縮後仍超過 400KB，請改用尺寸更小或內容更簡單的圖片");
+          return;
+        }
+        sav(picked.out);
+        setAvatarCrop(null);
+    };
+    img.onerror = () => alert("頭像讀取失敗");
+    img.src = avatarCrop.src;
+  };
+  const startAvatarDrag = (e) => {
+    if (!avatarCrop) return;
+    const px = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
+    const py = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
+    setAvatarCrop((s) => ({ ...(s || {}), dragging: true, dragStartX: px, dragStartY: py, startPanX: s?.panX || 0, startPanY: s?.panY || 0 }));
+  };
+  const moveAvatarDrag = (e) => {
+    setAvatarCrop((s) => {
+      if (!s?.dragging) return s;
+      const px = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
+      const py = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
+      const nextPanX = (s.startPanX || 0) + ((px - (s.dragStartX || 0)) / 1.8);
+      const nextPanY = (s.startPanY || 0) + ((py - (s.dragStartY || 0)) / 1.8);
+      return { ...s, panX: Math.max(-100, Math.min(100, nextPanX)), panY: Math.max(-100, Math.min(100, nextPanY)) };
+    });
+  };
+  const endAvatarDrag = () => setAvatarCrop((s) => s ? { ...s, dragging: false } : s);
+  const onAvatarPointerDown = (e) => {
+    e.preventDefault();
+    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch (_) {}
+    startAvatarDrag(e);
+  };
+  const onAvatarPointerMove = (e) => {
+    if (!avatarCrop?.dragging) return;
+    e.preventDefault();
+    moveAvatarDrag(e);
+  };
+  const onAvatarPointerUp = (e) => {
+    try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch (_) {}
+    endAvatarDrag();
+  };
+  const getAvatarCropImageStyle = () => {
+    const box = 220;
+    const iw = Number(avatarCrop?.width || 1);
+    const ih = Number(avatarCrop?.height || 1);
+    const scale = Math.max(box / iw, box / ih) * Math.max(1, Number(avatarCrop?.zoom || 1));
+    const dw = iw * scale;
+    const dh = ih * scale;
+    const maxShiftX = Math.max(0, (dw - box) / 2);
+    const maxShiftY = Math.max(0, (dh - box) / 2);
+    return {
+      position: "absolute",
+      width: dw,
+      height: dh,
+      left: (box - dw) / 2 + (maxShiftX * Number(avatarCrop?.panX || 0)) / 100,
+      top: (box - dh) / 2 + (maxShiftY * Number(avatarCrop?.panY || 0)) / 100,
+      userSelect: "none",
+      WebkitUserDrag: "none",
+      pointerEvents: "none",
+    };
+  };
   const handleImport = async (e) => {
     const file = e.target.files?.[0]; if (!file) return;
     setImportErr(""); setImporting(true);
     try {
-      if (file.name.endsWith(".json")) { const t = await file.text(); addCharacter(parseSillyTavernJSON(JSON.parse(t))); }
+      if (file.name.endsWith(".json")) {
+        const t = await file.text();
+        const raw = JSON.parse(t);
+        if (raw?.format === "maliphone-character" && raw?.character) addCharacter(raw.character);
+        else addCharacter(parseSillyTavernJSON(raw));
+      }
       else if (file.type === "image/png") { addCharacter(await parseSillyTavernPNG(file)); }
       else setImportErr("不支援的檔案格式，請使用 .json 或 .png");
     } catch (err) { setImportErr(err.message || "匯入失敗"); }
     setImporting(false); if (importRef.current) importRef.current.value = "";
   };
   return (
-    <div className="mp-overlay" onClick={() => setModal(null)}>
+    <div className="mp-overlay" onClick={closeModal}>
       <div className="mp-modal" onClick={e => e.stopPropagation()}>
         <div className="mp-modal-t">{editingCharacter ? "編輯角色" : "新增角色"}</div>
         {!editingCharacter && <div className="mp-tabs">
@@ -52,6 +176,7 @@ function AddCharModal({ setModal, addCharacter, updateCharacter, editingCharacte
           {importErr && <div style={{fontSize:12,color:"#e53935",marginTop:6,textAlign:"center"}}>{importErr}</div>}
           <div style={{marginTop:12,padding:10,background:"rgba(244,143,177,.05)",borderRadius:10,fontSize:11,color:"var(--mp-txt-l)",lineHeight:1.6}}>
             <strong>支援格式：</strong><br/>
+            MaliPhone 角色卡 JSON<br/>
             SillyTavern V1/V2 JSON<br/>
             SillyTavern PNG（含 chara tEXt chunk）<br/>
             會自動讀取 name、description、personality、scenario、first_mes、mes_example、system_prompt、tags
@@ -59,17 +184,59 @@ function AddCharModal({ setModal, addCharacter, updateCharacter, editingCharacte
         </>) : (<>
           <div className="mp-row"><div className="mp-lbl">角色頭像</div><div style={{display:"flex",alignItems:"center",gap:10}}><div className="mp-av" style={{cursor:"pointer"}} onClick={() => avRef.current?.click()}>{av ? <img src={av} alt="" /> : "🦊"}</div><input type="file" ref={avRef} accept="image/*" style={{display:"none"}} onChange={onAv} /><span style={{fontSize:11,color:"var(--mp-txt-l)"}}>點擊更換</span></div></div>
           <div className="mp-row"><div className="mp-lbl">角色名稱 *</div><input className="mp-sinp" value={n} onChange={e=>sn(e.target.value)} placeholder="例如 Luna" /></div>
-          <div className="mp-row"><div className="mp-lbl">角色設定（Character Description）</div><textarea className="mp-ta" value={d} onChange={e=>sd(e.target.value)} placeholder="描述角色背景、行為、語氣與互動方式" style={{minHeight:90,resize:"vertical"}} /></div>
-            <div className="mp-row"><div className="mp-lbl">系統提示詞（System Prompt）</div><textarea className="mp-ta" value={p} onChange={e=>sp(e.target.value)} placeholder="定義角色語氣、人格、回覆方式" /></div>
+          <div className="mp-row"><div className="mp-lbl">角色設定（Character Description）</div><textarea className="mp-ta" value={d} maxLength={8000} onChange={e=>sd(e.target.value.slice(0, 8000))} placeholder="描述角色背景、行為、語氣與互動方式" style={{minHeight:90,resize:"vertical"}} /><div className="mp-char-counter mp-char-counter-modal">{d.length}/8000</div></div>
+            <div className="mp-row"><div className="mp-lbl">系統提示詞（System Prompt）</div><textarea className="mp-ta" value={p} maxLength={8000} onChange={e=>sp(e.target.value.slice(0, 8000))} placeholder="定義角色語氣、人格、回覆方式" /><div className="mp-char-counter mp-char-counter-modal">{p.length}/8000</div></div>
             <div className="mp-row"><div className="mp-lbl">與玩家關係</div><input className="mp-sinp" value={rel} onChange={e=>srel(e.target.value)} placeholder="例如：青梅竹馬、同事、戀人、陌生人" /></div>
-            <button className="mp-save" style={{marginTop:10}} onClick={() => {
+            <div className={editingCharacter ? "mp-char-actions" : ""} style={{marginTop:10}}>
+            <button className="mp-save" style={editingCharacter ? {} : {marginTop:10}} onClick={() => {
               if(!n.trim()) return alert("請輸入角色名稱");
+              if (editingCharacter && !window.confirm(`確定要儲存角色「${n.trim()}」的變更嗎？`)) return;
               const payload = {name:n.trim(),description:d.trim(),systemPrompt:p.trim(),relationshipToUser:rel.trim(),avatar:av,personality:editingCharacter?.personality||"",scenario:editingCharacter?.scenario||"",firstMessage:editingCharacter?.firstMessage||"",messageExamples:editingCharacter?.messageExamples||"",tags:editingCharacter?.tags||[],creator:editingCharacter?.creator||"",creatorNotes:editingCharacter?.creatorNotes||""};
               if (editingCharacter) updateCharacter(editingCharacter.id, payload);
               else addCharacter(payload);
             }}>{editingCharacter ? "儲存變更" : "建立角色"}</button>
+            {editingCharacter && <>
+              <button className="mp-ibtn" onClick={() => {
+                if (!window.confirm(`要匯出角色「${editingCharacter.name}」的角色卡嗎？`)) return;
+                exportCharacter?.(editingCharacter);
+              }}>匯出</button>
+              <button className="mp-ibtn-r" onClick={() => {
+                if (!window.confirm(`確定要刪除角色「${editingCharacter.name}」嗎？這會一併刪除此角色的聊天室、記憶與其他聊天快取。`)) return;
+                deleteCharacter?.(editingCharacter.id);
+                closeModal();
+              }}>刪除</button>
+            </>}
+            </div>
         </>)}
       </div>
+      {avatarCrop && (
+        <div className="mp-overlay" style={{zIndex:130}} onClick={(e) => { e.stopPropagation(); setAvatarCrop(null); }}>
+          <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="mp-modal-t">裁切角色頭像</div>
+            <div style={{display:"grid",placeItems:"center",marginBottom:10}}>
+              <div
+                style={{width:220,height:220,borderRadius:18,overflow:"hidden",border:"1px solid rgba(244,143,177,.35)",background:"#fff",touchAction:"none",cursor: avatarCrop.dragging ? "grabbing" : "grab",position:"relative"}}
+                onPointerDown={onAvatarPointerDown}
+                onPointerMove={onAvatarPointerMove}
+                onPointerUp={onAvatarPointerUp}
+                onPointerCancel={onAvatarPointerUp}
+              >
+                <img
+                  src={avatarCrop.src}
+                  alt=""
+                  style={getAvatarCropImageStyle()}
+                />
+              </div>
+            </div>
+            <div className="mp-row"><div className="mp-lbl">縮放</div><input type="range" min="1" max="3" step="0.01" value={avatarCrop.zoom} onChange={e=>setAvatarCrop(s=>({...(s||{}),zoom:Number(e.target.value)}))} /></div>
+            <div style={{fontSize:11,color:"var(--mp-txt-l)",marginTop:4}}>拖曳圖片調整位置，套用後會自動壓縮到 400KB 以內</div>
+            <div style={{display:"flex",gap:8,marginTop:8}}>
+              <button className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#b0bec5,#90a4ae)"}} onClick={() => setAvatarCrop(null)}>取消</button>
+              <button className="mp-save" style={{flex:1}} onClick={applyAvatarCrop}>套用</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -123,6 +290,7 @@ export default function MaliPhone() {
     characters: [],
     activeCharId: null,
     chatHistory: {},
+    chatModes: {},
     posts: [],
     memories: {},
     lorebooks: [],
@@ -161,6 +329,7 @@ export default function MaliPhone() {
   const [characters, setCharacters] = useState(defaultAppState.characters);
   const [activeCharId, setActiveCharId] = useState(defaultAppState.activeCharId);
   const [chatHistory, setChatHistory] = useState(defaultAppState.chatHistory);
+  const [chatModes, setChatModes] = useState(defaultAppState.chatModes);
   const [chatInput, setChatInput] = useState("");
   const [chatImage, setChatImage] = useState(null);
   const CHAT_IMAGE_MAX_BYTES = 1024 * 1024; // 1MB
@@ -171,6 +340,8 @@ export default function MaliPhone() {
   const [posts, setPosts] = useState(defaultAppState.posts);
   const [postCommentInputs, setPostCommentInputs] = useState({});
   const [activeCommentPostId, setActiveCommentPostId] = useState(null);
+  const ONLINE_CHAT_TEXT_LIMIT = 800;
+  const REALITY_CHAT_TEXT_LIMIT = 4000;
   const SHARE_RAW_TOKEN_LIMIT = 1000;
   const TOTAL_CONTEXT_TOKEN_LIMIT = 40000;
   const [memories, setMemories] = useState(defaultAppState.memories);
@@ -189,6 +360,7 @@ export default function MaliPhone() {
   const [activeMemoryId, setActiveMemoryId] = useState(null);
   const [apiConfig, setApiConfig] = useState(defaultAppState.apiConfig);
   const [modal, setModal] = useState(null);
+  const [updateNoticeOpen, setUpdateNoticeOpen] = useState(false);
   const [editingCharacter, setEditingCharacter] = useState(null);
   const [tempConfig, setTempConfig] = useState(null);
   const [providerModelOptions, setProviderModelOptions] = useState({});
@@ -198,6 +370,7 @@ export default function MaliPhone() {
   const [statusExpandedCharId, setStatusExpandedCharId] = useState(null);
   const [settingsApiOpen, setSettingsApiOpen] = useState(true);
   const [settingsResetOpen, setSettingsResetOpen] = useState(false);
+  const [settingsVersionOpen, setSettingsVersionOpen] = useState(false);
   const [editingLorebookEntry, setEditingLorebookEntry] = useState(null);
   const [editingLorebookBook, setEditingLorebookBook] = useState(null);
   const [activeLorebookId, setActiveLorebookId] = useState(null);
@@ -226,6 +399,8 @@ export default function MaliPhone() {
   const edgeTurnTimerRef = useRef(null);
   const edgeTurnDirRef = useRef(null);
   const suppressAppClickUntilRef = useRef(0);
+  const serviceWorkerReloadingRef = useRef(false);
+  const serviceWorkerHadControllerRef = useRef(false);
 
   useEffect(() => {
     let mounted = true;
@@ -234,6 +409,7 @@ export default function MaliPhone() {
       setCharacters(data.characters || []);
       setActiveCharId(data.activeCharId ?? null);
       setChatHistory(data.chatHistory || {});
+      setChatModes(data.chatModes || {});
       setPosts(data.posts || []);
       setMemories(data.memories || {});
       setPhoneInboxCache(data.phoneInboxCache || {});
@@ -285,15 +461,34 @@ export default function MaliPhone() {
   useEffect(() => {
     if (!hydrated) return;
     const timer = setTimeout(() => {
-      saveAppState({ characters, activeCharId, chatHistory, posts, memories, lorebooks, chatLorebookBindings, phoneInboxCache, wallet, apiPresets, playerProfile, apiConfig, homeSlots, dockOrder }).catch(() => {});
+      saveAppState({ characters, activeCharId, chatHistory, chatModes, posts, memories, lorebooks, chatLorebookBindings, phoneInboxCache, wallet, apiPresets, playerProfile, apiConfig, homeSlots, dockOrder }).catch(() => {});
     }, 180);
     return () => clearTimeout(timer);
-  }, [hydrated, characters, activeCharId, chatHistory, posts, memories, lorebooks, chatLorebookBindings, phoneInboxCache, wallet, apiPresets, playerProfile, apiConfig, homeSlots, dockOrder]);
+  }, [hydrated, characters, activeCharId, chatHistory, chatModes, posts, memories, lorebooks, chatLorebookBindings, phoneInboxCache, wallet, apiPresets, playerProfile, apiConfig, homeSlots, dockOrder]);
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      const seen = localStorage.getItem("mali_seen_version");
+      if (seen !== VERSION) setUpdateNoticeOpen(true);
+    } catch {}
+  }, [hydrated]);
   useEffect(() => {
     if (!(typeof import.meta !== "undefined" && import.meta.env && import.meta.env.PROD)) return;
     if (!("serviceWorker" in navigator)) return;
     const base = (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : "/";
+    serviceWorkerHadControllerRef.current = !!navigator.serviceWorker.controller;
+    const onControllerChange = () => {
+      if (!serviceWorkerHadControllerRef.current) {
+        serviceWorkerHadControllerRef.current = true;
+        return;
+      }
+      if (serviceWorkerReloadingRef.current) return;
+      serviceWorkerReloadingRef.current = true;
+      window.location.reload();
+    };
+    navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
     navigator.serviceWorker.register(`${base}sw.js`).then((reg) => {
+      reg.update().catch(() => {});
       if (reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
       reg.addEventListener("updatefound", () => {
         const worker = reg.installing;
@@ -305,6 +500,7 @@ export default function MaliPhone() {
         });
       });
     }).catch(() => {});
+    return () => navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
   }, []);
   useEffect(() => {
     if (!hydrated) return;
@@ -342,6 +538,13 @@ export default function MaliPhone() {
   }, []);
 
   const showToast = (m) => { setToast(m); setTimeout(() => setToast(null), 2200); };
+  const currentChangelogRaw = CHANGELOG[VERSION] || [];
+  const currentChangelogTitle = currentChangelogRaw[0] || "版本更新";
+  const currentChangelog = currentChangelogRaw.slice(1);
+  const closeUpdateNotice = () => {
+    try { localStorage.setItem("mali_seen_version", VERSION); } catch {}
+    setUpdateNoticeOpen(false);
+  };
   const playerAvatarRef = useRef(null);
   const estimateTokens = (s) => Math.ceil(String(s || "").length / 3.5);
   const getUserDisplayName = () => sanitizeText(playerProfile?.name || "玩家", 40) || "玩家";
@@ -486,8 +689,9 @@ export default function MaliPhone() {
   const saveEditedMessage = () => {
     if (!currentChatChar || !messageEditor) return;
     const cid = currentChatChar.id;
+    const limit = getChatTextLimit(messageEditor.mode);
     const next = (chatHistory[cid] || []).map((m) =>
-      m.id === messageEditor.id ? { ...m, content: sanitizeText(messageEditor.content, 4000) } : m
+      m.id === messageEditor.id ? { ...m, content: sanitizeText(messageEditor.content, limit) } : m
     );
     setChatHistory((h) => ({ ...h, [cid]: next }));
     setMessageEditor(null);
@@ -515,6 +719,14 @@ export default function MaliPhone() {
     t = t.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
     return t || "嗯，我在。";
   };
+  const normalizeRealityReply = (text) => {
+    const t = String(text || "")
+      .replace(/\\n/g, "\n")
+      .replace(/[ \t]{2,}/g, " ")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+    return t || "他安靜地看著你，像是在等你把話說完。";
+  };
   const splitAssistantBubbles = (text) => {
     const normalized = String(text || "")
       .replace(/\\n/g, "\n")
@@ -525,6 +737,78 @@ export default function MaliPhone() {
     const maxBubbles = 6;
     if (normalized.length <= maxBubbles) return normalized;
     return [...normalized.slice(0, maxBubbles - 1), normalized.slice(maxBubbles - 1).join("\n")];
+  };
+  const isChatMode = (mode) => mode === "reality" || mode === "online";
+  const getMessageMode = (m) => (isChatMode(m?.mode) ? m.mode : "online");
+  const getLastCommittedChatMode = (charId) => {
+    const list = chatHistory[charId] || [];
+    for (let i = list.length - 1; i >= 0; i--) {
+      const m = list[i];
+      if (m?.role === "mode_transition") return isChatMode(m.toMode) ? m.toMode : "online";
+      if (m?.role === "user" || m?.role === "assistant") return getMessageMode(m);
+    }
+    return "online";
+  };
+  const getSelectedChatMode = (charId) => chatModes?.[charId] || getLastCommittedChatMode(charId);
+  const setSelectedChatMode = (charId, mode) => {
+    if (!charId || !isChatMode(mode)) return;
+    setChatModes((prev) => ({ ...(prev || {}), [charId]: mode }));
+    setChatInput((value) => sanitizeText(value, getChatTextLimit(mode)));
+  };
+  const getModeLabel = (mode) => (mode === "reality" ? "現實模式" : "線上聊天");
+  const getChatTextLimit = (mode) => (mode === "reality" ? REALITY_CHAT_TEXT_LIMIT : ONLINE_CHAT_TEXT_LIMIT);
+  const buildModePrompt = (mode) => {
+    if (mode === "reality") {
+      return `[目前互動模式：現實模式]
+以下目前模式規則優先於上方「聊天規則」中關於即時通訊、禁止旁白、禁止動作描寫的限制。
+{{char}} 與 {{user}} 正在同一個場景中面對面互動。請改用一般 AIRP / 小說式 RP 寫法，而不是手機訊息。
+1. 可以描寫環境、旁白、{{char}} 的動作、表情、語氣、反應與必要的內心想法。
+2. 可以用「」或 "" 寫出角色說出口的台詞；內心想法可用斜體標記，例如 *不能搞砸。*
+3. 必須承接前面的線上聊天內容，讓現實互動和線上聊天對得上。
+4. 不要替 {{user}} 決定重大行動、台詞、情緒或內心想法；只可描寫 {{user}} 已明確輸入的行動與可觀察結果。
+5. 單次回覆上限約 4000 字，避免一次推進太多情節。
+6. 預設使用繁體中文與台灣常用語。不要輸出角色名標籤、系統說明、規則文字或元敘事。`;
+    }
+    return `[目前互動模式：線上聊天]
+{{char}} 與 {{user}} 正透過手機即時通訊聊天。請維持短訊息感，不要加入旁白、內心獨白或動作描寫。`;
+  };
+  const buildRecentChatForSocialPost = (char) => {
+    const list = (chatHistory[char.id] || [])
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .slice(-16)
+      .map((m) => {
+        const speaker = m.role === "user" ? "{{user}}" : char.name;
+        const mode = getModeLabel(getMessageMode(m));
+        const body = sanitizeText(m.content || (m.image ? "[圖片]" : ""), 180).replace(/\s+/g, " ").trim();
+        return body ? `[${mode}] ${speaker}：${body}` : "";
+      })
+      .filter(Boolean);
+    return list.join("\n");
+  };
+  const buildSocialPostPrompt = (char) => {
+    const recentChat = buildRecentChatForSocialPost(char);
+    const recentPosts = (posts || [])
+      .filter((p) => p.charId === char.id)
+      .slice(0, 3)
+      .map((p, i) => `${i + 1}. ${sanitizeText(p.content || "", 80)}`)
+      .filter(Boolean)
+      .join("\n");
+    return `請替角色「${char.name}」寫一則可發在社群上的近況貼文。
+
+社群定位：
+- 這是朋友或熟人可能看得到的動態，不是私訊。
+- 可以融合近期聊天的主題、情緒、事件後續或衍生想法，讓角色像有自己的生活延續。
+- 不可以直接複述私聊內容，不可以像在對 {{user}} 單獨說話。
+- 不要提到「剛剛跟你聊」「我們私訊」「{{user}}」或玩家姓名。
+- 不要公開私密、曖昧、敏感、只屬於兩人之間的細節；若要引用，只能轉成模糊的心情或日常感想。
+- 不要使用第二人稱「你」指向玩家。
+- 內容 20~50 字，繁體中文，自然像真人隨手發文，不要標題、不要引號、不要解釋。
+
+近期私聊脈絡（只能參考主題/情緒，不可外洩原文）：
+${recentChat || "（近期沒有可參考的聊天）"}
+
+近期貼文（避免重複語氣與主題）：
+${recentPosts || "（無）"}`;
   };
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const sortModelsByProvider = (provider, models) => {
@@ -722,12 +1006,21 @@ export default function MaliPhone() {
 
   const sendMessage = async () => {
     if (!currentChatChar) return;
-    const text = chatInput.trim(); const img = chatImage?.data || null;
-    if (!text && !img) return;
     const cid = currentChatChar.id;
-    const um = { id: gid(), role: "user", content: text, image: img, imageSummary: "", time: Date.now() };
     const prev = chatHistory[cid] || [];
-    setChatHistory(h => ({ ...h, [cid]: [...prev, um] }));
+    const committedMode = getLastCommittedChatMode(cid);
+    const selectedMode = getSelectedChatMode(cid);
+    const textLimit = getChatTextLimit(selectedMode);
+    const text = sanitizeText(chatInput.trim(), textLimit); const img = chatImage?.data || null;
+    if (!text && !img) return;
+    const modeChanged = committedMode !== selectedMode;
+    const nowMs = Date.now();
+    const transition = modeChanged
+      ? { id: gid(), role: "mode_transition", fromMode: committedMode, toMode: selectedMode, time: nowMs }
+      : null;
+    const um = { id: gid(), role: "user", content: text, image: img, imageSummary: "", mode: selectedMode, time: nowMs };
+    const nextForDisplay = transition ? [...prev, transition, um] : [...prev, um];
+    setChatHistory(h => ({ ...h, [cid]: nextForDisplay }));
     setChatInput(""); setChatImage(null); setIsTyping(true);
     try {
       const now = new Date();
@@ -735,15 +1028,19 @@ export default function MaliPhone() {
       const nowTime = new Intl.DateTimeFormat("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false }).format(now);
       const nowTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Taipei";
       const nowContext = `[系統時間] 目前時間：${nowDate} ${nowTime} (${nowTz})`;
-      const hist = [...prev, um]
+      const hist = nextForDisplay
         .slice(-30)
         .map((m) => {
+          if (m.role === "mode_transition") {
+            return { role: "user", content: `[模式切換]\n接下來從${getModeLabel(m.fromMode)}切換為${getModeLabel(m.toMode)}。請自然承接同一條時間線。`, image: null };
+          }
           if (m.role === "system_notice") {
             return { role: "user", content: `[系統備註]\n${m.content || ""}`, image: null };
           }
           if (m.role === "user" || m.role === "assistant" || m.role === "system") {
             const summaryLine = m.imageSummary ? `\n[圖片摘要]\n${m.imageSummary}` : "";
-            return { role: m.role, content: `${m.content || ""}${summaryLine}`.trim(), image: m.image || null };
+            const modeLine = `[${getModeLabel(getMessageMode(m))}]`;
+            return { role: m.role, content: `${modeLine}\n${m.content || ""}${summaryLine}`.trim(), image: m.image || null };
           }
           return null;
         })
@@ -788,9 +1085,9 @@ export default function MaliPhone() {
         }
       }
       const finalHist = boundedHist.map((m) => ({ ...m, content: applyUserPlaceholder(m.content) }));
-      const sysP = applyUserPlaceholder(buildSystemPrompt(currentChatChar, boundedContext));
+      const sysP = applyUserPlaceholder(`${buildSystemPrompt(currentChatChar, boundedContext)}\n\n${buildModePrompt(selectedMode)}`);
       const reply = await callAI(finalHist, apiConfig, sysP);
-      const cleanReply = normalizeAssistantReply(reply);
+      const cleanReply = selectedMode === "reality" ? sanitizeText(normalizeRealityReply(reply), REALITY_CHAT_TEXT_LIMIT) : normalizeAssistantReply(reply);
       let imageSummary = "";
       if (hasCurrentImage) {
         const base = text ? `{{user}} 訊息：${text}\n` : "";
@@ -802,11 +1099,11 @@ export default function MaliPhone() {
           [cid]: (h[cid] || []).map((m) => (m.id === um.id ? { ...m, imageSummary } : m)),
         }));
       }
-      const bubbles = splitAssistantBubbles(cleanReply);
+      const bubbles = selectedMode === "reality" ? [cleanReply] : splitAssistantBubbles(cleanReply);
       for (let i = 0; i < bubbles.length; i++) {
         const delay = i === 0 ? 420 : Math.min(1200, 520 + bubbles[i].length * 18);
         await wait(delay);
-        setChatHistory(h => ({ ...h, [cid]: [...(h[cid] || []), { id: gid(), role: "assistant", content: bubbles[i], time: Date.now() }] }));
+        setChatHistory(h => ({ ...h, [cid]: [...(h[cid] || []), { id: gid(), role: "assistant", content: bubbles[i], mode: selectedMode, time: Date.now() }] }));
       }
     } catch (err) {
       const detail = sanitizeText(err?.message || "未知錯誤", 500);
@@ -895,7 +1192,7 @@ export default function MaliPhone() {
       scenario: sanitizeText(c.scenario, 8000),
       firstMessage: sanitizeText(c.firstMessage, 4000),
       messageExamples: sanitizeText(c.messageExamples, 12000),
-      systemPrompt: sanitizeText(c.systemPrompt, 12000),
+      systemPrompt: sanitizeText(c.systemPrompt, 8000),
       relationshipToUser: sanitizeText(c.relationshipToUser, 120),
       creator: sanitizeText(c.creator, 80),
       creatorNotes: sanitizeText(c.creatorNotes, 4000),
@@ -914,6 +1211,32 @@ export default function MaliPhone() {
     setModal(null);
     setEditingCharacter(null);
     showToast("角色已更新");
+  };
+  const exportCharacter = (char) => {
+    if (!char) return;
+    const payload = {
+      format: "maliphone-character",
+      formatVersion: 1,
+      exportedAt: new Date().toISOString(),
+      character: {
+        name: sanitizeText(char.name, 80),
+        avatar: sanitizeUserImageUrl(char.avatar) || null,
+        description: sanitizeText(char.description, 8000),
+        systemPrompt: sanitizeText(char.systemPrompt, 8000),
+        relationshipToUser: sanitizeText(char.relationshipToUser, 120),
+      },
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const safeName = sanitizeText(char.name || "character", 40).replace(/[\\/:*?"<>|]+/g, "_").trim() || "character";
+    a.href = url;
+    a.download = `${safeName}.malichar.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    showToast(`${char.name || "角色"} 已匯出`);
   };
   const canUseCurrentProvider = () => {
     const isOllamaLocal = apiConfig.provider === "ollama" && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(apiConfig.baseUrl || "");
@@ -1117,12 +1440,17 @@ ${recent}`,
     const providerNeedsApiKey = !(apiConfig.provider === "ollama" && isOllamaLocal);
     if (providerNeedsApiKey && !apiConfig.apiKey) { showToast("請先設定 API Key"); return; }
     try {
-      const sysP = buildSystemPrompt(char, getPlayerContextBlock());
+      const sysP = `${buildSystemPrompt(char, getPlayerContextBlock())}
+
+[目前輸出模式：社群貼文]
+以下社群貼文規則優先於上方「聊天規則」中關於即時通訊、只輸出私訊內容的限制。
+你正在替 {{char}} 產生一則公開/半公開社群動態。貼文要像角色自己發的近況，不是對 {{user}} 的私訊。`;
       const t = await callAI([{
         role: "user",
-        content: "請寫一則 50 字內、口吻自然、可發在社群上的近況貼文。",
+        content: buildSocialPostPrompt(char),
       }], apiConfig, sysP);
-        setPosts(p => [{ id: gid(), charId: char.id, charName: char.name, charAvatar: char.avatar, content: t, comments: [], time: Date.now(), likes: Math.floor(Math.random() * 50), liked: false }, ...p]);
+        const content = sanitizeText(String(t || "").replace(/^["「]|["」]$/g, "").trim(), 120) || "今天也算是有好好過完了。";
+        setPosts(p => [{ id: gid(), charId: char.id, charName: char.name, charAvatar: char.avatar, content, comments: [], time: Date.now(), likes: Math.floor(Math.random() * 50), liked: false }, ...p]);
         showToast(`${char.name} 已發佈貼文`);
       } catch (err) {
         showToast(`發文失敗：${err.message}`);
@@ -1486,14 +1814,53 @@ ${recent}`,
   );
 
   // ---- Chat ----
+  const renderRealityInline = (text) => {
+    const raw = String(text || "");
+    const nodes = [];
+    const re = /(「[^」]{1,500}」|"[^"\n]{1,500}"|\*[^*\n]{1,500}\*|_[^_\n]{1,500}_)/g;
+    let last = 0;
+    let match;
+    while ((match = re.exec(raw))) {
+      if (match.index > last) nodes.push(raw.slice(last, match.index));
+      const token = match[0];
+      if (token.startsWith("「") || token.startsWith("\"")) {
+        nodes.push(<span key={`d-${match.index}`} className="mp-reality-dialogue">{token}</span>);
+      } else {
+        nodes.push(<span key={`t-${match.index}`} className="mp-reality-thought">{token.slice(1, -1)}</span>);
+      }
+      last = match.index + token.length;
+    }
+    if (last < raw.length) nodes.push(raw.slice(last));
+    return nodes.map((node, i) => typeof node === "string" ? <React.Fragment key={`s-${i}`}>{node}</React.Fragment> : node);
+  };
+  const renderRealityText = (text) => String(text || "").split(/\n{2,}/).map((para, idx) => (
+    <p key={idx} className="mp-reality-p">
+      {para.split("\n").map((line, lineIdx) => (
+        <React.Fragment key={lineIdx}>
+          {lineIdx > 0 && <br />}
+          {renderRealityInline(line)}
+        </React.Fragment>
+      ))}
+    </p>
+  ));
   const renderChat = () => {
     if (currentChatChar) {
       const msgs = chatHistory[currentChatChar.id] || [];
       const binding = getChatLorebookBinding(currentChatChar.id);
+      const selectedMode = getSelectedChatMode(currentChatChar.id);
+      const committedMode = getLastCommittedChatMode(currentChatChar.id);
+      const hasPendingMode = selectedMode !== committedMode;
+      const inputTextLimit = getChatTextLimit(selectedMode);
       return (
         <div className="mp-page">
           <div className="mp-hdr">
-            <div className="mp-back" onClick={() => { setCurrentChatChar(null); setChatSettingsOpen(false); }}>←</div>
+            <div className="mp-back" onClick={() => {
+              if (chatSettingsOpen) {
+                setChatSettingsOpen(false);
+                return;
+              }
+              setCurrentChatChar(null);
+            }}>←</div>
             <div className="mp-htitle">{currentChatChar.name}</div>
             <button className="mp-ibtn" style={{ marginLeft: "auto" }} onClick={() => setChatSettingsOpen(true)}>設定</button>
           </div>
@@ -1501,6 +1868,21 @@ ${recent}`,
             <div className="mp-cm" style={{ paddingTop: 8 }}>
               <div className="mp-cc" style={{ marginBottom: 8 }}>
                 <div style={{ fontSize: 13, fontWeight: 700 }}>聊天室設定</div>
+              </div>
+              <div className="mp-cc">
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>互動模式</div>
+                  {hasPendingMode && <div style={{ fontSize: 10, color: "var(--mp-txt-l)" }}>下次送出後切換</div>}
+                </div>
+                <div className="mp-mode-tabs">
+                  <button className={`mp-mode-tab ${selectedMode === "online" ? "active" : ""}`} onClick={() => setSelectedChatMode(currentChatChar.id, "online")}>線上聊天</button>
+                  <button className={`mp-mode-tab ${selectedMode === "reality" ? "active" : ""}`} onClick={() => setSelectedChatMode(currentChatChar.id, "reality")}>現實模式</button>
+                </div>
+                <div className="mp-mode-hint">
+                  {selectedMode === "reality"
+                    ? "現實模式會以全寬段落呈現，支援旁白、動作、角色內心與台詞。"
+                    : "線上聊天會維持手機訊息氣泡與短訊息節奏。"}
+                </div>
               </div>
               <div className="mp-cc">
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
@@ -1571,6 +1953,13 @@ ${recent}`,
             <div className="mp-cr">
             <div className="mp-msgs">
               {msgs.map(m => {
+                  if (m.role === "mode_transition") {
+                    return (
+                      <div key={m.id} className="mp-mode-sep">
+                        <span>{getModeLabel(m.toMode)}</span>
+                      </div>
+                    );
+                  }
                   if (m.role === "system_notice") {
                     const share = parseShareEventNotice(m.content);
                     return (
@@ -1599,15 +1988,29 @@ ${recent}`,
                 }
                 const isUser = m.role === "user";
                 const isActive = activeMessageId === m.id;
+                const isReality = getMessageMode(m) === "reality";
+                if (isReality) {
+                  return (
+                    <div key={m.id} className={`mp-reality-wrap ${isUser ? "mp-reality-user" : "mp-reality-ai"}`}>
+                      {isUser && <button className={`mp-msg-editbtn ${isActive ? "" : "mp-msg-editbtn-hidden"}`} onClick={() => setMessageEditor({ id: m.id, content: m.content || "", mode: getMessageMode(m) })}>✎</button>}
+                      <div className="mp-reality-msg" onClick={() => setActiveMessageId((p) => (p === m.id ? null : m.id))}>
+                        {m.image && <img src={`data:image/png;base64,${m.image}`} className="mp-msg-img" alt="" />}
+                        {m.content && renderRealityText(m.content)}
+                        <div className="mp-reality-t">{new Date(m.time).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"})}</div>
+                      </div>
+                      {!isUser && <button className={`mp-msg-editbtn ${isActive ? "" : "mp-msg-editbtn-hidden"}`} onClick={() => setMessageEditor({ id: m.id, content: m.content || "", mode: getMessageMode(m) })}>✎</button>}
+                    </div>
+                  );
+                }
                 return (
                   <div key={m.id} className={`mp-msg-wrap ${isUser?"mp-msg-wrap-user":"mp-msg-wrap-ai"}`}>
-                    {isUser && <button className={`mp-msg-editbtn ${isActive ? "" : "mp-msg-editbtn-hidden"}`} onClick={() => setMessageEditor({ id: m.id, content: m.content || "" })}>✎</button>}
+                    {isUser && <button className={`mp-msg-editbtn ${isActive ? "" : "mp-msg-editbtn-hidden"}`} onClick={() => setMessageEditor({ id: m.id, content: m.content || "", mode: getMessageMode(m) })}>✎</button>}
                     <div className={`mp-msg ${isUser?"mp-msg-user":"mp-msg-ai"}`} onClick={() => setActiveMessageId((p) => (p === m.id ? null : m.id))}>
                       {m.image && <img src={`data:image/png;base64,${m.image}`} className="mp-msg-img" alt="" />}
                       {m.content && <div>{m.content}</div>}
                       <div className="mp-msg-t">{new Date(m.time).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"})}</div>
                     </div>
-                    {!isUser && <button className={`mp-msg-editbtn ${isActive ? "" : "mp-msg-editbtn-hidden"}`} onClick={() => setMessageEditor({ id: m.id, content: m.content || "" })}>✎</button>}
+                    {!isUser && <button className={`mp-msg-editbtn ${isActive ? "" : "mp-msg-editbtn-hidden"}`} onClick={() => setMessageEditor({ id: m.id, content: m.content || "", mode: getMessageMode(m) })}>✎</button>}
                   </div>
                 );
               })}
@@ -1626,21 +2029,25 @@ ${recent}`,
               <div className="mp-inp-bar">
                 <button className="mp-btn mp-btn-img" onClick={()=>fileInputRef.current?.click()}>🖼</button>
                 <input type="file" ref={fileInputRef} accept="image/*" style={{display:"none"}} onChange={handleImgUp} />
-                <textarea
-                  className="mp-inp"
-                  placeholder="輸入訊息..."
-                  name="mali_chat_text"
-                  rows={1}
-                  autoComplete="off"
-                  autoCorrect="off"
-                  autoCapitalize="sentences"
-                  spellCheck={false}
-                  data-form-type="other"
-                  data-lpignore="true"
-                  value={chatInput}
-                  onChange={e=>setChatInput(e.target.value)}
-                  onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage();}}}
-                />
+                <div className="mp-inp-wrap">
+                  <textarea
+                    className="mp-inp"
+                    placeholder="輸入訊息..."
+                    name="mali_chat_text"
+                    rows={1}
+                    maxLength={inputTextLimit}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="sentences"
+                    spellCheck={false}
+                    data-form-type="other"
+                    data-lpignore="true"
+                    value={chatInput}
+                    onChange={e=>setChatInput(e.target.value.slice(0, inputTextLimit))}
+                    onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage();}}}
+                  />
+                  <div className="mp-char-counter">{chatInput.length}/{inputTextLimit}</div>
+                </div>
                 <button className="mp-btn mp-btn-send" onClick={sendMessage}>➤</button>
               </div>
             </div>
@@ -1798,7 +2205,6 @@ ${recent}`,
                 <button className="mp-save" style={{flex:1}} onClick={() => { setViewingLorebookEntry(null); setEditingLorebookEntry({ id: viewingLorebookEntry.id, title: viewingLorebookEntry.title || "", keywords: (viewingLorebookEntry.keywords || []).join(", "), content: viewingLorebookEntry.content || "", enabled: !!viewingLorebookEntry.enabled }); }}>編輯</button>
               </div>
             </div>
-          )}
           </div>
         )}
         {editingLorebookBook && (
@@ -1838,7 +2244,22 @@ ${recent}`,
       <div className="mp-hdr"><div className="mp-back" onClick={closeApp}>←</div><div className="mp-htitle">聯絡人</div></div>
       <div className="mp-cm">
         <button className="mp-add" onClick={()=>{setEditingCharacter(null);setModal("addChar");}}>新增 / 匯入角色</button><div style={{height:8}} />
-        {characters.map(c=>(<div key={c.id} className="mp-cc"><div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}><div className="mp-av">{sanitizeUserImageUrl(c.avatar)?<img src={sanitizeUserImageUrl(c.avatar)} alt=""/>:"🦊"}</div><div style={{flex:1}}><div style={{fontWeight:700,fontSize:13}}>{c.name}</div><div style={{fontSize:11,color:"var(--mp-txt-l)"}}>{(c.description || c.personality || "尚無角色設定").slice(0,52)}</div></div>{activeCharId===c.id?<span className="mp-active-badge">ACTIVE</span>:<button className="mp-ibtn" onClick={()=>{setActiveCharId(c.id);showToast(`${c.name} 已設為主角色`);}}>設為主角色</button>}</div><div style={{display:"flex",gap:6}}><button className="mp-ibtn-chat" onClick={()=>{setCurrentChatChar(c);openApp("chat");}}>開始聊天</button><button className="mp-ibtn" onClick={()=>{setEditingCharacter(c);setModal("addChar");}}>編輯</button><button className="mp-ibtn-r" onClick={()=>{ if (window.confirm(`確定要刪除角色「${c.name}」嗎？`)) deleteCharacter(c.id); }}>刪除</button></div></div>))}
+        {characters.map(c=>(
+            <div key={c.id} className="mp-cc">
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                <div className="mp-av">{sanitizeUserImageUrl(c.avatar)?<img src={sanitizeUserImageUrl(c.avatar)} alt=""/>:"🦊"}</div>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:700,fontSize:13}}>{c.name}</div>
+                  <div style={{fontSize:11,color:"var(--mp-txt-l)"}}>{(c.description || c.personality || "尚無角色設定").slice(0,52)}</div>
+                </div>
+                {activeCharId===c.id?<span className="mp-active-badge">ACTIVE</span>:<button className="mp-ibtn" onClick={()=>{setActiveCharId(c.id);showToast(`${c.name} 已設為主角色`);}}>設為主角色</button>}
+              </div>
+              <div style={{display:"flex",gap:6}}>
+                <button className="mp-ibtn-chat" onClick={()=>{setCurrentChatChar(c);openApp("chat");}}>開始聊天</button>
+                <button className="mp-ibtn-chat" onClick={()=>{setEditingCharacter(c);setModal("addChar");}}>展開</button>
+              </div>
+            </div>
+        ))}
       </div>
     </div>
   );
@@ -2001,7 +2422,23 @@ ${recent}`,
               </div>
             </div>
           )}
-            <div className="mp-sg"><div className="mp-sg-t">版本資訊</div><div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.7}}><strong>MaliPhone</strong> v{VERSION}<br/>AI 角色互動小手機介面</div></div>
+            <div className="mp-sg">
+              <div className="mp-sg-t">版本資訊</div>
+              <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.7,marginBottom:8}}>
+                <strong>MaliPhone</strong> v{VERSION}<br/>AI 角色互動小手機介面
+              </div>
+              <div className="mp-version-row" onClick={() => setSettingsVersionOpen((v) => !v)}>
+                <span>{currentChangelogTitle}　版本：{VERSION}</span>
+                <span>{settingsVersionOpen ? "收合" : "展開"}</span>
+              </div>
+              {settingsVersionOpen && (
+                <ol className="mp-version-list">
+                  {(currentChangelog.length ? currentChangelog : ["這個版本沒有填寫更新內容。"]).map((item, idx) => (
+                    <li key={idx}>{item}</li>
+                  ))}
+                </ol>
+              )}
+            </div>
             <div className="mp-sg">
               <div className="mp-sg-t" style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}} onClick={() => setSettingsResetOpen((v) => !v)}>
                 <span>重置資料</span>
@@ -2461,7 +2898,7 @@ ${recent}`,
       </div>
     )}
     {currentApp && renderApp()}
-    {modal === "addChar" && <AddCharModal setModal={setModal} addCharacter={addCharacter} updateCharacter={updateCharacter} editingCharacter={editingCharacter} sanitizeUserImageUrl={sanitizeUserImageUrl} />}
+    {modal === "addChar" && <AddCharModal setModal={setModal} setEditingCharacter={setEditingCharacter} addCharacter={addCharacter} updateCharacter={updateCharacter} exportCharacter={exportCharacter} deleteCharacter={deleteCharacter} editingCharacter={editingCharacter} sanitizeUserImageUrl={sanitizeUserImageUrl} />}
     {memoryEditor && (
       <div className="mp-overlay" onClick={() => setMemoryEditor(null)}>
         <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
@@ -2496,12 +2933,32 @@ ${recent}`,
           </div>
           <div className="mp-row">
             <div className="mp-lbl">訊息內容</div>
-            <textarea className="mp-ta" value={messageEditor.content} onChange={(e)=>setMessageEditor((s)=>({ ...s, content: e.target.value }))} style={{minHeight:120,resize:"vertical"}} />
+            <textarea
+              className="mp-ta"
+              value={messageEditor.content}
+              maxLength={getChatTextLimit(messageEditor.mode)}
+              onChange={(e)=>setMessageEditor((s)=>({ ...s, content: e.target.value.slice(0, getChatTextLimit(s?.mode)) }))}
+              style={{minHeight:120,resize:"vertical"}}
+            />
+            <div className="mp-char-counter mp-char-counter-modal">{(messageEditor.content || "").length}/{getChatTextLimit(messageEditor.mode)}</div>
           </div>
           <div style={{display:"flex",gap:8,marginTop:10}}>
             <button className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#b0bec5,#90a4ae)"}} onClick={closeMessageEditor}>取消</button>
             <button className="mp-save" style={{flex:1}} onClick={saveEditedMessage}>儲存</button>
           </div>
+        </div>
+      </div>
+    )}
+    {updateNoticeOpen && (
+      <div className="mp-overlay" onClick={closeUpdateNotice}>
+        <div className="mp-modal" onClick={(e)=>e.stopPropagation()}>
+          <div className="mp-modal-t">MaliPhone v{VERSION} 更新</div>
+          <div className="mp-update-list">
+            {(currentChangelog.length ? currentChangelog : ["這個版本沒有填寫更新內容。"]).map((item, idx) => (
+              <div key={idx} className="mp-update-item">{item}</div>
+            ))}
+          </div>
+          <button className="mp-save" style={{marginTop:12}} onClick={closeUpdateNotice}>知道了</button>
         </div>
       </div>
     )}

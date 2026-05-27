@@ -1,4 +1,4 @@
-const CACHE_NAME = "maliphone-shell-v1.1.5";
+const CACHE_NAME = "maliphone-shell-v1.1.2";
 const BASE_PATH = new URL(self.registration.scope).pathname;
 const APP_SHELL = [BASE_PATH, `${BASE_PATH}manifest.webmanifest`, `${BASE_PATH}pwa/icon-192.png`, `${BASE_PATH}pwa/icon-512.png`];
 
