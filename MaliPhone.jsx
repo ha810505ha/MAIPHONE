@@ -301,6 +301,7 @@ export default function MaliPhone() {
       transactions: [],
       assets: [],
     },
+    characterWallets: {},
     apiPresets: [
       { id: "preset-1", name: "預設 1", provider: "openai", baseUrl: "https://api.openai.com/v1", apiKey: "", model: "gpt-4o-mini" },
       { id: "preset-2", name: "預設 2", provider: "grok", baseUrl: "https://api.x.ai/v1", apiKey: "", model: "grok-3-mini" },
@@ -321,6 +322,7 @@ export default function MaliPhone() {
       },
     },
     apiConfig: { provider: "openai", baseUrl: "https://api.openai.com/v1", apiKey: "", model: "gpt-4o-mini" },
+    screenLockTimeout: 5,
   };
   const [locked, setLocked] = useState(true);
   const [unlocking, setUnlocking] = useState(false);
@@ -332,6 +334,7 @@ export default function MaliPhone() {
   const [chatModes, setChatModes] = useState(defaultAppState.chatModes);
   const [chatInput, setChatInput] = useState("");
   const [chatImage, setChatImage] = useState(null);
+  const [chatActionPanelOpen, setChatActionPanelOpen] = useState(false);
   const CHAT_IMAGE_MAX_BYTES = 1024 * 1024; // 1MB
   const [isTyping, setIsTyping] = useState(false);
   const [currentChatChar, setCurrentChatChar] = useState(null);
@@ -340,18 +343,29 @@ export default function MaliPhone() {
   const [posts, setPosts] = useState(defaultAppState.posts);
   const [postCommentInputs, setPostCommentInputs] = useState({});
   const [activeCommentPostId, setActiveCommentPostId] = useState(null);
+  const [activeLikePostId, setActiveLikePostId] = useState(null);
+  const [socialReplyTarget, setSocialReplyTarget] = useState(null);
+  const [expandedSocialPosts, setExpandedSocialPosts] = useState({});
+  const [socialTick, setSocialTick] = useState(Date.now());
+  const [playerPostModalOpen, setPlayerPostModalOpen] = useState(false);
+  const [playerPostText, setPlayerPostText] = useState("");
+  const [playerPostSubmitting, setPlayerPostSubmitting] = useState(false);
   const ONLINE_CHAT_TEXT_LIMIT = 800;
   const REALITY_CHAT_TEXT_LIMIT = 4000;
   const SHARE_RAW_TOKEN_LIMIT = 1000;
+  const PLAYER_SOCIAL_POST_LIMIT = 500;
   const TOTAL_CONTEXT_TOKEN_LIMIT = 40000;
   const [memories, setMemories] = useState(defaultAppState.memories);
   const [lorebooks, setLorebooks] = useState(defaultAppState.lorebooks);
   const [chatLorebookBindings, setChatLorebookBindings] = useState(defaultAppState.chatLorebookBindings);
   const [phoneInboxCache, setPhoneInboxCache] = useState(defaultAppState.phoneInboxCache);
   const [wallet, setWallet] = useState(defaultAppState.wallet);
+  const [characterWallets, setCharacterWallets] = useState(defaultAppState.characterWallets);
+  const [walletGenLoading, setWalletGenLoading] = useState(false);
   const [apiPresets, setApiPresets] = useState(defaultAppState.apiPresets);
   const [playerProfile, setPlayerProfile] = useState(defaultAppState.playerProfile);
   const [playerAvatarCrop, setPlayerAvatarCrop] = useState(null);
+  const [screenLockTimeout, setScreenLockTimeout] = useState(defaultAppState.screenLockTimeout);
   const [phoneViewCharId, setPhoneViewCharId] = useState(null);
   const [phonePage, setPhonePage] = useState("picker");
   const [phoneActiveThreadId, setPhoneActiveThreadId] = useState("player");
@@ -365,12 +379,15 @@ export default function MaliPhone() {
   const [tempConfig, setTempConfig] = useState(null);
   const [providerModelOptions, setProviderModelOptions] = useState({});
   const [fetchingModels, setFetchingModels] = useState(false);
+  const [testingConnection, setTestingConnection] = useState(false);
   const [presetSavePickerOpen, setPresetSavePickerOpen] = useState(false);
   const [clearCacheArmed, setClearCacheArmed] = useState(false);
   const [statusExpandedCharId, setStatusExpandedCharId] = useState(null);
+  const [statusMemoryExpandedCharId, setStatusMemoryExpandedCharId] = useState(null);
   const [settingsApiOpen, setSettingsApiOpen] = useState(true);
   const [settingsResetOpen, setSettingsResetOpen] = useState(false);
   const [settingsVersionOpen, setSettingsVersionOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState("appearance");
   const [editingLorebookEntry, setEditingLorebookEntry] = useState(null);
   const [editingLorebookBook, setEditingLorebookBook] = useState(null);
   const [activeLorebookId, setActiveLorebookId] = useState(null);
@@ -396,6 +413,7 @@ export default function MaliPhone() {
   const swipeStartXRef = useRef(null);
   const swipeStartYRef = useRef(null);
   const lockStartYRef = useRef(null);
+  const autoLockTimerRef = useRef(null);
   const edgeTurnTimerRef = useRef(null);
   const edgeTurnDirRef = useRef(null);
   const suppressAppClickUntilRef = useRef(0);
@@ -414,6 +432,8 @@ export default function MaliPhone() {
       setMemories(data.memories || {});
       setPhoneInboxCache(data.phoneInboxCache || {});
       setWallet(data.wallet || defaultAppState.wallet);
+      setCharacterWallets(data.characterWallets || {});
+      setScreenLockTimeout(Number.isFinite(Number(data.screenLockTimeout)) ? Number(data.screenLockTimeout) : defaultAppState.screenLockTimeout);
       setApiPresets(Array.isArray(data.apiPresets) && data.apiPresets.length ? data.apiPresets : defaultAppState.apiPresets);
       setPlayerProfile(data.playerProfile || defaultAppState.playerProfile);
       setChatLorebookBindings(data.chatLorebookBindings || {});
@@ -461,10 +481,40 @@ export default function MaliPhone() {
   useEffect(() => {
     if (!hydrated) return;
     const timer = setTimeout(() => {
-      saveAppState({ characters, activeCharId, chatHistory, chatModes, posts, memories, lorebooks, chatLorebookBindings, phoneInboxCache, wallet, apiPresets, playerProfile, apiConfig, homeSlots, dockOrder }).catch(() => {});
+      saveAppState({ characters, activeCharId, chatHistory, chatModes, posts, memories, lorebooks, chatLorebookBindings, phoneInboxCache, wallet, characterWallets, screenLockTimeout, apiPresets, playerProfile, apiConfig, homeSlots, dockOrder }).catch(() => {});
     }, 180);
     return () => clearTimeout(timer);
-  }, [hydrated, characters, activeCharId, chatHistory, chatModes, posts, memories, lorebooks, chatLorebookBindings, phoneInboxCache, wallet, apiPresets, playerProfile, apiConfig, homeSlots, dockOrder]);
+  }, [hydrated, characters, activeCharId, chatHistory, chatModes, posts, memories, lorebooks, chatLorebookBindings, phoneInboxCache, wallet, characterWallets, screenLockTimeout, apiPresets, playerProfile, apiConfig, homeSlots, dockOrder]);
+  useEffect(() => {
+    if (locked) return;
+    const timeoutMs = screenLockTimeout === 0 ? null : Math.max(1, Number(screenLockTimeout) || 0) * 60 * 1000;
+    if (!timeoutMs) return;
+    const schedule = () => {
+      clearTimeout(autoLockTimerRef.current);
+      autoLockTimerRef.current = setTimeout(() => {
+        setLocked(true);
+        setUnlocking(false);
+      }, timeoutMs);
+    };
+    schedule();
+    const events = ["pointerdown", "mousedown", "touchstart", "keydown", "scroll"];
+    const onActivity = () => schedule();
+    events.forEach((ev) => window.addEventListener(ev, onActivity, { passive: true }));
+    return () => {
+      clearTimeout(autoLockTimerRef.current);
+      events.forEach((ev) => window.removeEventListener(ev, onActivity));
+    };
+  }, [locked, screenLockTimeout]);
+  useEffect(() => {
+    if (!hydrated || currentApp !== "social") return;
+    setSocialTick(Date.now());
+    const hasPendingLikes = (posts || []).some((p) => (
+      (p.likedBy || []).some((x) => (x.time || 0) > Date.now())
+    ));
+    if (!hasPendingLikes) return;
+    const timer = setInterval(() => setSocialTick(Date.now()), 15000);
+    return () => clearInterval(timer);
+  }, [hydrated, currentApp, posts]);
   useEffect(() => {
     if (!hydrated) return;
     try {
@@ -810,7 +860,203 @@ ${recentChat || "（近期沒有可參考的聊天）"}
 近期貼文（避免重複語氣與主題）：
 ${recentPosts || "（無）"}`;
   };
+  const getPostAuthorName = (post) => post?.authorName || post?.charName || "未知";
+  const getPostAuthorAvatar = (post) => post?.authorAvatar || post?.charAvatar || null;
+  const getPostAuthorType = (post) => post?.authorType || (post?.charId ? "character" : "player");
+  const getPlayerDisplayName = () => playerProfile?.nickname || playerProfile?.name || "你";
+  const getPlayerAvatar = () => playerProfile?.avatar || null;
+  const formatSocialCount = (value) => {
+    const n = Math.max(0, Math.round(Number(value) || 0));
+    if (n >= 10000) return `${(n / 10000).toFixed(n >= 100000 ? 0 : 1).replace(/\.0$/, "")}萬`;
+    if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/, "")}K`;
+    return String(n);
+  };
+  const getCharacterSocialReach = (char) => {
+    const text = normalizeForMatch([
+      char?.name,
+      char?.description,
+      char?.personality,
+      char?.scenario,
+      char?.systemPrompt,
+      char?.relationshipToUser,
+      char?.creatorNotes,
+      Array.isArray(char?.tags) ? char.tags.join(" ") : "",
+    ].filter(Boolean).join(" "));
+    const high = /(偶像|明星|藝人|歌手|演員|直播主|實況主|網紅|kol|influencer|model|模特|名人|人氣|粉絲|公眾人物|vtuber|youtuber)/i;
+    const publicJob = /(醫生|律師|老師|教授|店長|老闆|企業家|主播|記者|作家|漫畫家|攝影師|設計師|學生會|社長)/i;
+    const hidden = /(殺手|刺客|傭兵|特工|間諜|黑道|犯罪|通緝|逃亡|隱居|低調|孤僻|神秘|秘密|不擅社交|社恐|少朋友|無朋友|獨來獨往)/i;
+    if (high.test(text)) return "celebrity";
+    if (hidden.test(text)) return "private";
+    if (publicJob.test(text)) return "local";
+    return "normal";
+  };
+  const rollCharacterPostLikes = (char) => {
+    const reach = getCharacterSocialReach(char);
+    const rand = (min, max) => Math.floor(min + Math.random() * (max - min + 1));
+    if (reach === "celebrity") return rand(1200, 28000);
+    if (reach === "private") return rand(0, 18);
+    if (reach === "local") return rand(24, 360);
+    return rand(4, 95);
+  };
+  const shouldClampSocialPost = (content) => {
+    const text = String(content || "");
+    const manualLines = text.split(/\r?\n/).length;
+    return manualLines > 5 || text.length > 115;
+  };
+  const shouldScrollComments = (comments) => {
+    const list = comments || [];
+    const totalChars = list.reduce((sum, c) => sum + String(c?.content || "").length, 0);
+    const totalLines = list.reduce((sum, c) => sum + Math.ceil(String(c?.content || "").length / 26) + String(c?.content || "").split(/\r?\n/).length - 1, 0);
+    return list.length > 6 || totalChars > 420 || totalLines > 10;
+  };
+  const getCommentDepth = (comment) => Math.min(3, Math.max(1, Number(comment?.depth) || (comment?.parentId ? 2 : 1)));
+  const getCommentAuthorName = (comment, fallback = "") => (
+    comment?.role === "assistant" ? (comment.charName || fallback) : getPlayerDisplayName()
+  );
+  const insertCommentAfterThread = (comments, anchorId, nextComment) => {
+    const list = [...(comments || [])];
+    if (!anchorId) return [...list, nextComment];
+    const anchorIndex = list.findIndex((c) => c.id === anchorId);
+    if (anchorIndex < 0) return [...list, nextComment];
+    const anchorDepth = getCommentDepth(list[anchorIndex]);
+    let insertAt = anchorIndex + 1;
+    while (insertAt < list.length && getCommentDepth(list[insertAt]) > anchorDepth) insertAt += 1;
+    list.splice(insertAt, 0, nextComment);
+    return list;
+  };
+  const buildMemoryDigest = (memoriesList) => {
+    const seen = new Set();
+    return (memoriesList || [])
+      .slice()
+      .sort((a, b) => (b.date || 0) - (a.date || 0))
+      .map((mem) => sanitizeText(mem?.text || "", 60))
+      .filter(Boolean)
+      .filter((text) => {
+        const key = normalizeForMatch(text);
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 5)
+      .map((text, idx) => `- ${idx + 1}. ${text}`)
+      .join("\n");
+  };
+  const buildSocialCommentReplyPrompt = ({ char, post, targetComment, userText }) => `社群貼文：「${post.content}」
+${targetComment ? `你上一則留言：「${targetComment.content}」\n` : ""}{{user}} 回覆你：「${userText}」
+
+請用角色「${char.name}」的口吻回覆這則社群留言。
+規則：
+- 這是公開/半公開社群留言，不是私訊。
+- 回覆 1 句，最多 45 字，繁體中文。
+- 不要公開私聊原文或敏感細節，不要角色名標籤，不要引號，不要解釋。`;
+  const countTokenOverlap = (source, queryTokens) => {
+    if (!queryTokens?.size) return 0;
+    const sourceTokens = tokenizeForRecall(source);
+    let hit = 0;
+    queryTokens.forEach((t) => { if (sourceTokens.has(t)) hit += 1; });
+    return hit;
+  };
+  const scoreCharacterForPlayerPost = (char, text) => {
+    const qTokens = tokenizeForRecall(text);
+    const recentMsgs = (chatHistory[char.id] || []).slice(-24);
+    const recentChat = recentMsgs
+      .map((m) => `${m.role === "user" ? "{{user}}" : char.name}: ${m.content || ""}`)
+      .join("\n");
+    const memoryText = (memories[char.id] || []).map((m) => m.text || "").join("\n");
+    const profileText = [
+      char.name,
+      char.description,
+      char.personality,
+      char.scenario,
+      char.systemPrompt,
+      char.relationshipToUser,
+      char.creatorNotes,
+      memoryText,
+      recentChat,
+    ].filter(Boolean).join("\n");
+    const recentCount = recentMsgs.filter((m) => m.role === "user" || m.role === "assistant").length;
+    const latest = recentMsgs[recentMsgs.length - 1]?.time || 0;
+    const recencyScore = latest ? Math.max(0, 6 - Math.floor((Date.now() - latest) / (24 * 60 * 60 * 1000))) : 0;
+    const overlap = countTokenOverlap(profileText, qTokens);
+    return (
+      overlap * 3 +
+      Math.min(10, recentCount) +
+      recencyScore +
+      (char.id === activeCharId ? 4 : 0) +
+      Math.random() * 5
+    );
+  };
+  const pickPlayerPostReactors = (text) => {
+    const total = characters.length;
+    if (total <= 0) return [];
+    let target = total;
+    if (total > 3 && total <= 5) target = 2 + Math.floor(Math.random() * (total - 1));
+    if (total > 5 && total <= 10) target = Math.min(total, 3 + Math.floor(Math.random() * 6));
+    if (total > 10) target = Math.min(total, 5 + Math.floor(Math.random() * 8));
+    const nowMs = Date.now();
+    return [...characters]
+      .map((char) => ({ char, score: scoreCharacterForPlayerPost(char, text) + Math.random() * 4 }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, target)
+      .map((x, idx, arr) => {
+        const progress = arr.length <= 1 ? 0.3 : idx / Math.max(1, arr.length - 1);
+        const delay = Math.min(5 * 60 * 1000, 20000 + Math.floor(progress * 250000) + Math.floor(Math.random() * 30000));
+        return {
+        charId: x.char.id,
+        charName: x.char.name,
+        charAvatar: x.char.avatar,
+        time: nowMs + delay,
+        };
+      });
+  };
+  const getVisibleLikedBy = (post) => (post?.likedBy || [])
+    .filter((x) => !x.time || x.time <= socialTick)
+    .sort((a, b) => (a.time || 0) - (b.time || 0));
+  const getPostLikeCount = (post) => Math.max(0, Math.round(Number(post?.likes) || 0)) + getVisibleLikedBy(post).length;
+  const getLikedByListText = (post) => {
+    const likedBy = getVisibleLikedBy(post);
+    if (!likedBy.length) return "";
+    const names = likedBy.map((x) => x.charName).filter(Boolean).join("、");
+    return names ? `${names} 喜歡這則貼文` : "";
+  };
+  const pickPlayerPostResponders = (text) => {
+    const total = characters.length;
+    if (total <= 0) return [];
+    if (total <= 3) return [...characters];
+    let target = 3;
+    if (total > 5 && total <= 10) target = 3 + Math.floor(Math.random() * 3);
+    if (total > 10) target = 3 + Math.floor(Math.random() * 5);
+    target = Math.min(target, total);
+    return [...characters]
+      .map((char) => ({ char, score: scoreCharacterForPlayerPost(char, text) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, target)
+      .map((x) => x.char);
+  };
+  const buildPlayerPostReplyPrompt = (char, post) => {
+    const recentChat = buildRecentChatForSocialPost(char);
+    const memoryText = (memories[char.id] || [])
+      .filter((m) => m?.text)
+      .slice(-5)
+      .map((m) => `- ${m.text}`)
+      .join("\n");
+    return `玩家在社群發了一則公開貼文：「${post.content}」
+
+請判斷角色「${char.name}」是否會留言，並直接輸出留言內容。
+規則：
+- 這是社群留言，不是私訊，不要像只對玩家一個人撒嬌或報備。
+- 可以根據角色設定、近期聊天主題、記憶做自然延伸，但不可公開私聊原文或敏感細節。
+- 若貼文和角色沒有強關聯，也可以用普通朋友會留下的短回應。
+- 請輸出 1 句，最多 45 字，繁體中文，不要角色名標籤、不要引號、不要解釋。
+
+近期聊天參考（只能參考情緒與主題）：
+${recentChat || "（沒有近期聊天）"}
+
+記憶參考：
+${memoryText || "（無）"}`;
+  };
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const formatMoney = (value) => Math.round(Number(value) || 0).toLocaleString("en-US");
   const sortModelsByProvider = (provider, models) => {
     const list = [...(models || [])];
     if (provider !== "openrouter") return list;
@@ -1004,25 +1250,7 @@ ${recentPosts || "（無）"}`;
     return Array.from(uniq.values()).slice(0, 8);
   };
 
-  const sendMessage = async () => {
-    if (!currentChatChar) return;
-    const cid = currentChatChar.id;
-    const prev = chatHistory[cid] || [];
-    const committedMode = getLastCommittedChatMode(cid);
-    const selectedMode = getSelectedChatMode(cid);
-    const textLimit = getChatTextLimit(selectedMode);
-    const text = sanitizeText(chatInput.trim(), textLimit); const img = chatImage?.data || null;
-    if (!text && !img) return;
-    const modeChanged = committedMode !== selectedMode;
-    const nowMs = Date.now();
-    const transition = modeChanged
-      ? { id: gid(), role: "mode_transition", fromMode: committedMode, toMode: selectedMode, time: nowMs }
-      : null;
-    const um = { id: gid(), role: "user", content: text, image: img, imageSummary: "", mode: selectedMode, time: nowMs };
-    const nextForDisplay = transition ? [...prev, transition, um] : [...prev, um];
-    setChatHistory(h => ({ ...h, [cid]: nextForDisplay }));
-    setChatInput(""); setChatImage(null); setIsTyping(true);
-    try {
+  const generateAssistantForHistory = async ({ cid, char, nextForDisplay, selectedMode, um, text }) => {
       const now = new Date();
       const nowDate = new Intl.DateTimeFormat("zh-TW", { year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
       const nowTime = new Intl.DateTimeFormat("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false }).format(now);
@@ -1035,6 +1263,7 @@ ${recentPosts || "（無）"}`;
             return { role: "user", content: `[模式切換]\n接下來從${getModeLabel(m.fromMode)}切換為${getModeLabel(m.toMode)}。請自然承接同一條時間線。`, image: null };
           }
           if (m.role === "system_notice") {
+            if (String(m.content || "").startsWith("連線錯誤：")) return null;
             return { role: "user", content: `[系統備註]\n${m.content || ""}`, image: null };
           }
           if (m.role === "user" || m.role === "assistant" || m.role === "system") {
@@ -1060,11 +1289,20 @@ ${recentPosts || "（無）"}`;
       const autoLore = loreHits.filter((x) => x.mode !== "PIN");
       const pinnedLoreContext = pinnedLore.map((x, i) => `${i + 1}. [${x.bookName}] ${x.entry.title || "條目"}：${x.entry.content || ""}`).join("\n");
       const autoLoreContext = autoLore.map((x, i) => `- ${i + 1}. [${x.bookName}] ${x.entry.title || "條目"}：${x.entry.content || ""}`).join("\n");
+      const cw = characterWallets[cid];
+      const walletContext = cw ? [
+        `[角色錢包]`,
+        `目前餘額：${formatMoney(cw.balance || 0)}`,
+        cw.summary ? `摘要：${cw.summary}` : "",
+        (cw.transactions || []).slice(0, 5).map((t) => `- ${t.type === "income" ? "收入" : "支出"} ${formatMoney(t.amount)}：${t.note}`).join("\n"),
+        `規則：錢包資料只能作為角色生活背景；除非使用者明確要求記錄交易，否則不要宣稱已修改餘額或新增流水。`,
+      ].filter(Boolean).join("\n") : "";
       const mergedContext = [
         getPlayerContextBlock(),
         nowContext,
         pinnedLoreContext ? `[強制條目 - 必須遵守]\n以下條目為當前對話的硬性規則，回覆時必須滿足：\n${pinnedLoreContext}` : "",
         memoryContext,
+        walletContext,
         autoLoreContext ? `[世界書]\n${autoLoreContext}` : "",
       ].filter(Boolean).join("\n\n");
       // 全域 token 保險上限：先裁歷史，再裁 context，避免超過模型上下文。
@@ -1085,7 +1323,7 @@ ${recentPosts || "（無）"}`;
         }
       }
       const finalHist = boundedHist.map((m) => ({ ...m, content: applyUserPlaceholder(m.content) }));
-      const sysP = applyUserPlaceholder(`${buildSystemPrompt(currentChatChar, boundedContext)}\n\n${buildModePrompt(selectedMode)}`);
+      const sysP = applyUserPlaceholder(`${buildSystemPrompt(char, boundedContext)}\n\n${buildModePrompt(selectedMode)}`);
       const reply = await callAI(finalHist, apiConfig, sysP);
       const cleanReply = selectedMode === "reality" ? sanitizeText(normalizeRealityReply(reply), REALITY_CHAT_TEXT_LIMIT) : normalizeAssistantReply(reply);
       let imageSummary = "";
@@ -1105,9 +1343,61 @@ ${recentPosts || "（無）"}`;
         await wait(delay);
         setChatHistory(h => ({ ...h, [cid]: [...(h[cid] || []), { id: gid(), role: "assistant", content: bubbles[i], mode: selectedMode, time: Date.now() }] }));
       }
+  };
+
+  const addChatErrorNotice = (cid, err) => {
+    const detail = sanitizeText(err?.message || "未知錯誤", 500);
+    setChatHistory(h => ({ ...h, [cid]: [...(h[cid] || []), { id: gid(), role: "system_notice", content: `連線錯誤：${detail}`, time: Date.now() }] }));
+  };
+
+  const sendMessage = async () => {
+    if (!currentChatChar || isTyping) return;
+    const cid = currentChatChar.id;
+    const prev = chatHistory[cid] || [];
+    const committedMode = getLastCommittedChatMode(cid);
+    const selectedMode = getSelectedChatMode(cid);
+    const textLimit = getChatTextLimit(selectedMode);
+    const text = sanitizeText(chatInput.trim(), textLimit); const img = chatImage?.data || null;
+    if (!text && !img) return;
+    const modeChanged = committedMode !== selectedMode;
+    const nowMs = Date.now();
+    const transition = modeChanged
+      ? { id: gid(), role: "mode_transition", fromMode: committedMode, toMode: selectedMode, time: nowMs }
+      : null;
+    const um = { id: gid(), role: "user", content: text, image: img, imageSummary: "", mode: selectedMode, time: nowMs };
+    const nextForDisplay = transition ? [...prev, transition, um] : [...prev, um];
+    setChatHistory(h => ({ ...h, [cid]: nextForDisplay }));
+    setChatInput(""); setChatImage(null); setChatActionPanelOpen(false); setIsTyping(true);
+    try {
+      await generateAssistantForHistory({ cid, char: currentChatChar, nextForDisplay, selectedMode, um, text });
     } catch (err) {
-      const detail = sanitizeText(err?.message || "未知錯誤", 500);
-      setChatHistory(h => ({ ...h, [cid]: [...(h[cid] || []), { id: gid(), role: "system_notice", content: `連線錯誤：${detail}`, time: Date.now() }] }));
+      addChatErrorNotice(cid, err);
+    }
+    setIsTyping(false);
+  };
+  const retryChatFromNotice = async (noticeId) => {
+    if (!currentChatChar || isTyping) return;
+    const cid = currentChatChar.id;
+    const list = chatHistory[cid] || [];
+    const noticeIdx = list.findIndex((m) => m.id === noticeId);
+    if (noticeIdx < 0) return;
+    const userMsg = [...list.slice(0, noticeIdx)].reverse().find((m) => m.role === "user");
+    if (!userMsg) return;
+    const selectedMode = getMessageMode(userMsg);
+    const nextForDisplay = list.filter((m) => m.id !== noticeId);
+    setChatHistory((h) => ({ ...h, [cid]: nextForDisplay }));
+    setIsTyping(true);
+    try {
+      await generateAssistantForHistory({
+        cid,
+        char: currentChatChar,
+        nextForDisplay,
+        selectedMode,
+        um: userMsg,
+        text: userMsg.content || "",
+      });
+    } catch (err) {
+      addChatErrorNotice(cid, err);
     }
     setIsTyping(false);
   };
@@ -1299,6 +1589,7 @@ ${recentPosts || "（無）"}`;
     if (activeCharId === id) setActiveCharId(characters.find(x => x.id !== id)?.id || null);
     setChatHistory(h => { const n = { ...h }; delete n[id]; return n; });
     setMemories(m => { const n = { ...m }; delete n[id]; return n; });
+    setCharacterWallets((w) => { const n = { ...w }; delete n[id]; return n; });
     setPhoneInboxCache((prev) => {
       const next = { ...prev };
       delete next[id];
@@ -1403,6 +1694,7 @@ ${recent || "（尚無）"}
         char.scenario ? `角色情境：${sanitizeText(char.scenario, 220)}` : "",
         char.relationshipToUser ? `與玩家關係：${sanitizeText(char.relationshipToUser, 120)}` : "",
       ].filter(Boolean).join("\n");
+      const existingMemoriesContext = buildMemoryDigest(existing);
       const prompt = [{
         role: "user",
         content: `你要為角色「${char.name}」整理長期記憶，務必嚴格遵守角色人設。
@@ -1411,10 +1703,14 @@ ${recent || "（尚無）"}
 2) 記憶必須具體、可持續（偏好/事實/關係/約定），避免空話。
 3) 不得臆測或改寫角色的性別、身分、關係設定；若對話未提及就不要補。
 4) 不要使用「她/他」等可能造成性別偏移的主詞，優先用角色名「${char.name}」。
-5) 只輸出記憶文字本身，不要解釋。
+5) 既有記憶摘要會列在下方，請避免重複、近似或只換句話說；若真的沒有新資訊，就不要硬生出同義句。
+6) 只輸出記憶文字本身，不要解釋。
 
 角色設定：
 ${roleProfile || "（無）"}
+
+既有記憶（請避免重複）：
+${existingMemoriesContext || "（無）"}
 
 最近對話：
 ${recent}`,
@@ -1436,9 +1732,7 @@ ${recent}`,
   };
 
   const generatePost = async (char) => {
-    const isOllamaLocal = apiConfig.provider === "ollama" && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(apiConfig.baseUrl || "");
-    const providerNeedsApiKey = !(apiConfig.provider === "ollama" && isOllamaLocal);
-    if (providerNeedsApiKey && !apiConfig.apiKey) { showToast("請先設定 API Key"); return; }
+    if (!canUseCurrentProvider()) { showToast("請先完成 AI 連線設定（API Key）"); return; }
     try {
       const sysP = `${buildSystemPrompt(char, getPlayerContextBlock())}
 
@@ -1450,7 +1744,20 @@ ${recent}`,
         content: buildSocialPostPrompt(char),
       }], apiConfig, sysP);
         const content = sanitizeText(String(t || "").replace(/^["「]|["」]$/g, "").trim(), 120) || "今天也算是有好好過完了。";
-        setPosts(p => [{ id: gid(), charId: char.id, charName: char.name, charAvatar: char.avatar, content, comments: [], time: Date.now(), likes: Math.floor(Math.random() * 50), liked: false }, ...p]);
+        setPosts(p => [{
+          id: gid(),
+          authorType: "character",
+          authorName: char.name,
+          authorAvatar: char.avatar,
+          charId: char.id,
+          charName: char.name,
+          charAvatar: char.avatar,
+          content,
+          comments: [],
+          time: Date.now(),
+          likes: rollCharacterPostLikes(char),
+          liked: false,
+        }, ...p]);
         showToast(`${char.name} 已發佈貼文`);
       } catch (err) {
         showToast(`發文失敗：${err.message}`);
@@ -1483,33 +1790,136 @@ ${recent}`,
     const list = pool.length ? pool : characters;
     return list[Math.floor(Math.random() * list.length)] || null;
   };
-  const addPostComment = async (postId) => {
-    const raw = postCommentInputs[postId] || "";
+  const generatePlayerPostReplies = async (post, responders) => {
+    if (!post?.id || !responders.length || !canUseCurrentProvider()) return;
+    for (const char of responders) {
+      try {
+        const sysP = `${buildSystemPrompt(char, getPlayerContextBlock())}
+
+[目前輸出模式：社群留言]
+以下規則優先於上方聊天規則。你正在替 {{char}} 在公開/半公開社群貼文下方留言，內容要像社群互動，不是私訊。`;
+        const ai = await callAI([{
+          role: "user",
+          content: buildPlayerPostReplyPrompt(char, post),
+        }], apiConfig, sysP);
+        const reply = sanitizeText(String(ai || "").replace(/^["「]|["」]$/g, "").trim(), 120);
+        if (!reply) continue;
+        const charComment = {
+          id: gid(),
+          role: "assistant",
+          charId: char.id,
+          charName: char.name,
+          charAvatar: char.avatar,
+          content: reply,
+          depth: 1,
+          time: Date.now(),
+        };
+        setPosts((prev) => prev.map((p) => (
+          p.id === post.id ? { ...p, comments: [...(p.comments || []), charComment] } : p
+        )));
+      } catch (_) {}
+    }
+  };
+  const submitPlayerPost = async () => {
+    if (playerPostSubmitting) return;
+    const content = sanitizeText(playerPostText.trim(), PLAYER_SOCIAL_POST_LIMIT);
+    if (!content) { showToast("請輸入貼文內容"); return; }
+    const post = {
+      id: gid(),
+      authorType: "player",
+      authorName: getPlayerDisplayName(),
+      authorAvatar: getPlayerAvatar(),
+      charId: null,
+      charName: getPlayerDisplayName(),
+      charAvatar: getPlayerAvatar(),
+      content,
+      comments: [],
+      time: Date.now(),
+      likes: 0,
+      liked: false,
+      likedBy: pickPlayerPostReactors(content),
+    };
+    const responders = pickPlayerPostResponders(content);
+    setPosts((prev) => [post, ...prev]);
+    setPlayerPostText("");
+    setPlayerPostModalOpen(false);
+    if (!responders.length) return;
+    if (!canUseCurrentProvider()) {
+      showToast("貼文已發佈；角色回覆需先完成 AI 連線設定");
+      return;
+    }
+    setPlayerPostSubmitting(true);
+    showToast(`貼文已發佈，等待 ${responders.length} 位角色回覆`);
+    await generatePlayerPostReplies(post, responders);
+    setPlayerPostSubmitting(false);
+  };
+  const addPostComment = async (postId, explicitTarget = null) => {
+    const target = explicitTarget || null;
+    const inputKey = target ? `${postId}:${target.commentId}` : postId;
+    const raw = postCommentInputs[inputKey] || "";
     const text = sanitizeText(raw, 240).trim();
     if (!text) return;
     const post = posts.find((x) => x.id === postId);
     if (!post) return;
-    setPostCommentInputs((prev) => ({ ...prev, [postId]: "" }));
-    const userComment = { id: gid(), role: "user", content: text, time: Date.now() };
-    setPosts((prev) => prev.map((p) => p.id === postId ? { ...p, comments: [...(p.comments || []), userComment] } : p));
-    const char = characters.find((c) => c.id === post.charId);
-    if (!char) return;
+    setPostCommentInputs((prev) => ({ ...prev, [inputKey]: "" }));
+    const parentDepth = getCommentDepth(target);
+    const userComment = {
+      id: gid(),
+      role: "user",
+      content: text,
+      parentId: target?.commentId || null,
+      replyToName: target?.authorName || "",
+      depth: target ? Math.min(3, parentDepth + 1) : 1,
+      time: Date.now(),
+    };
+    setPosts((prev) => prev.map((p) => (
+      p.id === postId
+        ? { ...p, comments: insertCommentAfterThread(p.comments || [], target?.commentId || null, userComment) }
+        : p
+    )));
+    if (target) setSocialReplyTarget(null);
+    const char = target?.charId
+      ? characters.find((c) => c.id === target.charId)
+      : characters.find((c) => c.id === post.charId);
+    if (!canUseCurrentProvider()) return;
+    if (!char || userComment.depth >= 3) return;
     try {
       const sysP = buildSystemPrompt(char, getPlayerContextBlock());
       const ai = await callAI([{
         role: "user",
-        content: `你剛發了一則貼文：「${post.content}」\n{{user}} 留言：「${text}」\n請用角色口吻回覆 1~2 句自然留言。`,
+        content: target
+          ? buildSocialCommentReplyPrompt({ char, post, targetComment: target, userText: text })
+          : `你剛發了一則貼文：「${post.content}」\n{{user}} 留言：「${text}」\n請用角色口吻回覆 1 句自然留言，最多 45 字。`,
       }], apiConfig, sysP);
-      const reply = sanitizeText(ai || "", 240).trim() || "收到，謝謝你的留言。";
-      const charComment = { id: gid(), role: "assistant", content: reply, time: Date.now() };
-      setPosts((prev) => prev.map((p) => p.id === postId ? { ...p, comments: [...(p.comments || []), charComment] } : p));
+      const reply = sanitizeText(ai || "", 120).trim() || "收到，謝謝你的留言。";
+      const charComment = {
+        id: gid(),
+        role: "assistant",
+        charId: char.id,
+        charName: char.name,
+        charAvatar: char.avatar,
+        content: reply,
+        parentId: userComment.id,
+        replyToName: getPlayerDisplayName(),
+        depth: Math.min(3, userComment.depth + 1),
+        time: Date.now(),
+      };
+      setPosts((prev) => prev.map((p) => (
+        p.id === postId
+          ? { ...p, comments: insertCommentAfterThread(p.comments || [], userComment.id, charComment) }
+          : p
+      )));
     } catch (_) {}
   };
   const sharePostToChat = (post) => {
+    if (getPostAuthorType(post) !== "character" || !post.charId) {
+      showToast("玩家貼文目前不分享到角色聊天室");
+      return;
+    }
     if (!window.confirm("要分享到此角色聊天室嗎？")) return;
     const char = characters.find((c) => c.id === post.charId);
     if (!char) return;
-    const lines = (post.comments || []).slice(-4).map((c) => `${c.role === "assistant" ? post.charName : "{{user}}"}：${c.content}`);
+    const lines = (post.comments || []).slice(-4).map((c) => `${c.role === "assistant" ? (c.charName || post.charName) : "{{user}}"}：${c.content}`);
     const rawBody = [`貼文：${post.content}`, ...(lines.length ? ["留言：", ...lines] : [])].join("\n");
     const approxTokens = Math.ceil(rawBody.length / 3.5);
     const content = approxTokens <= SHARE_RAW_TOKEN_LIMIT
@@ -1749,6 +2159,7 @@ ${recent}`,
             const lastD = msgs.length > 0 ? new Date(msgs[msgs.length-1].time).toLocaleDateString("zh-TW") : "--";
             const days = msgs.length > 0 ? Math.max(1, Math.ceil((Date.now() - msgs[0].time) / 86400000)) : 0;
             const exp = statusExpandedCharId === c.id;
+            const memoryExpanded = statusMemoryExpandedCharId === c.id;
             return (
               <div key={c.id} className="mp-sc">
                 <div className="mp-sc-ban" />
@@ -1778,8 +2189,16 @@ ${recent}`,
                     </div>
                   </div>
                   <div className="mp-sec">
-                    <div className="mp-sec-t">記憶片段</div>
-                    {mems.length === 0 ? <div style={{fontSize:11,color:"var(--mp-txt-l)",textAlign:"center",padding:6}}>目前尚無記憶，點擊下方按鈕可生成</div>
+                    <div
+                      className="mp-sec-t mp-sec-t-toggle"
+                      onClick={() => setStatusMemoryExpandedCharId(memoryExpanded ? null : c.id)}
+                    >
+                      <span>記憶片段</span>
+                      <span className="mp-sec-toggle-tag">{memoryExpanded ? "收起" : "展開"}</span>
+                    </div>
+                    {memoryExpanded && (
+                      <>
+                        {mems.length === 0 ? <div style={{fontSize:11,color:"var(--mp-txt-l)",textAlign:"center",padding:6}}>目前尚無記憶，點擊下方按鈕可生成</div>
                     : <div className="mp-tl">{[...mems].sort((a, b) => {
                       if (!!b.pinned !== !!a.pinned) return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0);
                       return (b.date || 0) - (a.date || 0);
@@ -1797,7 +2216,9 @@ ${recent}`,
                         </div>
                       </div>
                     ))}</div>}
-                    <button className="mp-gbtn" onClick={() => generateMemory(c)} disabled={genLoading}>{genLoading ? "生成中..." : "生成記憶"}</button>
+                        <button className="mp-gbtn" onClick={() => generateMemory(c)} disabled={genLoading}>{genLoading ? "生成中..." : "生成記憶"}</button>
+                      </>
+                    )}
                   </div>
                   {(c.description || c.systemPrompt || c.personality || c.scenario) && (
                     <div className="mp-sec">
@@ -1962,6 +2383,7 @@ ${recent}`,
                   }
                   if (m.role === "system_notice") {
                     const share = parseShareEventNotice(m.content);
+                    const isConnectionError = String(m.content || "").startsWith("連線錯誤：");
                     return (
                       <div key={m.id} className="mp-msg-note-wrap">
                         <div
@@ -1972,13 +2394,22 @@ ${recent}`,
                       >
                           {share ? (
                             <div style={{ textAlign: "left" }}>
-                              <div style={{ fontWeight: 700, marginBottom: 4 }}>社交分享</div>
+                              <div style={{ fontWeight: 700, marginBottom: 4 }}>社群分享</div>
                               <div style={{ fontSize: 11, color: "var(--mp-txt-l)", marginBottom: 6 }}>
                                 來源：{share.meta.source || "-"}
                               </div>
                               <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5, maxHeight: 180, overflowY: "auto", paddingRight: 2 }}>{applyUserPlaceholder(share.body)}</div>
                             </div>
-                          ) : m.content}
+                          ) : (
+                            <div>
+                              <div>{m.content}</div>
+                              {isConnectionError && (
+                                <button className="mp-retry-btn" disabled={isTyping} onClick={(e) => { e.stopPropagation(); retryChatFromNotice(m.id); }}>
+                                  重新生成
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </div>
                       {activeMessageId === m.id && (
                         <button className="mp-msg-editbtn" onClick={() => deleteChatMessage(currentChatChar.id, m.id)}>🗑</button>
@@ -2026,8 +2457,28 @@ ${recent}`,
                 <button onClick={() => setChatImage(null)}>×</button>
               </div>
             )}
+            {chatActionPanelOpen && (
+              <div className="mp-chat-actions">
+                <button className="mp-chat-action" onClick={() => { setChatActionPanelOpen(false); fileInputRef.current?.click(); }}>
+                  <span className="mp-chat-action-i">🖼</span>
+                  <span>相片</span>
+                </button>
+                <button className="mp-chat-action" onClick={() => showToast("轉帳功能準備中")}>
+                  <span className="mp-chat-action-i">💸</span>
+                  <span>轉帳</span>
+                </button>
+                <button className="mp-chat-action" disabled>
+                  <span className="mp-chat-action-i">📅</span>
+                  <span>日程</span>
+                </button>
+                <button className="mp-chat-action" disabled>
+                  <span className="mp-chat-action-i">⚙️</span>
+                  <span>更多</span>
+                </button>
+              </div>
+            )}
               <div className="mp-inp-bar">
-                <button className="mp-btn mp-btn-img" onClick={()=>fileInputRef.current?.click()}>🖼</button>
+                <button className={`mp-btn mp-btn-img ${chatActionPanelOpen ? "active" : ""}`} onClick={()=>setChatActionPanelOpen((v) => !v)}>＋</button>
                 <input type="file" ref={fileInputRef} accept="image/*" style={{display:"none"}} onChange={handleImgUp} />
                 <div className="mp-inp-wrap">
                   <textarea
@@ -2072,14 +2523,140 @@ ${recent}`,
   };
 
   const renderSocial = () => (
-      <div className="mp-page">
-        <div className="mp-hdr"><div className="mp-back" onClick={closeApp}>←</div><div className="mp-htitle">社交</div>{characters.length>0&&<button style={{marginLeft:"auto",background:"linear-gradient(135deg,#f48fb1,#e91e63)",color:"#fff",border:"none",borderRadius:16,padding:"5px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"var(--mp-font)"}} onClick={handleRandomSocialPost}>隨機發文</button>}</div>
-        <div className="mp-feed">
-          {posts.length===0?<div className="mp-empty"><div className="mp-empty-i">📰</div><div className="mp-empty-t">目前沒有貼文<br/>可先讓角色生成一篇</div></div>
-          :posts.map(p=>(<div key={p.id} className="mp-post"><div className="mp-post-hd"><div className="mp-post-av">{sanitizeUserImageUrl(p.charAvatar)?<img src={sanitizeUserImageUrl(p.charAvatar)} alt=""/>:"🦊"}</div><div><div className="mp-post-au">{p.charName}</div><div className="mp-post-tm">{new Date(p.time).toLocaleString("zh-TW")}</div></div></div><div className="mp-post-ct">{p.content}</div><div className="mp-post-acts"><button className={`mp-post-act ${p.liked?"liked":""}`} onClick={()=>setPosts(ps=>ps.map(x=>x.id===p.id?{...x,liked:!x.liked,likes:x.liked?x.likes-1:x.likes+1}:x))}>{p.liked?"❤️":"🤍"} {p.likes}</button><button className="mp-post-act" onClick={()=>setActiveCommentPostId(id=>id===p.id?null:p.id)}>留言</button><button className="mp-post-act" onClick={()=>sharePostToChat(p)}>分享</button></div><div style={{marginTop:8,display:"grid",gap:6}}>{(p.comments||[]).slice(-6).map(c=><div key={c.id} style={{fontSize:11,color:"var(--mp-txt-l)"}}>{c.role==="assistant"?p.charName:(playerProfile?.nickname||playerProfile?.name||"你")}：{c.content}</div>)}{activeCommentPostId===p.id&&<div style={{display:"flex",gap:6}}><input className="mp-sinp" style={{flex:1,padding:"6px 8px",fontSize:11}} placeholder="留言..." value={postCommentInputs[p.id]||""} onChange={e=>setPostCommentInputs(prev=>({...prev,[p.id]:e.target.value}))} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addPostComment(p.id);}}}/><button className="mp-ibtn" onClick={()=>addPostComment(p.id)}>送出</button></div>}</div></div>))}
+    <div className="mp-page">
+      <div className="mp-hdr">
+        <div className="mp-back" onClick={closeApp}>←</div>
+        <div className="mp-htitle">社群</div>
+        <div className="mp-social-head-actions">
+          <button className="mp-pill-btn mp-pill-btn-ghost" onClick={() => setPlayerPostModalOpen(true)}>發文</button>
+          {characters.length > 0 && (
+            <button className="mp-pill-btn" onClick={handleRandomSocialPost}>刷新</button>
+          )}
         </div>
       </div>
-    );
+      <div className="mp-feed">
+        {posts.length === 0 ? (
+          <div className="mp-empty">
+            <div className="mp-empty-i">📰</div>
+            <div className="mp-empty-t">目前沒有貼文<br/>可以先發一則近況</div>
+          </div>
+        ) : posts.map((p) => {
+          const authorName = getPostAuthorName(p);
+          const authorAvatar = sanitizeUserImageUrl(getPostAuthorAvatar(p));
+          const isPlayerPost = getPostAuthorType(p) === "player";
+          const likeListText = isPlayerPost ? getLikedByListText(p) : "";
+          const comments = p.comments || [];
+          const commentsOpen = activeCommentPostId === p.id;
+          const replyTarget = socialReplyTarget?.postId === p.id ? socialReplyTarget : null;
+          const likesOpen = activeLikePostId === p.id;
+          const postExpanded = !!expandedSocialPosts[p.id];
+          const canExpandPost = shouldClampSocialPost(p.content);
+          const scrollComments = shouldScrollComments(comments);
+          return (
+            <div key={p.id} className="mp-post">
+              <div className="mp-post-hd">
+                <div className={`mp-post-av ${isPlayerPost ? "player" : ""}`}>
+                  {authorAvatar ? <img src={authorAvatar} alt="" /> : (isPlayerPost ? "👤" : "🦊")}
+                </div>
+                <div>
+                  <div className="mp-post-au">{authorName}</div>
+                  <div className="mp-post-tm">{new Date(p.time).toLocaleString("zh-TW")}</div>
+                </div>
+              </div>
+              <div className={`mp-post-ct ${canExpandPost && !postExpanded ? "clamped" : ""}`}>{p.content}</div>
+              {canExpandPost && (
+                <button
+                  className="mp-post-more"
+                  onClick={() => setExpandedSocialPosts((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
+                >
+                  {postExpanded ? "收起" : "顯示更多"}
+                </button>
+              )}
+              <div className="mp-post-acts">
+                <button
+                  className={`mp-post-act ${p.liked ? "liked" : ""}`}
+                  onClick={() => setPosts((ps) => ps.map((x) => (
+                    x.id === p.id ? { ...x, liked: !x.liked, likes: x.liked ? x.likes - 1 : x.likes + 1 } : x
+                  )))}
+                >
+                  {p.liked ? "❤️" : "🤍"}
+                </button>
+                <button className="mp-post-act mp-post-like-count" onClick={() => setActiveLikePostId((id) => id === p.id ? null : p.id)}>
+                  {formatSocialCount(getPostLikeCount(p))}
+                </button>
+                <button className="mp-post-act" onClick={() => { setSocialReplyTarget(null); setActiveCommentPostId((id) => id === p.id ? null : p.id); }}>
+                  留言 {comments.length}
+                </button>
+                {!isPlayerPost && <button className="mp-post-act" onClick={() => sharePostToChat(p)}>分享</button>}
+              </div>
+              {isPlayerPost && likesOpen && (
+                <div className="mp-liked-by">{likeListText || "目前還沒有角色按愛心"}</div>
+              )}
+              {commentsOpen && (
+                <div className={`mp-comments ${scrollComments ? "scroll" : ""}`}>
+                  {comments.length === 0 && <div className="mp-comment empty">尚無留言</div>}
+                  {comments.map((c) => {
+                    const depth = getCommentDepth(c);
+                    const author = getCommentAuthorName(c, p.charName || authorName);
+                    const canReply = c.role === "assistant" && depth < 2 && c.charId;
+                    const targetForThis = canReply ? {
+                      postId: p.id,
+                      commentId: c.id,
+                      charId: c.charId,
+                      authorName: author,
+                      content: c.content,
+                      depth,
+                    } : null;
+                    const isReplyOpen = replyTarget?.commentId === c.id;
+                    const replyInputKey = `${p.id}:${c.id}`;
+                    return (
+                    <div key={c.id} className={`mp-comment ${depth > 1 ? "reply" : ""} ${canReply ? "clickable" : ""}`}>
+                      <div
+                        onClick={() => {
+                          if (!targetForThis) return;
+                          setSocialReplyTarget((prev) => prev?.postId === p.id && prev?.commentId === c.id ? null : targetForThis);
+                        }}
+                      >
+                        <span>{author}：</span>
+                        {c.replyToName && <em>回覆 {c.replyToName} </em>}
+                        {c.content}
+                      </div>
+                      {isReplyOpen && (
+                        <div className="mp-comment-input mp-comment-inline-input">
+                          <input
+                            className="mp-sinp"
+                            placeholder={`回覆 ${author}...`}
+                            value={postCommentInputs[replyInputKey] || ""}
+                            maxLength={240}
+                            onChange={(e) => setPostCommentInputs((prev) => ({ ...prev, [replyInputKey]: e.target.value }))}
+                            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addPostComment(p.id, targetForThis); } }}
+                            autoFocus
+                          />
+                          <button className="mp-ibtn" onClick={() => setSocialReplyTarget(null)}>取消</button>
+                          <button className="mp-ibtn" onClick={() => addPostComment(p.id, targetForThis)}>送出</button>
+                        </div>
+                      )}
+                    </div>
+                  );})}
+                  <div className="mp-comment-input">
+                    <input
+                      className="mp-sinp"
+                      placeholder="留言..."
+                      value={postCommentInputs[p.id] || ""}
+                      maxLength={240}
+                      onChange={(e) => setPostCommentInputs((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addPostComment(p.id); } }}
+                    />
+                    <button className="mp-ibtn" onClick={() => addPostComment(p.id)}>送出</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 
   const renderLorebook = () => {
     const activeBook = lorebooks.find((b) => b.id === activeLorebookId) || null;
@@ -2309,6 +2886,18 @@ ${recent}`,
       });
       showToast(`已儲存到預設 ${idx + 1}`);
     };
+    const testApiConnection = async () => {
+      if (testingConnection) return;
+      setTestingConnection(true);
+      try {
+        const reply = await callAI([{ role: "user", content: "請只回覆 OK" }], tc, "你是連線測試助手，只能回覆 OK。");
+        const ok = /\bOK\b|ＯＫ/i.test(String(reply || "").trim());
+        showToast(ok ? "連線成功" : `連線成功，但回覆異常：${sanitizeText(reply, 40) || "空白"}`);
+      } catch (err) {
+        showToast(`連線失敗：${sanitizeText(err?.message || "未知錯誤", 120)}`);
+      }
+      setTestingConnection(false);
+    };
     const clearSiteCache = async () => {
       try {
         if (!clearCacheArmed) {
@@ -2337,64 +2926,106 @@ ${recent}`,
       <div className="mp-page">
         <div className="mp-hdr"><div className="mp-back" onClick={closeApp}>←</div><div className="mp-htitle">設定</div></div>
         <div className="mp-set">
-          <div className="mp-sg">
-            <div className="mp-sg-t">API 預設儲存</div>
-            <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
-              {[0,1,2].map((idx) => (
-                <button key={idx} className="mp-ibtn" style={{minWidth:44,padding:"4px 8px"}} onClick={() => applyApiPreset(idx)}>{`P${idx + 1}`}</button>
-              ))}
-            </div>
-            <div style={{fontSize:10,color:"var(--mp-txt-l)",marginTop:6}}>
-              {activePresetIndex >= 0
-                ? `當前預設：P${activePresetIndex + 1} · ${tc.provider || "-"} · ${tc.model || "-"}`
-                : `當前預設：自訂 · ${tc.provider || "-"} · ${tc.model || "-"}`}
-            </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:4}}>
+            {[
+              { id: "appearance", label: "外觀" },
+              { id: "api", label: "API / LLM" },
+              { id: "about", label: "關於" },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                className="mp-ibtn"
+                style={{
+                  padding: "8px 6px",
+                  minWidth: 0,
+                  fontWeight: 800,
+                  background: settingsTab === tab.id ? "linear-gradient(135deg,#9aa8b3,#7b8791)" : "rgba(255,255,255,.72)",
+                  color: settingsTab === tab.id ? "#fff" : "var(--mp-txt)",
+                  border: settingsTab === tab.id ? "1px solid rgba(123,135,145,.35)" : "1px solid rgba(160,176,186,.25)",
+                }}
+                onClick={() => setSettingsTab(tab.id)}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
-          <div className="mp-sg">
-            <div className="mp-sg-t" style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}} onClick={() => setSettingsApiOpen((v) => !v)}>
-              <span>AI 連線設定</span>
-              <span>{settingsApiOpen ? "收合" : "展開"}</span>
-            </div>
-            {settingsApiOpen && <>
-            <div className="mp-row"><div className="mp-lbl">API 供應商</div><select className="mp-ssel" value={tc.provider} onChange={e=>{const p=API_PROVIDERS.find(x=>x.id===e.target.value);setTempConfig(c=>({...c,provider:p.id,baseUrl:getProviderBaseUrl(p.id,c?.baseUrl || ""),model:p.models[0]||""}));}}>{API_PROVIDERS.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
-            {tc.provider === "custom" && <div className="mp-row"><div className="mp-lbl">Base URL</div><input className="mp-sinp" value={tc.baseUrl} onChange={e=>setTempConfig(c=>({...c,baseUrl:e.target.value}))} placeholder="https://..." /></div>}
-            <div className="mp-row"><div className="mp-lbl">API Key</div><input className="mp-sinp" type="password" value={tc.apiKey} onChange={e=>setTempConfig(c=>({...c,apiKey:e.target.value}))} placeholder="sk-..." /></div>
-            <div className="mp-row">
-              <div className="mp-lbl" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
-                <span>模型</span>
-                <button
-                  type="button"
-                  className="mp-ibtn"
-                  disabled={fetchingModels}
-                  onClick={async ()=>{
-                    try {
-                      setFetchingModels(true);
-                      const models = sortModelsByProvider(tc.provider, await fetchAvailableModels(tc));
-                      if (!models.length) throw new Error("未取得任何模型");
-                      setProviderModelOptions(prev => ({ ...prev, [tc.provider]: models }));
-                      setTempConfig(c => ({ ...c, model: models.includes(c.model) ? c.model : models[0] }));
-                      showToast(`已抓取 ${models.length} 個模型`);
-                    } catch (err) {
-                      showToast(`抓取失敗：${err.message}`);
-                    } finally {
-                      setFetchingModels(false);
-                    }
-                  }}
-                >
-                  {fetchingModels ? "抓取中..." : "抓取最新模型"}
-                </button>
+          {settingsTab === "appearance" && (
+            <div className="mp-sg">
+              <div className="mp-sg-t">螢幕鎖定</div>
+              <div className="mp-row">
+                <div className="mp-lbl">待機後自動鎖定</div>
+                <select className="mp-ssel" value={String(screenLockTimeout)} onChange={(e) => setScreenLockTimeout(Number(e.target.value))}>
+                  <option value="1">1 分鐘</option>
+                  <option value="3">3 分鐘</option>
+                  <option value="5">5 分鐘</option>
+                  <option value="10">10 分鐘</option>
+                  <option value="0">永不鎖定</option>
+                </select>
               </div>
-              {modelOptions?.length>0
-                ? <select className="mp-ssel" value={tc.model} onChange={e=>setTempConfig(c=>({...c,model:e.target.value}))}>{modelOptions.map(m=><option key={m} value={m}>{m}</option>)}<option value="__custom">自訂...</option></select>
-                : <input className="mp-sinp" value={tc.model} onChange={e=>setTempConfig(c=>({...c,model:e.target.value}))} placeholder="model-name" />}
+              <div style={{fontSize:10,color:"var(--mp-txt-l)",lineHeight:1.6}}>
+                目前設定：{screenLockTimeout === 0 ? "永不鎖定" : `${screenLockTimeout} 分鐘後自動鎖定`}
+              </div>
             </div>
-            {tc.model==="__custom"&&<div className="mp-row"><div className="mp-lbl">自訂模型名稱</div><input className="mp-sinp" onChange={e=>setTempConfig(c=>({...c,model:e.target.value}))} placeholder="model-name" /></div>}
-            <div style={{display:"flex",gap:8}}>
-              <button className="mp-save" style={{flex:1}} onClick={()=>{setApiConfig(tc);showToast("設定已儲存");}}>儲存設定</button>
-              <button type="button" className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#90caf9,#42a5f5)"}} onClick={()=>setPresetSavePickerOpen(true)}>另存預設</button>
-            </div>
-            </>}
-          </div>
+          )}
+          {settingsTab === "api" && (
+            <>
+              <div className="mp-sg">
+                <div className="mp-sg-t">API 預設儲存</div>
+                <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+                  {[0,1,2].map((idx) => (
+                    <button key={idx} className="mp-ibtn" style={{minWidth:44,padding:"4px 8px"}} onClick={() => applyApiPreset(idx)}>{`P${idx + 1}`}</button>
+                  ))}
+                </div>
+                <div style={{fontSize:10,color:"var(--mp-txt-l)",marginTop:6}}>
+                  {activePresetIndex >= 0
+                    ? `當前預設：P${activePresetIndex + 1} · ${tc.provider || "-"} · ${tc.model || "-"}`
+                  : `當前預設：自訂 · ${tc.provider || "-"} · ${tc.model || "-"}`}
+                </div>
+              </div>
+              <div className="mp-sg">
+                <div className="mp-sg-t">AI 連線設定</div>
+                <div className="mp-row"><div className="mp-lbl">API 供應商</div><select className="mp-ssel" value={tc.provider} onChange={e=>{const p=API_PROVIDERS.find(x=>x.id===e.target.value);setTempConfig(c=>({...c,provider:p.id,baseUrl:getProviderBaseUrl(p.id,c?.baseUrl || ""),model:p.models[0]||""}));}}>{API_PROVIDERS.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+                {tc.provider === "custom" && <div className="mp-row"><div className="mp-lbl">Base URL</div><input className="mp-sinp" value={tc.baseUrl} onChange={e=>setTempConfig(c=>({...c,baseUrl:e.target.value}))} placeholder="https://..." /></div>}
+                <div className="mp-row"><div className="mp-lbl">API Key</div><input className="mp-sinp" type="password" value={tc.apiKey} onChange={e=>setTempConfig(c=>({...c,apiKey:e.target.value}))} placeholder="sk-..." /></div>
+                <div className="mp-row">
+                  <div className="mp-lbl" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                    <span>模型</span>
+                    <button
+                      type="button"
+                      className="mp-ibtn"
+                      disabled={fetchingModels}
+                      onClick={async ()=>{
+                        try {
+                          setFetchingModels(true);
+                          const models = sortModelsByProvider(tc.provider, await fetchAvailableModels(tc));
+                          if (!models.length) throw new Error("未取得任何模型");
+                          setProviderModelOptions(prev => ({ ...prev, [tc.provider]: models }));
+                          setTempConfig(c => ({ ...c, model: models.includes(c.model) ? c.model : models[0] }));
+                          showToast(`已抓取 ${models.length} 個模型`);
+                        } catch (err) {
+                          showToast(`抓取失敗：${err.message}`);
+                        } finally {
+                          setFetchingModels(false);
+                        }
+                      }}
+                    >
+                      {fetchingModels ? "抓取中..." : "抓取最新模型"}
+                    </button>
+                  </div>
+                  {modelOptions?.length>0
+                    ? <select className="mp-ssel" value={tc.model} onChange={e=>setTempConfig(c=>({...c,model:e.target.value}))}>{modelOptions.map(m=><option key={m} value={m}>{m}</option>)}<option value="__custom">自訂...</option></select>
+                    : <input className="mp-sinp" value={tc.model} onChange={e=>setTempConfig(c=>({...c,model:e.target.value}))} placeholder="model-name" />}
+                </div>
+                {tc.model==="__custom"&&<div className="mp-row"><div className="mp-lbl">自訂模型名稱</div><input className="mp-sinp" onChange={e=>setTempConfig(c=>({...c,model:e.target.value}))} placeholder="model-name" /></div>}
+                <div style={{display:"flex",gap:8}}>
+                  <button type="button" className="mp-save" disabled={testingConnection} style={{flex:1,background:"linear-gradient(135deg,#80cbc4,#26a69a)"}} onClick={testApiConnection}>{testingConnection ? "測試中..." : "測試連線"}</button>
+                  <button className="mp-save" style={{flex:1}} onClick={()=>{setApiConfig(tc);showToast("設定已儲存");}}>儲存設定</button>
+                  <button type="button" className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#90caf9,#42a5f5)"}} onClick={()=>setPresetSavePickerOpen(true)}>另存預設</button>
+                </div>
+              </div>
+            </>
+          )}
           {presetSavePickerOpen && (
             <div className="mp-overlay" style={{zIndex:120}} onClick={() => setPresetSavePickerOpen(false)}>
               <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
@@ -2422,35 +3053,34 @@ ${recent}`,
               </div>
             </div>
           )}
-            <div className="mp-sg">
-              <div className="mp-sg-t">版本資訊</div>
-              <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.7,marginBottom:8}}>
-                <strong>MaliPhone</strong> v{VERSION}<br/>AI 角色互動小手機介面
+          {settingsTab === "about" && (
+            <>
+              <div className="mp-sg">
+                <div className="mp-sg-t">版本資訊</div>
+                <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.7,marginBottom:8}}>
+                  <strong>MaliPhone</strong> v{VERSION}<br/>AI 角色互動小手機介面
+                </div>
+                <div className="mp-version-row" onClick={() => setSettingsVersionOpen((v) => !v)}>
+                  <span>{currentChangelogTitle}　版本：{VERSION}</span>
+                  <span>{settingsVersionOpen ? "收合" : "展開"}</span>
+                </div>
+                {settingsVersionOpen && (
+                  <ol className="mp-version-list">
+                    {(currentChangelog.length ? currentChangelog : ["這個版本沒有填寫更新內容。"]).map((item, idx) => (
+                      <li key={idx}>{item}</li>
+                    ))}
+                  </ol>
+                )}
               </div>
-              <div className="mp-version-row" onClick={() => setSettingsVersionOpen((v) => !v)}>
-                <span>{currentChangelogTitle}　版本：{VERSION}</span>
-                <span>{settingsVersionOpen ? "收合" : "展開"}</span>
-              </div>
-              {settingsVersionOpen && (
-                <ol className="mp-version-list">
-                  {(currentChangelog.length ? currentChangelog : ["這個版本沒有填寫更新內容。"]).map((item, idx) => (
-                    <li key={idx}>{item}</li>
-                  ))}
-                </ol>
-              )}
-            </div>
-            <div className="mp-sg">
-              <div className="mp-sg-t" style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}} onClick={() => setSettingsResetOpen((v) => !v)}>
-                <span>重置資料</span>
-                <span>{settingsResetOpen ? "收合" : "展開"}</span>
-              </div>
-              {settingsResetOpen && (
+              <div className="mp-sg">
+                <div className="mp-sg-t">重置資料</div>
                 <div style={{display:"grid",gap:8}}>
-                  <button className="mp-save" style={{background:"linear-gradient(135deg,#ef9a9a,#e53935)"}} onClick={()=>{if(confirm("確定要清空所有資料嗎？")){setCharacters([]);setActiveCharId(null);setChatHistory({});setPosts([]);setMemories({});setLorebooks([]);setActiveLorebookId(null);setPhoneInboxCache({});showToast("資料已清空");}}}>清空全部資料</button>
+                  <button className="mp-save" style={{background:"linear-gradient(135deg,#ef9a9a,#e53935)"}} onClick={()=>{if(confirm("確定要清空所有資料嗎？")){setCharacters([]);setActiveCharId(null);setChatHistory({});setPosts([]);setMemories({});setLorebooks([]);setActiveLorebookId(null);setPhoneInboxCache({});setCharacterWallets({});showToast("資料已清空");}}}>清空全部資料</button>
                   <button type="button" className="mp-save" style={{background:clearCacheArmed?"linear-gradient(135deg,#ffb74d,#f57c00)":"linear-gradient(135deg,#b0bec5,#78909c)"}} onClick={clearSiteCache}>{clearCacheArmed ? "再次確認清除快取" : "清除快取"}</button>
                 </div>
-              )}
-            </div>
+              </div>
+            </>
+          )}
           </div>
         </div>
       );
@@ -2552,46 +3182,77 @@ ${recent}`,
       return { ...prev, assets: list.slice(0, 120) };
     });
   };
-  const renderWallet = () => (
-    <div className="mp-page">
-      <div className="mp-hdr"><div className="mp-back" onClick={closeApp}>←</div><div className="mp-htitle">錢包</div></div>
-      <div className="mp-cm">
-        <div className="mp-cc">
-          <div style={{ fontSize: 12, color: "var(--mp-txt-l)" }}>可用餘額</div>
-          <div style={{ fontSize: 28, fontWeight: 800, marginTop: 2 }}>${wallet?.balance || 0}</div>
-          <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-            <button className="mp-ibtn-chat" onClick={() => addWalletTransaction("income", 50, "系統獎勵")}>+50</button>
-            <button className="mp-ibtn" onClick={() => addWalletTransaction("expense", 30, "角色互動消費")}>-30</button>
-            <button className="mp-ibtn" onClick={() => addWalletAsset("折價券", 1)}>+券</button>
+  const normalizeWalletData = (data) => {
+    const txs = Array.isArray(data?.transactions) ? data.transactions : [];
+    return {
+      balance: Math.max(0, Math.round(Number(data?.balance) || 0)),
+      transactions: txs.slice(0, 24).map((t) => ({
+        id: t.id || gid(),
+        type: t.type === "income" ? "income" : "expense",
+        amount: Math.max(1, Math.round(Number(t.amount) || 1)),
+        note: sanitizeText(t.note || "", 80) || (t.type === "income" ? "入帳" : "消費"),
+        time: Number(t.time) || Date.now(),
+      })),
+      summary: sanitizeText(data?.summary || "", 120),
+      generatedAt: data?.generatedAt || Date.now(),
+    };
+  };
+  const generateCharacterWallet = async (char) => {
+    if (!char) return;
+    if (!canUseCurrentProvider()) { showToast("請先完成 AI 連線設定（API Key）"); return; }
+    setWalletGenLoading(true);
+    try {
+      const roleProfile = [
+        char.description ? `角色描述：${sanitizeText(char.description, 900)}` : "",
+        char.systemPrompt ? `系統提示詞：${sanitizeText(char.systemPrompt, 600)}` : "",
+        char.relationshipToUser ? `與玩家關係：${sanitizeText(char.relationshipToUser, 120)}` : "",
+      ].filter(Boolean).join("\n");
+      const raw = await callAI([{
+        role: "user",
+        content: `請根據角色設定，生成角色「${char.name}」自己的錢包狀態與近期流水，只輸出有效 JSON。
+規則：
+1) balance 是合理餘額，整數，不要太誇張。
+2) transactions 產生 8~12 筆，包含 income/expense，金額與備註要貼近角色職業、生活、興趣。
+3) 若角色是醫生，收入/支出可部分和醫療、值班、書籍、交通有關，但不能全部都醫療；也要有飲食、娛樂、興趣、人際等生活花費。
+4) 不要提到 {{user}}，這是角色自己的錢包。
+5) time 使用目前時間附近的毫秒 timestamp，可用 ${Date.now()} 往前推。
+格式：
+{"balance":1200,"summary":"一句 20~50 字生活摘要","transactions":[{"type":"income","amount":3000,"note":"薪資入帳","time":1710000000000}]}
+
+角色設定：
+${roleProfile || "（無）"}`,
+      }], apiConfig, "你是角色生活流水生成器，只能輸出有效 JSON。");
+      const match = String(raw || "").match(/\{[\s\S]*\}/);
+      if (!match) throw new Error("模型未回傳 JSON");
+      const parsed = JSON.parse(match[0]);
+      const next = normalizeWalletData(parsed);
+      setCharacterWallets((prev) => ({ ...prev, [char.id]: next }));
+      showToast(`${char.name} 的錢包已更新`);
+    } catch (err) {
+      showToast(`角色錢包生成失敗：${sanitizeText(err?.message || "未知錯誤", 120)}`);
+    }
+    setWalletGenLoading(false);
+  };
+  const renderWallet = () => {
+    return (
+      <div className="mp-page">
+        <div className="mp-hdr"><div className="mp-back" onClick={closeApp}>←</div><div className="mp-htitle">錢包</div></div>
+        <div className="mp-cm">
+          <div className="mp-cc">
+            <div style={{ fontSize: 12, color: "var(--mp-txt-l)" }}>餘額</div>
+            <div style={{ fontSize: 28, fontWeight: 800, marginTop: 2 }}>${formatMoney(wallet?.balance || 0)}</div>
+            <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+              <button className="mp-ibtn-chat" onClick={() => {
+                const v = prompt("設定玩家錢包餘額", String(wallet?.balance || 0));
+                if (v === null) return;
+                setWallet((w) => ({ ...(w || { transactions: [], assets: [] }), balance: Math.max(0, Math.round(Number(v) || 0)) }));
+              }}>設定餘額</button>
+            </div>
           </div>
         </div>
-        <div className="mp-cc">
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>資產（道具/券）</div>
-          {(wallet?.assets || []).length === 0 ? <div style={{ fontSize: 11, color: "var(--mp-txt-l)" }}>目前沒有資產</div> : (
-            <div style={{ display: "grid", gap: 6 }}>
-              {wallet.assets.slice(0, 12).map((a) => <div key={a.id} style={{ fontSize: 12 }}>{a.name} x {a.qty}</div>)}
-            </div>
-          )}
-        </div>
-        <div className="mp-cc">
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>交易流水</div>
-          {(wallet?.transactions || []).length === 0 ? <div style={{ fontSize: 11, color: "var(--mp-txt-l)" }}>目前沒有交易</div> : (
-            <div style={{ display: "grid", gap: 8, maxHeight: 220, overflowY: "auto" }}>
-              {wallet.transactions.slice(0, 24).map((t) => (
-                <div key={t.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12 }}>
-                  <div>
-                    <div>{t.note}</div>
-                    <div style={{ fontSize: 10, color: "var(--mp-txt-l)" }}>{new Date(t.time).toLocaleString("zh-TW")}</div>
-                  </div>
-                  <div style={{ fontWeight: 700, color: t.type === "expense" ? "#e53935" : "#2e7d32" }}>{t.type === "expense" ? "-" : "+"}{t.amount}</div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderPhone = () => {
     const selectedCharId = phoneViewCharId || activeCharId || characters[0]?.id || null;
@@ -2621,7 +3282,8 @@ ${recent}`,
       setPhoneActiveThreadId("player");
       setPhonePage("desktop");
     };
-    const inImmersivePhone = phonePage === "desktop" || phonePage === "chatlist" || phonePage === "thread";
+    const phoneWallet = selectedChar ? characterWallets[selectedChar.id] : null;
+    const inImmersivePhone = phonePage === "desktop" || phonePage === "chatlist" || phonePage === "thread" || phonePage === "wallet";
     return (
       <div className="mp-page" style={inImmersivePhone ? { padding: 0 } : undefined}>
         {!inImmersivePhone && (
@@ -2632,7 +3294,7 @@ ${recent}`,
         )}
         <div className="mp-cm" style={inImmersivePhone ? { padding: 0 } : undefined}>
           {characters.length === 0 && <div className="mp-empty"><div className="mp-empty-i">📱</div><div className="mp-empty-t">尚無角色可預覽手機</div></div>}
-          {characters.length > 0 && phonePage !== "desktop" && phonePage !== "chatlist" && phonePage !== "thread" && (
+          {characters.length > 0 && phonePage !== "desktop" && phonePage !== "chatlist" && phonePage !== "thread" && phonePage !== "wallet" && (
             <div className="mp-sc" style={{padding:12}}>
               <div style={{fontWeight:700,fontSize:14,marginBottom:8}}>選擇要查看的角色手機</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr",gap:8}}>
@@ -2665,9 +3327,12 @@ ${recent}`,
                   <div className="mp-icon-c mp-icon-c-img">{renderAppIcon({ id: "chat", name: "聊天", icon: "💬", iconUrl: "./app-icons/chat.png" }, 56)}</div>
                   <span className="mp-icon-l">聊天</span>
                 </button>
+                <button className="mp-icon" style={{background:"rgba(255,255,255,.62)"}} onClick={() => setPhonePage("wallet")}>
+                  <div className="mp-icon-c mp-icon-c-img">{renderAppIcon({ id: "wallet", name: "錢包", icon: "💳", iconUrl: "./app-icons/wallet.png" }, 56)}</div>
+                  <span className="mp-icon-l">錢包</span>
+                </button>
                 {[
                   { icon: "📷", label: "相機" },
-                  { icon: "🗂️", label: "檔案" },
                   { icon: "⚙️", label: "設定" },
                 ].map((item, idx) => (
                   <div key={idx} className="mp-icon" style={{opacity:.45,background:"rgba(255,255,255,.45)"}}>
@@ -2686,6 +3351,45 @@ ${recent}`,
                 </span>
               </div>
               <div style={{position:"absolute",left:"50%",bottom:10,transform:"translateX(-50%)",width:120,height:5,borderRadius:999,background:"rgba(28,44,55,.3)"}} />
+            </div>
+          )}
+          {characters.length > 0 && selectedChar && phonePage === "wallet" && (
+            <div style={{position:"relative",height:"100%",minHeight:640,background:"linear-gradient(180deg,#ffd2e6 0%,#d1ecff 100%)",padding:"14px 10px 24px"}}>
+              <button className="mp-back" style={{position:"absolute",left:12,top:12,zIndex:5}} onClick={closeApp}>←</button>
+              <div style={{padding:"2px 8px 0 56px",display:"flex",justifyContent:"space-between",fontWeight:700,color:"#29485d",fontSize:13}}>
+                <span>{phoneTime}</span><span>{phoneDate}</span>
+              </div>
+              <div className="mp-sc" style={{padding:10,marginTop:12,background:"rgba(255,255,255,.5)"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                  <button className="mp-ibtn" onClick={() => setPhonePage("desktop")}>返回桌面</button>
+                  <div style={{fontWeight:700,fontSize:13}}>{selectedChar.name} 的錢包</div>
+                </div>
+                {!phoneWallet ? (
+                  <div>
+                    <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.7}}>尚未生成角色錢包。</div>
+                    <button className="mp-save" style={{marginTop:10}} disabled={walletGenLoading} onClick={() => generateCharacterWallet(selectedChar)}>{walletGenLoading ? "生成中..." : "生成角色錢包"}</button>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{fontSize:12,color:"var(--mp-txt-l)"}}>可用餘額</div>
+                    <div style={{fontSize:30,fontWeight:900,margin:"2px 0 6px"}}>${formatMoney(phoneWallet.balance || 0)}</div>
+                    {phoneWallet.summary && <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.6,marginBottom:10}}>{phoneWallet.summary}</div>}
+                    <button className="mp-ibtn" style={{marginBottom:10}} disabled={walletGenLoading} onClick={() => generateCharacterWallet(selectedChar)}>{walletGenLoading ? "生成中..." : "重新生成流水"}</button>
+                    <div style={{fontSize:13,fontWeight:800,marginBottom:6}}>近期流水</div>
+                    <div style={{display:"grid",gap:8,maxHeight:360,overflowY:"auto"}}>
+                      {(phoneWallet.transactions || []).slice(0, 12).map((t) => (
+                        <div key={t.id} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:12,padding:"7px 9px",borderRadius:10,background:"rgba(255,255,255,.62)"}}>
+                          <div>
+                            <div>{t.note}</div>
+                            <div style={{fontSize:10,color:"var(--mp-txt-l)"}}>{new Date(t.time).toLocaleString("zh-TW")}</div>
+                          </div>
+                          <div style={{fontWeight:800,color:t.type==="expense"?"#e53935":"#2e7d32"}}>{t.type==="expense"?"-":"+"}{formatMoney(t.amount)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           )}
           {characters.length > 0 && selectedChar && phonePage === "chatlist" && (
@@ -2840,7 +3544,6 @@ ${recent}`,
   };
   return (<><style>{css}</style><div className="mp-wrap"><div className="mp-phone">
     <div className="mp-desk" onTouchStart={onHomeTouchStart} onTouchEnd={onHomeTouchEnd} onMouseDown={onHomeMouseDown} onMouseUp={onHomeMouseUp} onPointerDown={onHomePointerDown} onPointerUp={onHomePointerUp} onPointerMove={onHomePointerMove} onPointerCancel={cancelPointerDrag} onDragOver={onHomeDragOverPageEdge}><BarClock ft={ft} /><div className="mp-desk-scroll">
-      <div className="mp-badge">SYSTEM READY</div>
       <DeskClock ft={ft} fd={fd} />
       {activeChar && <div className="mp-cw" onClick={()=>openApp("status")}><div className="mp-av">{sanitizeUserImageUrl(activeChar.avatar)?<img src={sanitizeUserImageUrl(activeChar.avatar)} alt=""/>:"??"}</div><div className="mp-cw-info"><div className="mp-cw-name">{activeChar.name}<span className="mp-active-badge">ACTIVE</span></div><div className="mp-cw-desc">{(activeChar.statusText || activeChar.description || "在線中").slice(0,34)}</div><div style={{fontSize:10,color:"var(--mp-txt-l)",marginTop:2}}>更新：{activeChar.statusUpdatedAt ? new Date(activeChar.statusUpdatedAt).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"}) : "--:--"}</div></div></div>}
       <div className="mp-home-mid">
@@ -2959,6 +3662,28 @@ ${recent}`,
             ))}
           </div>
           <button className="mp-save" style={{marginTop:12}} onClick={closeUpdateNotice}>知道了</button>
+        </div>
+      </div>
+    )}
+    {playerPostModalOpen && (
+      <div className="mp-overlay" onClick={() => setPlayerPostModalOpen(false)}>
+        <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="mp-modal-t">發佈社群貼文</div>
+          <div className="mp-row">
+            <textarea
+              className="mp-ta"
+              value={playerPostText}
+              maxLength={PLAYER_SOCIAL_POST_LIMIT}
+              placeholder="今天想分享什麼？"
+              onChange={(e) => setPlayerPostText(e.target.value.slice(0, PLAYER_SOCIAL_POST_LIMIT))}
+              style={{minHeight:130,resize:"vertical"}}
+            />
+            <div className="mp-char-counter mp-char-counter-modal">{playerPostText.length}/{PLAYER_SOCIAL_POST_LIMIT}</div>
+          </div>
+          <div style={{display:"flex",gap:8,marginTop:12}}>
+            <button className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#b0bec5,#90a4ae)"}} onClick={() => setPlayerPostModalOpen(false)}>取消</button>
+            <button className="mp-save" style={{flex:1}} disabled={playerPostSubmitting} onClick={submitPlayerPost}>{playerPostSubmitting ? "發佈中..." : "發佈"}</button>
+          </div>
         </div>
       </div>
     )}

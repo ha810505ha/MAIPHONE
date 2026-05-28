@@ -26,7 +26,7 @@ const API_PROVIDERS = [
 const DEFAULT_APPS = [
   { id: "chat", name: "聊天", icon: "💬", iconUrl: "./app-icons/chat.png" },
   { id: "status", name: "狀態", icon: "📊", iconUrl: "./app-icons/status.png" },
-  { id: "social", name: "社交", icon: "📰", iconUrl: "./app-icons/social.png" },
+  { id: "social", name: "社群", icon: "📰", iconUrl: "./app-icons/social.png" },
   { id: "gallery", name: "相簿", icon: "🖼️", iconUrl: "./app-icons/album.png" },
   { id: "lorebook", name: "世界書", icon: "📚", iconUrl: "./app-icons/worldbook.png" },
   { id: "player", name: "個人資料", icon: "🐱", iconUrl: "./app-icons/profile.png" },
