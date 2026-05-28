@@ -350,10 +350,15 @@ export default function MaliPhone() {
   const [playerPostModalOpen, setPlayerPostModalOpen] = useState(false);
   const [playerPostText, setPlayerPostText] = useState("");
   const [playerPostSubmitting, setPlayerPostSubmitting] = useState(false);
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
+  const [transferAmount, setTransferAmount] = useState("");
+  const [transferNote, setTransferNote] = useState("");
+  const [transferSubmitting, setTransferSubmitting] = useState(false);
   const ONLINE_CHAT_TEXT_LIMIT = 800;
   const REALITY_CHAT_TEXT_LIMIT = 4000;
   const SHARE_RAW_TOKEN_LIMIT = 1000;
   const PLAYER_SOCIAL_POST_LIMIT = 500;
+  const CHARACTER_WALLET_TX_LIMIT = 15;
   const TOTAL_CONTEXT_TOKEN_LIMIT = 40000;
   const [memories, setMemories] = useState(defaultAppState.memories);
   const [lorebooks, setLorebooks] = useState(defaultAppState.lorebooks);
@@ -405,6 +410,7 @@ export default function MaliPhone() {
   const [hydrated, setHydrated] = useState(false);
   const socialLastGlobalPostAtRef = useRef(0);
   const socialLastPostByCharRef = useRef({});
+  const walletAutoRefreshBusyRef = useRef(false);
   const SOCIAL_GLOBAL_COOLDOWN_MS = 60 * 1000;
   const SOCIAL_CHAR_COOLDOWN_MS = 3 * 60 * 1000;
   const messagesEndRef = useRef(null);
@@ -515,6 +521,31 @@ export default function MaliPhone() {
     const timer = setInterval(() => setSocialTick(Date.now()), 15000);
     return () => clearInterval(timer);
   }, [hydrated, currentApp, posts]);
+  const getWalletTimeSlot = (ts) => {
+    const h = new Date(ts || Date.now()).getHours();
+    if (h >= 6 && h < 12) return "morning";
+    if (h >= 12 && h < 18) return "afternoon";
+    return "night";
+  };
+  const shouldAutoRefreshWallet = (cw) => {
+    if (!cw?.summary) return false;
+    const currentSlot = getWalletTimeSlot(Date.now());
+    const lastSlot = cw.lastRefreshedSlot || getWalletTimeSlot(cw.refreshedAt || cw.generatedAt || Date.now());
+    return currentSlot !== lastSlot;
+  };
+  useEffect(() => {
+    if (!hydrated || phonePage !== "wallet") return;
+    const selectedCharId = phoneViewCharId || activeCharId || characters[0]?.id || null;
+    const selectedChar = characters.find((c) => c.id === selectedCharId) || null;
+    const phoneWallet = selectedChar ? characterWallets[selectedChar.id] : null;
+    if (!selectedChar || !phoneWallet?.summary || walletAutoRefreshBusyRef.current) return;
+    if (!shouldAutoRefreshWallet(phoneWallet)) return;
+    walletAutoRefreshBusyRef.current = true;
+    generateCharacterWallet(selectedChar, { mode: "refresh" })
+      .finally(() => {
+        walletAutoRefreshBusyRef.current = false;
+      });
+  }, [hydrated, phonePage, phoneViewCharId, activeCharId, characters, characterWallets]);
   useEffect(() => {
     if (!hydrated) return;
     try {
@@ -599,6 +630,11 @@ export default function MaliPhone() {
   const estimateTokens = (s) => Math.ceil(String(s || "").length / 3.5);
   const getUserDisplayName = () => sanitizeText(playerProfile?.name || "玩家", 40) || "玩家";
   const applyUserPlaceholder = (text) => String(text || "").replace(/\{\{user\}\}/g, getUserDisplayName());
+  const replaceUserPlaceholderForWallet = (text) => String(text || "")
+    .replace(/\{\{user\}\}/gi, getUserDisplayName())
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+([，。！？、,.!?；;：:])/g, "$1")
+    .trim();
   const getPlayerContextBlock = () => {
     const n = sanitizeText(playerProfile?.name || "玩家", 40);
     const nn = sanitizeText(playerProfile?.nickname || "", 40);
@@ -806,6 +842,41 @@ export default function MaliPhone() {
     setChatInput((value) => sanitizeText(value, getChatTextLimit(mode)));
   };
   const getModeLabel = (mode) => (mode === "reality" ? "現實模式" : "線上聊天");
+  const stripModeLabel = (text) => String(text || "")
+    .replace(/^\[(線上聊天|現實模式)\]\s*/g, "")
+    .trim();
+  const stripUserPlaceholder = (text) => String(text || "")
+    .replace(/\{\{user\}\}/gi, getUserDisplayName())
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+([，。！？、,.!?；;：:])/g, "$1")
+    .trim();
+  const displayWalletText = (text) => {
+    const name = getUserDisplayName();
+    return String(text || "")
+      .replace(/\{\{user\}\}/gi, name)
+      .replace(/玩家/g, name)
+      .replace(/\s{2,}/g, " ")
+      .replace(/\s+([，。！？、,.!?；;：:])/g, "$1")
+      .trim();
+  };
+  const extractTransferDirective = (text) => {
+    const raw = String(text || "");
+    const matches = [...raw.matchAll(/\[\[TRANSFER:amount=(\d+)(?:;note=([^\]]*))?\]\]/gi)];
+    if (!matches.length) return { text: raw, transfer: null };
+    const transfer = matches[matches.length - 1];
+    const cleaned = raw
+      .replace(/\s*\[\[TRANSFER:amount=\d+(?:;note=[^\]]*)?\]\]\s*/gi, " ")
+      .replace(/\n{3,}/g, "\n\n")
+      .replace(/[ \t]{2,}/g, " ")
+      .trim();
+    return {
+      text: cleaned,
+      transfer: {
+        amount: Number(transfer[1]),
+        note: sanitizeText(transfer[2] || "", 60),
+      },
+    };
+  };
   const getChatTextLimit = (mode) => (mode === "reality" ? REALITY_CHAT_TEXT_LIMIT : ONLINE_CHAT_TEXT_LIMIT);
   const buildModePrompt = (mode) => {
     if (mode === "reality") {
@@ -1262,14 +1333,18 @@ ${memoryText || "（無）"}`;
           if (m.role === "mode_transition") {
             return { role: "user", content: `[模式切換]\n接下來從${getModeLabel(m.fromMode)}切換為${getModeLabel(m.toMode)}。請自然承接同一條時間線。`, image: null };
           }
+          if (m.role === "transfer") {
+            const fromName = m.fromType === "player" ? "你" : (m.fromName || "對方");
+            const toName = m.toType === "player" ? "你" : (m.toName || "對方");
+            return { role: "user", content: `[轉帳] ${fromName}→${toName} ${formatMoney(m.amount || 0)}${m.note ? ` 備註:${sanitizeText(m.note, 60)}` : ""}`, image: null };
+          }
           if (m.role === "system_notice") {
             if (String(m.content || "").startsWith("連線錯誤：")) return null;
             return { role: "user", content: `[系統備註]\n${m.content || ""}`, image: null };
           }
           if (m.role === "user" || m.role === "assistant" || m.role === "system") {
             const summaryLine = m.imageSummary ? `\n[圖片摘要]\n${m.imageSummary}` : "";
-            const modeLine = `[${getModeLabel(getMessageMode(m))}]`;
-            return { role: m.role, content: `${modeLine}\n${m.content || ""}${summaryLine}`.trim(), image: m.image || null };
+            return { role: m.role, content: `${m.content || ""}${summaryLine}`.trim(), image: m.image || null };
           }
           return null;
         })
@@ -1296,13 +1371,24 @@ ${memoryText || "（無）"}`;
         cw.summary ? `摘要：${cw.summary}` : "",
         (cw.transactions || []).slice(0, 5).map((t) => `- ${t.type === "income" ? "收入" : "支出"} ${formatMoney(t.amount)}：${t.note}`).join("\n"),
         `規則：錢包資料只能作為角色生活背景；除非使用者明確要求記錄交易，否則不要宣稱已修改餘額或新增流水。`,
+        `收到轉帳時，角色會依照自身性格與原本設定，自然決定如何回應，不脫離原本角色設定，也不刻意為了回應而改變平常的聊天語氣。`,
       ].filter(Boolean).join("\n") : "";
+      const transferRuleContext = [
+        `[轉帳規則]`,
+        `1. 玩家可以轉帳給角色；角色也可以主動轉帳給玩家。`,
+        `2. 轉帳可以附備註，也可以不附。`,
+        `3. 玩家轉帳給角色時，角色要依照自身性格與原本設定自然回應，不脫離人設，也不刻意改變平常的聊天語氣。`,
+        `4. 若情境自然、關係合理且符合角色性格，角色可以主動轉帳給 {{user}}。不要每輪都主動轉帳；只有在角色確實會這麼做時，才在回覆最後附上一個轉帳指令：[[TRANSFER:amount=金額;note=備註]]。若要轉帳但沒有備註，可省略 note。`,
+        `5. 轉帳金額需合理，理由需符合當前情境與角色設定，轉帳本身不應脫離角色個性。`,
+        `6. 若角色主動轉帳後，下一句可自然補充用途、情緒或關係互動，但仍要符合角色性格，不能硬講。`,
+      ].join("\n");
       const mergedContext = [
         getPlayerContextBlock(),
         nowContext,
         pinnedLoreContext ? `[強制條目 - 必須遵守]\n以下條目為當前對話的硬性規則，回覆時必須滿足：\n${pinnedLoreContext}` : "",
         memoryContext,
         walletContext,
+        transferRuleContext,
         autoLoreContext ? `[世界書]\n${autoLoreContext}` : "",
       ].filter(Boolean).join("\n\n");
       // 全域 token 保險上限：先裁歷史，再裁 context，避免超過模型上下文。
@@ -1325,7 +1411,10 @@ ${memoryText || "（無）"}`;
       const finalHist = boundedHist.map((m) => ({ ...m, content: applyUserPlaceholder(m.content) }));
       const sysP = applyUserPlaceholder(`${buildSystemPrompt(char, boundedContext)}\n\n${buildModePrompt(selectedMode)}`);
       const reply = await callAI(finalHist, apiConfig, sysP);
-      const cleanReply = selectedMode === "reality" ? sanitizeText(normalizeRealityReply(reply), REALITY_CHAT_TEXT_LIMIT) : normalizeAssistantReply(reply);
+      const cleanReplyRaw = selectedMode === "reality" ? sanitizeText(normalizeRealityReply(reply), REALITY_CHAT_TEXT_LIMIT) : normalizeAssistantReply(reply);
+      const extracted = extractTransferDirective(cleanReplyRaw);
+      const cleanReply = stripModeLabel(extracted.text);
+      const pendingTransfer = extracted.transfer;
       let imageSummary = "";
       if (hasCurrentImage) {
         const base = text ? `{{user}} 訊息：${text}\n` : "";
@@ -1337,11 +1426,15 @@ ${memoryText || "（無）"}`;
           [cid]: (h[cid] || []).map((m) => (m.id === um.id ? { ...m, imageSummary } : m)),
         }));
       }
-      const bubbles = selectedMode === "reality" ? [cleanReply] : splitAssistantBubbles(cleanReply);
+      const bubbles = cleanReply.trim() ? (selectedMode === "reality" ? [cleanReply] : splitAssistantBubbles(cleanReply)) : [];
       for (let i = 0; i < bubbles.length; i++) {
         const delay = i === 0 ? 420 : Math.min(1200, 520 + bubbles[i].length * 18);
         await wait(delay);
         setChatHistory(h => ({ ...h, [cid]: [...(h[cid] || []), { id: gid(), role: "assistant", content: bubbles[i], mode: selectedMode, time: Date.now() }] }));
+      }
+      if (pendingTransfer?.amount > 0) {
+        await wait(220);
+        applyCharacterTransferToPlayer({ cid, char, amount: pendingTransfer.amount, note: pendingTransfer.note, time: Date.now() });
       }
   };
 
@@ -2419,14 +2512,48 @@ ${recent}`,
                 }
                 const isUser = m.role === "user";
                 const isActive = activeMessageId === m.id;
+                if (m.role === "transfer") {
+                  const fromName = m.fromType === "player" ? "你" : (m.fromName || "對方");
+                  const toName = m.toType === "player" ? "你" : (m.toName || "對方");
+                  const heading = m.fromType === "player" ? `你 轉帳給 ${toName}` : `${fromName} 轉帳給 你`;
+                  const statusText = m.fromType === "player" ? "已送出" : "已收到";
+                  return (
+                    <div key={m.id} className="mp-msg-wrap mp-msg-wrap-transfer">
+                      <div
+                        className="mp-msg mp-transfer-card"
+                        onClick={() => setActiveMessageId((p) => (p === m.id ? null : m.id))}
+                      >
+                        <div className="mp-transfer-success">
+                          <div className="mp-transfer-check">✓</div>
+                          <div className="mp-transfer-success-text">轉帳成功</div>
+                        </div>
+                        <div className="mp-transfer-line">{heading}</div>
+                        <div className="mp-transfer-meta">
+                          <div className="mp-transfer-row"><span className="mp-transfer-k">轉帳金額</span><span className="mp-transfer-v">${formatMoney(m.amount || 0)}</span></div>
+                          <div className="mp-transfer-row"><span className="mp-transfer-k">轉帳日期</span><span className="mp-transfer-v">{new Date(m.time).toLocaleDateString("zh-TW")}</span></div>
+                        </div>
+                        <div className="mp-transfer-note">{m.note ? `備註：${m.note}` : "無備註"}</div>
+                        <div className="mp-transfer-footer">
+                          <span>{new Date(m.time).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"})}</span>
+                          <span className="mp-transfer-status">{statusText}</span>
+                        </div>
+                      </div>
+                      {activeMessageId === m.id && <button className="mp-msg-editbtn" onClick={() => {
+                        if (!window.confirm("刪除後不保留這筆交易紀錄，確定嗎？")) return;
+                        deleteChatMessage(currentChatChar.id, m.id);
+                      }}>🗑</button>}
+                    </div>
+                  );
+                }
                 const isReality = getMessageMode(m) === "reality";
+                const displayContent = stripModeLabel(m.content);
                 if (isReality) {
                   return (
                     <div key={m.id} className={`mp-reality-wrap ${isUser ? "mp-reality-user" : "mp-reality-ai"}`}>
                       {isUser && <button className={`mp-msg-editbtn ${isActive ? "" : "mp-msg-editbtn-hidden"}`} onClick={() => setMessageEditor({ id: m.id, content: m.content || "", mode: getMessageMode(m) })}>✎</button>}
                       <div className="mp-reality-msg" onClick={() => setActiveMessageId((p) => (p === m.id ? null : m.id))}>
                         {m.image && <img src={`data:image/png;base64,${m.image}`} className="mp-msg-img" alt="" />}
-                        {m.content && renderRealityText(m.content)}
+                        {displayContent && renderRealityText(displayContent)}
                         <div className="mp-reality-t">{new Date(m.time).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"})}</div>
                       </div>
                       {!isUser && <button className={`mp-msg-editbtn ${isActive ? "" : "mp-msg-editbtn-hidden"}`} onClick={() => setMessageEditor({ id: m.id, content: m.content || "", mode: getMessageMode(m) })}>✎</button>}
@@ -2438,7 +2565,7 @@ ${recent}`,
                     {isUser && <button className={`mp-msg-editbtn ${isActive ? "" : "mp-msg-editbtn-hidden"}`} onClick={() => setMessageEditor({ id: m.id, content: m.content || "", mode: getMessageMode(m) })}>✎</button>}
                     <div className={`mp-msg ${isUser?"mp-msg-user":"mp-msg-ai"}`} onClick={() => setActiveMessageId((p) => (p === m.id ? null : m.id))}>
                       {m.image && <img src={`data:image/png;base64,${m.image}`} className="mp-msg-img" alt="" />}
-                      {m.content && <div>{m.content}</div>}
+                      {displayContent && <div>{displayContent}</div>}
                       <div className="mp-msg-t">{new Date(m.time).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"})}</div>
                     </div>
                     {!isUser && <button className={`mp-msg-editbtn ${isActive ? "" : "mp-msg-editbtn-hidden"}`} onClick={() => setMessageEditor({ id: m.id, content: m.content || "", mode: getMessageMode(m) })}>✎</button>}
@@ -2463,7 +2590,7 @@ ${recent}`,
                   <span className="mp-chat-action-i">🖼</span>
                   <span>相片</span>
                 </button>
-                <button className="mp-chat-action" onClick={() => showToast("轉帳功能準備中")}>
+                <button className="mp-chat-action" onClick={() => { setChatActionPanelOpen(false); setTransferModalOpen(true); }}>
                   <span className="mp-chat-action-i">💸</span>
                   <span>轉帳</span>
                 </button>
@@ -2514,7 +2641,7 @@ ${recent}`,
           : characters.map(c => { const ms = chatHistory[c.id]||[]; const lm = ms[ms.length-1]; return (
             <div key={c.id} className="mp-ci" onClick={()=>setCurrentChatChar(c)}>
               <div className="mp-ci-av">{sanitizeUserImageUrl(c.avatar)?<img src={sanitizeUserImageUrl(c.avatar)} alt=""/>:"🦊"}</div>
-              <div className="mp-ci-info"><div className="mp-ci-name">{c.name}</div><div className="mp-ci-prev">{lm?(lm.image?"[圖片]":lm.content?.slice(0,30)):"尚無訊息"}</div></div>
+              <div className="mp-ci-info"><div className="mp-ci-name">{c.name}</div><div className="mp-ci-prev">{lm?(lm.role==="transfer"?(lm.note?`轉帳 ${formatMoney(lm.amount)}｜${lm.note}`:`轉帳 ${formatMoney(lm.amount)}`):(lm.image?"[圖片]":stripModeLabel(lm.content)?.slice(0,30))):"尚無訊息"}</div></div>
               {lm && <div className="mp-ci-time">{new Date(lm.time).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"})}</div>}
             </div>); })}
         </div>
@@ -3182,42 +3309,216 @@ ${recent}`,
       return { ...prev, assets: list.slice(0, 120) };
     });
   };
+  const transferToCurrentChar = () => {
+    if (!currentChatChar || transferSubmitting) return;
+    const amount = Math.max(0, Math.round(Number(transferAmount) || 0));
+    if (!amount) { showToast("請輸入轉帳金額"); return; }
+    const currentBalance = Number(wallet?.balance || 0);
+    if (currentBalance < amount) { showToast("餘額不足"); return; }
+    const cid = currentChatChar.id;
+    const note = sanitizeText(transferNote, 60);
+    const now = Date.now();
+    const transferMsg = {
+      id: gid(),
+      role: "transfer",
+      fromType: "player",
+      fromName: getPlayerDisplayName(),
+      toType: "character",
+      toId: cid,
+      toName: currentChatChar.name,
+      amount,
+      note,
+      content: note ? `轉帳 $${formatMoney(amount)}｜${note}` : `轉帳 $${formatMoney(amount)}`,
+      time: now,
+    };
+    setTransferSubmitting(true);
+    try {
+      setWallet((w) => ({
+        ...(w || { balance: 0, transactions: [], assets: [] }),
+        balance: Math.max(0, (w?.balance || 0) - amount),
+        transactions: [{
+          id: gid(),
+          type: "expense",
+          amount,
+          note: note ? stripUserPlaceholder(`轉帳給${currentChatChar.name}｜${note}`) : `轉帳給${currentChatChar.name}`,
+          time: now,
+        }, ...(w?.transactions || [])].slice(0, 120),
+      }));
+      setCharacterWallets((prev) => {
+        const cw = prev[cid] || { balance: 0, transactions: [], summary: "", generatedAt: Date.now() };
+        return {
+          ...prev,
+          [cid]: {
+            ...cw,
+            balance: Math.max(0, (cw.balance || 0) + amount),
+            transactions: [{
+              id: gid(),
+              type: "income",
+              amount,
+            note: note ? stripUserPlaceholder(`收到玩家轉帳｜${note}`) : "收到玩家轉帳",
+              time: now,
+            }, ...(cw.transactions || [])].slice(0, CHARACTER_WALLET_TX_LIMIT),
+          },
+        };
+      });
+      setChatHistory((h) => ({ ...h, [cid]: [...(h[cid] || []), transferMsg] }));
+      setTransferAmount("");
+      setTransferNote("");
+      setTransferModalOpen(false);
+      showToast("已完成轉帳");
+    } finally {
+      setTransferSubmitting(false);
+    }
+  };
+  const applyCharacterTransferToPlayer = ({ cid, char, amount, note, time, displayAtEnd = true }) => {
+    const safeAmount = Math.max(0, Math.round(Number(amount) || 0));
+    if (!cid || !char || !safeAmount) return null;
+    const safeNote = sanitizeText(note || "", 60);
+    const now = Number(time) || Date.now();
+    const transferMsg = {
+      id: gid(),
+      role: "transfer",
+      fromType: "character",
+      fromId: cid,
+      fromName: char.name || "角色",
+      toType: "player",
+      toName: getPlayerDisplayName(),
+      amount: safeAmount,
+      note: safeNote,
+      content: safeNote ? `轉帳 $${formatMoney(safeAmount)}｜${safeNote}` : `轉帳 $${formatMoney(safeAmount)}`,
+      time: now,
+    };
+    setWallet((w) => ({
+      ...(w || { balance: 0, transactions: [], assets: [] }),
+      balance: Math.max(0, (w?.balance || 0) + safeAmount),
+      transactions: [{
+        id: gid(),
+        type: "income",
+        amount: safeAmount,
+        note: safeNote ? stripUserPlaceholder(`收到${char.name || "角色"}轉帳｜${safeNote}`) : `收到${char.name || "角色"}轉帳`,
+        time: now,
+      }, ...(w?.transactions || [])].slice(0, 120),
+    }));
+    setCharacterWallets((prev) => {
+      const cw = prev[cid] || { balance: 0, transactions: [], summary: "", generatedAt: Date.now() };
+      return {
+        ...prev,
+        [cid]: {
+          ...cw,
+          balance: Math.max(0, (cw.balance || 0) - safeAmount),
+          transactions: [{
+            id: gid(),
+            type: "expense",
+            amount: safeAmount,
+            note: safeNote ? stripUserPlaceholder(`轉帳給玩家｜${safeNote}`) : "轉帳給玩家",
+            time: now,
+          }, ...(cw.transactions || [])].slice(0, CHARACTER_WALLET_TX_LIMIT),
+        },
+      };
+    });
+    setChatHistory((h) => {
+      const next = [...(h[cid] || []), transferMsg];
+      return { ...h, [cid]: displayAtEnd ? next : next };
+    });
+    return transferMsg;
+  };
   const normalizeWalletData = (data) => {
     const txs = Array.isArray(data?.transactions) ? data.transactions : [];
     return {
       balance: Math.max(0, Math.round(Number(data?.balance) || 0)),
-      transactions: txs.slice(0, 24).map((t) => ({
+      transactions: txs.slice(0, CHARACTER_WALLET_TX_LIMIT).map((t) => ({
         id: t.id || gid(),
         type: t.type === "income" ? "income" : "expense",
         amount: Math.max(1, Math.round(Number(t.amount) || 1)),
-        note: sanitizeText(t.note || "", 80) || (t.type === "income" ? "入帳" : "消費"),
+        note: stripUserPlaceholder(sanitizeText(t.note || "", 80)) || (t.type === "income" ? "入帳" : "消費"),
         time: Number(t.time) || Date.now(),
       })),
-      summary: sanitizeText(data?.summary || "", 120),
+      summary: stripUserPlaceholder(sanitizeText(data?.summary || "", 120)),
+      walletProfile: stripUserPlaceholder(sanitizeText(data?.walletProfile || data?.summary || "", 220)),
       generatedAt: data?.generatedAt || Date.now(),
+      refreshedAt: data?.refreshedAt || data?.generatedAt || Date.now(),
+      lastRefreshedSlot: data?.lastRefreshedSlot || null,
     };
   };
-  const generateCharacterWallet = async (char) => {
+  const reconcileWalletLedger = (openingBalance, transactions, limit = CHARACTER_WALLET_TX_LIMIT) => {
+    let balance = Math.max(0, Math.round(Number(openingBalance) || 0));
+    const reconciled = [];
+    (transactions || []).forEach((tx) => {
+      if (!tx) return;
+      const type = tx.type === "income" ? "income" : "expense";
+      let amount = Math.max(1, Math.round(Number(tx.amount) || 0));
+      if (!amount) return;
+      if (type === "expense") {
+        if (balance <= 0) return;
+        if (amount > balance) amount = balance;
+        if (amount <= 0) return;
+        balance -= amount;
+      } else {
+        balance += amount;
+      }
+      reconciled.push({
+        id: tx.id || gid(),
+        type,
+        amount,
+        note: stripUserPlaceholder(sanitizeText(tx.note || "", 80)) || (type === "income" ? "入帳" : "消費"),
+        time: Number(tx.time) || Date.now(),
+      });
+    });
+    return { balance, transactions: reconciled.slice(0, limit) };
+  };
+  const buildWalletRoleProfile = (char) => [
+    char.description ? `角色描述：${sanitizeText(char.description, 900)}` : "",
+    char.systemPrompt ? `系統提示詞：${sanitizeText(char.systemPrompt, 600)}` : "",
+    char.relationshipToUser ? `與玩家關係：${sanitizeText(char.relationshipToUser, 120)}` : "",
+  ].filter(Boolean).join("\n");
+  const buildWalletRefreshHistory = (cw) => (cw?.transactions || [])
+    .slice(0, 3)
+    .map((t) => `${t.type === "income" ? "收入" : "支出"} ${formatMoney(t.amount)}：${stripUserPlaceholder(t.note)}`)
+    .join("\n");
+  const generateCharacterWallet = async (char, { mode = "initial" } = {}) => {
     if (!char) return;
     if (!canUseCurrentProvider()) { showToast("請先完成 AI 連線設定（API Key）"); return; }
     setWalletGenLoading(true);
     try {
-      const roleProfile = [
-        char.description ? `角色描述：${sanitizeText(char.description, 900)}` : "",
-        char.systemPrompt ? `系統提示詞：${sanitizeText(char.systemPrompt, 600)}` : "",
-        char.relationshipToUser ? `與玩家關係：${sanitizeText(char.relationshipToUser, 120)}` : "",
-      ].filter(Boolean).join("\n");
+      const currentWallet = characterWallets[char.id] || null;
+      const walletProfile = currentWallet?.walletProfile || currentWallet?.summary || "";
+      const refreshHistory = buildWalletRefreshHistory(currentWallet);
+      const isRefresh = mode === "refresh";
+      const roleProfile = isRefresh ? "" : buildWalletRoleProfile(char);
       const raw = await callAI([{
         role: "user",
-        content: `請根據角色設定，生成角色「${char.name}」自己的錢包狀態與近期流水，只輸出有效 JSON。
+        content: isRefresh
+          ? `請根據角色的錢包摘要，補充角色「${char.name}」在當前時段的新流水，只輸出有效 JSON。
+規則：
+1) 只生成 1~3 筆新的 transactions，內容必須是日常收入或日常支出。
+2) 不要生成轉帳事件，轉帳已由聊天室事件另外處理。
+3) 不要重做整個錢包，也不要清空既有交易；只回傳增量結果。
+4) balance 請回傳本次刷新後、可對帳的整數餘額起點；實際最後餘額會由程式依流水逐筆計算。
+5) summary 與 walletProfile 原樣沿用，不要重寫成全新摘要。
+6) 所有支出必須能被目前餘額支撐，若錢不夠，請改成較小額支出、臨時收入、借貸、預支，或直接不產生支出。
+7) time 使用目前時間附近的毫秒 timestamp，可用 ${Date.now()} 往前推。
+格式：
+{"balance":1200,"summary":"原摘要可沿用","walletProfile":"原摘要可沿用","transactions":[{"type":"income","amount":300,"note":"午班收入","time":1710000000000}]}
+
+錢包摘要：
+${walletProfile || "（無）"}
+
+最近流水摘要：
+${refreshHistory || "（無）"}
+
+角色設定補充：已由 walletProfile 取代，刷新時不要重新閱讀完整角色設定。`
+          : `請根據角色設定，生成角色「${char.name}」自己的錢包狀態與錢包摘要，只輸出有效 JSON。
 規則：
 1) balance 是合理餘額，整數，不要太誇張。
 2) transactions 產生 8~12 筆，包含 income/expense，金額與備註要貼近角色職業、生活、興趣。
 3) 若角色是醫生，收入/支出可部分和醫療、值班、書籍、交通有關，但不能全部都醫療；也要有飲食、娛樂、興趣、人際等生活花費。
 4) 不要提到 {{user}}，這是角色自己的錢包。
-5) time 使用目前時間附近的毫秒 timestamp，可用 ${Date.now()} 往前推。
+5) 另外產生一份只用於錢包的 summary，並同步產生 walletProfile。walletProfile 只保留職業、收入來源、消費習慣、生活風格、財務風格等財務相關資訊，不要包含對 {{user}} 的態度、性行為、曖昧互動或私密感情。
+6) walletProfile 會用於之後的錢包刷新，請寫得簡短、穩定、方便長期重複使用。
+7) 所有支出必須能被目前餘額支撐，若錢不夠，請改成較小額支出、臨時收入、借貸、預支，或直接不產生支出。
+8) time 使用目前時間附近的毫秒 timestamp，可用 ${Date.now()} 往前推。
 格式：
-{"balance":1200,"summary":"一句 20~50 字生活摘要","transactions":[{"type":"income","amount":3000,"note":"薪資入帳","time":1710000000000}]}
+{"balance":1200,"summary":"一句 20~50 字生活摘要","walletProfile":"一句更短的錢包摘要","transactions":[{"type":"income","amount":3000,"note":"薪資入帳","time":1710000000000}]}
 
 角色設定：
 ${roleProfile || "（無）"}`,
@@ -3226,12 +3527,41 @@ ${roleProfile || "（無）"}`,
       if (!match) throw new Error("模型未回傳 JSON");
       const parsed = JSON.parse(match[0]);
       const next = normalizeWalletData(parsed);
-      setCharacterWallets((prev) => ({ ...prev, [char.id]: next }));
-      showToast(`${char.name} 的錢包已更新`);
+      const refreshedAt = Date.now();
+      const lastRefreshedSlot = getWalletTimeSlot(refreshedAt);
+      setCharacterWallets((prev) => {
+        const current = prev[char.id] || { balance: 0, transactions: [], summary: "", generatedAt: Date.now() };
+        const mergedTransactions = isRefresh
+          ? [...(next.transactions || []), ...(current.transactions || [])].slice(0, CHARACTER_WALLET_TX_LIMIT)
+          : (next.transactions || []).slice(0, CHARACTER_WALLET_TX_LIMIT);
+        const openingBalance = isRefresh ? (current.balance || 0) : (Number(parsed.balance) || 0);
+        const reconciled = reconcileWalletLedger(openingBalance, mergedTransactions, CHARACTER_WALLET_TX_LIMIT);
+        return {
+          ...prev,
+          [char.id]: {
+            ...current,
+            ...next,
+            summary: next.summary || current.summary || "",
+            walletProfile: isRefresh ? (current.walletProfile || current.summary || "") : (next.walletProfile || next.summary || current.walletProfile || current.summary || ""),
+            balance: reconciled.balance,
+            transactions: reconciled.transactions,
+            refreshedAt,
+            lastRefreshedSlot,
+          },
+        };
+      });
+      showToast(isRefresh ? `${char.name} 的錢包已刷新` : `${char.name} 的錢包已更新`);
     } catch (err) {
       showToast(`角色錢包生成失敗：${sanitizeText(err?.message || "未知錯誤", 120)}`);
     }
     setWalletGenLoading(false);
+  };
+  const regenerateCharacterWallet = async (char) => {
+    if (!char) return;
+    const ok = window.confirm("重新生成會清空舊的錢包資料，並重新讀取角色設定建立新錢包，確定要繼續嗎？");
+    if (!ok) return;
+    setCharacterWallets((prev) => ({ ...prev, [char.id]: { balance: 0, transactions: [], summary: "", generatedAt: Date.now() } }));
+    await generateCharacterWallet(char, { mode: "initial" });
   };
   const renderWallet = () => {
     return (
@@ -3248,6 +3578,24 @@ ${roleProfile || "（無）"}`,
                 setWallet((w) => ({ ...(w || { transactions: [], assets: [] }), balance: Math.max(0, Math.round(Number(v) || 0)) }));
               }}>設定餘額</button>
             </div>
+          </div>
+          <div className="mp-cc" style={{ marginTop: 10 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8 }}>近期流水</div>
+            {(wallet?.transactions || []).length === 0 ? (
+              <div style={{ fontSize: 12, color: "var(--mp-txt-l)", lineHeight: 1.7 }}>目前沒有交易紀錄。</div>
+            ) : (
+              <div style={{ display: "grid", gap: 8, maxHeight: 360, overflowY: "auto" }}>
+                {(wallet?.transactions || []).slice(0, 12).map((t) => (
+                  <div key={t.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12, padding: "7px 9px", borderRadius: 10, background: "rgba(255,255,255,.62)" }}>
+                    <div>
+                      <div>{displayWalletText(t.note)}</div>
+                      <div style={{ fontSize: 10, color: "var(--mp-txt-l)" }}>{new Date(t.time).toLocaleString("zh-TW")}</div>
+                    </div>
+                    <div style={{ fontWeight: 800, color: t.type === "expense" ? "#e53935" : "#2e7d32" }}>{t.type === "expense" ? "-" : "+"}{formatMoney(t.amount)}</div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -3373,14 +3721,17 @@ ${roleProfile || "（無）"}`,
                   <>
                     <div style={{fontSize:12,color:"var(--mp-txt-l)"}}>可用餘額</div>
                     <div style={{fontSize:30,fontWeight:900,margin:"2px 0 6px"}}>${formatMoney(phoneWallet.balance || 0)}</div>
-                    {phoneWallet.summary && <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.6,marginBottom:10}}>{phoneWallet.summary}</div>}
-                    <button className="mp-ibtn" style={{marginBottom:10}} disabled={walletGenLoading} onClick={() => generateCharacterWallet(selectedChar)}>{walletGenLoading ? "生成中..." : "重新生成流水"}</button>
+                    {phoneWallet.summary && <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.6,marginBottom:10}}>{displayWalletText(phoneWallet.summary)}</div>}
+                    <div style={{display:"flex",gap:8,marginBottom:10}}>
+                      <button className="mp-ibtn" style={{flex:1}} disabled={walletGenLoading} onClick={() => generateCharacterWallet(selectedChar, { mode: "refresh" })}>{walletGenLoading ? "刷新中..." : "刷新錢包"}</button>
+                      <button className="mp-ibtn" style={{flex:1}} disabled={walletGenLoading} onClick={() => regenerateCharacterWallet(selectedChar)}>{walletGenLoading ? "處理中..." : "重新生成"}</button>
+                    </div>
                     <div style={{fontSize:13,fontWeight:800,marginBottom:6}}>近期流水</div>
                     <div style={{display:"grid",gap:8,maxHeight:360,overflowY:"auto"}}>
                       {(phoneWallet.transactions || []).slice(0, 12).map((t) => (
                         <div key={t.id} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:12,padding:"7px 9px",borderRadius:10,background:"rgba(255,255,255,.62)"}}>
                           <div>
-                            <div>{t.note}</div>
+                            <div>{displayWalletText(t.note)}</div>
                             <div style={{fontSize:10,color:"var(--mp-txt-l)"}}>{new Date(t.time).toLocaleString("zh-TW")}</div>
                           </div>
                           <div style={{fontWeight:800,color:t.type==="expense"?"#e53935":"#2e7d32"}}>{t.type==="expense"?"-":"+"}{formatMoney(t.amount)}</div>
@@ -3683,6 +4034,37 @@ ${roleProfile || "（無）"}`,
           <div style={{display:"flex",gap:8,marginTop:12}}>
             <button className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#b0bec5,#90a4ae)"}} onClick={() => setPlayerPostModalOpen(false)}>取消</button>
             <button className="mp-save" style={{flex:1}} disabled={playerPostSubmitting} onClick={submitPlayerPost}>{playerPostSubmitting ? "發佈中..." : "發佈"}</button>
+          </div>
+        </div>
+      </div>
+    )}
+    {transferModalOpen && currentChatChar && (
+      <div className="mp-overlay" onClick={() => setTransferModalOpen(false)}>
+        <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="mp-modal-t">轉帳給 {currentChatChar.name}</div>
+          <div className="mp-row">
+            <div className="mp-lbl">金額</div>
+            <input
+              className="mp-sinp"
+              inputMode="numeric"
+              value={transferAmount}
+              onChange={(e) => setTransferAmount(e.target.value.replace(/[^\d]/g, ""))}
+              placeholder="輸入金額"
+            />
+          </div>
+          <div className="mp-row">
+            <div className="mp-lbl">備註</div>
+            <input
+              className="mp-sinp"
+              value={transferNote}
+              maxLength={60}
+              onChange={(e) => setTransferNote(e.target.value)}
+              placeholder="可不填，例如：下午茶 / 車資 / 還款"
+            />
+          </div>
+          <div style={{display:"flex",gap:8,marginTop:12}}>
+            <button className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#b0bec5,#90a4ae)"}} onClick={() => setTransferModalOpen(false)}>取消</button>
+            <button className="mp-save" style={{flex:1}} disabled={transferSubmitting} onClick={transferToCurrentChar}>{transferSubmitting ? "轉帳中..." : "確認轉帳"}</button>
           </div>
         </div>
       </div>
