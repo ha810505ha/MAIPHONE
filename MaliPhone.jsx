@@ -392,13 +392,20 @@ export default function MaliPhone() {
   const [settingsApiOpen, setSettingsApiOpen] = useState(true);
   const [settingsResetOpen, setSettingsResetOpen] = useState(false);
   const [settingsVersionOpen, setSettingsVersionOpen] = useState(false);
+  const [settingsDisclaimerOpen, setSettingsDisclaimerOpen] = useState(false);
+  const [settingsResetDataOpen, setSettingsResetDataOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState("appearance");
+  const [dataImporting, setDataImporting] = useState(false);
+  const [dataImportPreview, setDataImportPreview] = useState(null);
   const [editingLorebookEntry, setEditingLorebookEntry] = useState(null);
   const [editingLorebookBook, setEditingLorebookBook] = useState(null);
   const [activeLorebookId, setActiveLorebookId] = useState(null);
   const [viewingLorebookEntry, setViewingLorebookEntry] = useState(null);
   const [chatSettingsOpen, setChatSettingsOpen] = useState(false);
   const [chatSettingsExpandedBooks, setChatSettingsExpandedBooks] = useState({});
+  const [chatSettingsLorebookOpen, setChatSettingsLorebookOpen] = useState(false);
+  const [chatroomManageOpen, setChatroomManageOpen] = useState(false);
+  const [chatVisibleCounts, setChatVisibleCounts] = useState({});
   const [genLoading, setGenLoading] = useState(false);
   const [homePage, setHomePage] = useState(1);
   const PAGE_SIZE = 12;
@@ -425,6 +432,15 @@ export default function MaliPhone() {
   const suppressAppClickUntilRef = useRef(0);
   const serviceWorkerReloadingRef = useRef(false);
   const serviceWorkerHadControllerRef = useRef(false);
+  const dataImportRef = useRef(null);
+  const chatroomImportRef = useRef(null);
+  const [chatroomImportTarget, setChatroomImportTarget] = useState(null);
+  const [chatroomImportPreview, setChatroomImportPreview] = useState(null);
+  const [chatroomImporting, setChatroomImporting] = useState(false);
+  const chatMsgsRef = useRef(null);
+  const chatLoadAdjustRef = useRef(null);
+  const [walletSettingsOpen, setWalletSettingsOpen] = useState(false);
+  const [walletSettingsPage, setWalletSettingsPage] = useState("main");
 
   useEffect(() => {
     let mounted = true;
@@ -601,7 +617,33 @@ export default function MaliPhone() {
     });
     if (changed) setMemories(normalized);
   }, [hydrated]);
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatHistory, isTyping, currentChatChar]);
+  useEffect(() => {
+    if (!currentChatChar) return;
+    const el = chatMsgsRef.current || messagesEndRef.current?.parentElement;
+    if (!el) return;
+    const t = setTimeout(() => {
+      el.scrollTop = el.scrollHeight;
+    }, 0);
+    return () => clearTimeout(t);
+  }, [currentChatChar?.id, chatHistory, isTyping, chatVisibleCounts]);
+  useEffect(() => {
+    if (!currentChatChar) return;
+    setChatVisibleCounts((prev) => {
+      const current = prev[currentChatChar.id];
+      if (current === 50) return prev;
+      return { ...prev, [currentChatChar.id]: 50 };
+    });
+  }, [currentChatChar?.id]);
+  useEffect(() => {
+    const adjust = chatLoadAdjustRef.current;
+    if (!adjust?.charId) return;
+    if (adjust.charId !== currentChatChar?.id) return;
+    const el = chatMsgsRef.current;
+    if (!el) return;
+    const diff = el.scrollHeight - (adjust.prevScrollHeight || el.scrollHeight);
+    if (diff > 0) el.scrollTop = (adjust.prevScrollTop || 0) + diff;
+    chatLoadAdjustRef.current = null;
+  }, [currentChatChar?.id, chatVisibleCounts]);
   useEffect(() => {
     const forceEnd = () => {
       setPointerDrag(null);
@@ -1621,6 +1663,248 @@ ${memoryText || "（無）"}`;
     URL.revokeObjectURL(url);
     showToast(`${char.name || "角色"} 已匯出`);
   };
+  const getExportableAppState = () => ({
+    version: VERSION,
+    exportedAt: new Date().toISOString(),
+    format: "maliphone-app-state",
+    formatVersion: 1,
+    state: {
+      characters,
+      activeCharId,
+      chatHistory,
+      chatModes,
+      posts,
+      memories,
+      lorebooks,
+      chatLorebookBindings,
+      phoneInboxCache,
+      wallet,
+      characterWallets,
+      screenLockTimeout,
+      apiPresets,
+      playerProfile,
+      apiConfig,
+      homeSlots,
+      dockOrder,
+    },
+  });
+  const downloadJsonFile = (payload, filename) => {
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  };
+  const exportAllData = () => {
+    const safeName = `maliphone-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    downloadJsonFile(getExportableAppState(), safeName);
+    showToast("資料已匯出");
+  };
+  const deleteChatroomForCharacter = (charId, charName = "這個角色") => {
+    if (!charId) return;
+    const firstConfirm = window.confirm(`確定要刪除「${charName}」的聊天室嗎？這只會清掉對話，不會刪除角色本身。`);
+    if (!firstConfirm) return;
+    const secondConfirm = window.confirm("請再次確認：刪除後將無法復原這個聊天室的對話紀錄，確定要繼續嗎？");
+    if (!secondConfirm) return;
+    setChatHistory((prev) => {
+      const next = { ...prev };
+      delete next[charId];
+      return next;
+    });
+    setChatModes((prev) => {
+      const next = { ...prev };
+      delete next[charId];
+      return next;
+    });
+    setChatLorebookBindings((prev) => {
+      const next = { ...prev };
+      delete next[charId];
+      return next;
+    });
+    if (currentChatChar?.id === charId) {
+      setChatActionPanelOpen(false);
+      setMessageEditor(null);
+      setActiveMessageId(null);
+      setIsTyping(false);
+      setChatInput("");
+    }
+    showToast("聊天室已刪除");
+  };
+  const exportChatroomForCharacter = (charId, charName = "這個角色") => {
+    if (!charId) return;
+    const payload = {
+      format: "maliphone-chatroom",
+      formatVersion: 1,
+      exportedAt: new Date().toISOString(),
+      characterId: charId,
+      characterName: charName,
+      chatHistory: chatHistory?.[charId] || [],
+      chatMode: chatModes?.[charId] || "online",
+      chatLorebookBinding: chatLorebookBindings?.[charId] || null,
+    };
+    const safeName = sanitizeText(charName || "chatroom", 40).replace(/[\\/:*?"<>|]+/g, "_").trim() || "chatroom";
+    const dateTag = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    downloadJsonFile(payload, `chat_${safeName}_${dateTag}.json`);
+    showToast("聊天室已匯出");
+  };
+  const summarizeImportedChatroom = (incoming) => {
+    const src = incoming?.format === "maliphone-chatroom" ? incoming : incoming?.chatHistory ? incoming : null;
+    return {
+      format: incoming?.format === "maliphone-chatroom" ? "maliphone-chatroom" : "legacy",
+      exportedAt: incoming?.exportedAt || null,
+      messages: Array.isArray(src?.chatHistory) ? src.chatHistory.length : 0,
+      hasMode: !!src?.chatMode,
+      hasBinding: !!src?.chatLorebookBinding,
+    };
+  };
+  const openChatroomImport = (charId) => {
+    setChatroomImportTarget(charId);
+    chatroomImportRef.current?.click();
+  };
+  const importChatroomFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setChatroomImporting(true);
+    try {
+      const raw = JSON.parse(await file.text());
+      setChatroomImportPreview({
+        fileName: file.name,
+        fileSize: file.size,
+        summary: summarizeImportedChatroom(raw),
+        raw,
+      });
+    } catch (err) {
+      showToast(`匯入失敗：${sanitizeText(err?.message || "未知錯誤", 80)}`);
+      if (chatroomImportRef.current) chatroomImportRef.current.value = "";
+      setChatroomImporting(false);
+    } finally {
+      if (chatroomImportRef.current) chatroomImportRef.current.value = "";
+    }
+  };
+  const confirmChatroomImportPreview = async () => {
+    const raw = chatroomImportPreview?.raw;
+    const targetId = chatroomImportTarget;
+    if (!raw || !targetId) return;
+    if (!window.confirm("確認匯入後，將覆蓋這個聊天室的對話紀錄。確定要繼續嗎？")) return;
+    const chatHistoryItems = Array.isArray(raw?.chatHistory)
+      ? raw.chatHistory
+      : Array.isArray(raw?.messages)
+        ? raw.messages
+        : Array.isArray(raw)
+          ? raw
+          : [];
+    const targetName = currentChatChar?.id === targetId ? currentChatChar.name : (characters.find((c) => c.id === targetId)?.name || "這個角色");
+    setChatHistory((prev) => ({ ...prev, [targetId]: chatHistoryItems }));
+    if (raw?.chatMode) {
+      setChatModes((prev) => ({ ...prev, [targetId]: raw.chatMode }));
+    }
+    if (raw?.chatLorebookBinding) {
+      setChatLorebookBindings((prev) => ({ ...prev, [targetId]: raw.chatLorebookBinding }));
+    }
+    if (currentChatChar?.id === targetId) {
+      setChatActionPanelOpen(false);
+      setMessageEditor(null);
+      setActiveMessageId(null);
+      setIsTyping(false);
+      setChatInput("");
+    }
+    showToast(`${targetName} 聊天室已匯入`);
+    setChatroomImportPreview(null);
+    setChatroomImportTarget(null);
+    setChatroomImporting(false);
+  };
+  const summarizeImportedData = (incoming) => {
+    const src = incoming?.state && incoming?.format === "maliphone-app-state" ? incoming.state : incoming;
+    return {
+      format: incoming?.format === "maliphone-app-state" ? "maliphone-app-state" : "legacy",
+      exportedAt: incoming?.exportedAt || null,
+      characters: Array.isArray(src?.characters) ? src.characters.length : 0,
+      chatThreads: src?.chatHistory && typeof src.chatHistory === "object" ? Object.keys(src.chatHistory).length : 0,
+      posts: Array.isArray(src?.posts) ? src.posts.length : 0,
+      lorebooks: Array.isArray(src?.lorebooks) ? src.lorebooks.length : 0,
+      playerProfile: !!src?.playerProfile,
+    };
+  };
+  const applyImportedAppState = async (incoming) => {
+    const src = incoming?.state && incoming?.format === "maliphone-app-state" ? incoming.state : incoming;
+    if (!src || typeof src !== "object") throw new Error("檔案內容不正確");
+    const nextState = {
+      ...defaultAppState,
+      characters: Array.isArray(src.characters) ? src.characters : [],
+      activeCharId: src.activeCharId ?? null,
+      chatHistory: src.chatHistory && typeof src.chatHistory === "object" ? src.chatHistory : {},
+      chatModes: src.chatModes && typeof src.chatModes === "object" ? src.chatModes : {},
+      posts: Array.isArray(src.posts) ? src.posts : [],
+      memories: src.memories && typeof src.memories === "object" ? src.memories : {},
+      lorebooks: Array.isArray(src.lorebooks) ? src.lorebooks : [],
+      chatLorebookBindings: src.chatLorebookBindings && typeof src.chatLorebookBindings === "object" ? src.chatLorebookBindings : {},
+      phoneInboxCache: src.phoneInboxCache && typeof src.phoneInboxCache === "object" ? src.phoneInboxCache : {},
+      wallet: src.wallet && typeof src.wallet === "object" ? src.wallet : defaultAppState.wallet,
+      characterWallets: src.characterWallets && typeof src.characterWallets === "object" ? src.characterWallets : {},
+      screenLockTimeout: Number.isFinite(Number(src.screenLockTimeout)) ? Number(src.screenLockTimeout) : defaultAppState.screenLockTimeout,
+      apiPresets: Array.isArray(src.apiPresets) && src.apiPresets.length ? src.apiPresets : defaultAppState.apiPresets,
+      playerProfile: src.playerProfile && typeof src.playerProfile === "object" ? src.playerProfile : defaultAppState.playerProfile,
+      apiConfig: src.apiConfig && typeof src.apiConfig === "object" ? src.apiConfig : defaultAppState.apiConfig,
+      homeSlots: Array.isArray(src.homeSlots) && src.homeSlots.length === HOME_SLOT_COUNT ? src.homeSlots : Array.from({ length: HOME_SLOT_COUNT }, () => null),
+      dockOrder: Array.isArray(src.dockOrder) && src.dockOrder.length ? src.dockOrder : DOCK_APPS,
+    };
+    setCharacters(nextState.characters);
+    setActiveCharId(nextState.activeCharId);
+    setChatHistory(nextState.chatHistory);
+    setChatModes(nextState.chatModes);
+    setPosts(nextState.posts);
+    setMemories(nextState.memories);
+    setLorebooks(nextState.lorebooks);
+    setChatLorebookBindings(nextState.chatLorebookBindings);
+    setPhoneInboxCache(nextState.phoneInboxCache);
+    setWallet(nextState.wallet);
+    setCharacterWallets(nextState.characterWallets);
+    setScreenLockTimeout(nextState.screenLockTimeout);
+    setApiPresets(nextState.apiPresets);
+    setPlayerProfile(nextState.playerProfile);
+    setApiConfig(nextState.apiConfig);
+    setHomeSlots(nextState.homeSlots);
+    setDockOrder(nextState.dockOrder);
+    setActiveLorebookId(nextState.lorebooks[0]?.id || null);
+    await saveAppState(nextState);
+  };
+  const importAllData = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setDataImporting(true);
+    try {
+      const raw = JSON.parse(await file.text());
+      setDataImportPreview({
+        fileName: file.name,
+        fileSize: file.size,
+        summary: summarizeImportedData(raw),
+        raw,
+      });
+    } catch (err) {
+      showToast(`匯入失敗：${sanitizeText(err?.message || "未知錯誤", 80)}`);
+      if (dataImportRef.current) dataImportRef.current.value = "";
+      setDataImporting(false);
+    } finally {
+      if (dataImportRef.current) dataImportRef.current.value = "";
+    }
+  };
+  const confirmImportPreview = async () => {
+    if (!dataImportPreview?.raw) return;
+    if (!window.confirm("確認匯入後，將覆蓋目前裝置上的全域資料。確定要繼續嗎？")) return;
+    try {
+      await applyImportedAppState(dataImportPreview.raw);
+      showToast("資料已匯入");
+      setDataImportPreview(null);
+    } catch (err) {
+      showToast(`匯入失敗：${sanitizeText(err?.message || "未知錯誤", 80)}`);
+    } finally {
+      setDataImporting(false);
+    }
+  };
   const canUseCurrentProvider = () => {
     const isOllamaLocal = apiConfig.provider === "ollama" && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(apiConfig.baseUrl || "");
     const providerNeedsApiKey = !(apiConfig.provider === "ollama" && isOllamaLocal);
@@ -2360,6 +2644,8 @@ ${recent}`,
   const renderChat = () => {
     if (currentChatChar) {
       const msgs = chatHistory[currentChatChar.id] || [];
+      const visibleCount = Math.max(50, chatVisibleCounts[currentChatChar.id] || 50);
+      const visibleMsgs = msgs.slice(Math.max(0, msgs.length - visibleCount));
       const binding = getChatLorebookBinding(currentChatChar.id);
       const selectedMode = getSelectedChatMode(currentChatChar.id);
       const committedMode = getLastCommittedChatMode(currentChatChar.id);
@@ -2376,7 +2662,7 @@ ${recent}`,
               setCurrentChatChar(null);
             }}>←</div>
             <div className="mp-htitle">{currentChatChar.name}</div>
-            <button className="mp-ibtn" style={{ marginLeft: "auto" }} onClick={() => setChatSettingsOpen(true)}>設定</button>
+            <button className="mp-ibtn" style={{ marginLeft: "auto" }} onClick={() => { setChatSettingsExpandedBooks({}); setChatSettingsLorebookOpen(false); setChatroomManageOpen(false); setChatSettingsOpen(true); }}>設定</button>
           </div>
           {chatSettingsOpen ? (
             <div className="mp-cm" style={{ paddingTop: 8 }}>
@@ -2399,74 +2685,163 @@ ${recent}`,
                 </div>
               </div>
               <div className="mp-cc">
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <div
+                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
+                  onClick={() => setChatSettingsLorebookOpen((v) => !v)}
+                >
                   <div style={{ fontSize: 13, fontWeight: 700 }}>世界書綁定</div>
-                  <div style={{ fontSize: 11, color: "var(--mp-txt-l)" }}>{binding.enabledBookIds.length} 本啟用</div>
+                  <div style={{ fontSize: 11, color: "var(--mp-txt-l)" }}>{chatSettingsLorebookOpen ? `收合 · ${binding.enabledBookIds.length} 本啟用` : `展開 · ${binding.enabledBookIds.length} 本啟用`}</div>
                 </div>
-                {(lorebooks || []).length === 0 && <div style={{ fontSize: 11, color: "var(--mp-txt-l)" }}>尚未建立世界書</div>}
-                {(lorebooks || []).map((book) => {
-                  const bookOn = binding.enabledBookIds.includes(book.id);
-                  const isExpanded = !!chatSettingsExpandedBooks[book.id];
-                  return (
-                    <div key={book.id} style={{ marginBottom: 10, border: "1px solid rgba(244,143,177,.2)", borderRadius: 10, overflow: "hidden" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 700, padding: "10px 10px 8px", background: "rgba(244,143,177,.08)" }}>
-                        <input type="checkbox" checked={bookOn} onChange={() => toggleChatLorebookBook(currentChatChar.id, book.id)} />
-                        <span style={{ flex: 1 }}>{book.name || "未命名世界書"}</span>
-                        <span style={{ fontSize: 10, color: "var(--mp-txt-l)", fontWeight: 600 }}>{(book.entries || []).length} 條</span>
-                        <button
-                          className="mp-ibtn"
-                          style={{ padding: "2px 8px", fontSize: 10 }}
-                          onClick={() => setChatSettingsExpandedBooks((prev) => ({ ...prev, [book.id]: !isExpanded }))}
-                        >
-                          {isExpanded ? "收合" : "展開"}
-                        </button>
-                      </div>
-                      {isExpanded && (
-                        <div style={{ padding: "8px 10px 10px", background: "#fff" }}>
-                          <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                            <button className="mp-ibtn" style={{ fontSize: 10, padding: "2px 8px" }} disabled={!bookOn} onClick={() => setAllChatLorebookEntries(currentChatChar.id, book, true)}>全選</button>
-                            <button className="mp-ibtn" style={{ fontSize: 10, padding: "2px 8px" }} disabled={!bookOn} onClick={() => setAllChatLorebookEntries(currentChatChar.id, book, false)}>全不選</button>
-                            {!bookOn && <span style={{ fontSize: 10, color: "var(--mp-txt-l)", marginLeft: "auto" }}>先勾選此世界書才會套用</span>}
+                {chatSettingsLorebookOpen && (
+                  <div style={{ marginTop: 8 }}>
+                    {(lorebooks || []).length === 0 && <div style={{ fontSize: 11, color: "var(--mp-txt-l)" }}>尚未建立世界書</div>}
+                    {(lorebooks || []).map((book) => {
+                      const bookOn = binding.enabledBookIds.includes(book.id);
+                      const isExpanded = !!chatSettingsExpandedBooks[book.id];
+                      return (
+                        <div key={book.id} style={{ marginBottom: 10, border: "1px solid rgba(244,143,177,.2)", borderRadius: 10, overflow: "hidden" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 700, padding: "10px 10px 8px", background: "rgba(244,143,177,.08)" }}>
+                            <input type="checkbox" checked={bookOn} onChange={() => toggleChatLorebookBook(currentChatChar.id, book.id)} />
+                            <span style={{ flex: 1 }}>{book.name || "未命名世界書"}</span>
+                            <span style={{ fontSize: 10, color: "var(--mp-txt-l)", fontWeight: 600 }}>{(book.entries || []).length} 條</span>
+                            <button
+                              className="mp-ibtn"
+                              style={{ padding: "2px 8px", fontSize: 10 }}
+                              onClick={() => setChatSettingsExpandedBooks((prev) => ({ ...prev, [book.id]: !isExpanded }))}
+                            >
+                              {isExpanded ? "收合" : "展開"}
+                            </button>
                           </div>
-                          <div style={{ display: "grid", gap: 6, maxHeight: 220, overflowY: "auto", paddingRight: 2 }}>
-                          {(book.entries || []).map((entry) => {
-                            const entryOn = Object.prototype.hasOwnProperty.call(binding.entryOverrides, entry.id)
-                              ? !!binding.entryOverrides[entry.id]
-                              : !!entry.enabled;
-                            const mode = binding.entryModes?.[entry.id] || "AUTO";
-                            const modeColor = mode === "PIN" ? "#1e88e5" : "#43a047";
-                            return (
-                              <label key={entry.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "var(--mp-txt-l)", padding: "4px 2px" }}>
-                                <input type="checkbox" checked={entryOn} disabled={!bookOn} onChange={() => toggleChatLorebookEntry(currentChatChar.id, entry.id, !!entry.enabled)} />
-                                <span style={{flex:1}}>{entry.title || "未命名條目"}</span>
-                                <button
-                                  className="mp-ibtn"
-                                  disabled={!bookOn}
-                                  style={{ fontSize: 10, padding: "1px 8px", borderColor: modeColor, color: modeColor }}
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    cycleChatLorebookEntryMode(currentChatChar.id, entry.id);
-                                  }}
-                                  title="AUTO=關鍵字命中觸發, PIN=常駐"
-                                >
-                                  {mode}
-                                </button>
-                              </label>
-                            );
-                          })}
-                          </div>
+                          {isExpanded && (
+                            <div style={{ padding: "8px 10px 10px", background: "#fff" }}>
+                              <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                                <button className="mp-ibtn" style={{ fontSize: 10, padding: "2px 8px" }} disabled={!bookOn} onClick={() => setAllChatLorebookEntries(currentChatChar.id, book, true)}>全選</button>
+                                <button className="mp-ibtn" style={{ fontSize: 10, padding: "2px 8px" }} disabled={!bookOn} onClick={() => setAllChatLorebookEntries(currentChatChar.id, book, false)}>全不選</button>
+                                {!bookOn && <span style={{ fontSize: 10, color: "var(--mp-txt-l)", marginLeft: "auto" }}>先勾選此世界書才會套用</span>}
+                              </div>
+                              <div style={{ display: "grid", gap: 6, maxHeight: 220, overflowY: "auto", paddingRight: 2 }}>
+                              {(book.entries || []).map((entry) => {
+                                const entryOn = Object.prototype.hasOwnProperty.call(binding.entryOverrides, entry.id)
+                                  ? !!binding.entryOverrides[entry.id]
+                                  : !!entry.enabled;
+                                const mode = binding.entryModes?.[entry.id] || "AUTO";
+                                const modeColor = mode === "PIN" ? "#1e88e5" : "#43a047";
+                                return (
+                                  <label key={entry.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "var(--mp-txt-l)", padding: "4px 2px" }}>
+                                    <input type="checkbox" checked={entryOn} disabled={!bookOn} onChange={() => toggleChatLorebookEntry(currentChatChar.id, entry.id, !!entry.enabled)} />
+                                    <span style={{flex:1}}>{entry.title || "未命名條目"}</span>
+                                    <button
+                                      className="mp-ibtn"
+                                      disabled={!bookOn}
+                                      style={{ fontSize: 10, padding: "1px 8px", borderColor: modeColor, color: modeColor }}
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        cycleChatLorebookEntryMode(currentChatChar.id, entry.id);
+                                      }}
+                                      title="AUTO=關鍵字命中觸發, PIN=常駐"
+                                    >
+                                      {mode}
+                                    </button>
+                                  </label>
+                                );
+                              })}
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      )}
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <div className="mp-cc">
+                <div
+                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
+                  onClick={() => setChatroomManageOpen((v) => !v)}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>聊天室管理</div>
+                  <div style={{ fontSize: 11, color: "var(--mp-txt-l)" }}>{chatroomManageOpen ? "收合" : "展開"}</div>
+                </div>
+                {chatroomManageOpen && (
+                  <>
+                    <div style={{ fontSize: 11, color: "var(--mp-txt-l)", lineHeight: 1.7, marginTop: 8, marginBottom: 8 }}>
+                      可以單獨匯出 / 匯入這個角色的聊天室，也可以刪掉對話重新開始，不會影響角色本身。
                     </div>
-                  );
-                })}
+                    <div style={{ display: "grid", gap: 8 }}>
+                      <button
+                        type="button"
+                        className="mp-save"
+                        style={{ background: "linear-gradient(135deg,#90caf9,#42a5f5)" }}
+                        onClick={() => exportChatroomForCharacter(currentChatChar.id, currentChatChar.name)}
+                      >
+                        匯出聊天室
+                      </button>
+                      <button
+                        type="button"
+                        className="mp-save"
+                        style={{ background: "linear-gradient(135deg,#b0bec5,#78909c)" }}
+                        onClick={() => openChatroomImport(currentChatChar.id)}
+                      >
+                        {chatroomImporting ? "等待選擇檔案..." : "匯入聊天室"}
+                      </button>
+                      <button
+                        type="button"
+                        className="mp-save"
+                        style={{ background: "linear-gradient(135deg,#ef9a9a,#e53935)" }}
+                        onClick={() => deleteChatroomForCharacter(currentChatChar.id, currentChatChar.name)}
+                      >
+                        刪除此聊天室
+                      </button>
+                      <input ref={chatroomImportRef} type="file" accept=".json,application/json" style={{display:"none"}} onChange={importChatroomFile} />
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           ) : (
             <div className="mp-cr">
-            <div className="mp-msgs">
-              {msgs.map(m => {
+            <div
+              className="mp-msgs"
+              ref={chatMsgsRef}
+              onScroll={(e) => {
+                const el = e.currentTarget;
+                if (el.scrollTop > 0) return;
+                if (visibleCount >= msgs.length) return;
+                const nextCount = Math.min(msgs.length, visibleCount + 50);
+                chatLoadAdjustRef.current = {
+                  charId: currentChatChar.id,
+                  prevScrollHeight: el.scrollHeight,
+                  prevScrollTop: el.scrollTop,
+                };
+                setChatVisibleCounts((prev) => ({ ...prev, [currentChatChar.id]: nextCount }));
+              }}
+            >
+              {visibleCount < msgs.length && (
+                <div style={{display:"flex",justifyContent:"center",padding:"6px 0 10px"}}>
+                  <button
+                    type="button"
+                    className="mp-ibtn"
+                    style={{fontSize:11,padding:"4px 10px"}}
+                    onClick={(ev) => {
+                      ev.preventDefault();
+                      ev.stopPropagation();
+                      const el = chatMsgsRef.current;
+                      if (!el) return;
+                      const nextCount = Math.min(msgs.length, visibleCount + 50);
+                      chatLoadAdjustRef.current = {
+                        charId: currentChatChar.id,
+                        prevScrollHeight: el.scrollHeight,
+                        prevScrollTop: el.scrollTop,
+                      };
+                      setChatVisibleCounts((prev) => ({ ...prev, [currentChatChar.id]: nextCount }));
+                    }}
+                  >
+                    載入更早訊息
+                  </button>
+                </div>
+              )}
+              {visibleMsgs.map(m => {
                   if (m.role === "mode_transition") {
                     return (
                       <div key={m.id} className="mp-mode-sep">
@@ -3053,10 +3428,11 @@ ${recent}`,
       <div className="mp-page">
         <div className="mp-hdr"><div className="mp-back" onClick={closeApp}>←</div><div className="mp-htitle">設定</div></div>
         <div className="mp-set">
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:4}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:4}}>
             {[
               { id: "appearance", label: "外觀" },
               { id: "api", label: "API / LLM" },
+              { id: "data", label: "資料" },
               { id: "about", label: "關於" },
             ].map((tab) => (
               <button
@@ -3180,6 +3556,83 @@ ${recent}`,
               </div>
             </div>
           )}
+          {settingsTab === "data" && (
+            <>
+              <div className="mp-sg">
+                <div className="mp-sg-t">全域資料備份</div>
+                <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.7,marginBottom:8}}>
+                  這裡可以把整個 App 的主要進度打包下載，或從備份檔匯入後直接接續。
+                </div>
+                <div style={{display:"grid",gap:8}}>
+                  <button className="mp-save" style={{background:"linear-gradient(135deg,#90caf9,#42a5f5)"}} onClick={exportAllData}>匯出全域資料</button>
+                  <button type="button" className="mp-save" style={{background:"linear-gradient(135deg,#b0bec5,#78909c)"}} onClick={() => dataImportRef.current?.click()}>
+                    {dataImporting ? "等待選擇檔案..." : "匯入全域資料"}
+                  </button>
+                  <input ref={dataImportRef} type="file" accept=".json,application/json" style={{display:"none"}} onChange={importAllData} />
+                </div>
+              </div>
+              <div className="mp-sg">
+                <div className="mp-sg-t">使用提醒</div>
+                <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.8}}>
+                  <div>• 匯入會覆蓋目前裝置上的全域資料。</div>
+                  <div>• 最適合拿來做手機和電腦之間的無痛銜接。</div>
+                  <div>• 建議先保留一份原始備份，避免覆蓋到不想改動的內容。</div>
+                </div>
+              </div>
+            </>
+          )}
+          {dataImportPreview && (
+            <div className="mp-overlay" style={{zIndex:125}} onClick={() => { setDataImportPreview(null); setDataImporting(false); }}>
+              <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
+                <div className="mp-modal-t">匯入預覽</div>
+                <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.8}}>
+                  <div>檔名：{dataImportPreview.fileName}</div>
+                  <div>大小：{Math.max(1, Math.round((dataImportPreview.fileSize || 0) / 1024))} KB</div>
+                  <div>格式：{dataImportPreview.summary.format === "maliphone-app-state" ? "MaliPhone 全域備份" : "舊版或通用 JSON"}</div>
+                  {dataImportPreview.summary.exportedAt && <div>匯出時間：{dataImportPreview.summary.exportedAt}</div>}
+                </div>
+                <div style={{marginTop:10,padding:10,borderRadius:12,background:"rgba(255,255,255,.7)",border:"1px solid rgba(160,176,186,.2)",fontSize:12,lineHeight:1.8,color:"var(--mp-txt)"}}>
+                  <div>角色：{dataImportPreview.summary.characters}</div>
+                  <div>聊天串：{dataImportPreview.summary.chatThreads}</div>
+                  <div>貼文：{dataImportPreview.summary.posts}</div>
+                  <div>世界書：{dataImportPreview.summary.lorebooks}</div>
+                  <div>玩家資料：{dataImportPreview.summary.playerProfile ? "有" : "無"}</div>
+                </div>
+                <div style={{marginTop:10,fontSize:11,color:"var(--mp-txt-l)",lineHeight:1.6}}>
+                  先確認這份備份內容是不是你要的，再按下面的確認匯入。
+                </div>
+                <div style={{display:"flex",gap:8,marginTop:12}}>
+                  <button type="button" className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#b0bec5,#90a4ae)"}} onClick={() => { setDataImportPreview(null); setDataImporting(false); }}>取消</button>
+                  <button type="button" className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#ffb74d,#f57c00)"}} onClick={confirmImportPreview}>確認匯入</button>
+                </div>
+              </div>
+            </div>
+          )}
+          {chatroomImportPreview && (
+            <div className="mp-overlay" style={{zIndex:125}} onClick={() => { setChatroomImportPreview(null); setChatroomImportTarget(null); setChatroomImporting(false); }}>
+              <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
+                <div className="mp-modal-t">聊天室匯入預覽</div>
+                <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.8}}>
+                  <div>檔名：{chatroomImportPreview.fileName}</div>
+                  <div>大小：{Math.max(1, Math.round((chatroomImportPreview.fileSize || 0) / 1024))} KB</div>
+                  <div>格式：{chatroomImportPreview.summary.format === "maliphone-chatroom" ? "MaliPhone 聊天室備份" : "舊版或通用 JSON"}</div>
+                  {chatroomImportPreview.summary.exportedAt && <div>匯出時間：{chatroomImportPreview.summary.exportedAt}</div>}
+                </div>
+                <div style={{marginTop:10,padding:10,borderRadius:12,background:"rgba(255,255,255,.7)",border:"1px solid rgba(160,176,186,.2)",fontSize:12,lineHeight:1.8,color:"var(--mp-txt)"}}>
+                  <div>訊息數：{chatroomImportPreview.summary.messages}</div>
+                  <div>互動模式：{chatroomImportPreview.summary.hasMode ? "有" : "無"}</div>
+                  <div>世界書綁定：{chatroomImportPreview.summary.hasBinding ? "有" : "無"}</div>
+                </div>
+                <div style={{marginTop:10,fontSize:11,color:"var(--mp-txt-l)",lineHeight:1.6}}>
+                  先確認這是不是你要接續的聊天室內容，再按下面的確認匯入。
+                </div>
+                <div style={{display:"flex",gap:8,marginTop:12}}>
+                  <button type="button" className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#b0bec5,#90a4ae)"}} onClick={() => { setChatroomImportPreview(null); setChatroomImportTarget(null); setChatroomImporting(false); }}>取消</button>
+                  <button type="button" className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#ffb74d,#f57c00)"}} onClick={confirmChatroomImportPreview}>確認匯入</button>
+                </div>
+              </div>
+            </div>
+          )}
           {settingsTab === "about" && (
             <>
               <div className="mp-sg">
@@ -3200,11 +3653,96 @@ ${recent}`,
                 )}
               </div>
               <div className="mp-sg">
-                <div className="mp-sg-t">重置資料</div>
-                <div style={{display:"grid",gap:8}}>
-                  <button className="mp-save" style={{background:"linear-gradient(135deg,#ef9a9a,#e53935)"}} onClick={()=>{if(confirm("確定要清空所有資料嗎？")){setCharacters([]);setActiveCharId(null);setChatHistory({});setPosts([]);setMemories({});setLorebooks([]);setActiveLorebookId(null);setPhoneInboxCache({});setCharacterWallets({});showToast("資料已清空");}}}>清空全部資料</button>
-                  <button type="button" className="mp-save" style={{background:clearCacheArmed?"linear-gradient(135deg,#ffb74d,#f57c00)":"linear-gradient(135deg,#b0bec5,#78909c)"}} onClick={clearSiteCache}>{clearCacheArmed ? "再次確認清除快取" : "清除快取"}</button>
+                <div className="mp-sg-t">服務條款與免責聲明</div>
+                <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.7,marginBottom:8}}>
+                  最後更新：2026年6月2日
                 </div>
+                <div className="mp-version-row" onClick={() => setSettingsDisclaimerOpen((v) => !v)}>
+                  <span>查看完整條款</span>
+                  <span>{settingsDisclaimerOpen ? "收合" : "展開"}</span>
+                </div>
+                {settingsDisclaimerOpen && (
+                  <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.8,padding:"10px 4px 2px"}}>
+                    <div style={{fontWeight:700,color:"var(--mp-txt)"}}>歡迎使用 MaliPhone</div>
+                    <div style={{marginTop:8}}>本應用是一個提供給玩家自由遊玩的 AI 角色互動平台。玩家可以依照自己的方式建立、設定與使用內容，所有玩法都由玩家自行決定，開發者不會介入、限制或替玩家做出遊玩選擇。</div>
+                    <div style={{marginTop:8}}>本應用不會主動取得玩家的個人設定、遊玩偏好或私人操作內容，也無法控制玩家如何使用本服務。所有角色、對話、情節、觀點與回應皆可能為演算法生成內容，僅供娛樂、創作與測試用途，不代表真實人物、事件或事實。</div>
+                    <div style={{marginTop:8}}>請勿將本應用產出的內容視為專業建議。若涉及醫療、法律、財務、心理健康或其他重大決策，請自行判斷並諮詢合格專業人士。</div>
+                    <div style={{marginTop:8}}>使用者應對自己在本應用中的操作、輸入與產出內容負責，並遵守所在地法律、平台規範與公共秩序。請勿利用本服務製作、散播或引導任何非法、侵害他人權益、仇恨、騷擾、暴力、自殘或其他高風險內容。</div>
+                    <div style={{marginTop:8}}>本應用不保證服務永遠可用、完全正確、完全安全或完全無誤。AI 生成內容可能出現不準確、過時、偏差、重複或不完整的情況，開發者不對因此造成的任何直接或間接損失負責。</div>
+                    <div style={{marginTop:8}}>若您不同意上述內容，請停止使用本應用。開發者保留在必要時調整、暫停或終止服務的權利，並可依實際情況更新本條款，更新後於應用程式內公告時即生效。</div>
+                  </div>
+                )}
+              </div>
+              <div className="mp-sg">
+                <div
+                  className="mp-sg-t"
+                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
+                  onClick={() => setSettingsResetDataOpen((v) => !v)}
+                >
+                  <span>重置資料</span>
+                  <span style={{ fontSize: 11, color: "var(--mp-txt-l)", fontWeight: 600 }}>{settingsResetDataOpen ? "收合" : "展開"}</span>
+                </div>
+                {settingsResetDataOpen && (
+                  <>
+                    <div style={{fontSize:11,color:"var(--mp-txt-l)",lineHeight:1.8,marginBottom:8}}>
+                      <div><strong>全域資料</strong>：清空所有遊玩內容，包含角色與玩家資料，把小手機回歸初始狀態。</div>
+                      <div><strong>清除快取</strong>：清除網站暫存與更新殘留，讓 App 重新載入最新版本。</div>
+                    </div>
+                    <div style={{display:"grid",gap:8}}>
+                      <button className="mp-save" style={{background:"linear-gradient(135deg,#ef9a9a,#e53935)"}} onClick={()=>{
+                        if(!confirm("確定要清空所有資料嗎？")) return;
+                        setCharacters([]);
+                        setActiveCharId(null);
+                        setCurrentChatChar(null);
+                        setChatHistory({});
+                        setChatModes({});
+                        setChatLorebookBindings({});
+                        setPosts([]);
+                        setMemories({});
+                        setLorebooks([]);
+                        setActiveLorebookId(null);
+                        setPhoneInboxCache({});
+                        setWallet(defaultAppState.wallet);
+                        setCharacterWallets({});
+                        setApiPresets(defaultAppState.apiPresets);
+                        setPlayerProfile(defaultAppState.playerProfile);
+                        setApiConfig(defaultAppState.apiConfig);
+                        setScreenLockTimeout(defaultAppState.screenLockTimeout);
+                        setHomeSlots(Array.from({ length: HOME_SLOT_COUNT }, () => null));
+                        setDockOrder(DOCK_APPS);
+                        setPhonePage("picker");
+                        setPhoneViewCharId(null);
+                        setPhoneActiveThreadId("player");
+                        setCurrentApp(null);
+                        setModal(null);
+                        setUpdateNoticeOpen(false);
+                        setChatSettingsOpen(false);
+                        setChatSettingsLorebookOpen(false);
+                        setChatroomManageOpen(false);
+                        setChatSettingsExpandedBooks({});
+                        setChatVisibleCounts({});
+                        setActiveMessageId(null);
+                        setMessageEditor(null);
+                        setIsTyping(false);
+                        setChatInput("");
+                        setChatImage(null);
+                        setPlayerPostModalOpen(false);
+                        setPlayerPostText("");
+                        setTransferModalOpen(false);
+                        setTransferAmount("");
+                        setTransferNote("");
+                        setSocialReplyTarget(null);
+                        setExpandedSocialPosts({});
+                        setChatroomImportPreview(null);
+                        setChatroomImportTarget(null);
+                        setDataImportPreview(null);
+                        try { localStorage.removeItem("mali_seen_version"); } catch {}
+                        showToast("資料已清空");
+                      }}>清空全部資料</button>
+                      <button type="button" className="mp-save" style={{background:clearCacheArmed?"linear-gradient(135deg,#ffb74d,#f57c00)":"linear-gradient(135deg,#b0bec5,#78909c)"}} onClick={clearSiteCache}>{clearCacheArmed ? "再次確認清除快取" : "清除快取"}</button>
+                    </div>
+                  </>
+                )}
               </div>
             </>
           )}
@@ -3564,9 +4102,47 @@ ${roleProfile || "（無）"}`,
     await generateCharacterWallet(char, { mode: "initial" });
   };
   const renderWallet = () => {
+    if (walletSettingsOpen && walletSettingsPage === "settings") {
+      return (
+        <div className="mp-page">
+          <div className="mp-hdr">
+            <div className="mp-back" onClick={() => setWalletSettingsPage("main")}>←</div>
+            <div className="mp-htitle">錢包設定</div>
+          </div>
+          <div className="mp-cm">
+            <div className="mp-cc">
+              <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>錢包管理</div>
+              <div style={{fontSize:11,color:"var(--mp-txt-l)",lineHeight:1.8,marginBottom:8}}>
+                這個頁面只會管理錢包相關內容，不會影響當前角色聊天室或其他全域資料。
+              </div>
+              <button
+                type="button"
+                className="mp-save"
+                style={{ background: "linear-gradient(135deg,#ef9a9a,#e53935)" }}
+                onClick={() => {
+                  if (!window.confirm("確定要清除錢包頁面的資料嗎？")) return;
+                  if (!window.confirm("請再次確認：這只會清除錢包頁面內容，不會影響聊天室，確定要繼續嗎？")) return;
+                  setWallet(defaultAppState.wallet);
+                  setCharacterWallets({});
+                  setWalletSettingsPage("main");
+                  setWalletSettingsOpen(false);
+                  showToast("錢包資料已清除");
+                }}
+              >
+                清除資料
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="mp-page">
-        <div className="mp-hdr"><div className="mp-back" onClick={closeApp}>←</div><div className="mp-htitle">錢包</div></div>
+        <div className="mp-hdr">
+          <div className="mp-back" onClick={closeApp}>←</div>
+          <div className="mp-htitle">錢包</div>
+          <button className="mp-ibtn" style={{ marginLeft: "auto" }} onClick={() => { setWalletSettingsPage("settings"); setWalletSettingsOpen(true); }}>設定</button>
+        </div>
         <div className="mp-cm">
           <div className="mp-cc">
             <div style={{ fontSize: 12, color: "var(--mp-txt-l)" }}>餘額</div>
