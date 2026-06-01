@@ -1,7 +1,14 @@
-﻿const VERSION = "1.1.2";
+const VERSION = "1.1.3";
 const MALIPHONE_AI_PROXY = "https://orange-butterfly-8390.d778105.workers.dev";
 
 const CHANGELOG = {
+  "1.1.3": [
+    "06/02 更新",
+    "新增服務條款與免責聲明。",
+    "新增設定頁 資料 分頁，支援全域資料匯出與匯入。",
+    "新增單一聊天室匯出 / 匯入 / 刪除功能，可只接續特定角色聊天室，不影響全域資料。",
+    "聊天室匯入加入預覽確認視窗，先看資料摘要再確認覆蓋。",
+  ],
   "1.1.2": [
     "05/28 更新",
     "新增線上聊天 / 現實模式切換，並維持同一條角色時間線。",
@@ -40,4 +47,3 @@ const DEFAULT_APPS = [
 const DOCK_APPS = ["chat", "social", "characters", "settings"];
 
 export { VERSION, CHANGELOG, API_PROVIDERS, DEFAULT_APPS, DOCK_APPS };
-
