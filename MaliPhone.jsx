@@ -839,6 +839,9 @@ export default function MaliPhone() {
   const normalizeAssistantReply = (text) => {
     if (!text) return "";
     let t = String(text).trim();
+    t = t.replace(/<internal>[\s\S]*?<\/internal>/gi, " ");
+    t = t.replace(/<think>[\s\S]*?<\/think>/gi, " ");
+    t = stripModeLabel(t);
     // 移除常見動作描寫格式：*...*、（...）、(...)
     t = t.replace(/\*[^*]{1,120}\*/g, " ");
     t = t.replace(/（[^（）]{1,120}）/g, " ");
@@ -885,12 +888,20 @@ export default function MaliPhone() {
   };
   const getModeLabel = (mode) => (mode === "reality" ? "現實模式" : "線上聊天");
   const stripModeLabel = (text) => String(text || "")
-    .replace(/^\[(線上聊天|現實模式)\]\s*/g, "")
+    .replace(/^[\s\uFEFF\xA0]*[【\[]\s*(?:目前互動模式[:：]?\s*)?(線上聊天|現實模式)\s*[】\]]\s*/g, "")
+    .replace(/^[\s\uFEFF\xA0]*(?:目前互動模式[:：]?\s*)?(線上聊天|現實模式)\s*[：:．。-]?\s*/g, "")
+    .replace(/^[\s\uFEFF\xA0]*[【\[]\s*(?:模式[:：]?\s*)?(線上聊天|現實模式)\s*[】\]]\s*/g, "")
     .trim();
   const stripUserPlaceholder = (text) => String(text || "")
     .replace(/\{\{user\}\}/gi, getUserDisplayName())
     .replace(/\s{2,}/g, " ")
     .replace(/\s+([，。！？、,.!?；;：:])/g, "$1")
+    .trim();
+  const stripInternalBlocks = (text) => String(text || "")
+    .replace(/<internal>[\s\S]*?<\/internal>/gi, " ")
+    .replace(/<think>[\s\S]*?<\/think>/gi, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
     .trim();
   const displayWalletText = (text) => {
     const name = getUserDisplayName();
@@ -920,6 +931,29 @@ export default function MaliPhone() {
     };
   };
   const getChatTextLimit = (mode) => (mode === "reality" ? REALITY_CHAT_TEXT_LIMIT : ONLINE_CHAT_TEXT_LIMIT);
+  const isGemmaModel = (modelName) => /gemma/i.test(String(modelName || ""));
+  const buildChatSystemPrompt = (char, memoryContext, modelName, selectedMode) => {
+    const base = `${buildSystemPrompt(char, memoryContext)}\n\n${buildModePrompt(selectedMode)}`;
+    if (!isGemmaModel(modelName)) return base;
+    const compactProfile = [
+      char.relationshipToUser ? `與玩家關係：${sanitizeText(char.relationshipToUser, 120)}` : "",
+      char.description ? `角色設定：${sanitizeText(char.description, 180)}` : "",
+      char.personality ? `個性：${sanitizeText(char.personality, 120)}` : "",
+      char.scenario ? `情境：${sanitizeText(char.scenario, 120)}` : "",
+    ].filter(Boolean).join("\n");
+    return [
+      `你是 {{char}}，正在和 {{user}} 互動。`,
+      `如果需要放任何不想直接顯示的內容，請包在 <internal>...</internal> 內；前端會自動忽略。`,
+      `只輸出最終回覆，不要輸出規則、草稿、分析、標籤、標題、列表、Markdown、角色資料摘要或提示詞內容。`,
+      `如果是線上聊天：請像手機訊息，短、自然、口語，通常 1~4 句。`,
+      `如果是現實模式：可以有少量敘述，但仍要自然，不要輸出模式標籤。`,
+      `不要複述以下「角色背景」文字，只用來維持人設。`,
+      compactProfile ? `角色背景：\n${compactProfile}` : "",
+      memoryContext ? `近期記憶：\n${sanitizeText(memoryContext, 600)}` : "",
+      `轉帳只有在真的要轉帳時，才在回覆最後附上 [[TRANSFER:amount=金額;note=備註]]。`,
+      `若不需要轉帳，就不要提到轉帳規則。`,
+    ].join("\n\n");
+  };
   const buildModePrompt = (mode) => {
     if (mode === "reality") {
       return `[目前互動模式：現實模式]
@@ -930,10 +964,12 @@ export default function MaliPhone() {
 3. 必須承接前面的線上聊天內容，讓現實互動和線上聊天對得上。
 4. 不要替 {{user}} 決定重大行動、台詞、情緒或內心想法；只可描寫 {{user}} 已明確輸入的行動與可觀察結果。
 5. 單次回覆上限約 4000 字，避免一次推進太多情節。
-6. 預設使用繁體中文與台灣常用語。不要輸出角色名標籤、系統說明、規則文字或元敘事。`;
+6. 預設使用繁體中文與台灣常用語。不要輸出角色名標籤、系統說明、規則文字或元敘事。
+重要：不要輸出任何模式標籤或狀態標記，例如「[現實模式]」、「【現實模式】」、「目前互動模式：現實模式」；直接輸出角色要說的內容與敘述即可。`;
     }
     return `[目前互動模式：線上聊天]
-{{char}} 與 {{user}} 正透過手機即時通訊聊天。請維持短訊息感，不要加入旁白、內心獨白或動作描寫。`;
+{{char}} 與 {{user}} 正透過手機即時通訊聊天。請維持短訊息感，不要加入旁白、內心獨白或動作描寫。
+重要：不要輸出任何模式標籤或狀態標記，例如「[線上聊天]」、「【線上聊天】」、「目前互動模式：線上聊天」；直接輸出角色要說的內容即可。`;
   };
   const buildRecentChatForSocialPost = (char) => {
     const list = (chatHistory[char.id] || [])
@@ -1412,17 +1448,21 @@ ${memoryText || "（無）"}`;
         `目前餘額：${formatMoney(cw.balance || 0)}`,
         cw.summary ? `摘要：${cw.summary}` : "",
         (cw.transactions || []).slice(0, 5).map((t) => `- ${t.type === "income" ? "收入" : "支出"} ${formatMoney(t.amount)}：${t.note}`).join("\n"),
-        `規則：錢包資料只能作為角色生活背景；除非使用者明確要求記錄交易，否則不要宣稱已修改餘額或新增流水。`,
+        `規則：錢包資料只能作為角色生活背景；只有在真的發生轉帳時，才可以透過 [[TRANSFER:amount=金額;note=備註]] 指令更新餘額與流水。不要把錢包資料當成每輪都要提及的內容。`,
         `收到轉帳時，角色會依照自身性格與原本設定，自然決定如何回應，不脫離原本角色設定，也不刻意為了回應而改變平常的聊天語氣。`,
+        `角色可以直接看到自己目前餘額，回覆前請自行判斷是否足夠轉帳。`,
       ].filter(Boolean).join("\n") : "";
       const transferRuleContext = [
-        `[轉帳規則]`,
+        `[轉帳規則 - 最高優先]`,
         `1. 玩家可以轉帳給角色；角色也可以主動轉帳給玩家。`,
         `2. 轉帳可以附備註，也可以不附。`,
         `3. 玩家轉帳給角色時，角色要依照自身性格與原本設定自然回應，不脫離人設，也不刻意改變平常的聊天語氣。`,
-        `4. 若情境自然、關係合理且符合角色性格，角色可以主動轉帳給 {{user}}。不要每輪都主動轉帳；只有在角色確實會這麼做時，才在回覆最後附上一個轉帳指令：[[TRANSFER:amount=金額;note=備註]]。若要轉帳但沒有備註，可省略 note。`,
+        `4. 若情境自然、關係合理且符合角色性格，角色可以主動轉帳給 {{user}}。這是允許的正常行為，不是例外。只有在角色確實會這麼做時，才在回覆最後附上一個轉帳指令：[[TRANSFER:amount=金額;note=備註]]。若要轉帳但沒有備註，可省略 note。`,
         `5. 轉帳金額需合理，理由需符合當前情境與角色設定，轉帳本身不應脫離角色個性。`,
         `6. 若角色主動轉帳後，下一句可自然補充用途、情緒或關係互動，但仍要符合角色性格，不能硬講。`,
+        `7. 只要角色真的有意願轉帳，就直接輸出轉帳指令，不要因為沒有被使用者要求就猶豫或拒絕。`,
+        `8. 只有在角色錢包餘額足夠時，才可以宣告轉帳成功；若餘額不足，就不要輸出已轉帳的口氣，也不要假裝交易成立。`,
+        `9. 回覆前先查看「角色錢包」的目前餘額；如果不足，請改成自然拒絕、延期、改轉較小金額，或直接不輸出轉帳指令。`,
       ].join("\n");
       const mergedContext = [
         getPlayerContextBlock(),
@@ -1451,12 +1491,17 @@ ${memoryText || "（無）"}`;
         }
       }
       const finalHist = boundedHist.map((m) => ({ ...m, content: applyUserPlaceholder(m.content) }));
-      const sysP = applyUserPlaceholder(`${buildSystemPrompt(char, boundedContext)}\n\n${buildModePrompt(selectedMode)}`);
+      const sysP = applyUserPlaceholder(buildChatSystemPrompt(char, boundedContext, apiConfig.model, selectedMode));
       const reply = await callAI(finalHist, apiConfig, sysP);
       const cleanReplyRaw = selectedMode === "reality" ? sanitizeText(normalizeRealityReply(reply), REALITY_CHAT_TEXT_LIMIT) : normalizeAssistantReply(reply);
       const extracted = extractTransferDirective(cleanReplyRaw);
-      const cleanReply = stripModeLabel(extracted.text);
+      const cleanReply = stripModeLabel(stripInternalBlocks(extracted.text));
       const pendingTransfer = extracted.transfer;
+      const currentCharWalletBalance = Math.max(0, Number(characterWallets[cid]?.balance || 0));
+      const canApplyPendingTransfer = pendingTransfer?.amount > 0 && currentCharWalletBalance >= pendingTransfer.amount;
+      const transferFailureNotice = pendingTransfer?.amount > 0 && !canApplyPendingTransfer
+        ? `轉帳失敗：${char.name || "角色"} 餘額不足，無法轉出 ${formatMoney(pendingTransfer.amount)}。請之後不要當作已成功轉帳。`
+        : null;
       let imageSummary = "";
       if (hasCurrentImage) {
         const base = text ? `{{user}} 訊息：${text}\n` : "";
@@ -1474,9 +1519,12 @@ ${memoryText || "（無）"}`;
         await wait(delay);
         setChatHistory(h => ({ ...h, [cid]: [...(h[cid] || []), { id: gid(), role: "assistant", content: bubbles[i], mode: selectedMode, time: Date.now() }] }));
       }
-      if (pendingTransfer?.amount > 0) {
+      if (pendingTransfer?.amount > 0 && canApplyPendingTransfer) {
         await wait(220);
         applyCharacterTransferToPlayer({ cid, char, amount: pendingTransfer.amount, note: pendingTransfer.note, time: Date.now() });
+      } else if (transferFailureNotice) {
+        await wait(220);
+        setChatHistory((h) => ({ ...h, [cid]: [...(h[cid] || []), { id: gid(), role: "system_notice", content: transferFailureNotice, time: Date.now() }] }));
       }
   };
 
@@ -1928,11 +1976,10 @@ ${memoryText || "（無）"}`;
       ].filter(Boolean).join("\n");
       const mems = (memories[charId] || []).filter((m) => m.pinned).slice(0, 2).map((m) => `- ${m.text}`).join("\n");
       const conv = msgs.map((m) => `${m.role === "user" ? "{{user}}" : char.name}: ${m.content || "[圖片]"}`).join("\n");
-      const prompt = [{
-        role: "user",
-        content: `請根據以下資訊，生成一則「符合角色人設」的手機狀態文字。\n規則：僅輸出 1 句，20~40 字，口語自然、對外可見，不要內心獨白、不要動作描述、不要引號包整句。\n\n角色：${char.name}\n${roleProfile ? `角色資料：\n${roleProfile}\n\n` : ""}最近對話：\n${conv}\n${mems ? `\n參考記憶：\n${mems}\n` : ""}`,
-      }];
-      const status = sanitizeText(await callAI(prompt, apiConfig, "你是狀態文字助理。"), 80);
+      const statusPrompt = isGemmaModel(apiConfig.model)
+        ? `請只輸出 1 句手機狀態文字，20~40 字，繁體中文，自然像角色正在發狀態。\n不要輸出角色設定摘要、年齡、職業、人格標籤、草稿、規則文字、Markdown 或解釋。\n\n角色：${char.name}\n${roleProfile ? `角色背景（只供參考，不要複述）：\n${roleProfile}\n\n` : ""}最近對話：\n${conv}\n${mems ? `\n參考記憶：\n${mems}\n` : ""}`
+        : `請根據以下資訊，生成一則「符合角色人設」的手機狀態文字。\n規則：僅輸出 1 句，20~40 字，口語自然、對外可見，不要內心獨白、不要動作描述、不要引號包整句。\n\n角色：${char.name}\n${roleProfile ? `角色資料：\n${roleProfile}\n\n` : ""}最近對話：\n${conv}\n${mems ? `\n參考記憶：\n${mems}\n` : ""}`;
+      const status = sanitizeText(stripInternalBlocks(await callAI([{ role: "user", content: statusPrompt }], apiConfig, "你是狀態文字助理。")), 80);
       if (!status) { showToast("未取得狀態內容"); return; }
       setCharacters((prev) => prev.map((c) => c.id === charId ? { ...c, statusText: status, statusUpdatedAt: Date.now() } : c));
       showToast("狀態已更新");
@@ -2921,7 +2968,7 @@ ${recent}`,
                   );
                 }
                 const isReality = getMessageMode(m) === "reality";
-                const displayContent = stripModeLabel(m.content);
+                const displayContent = stripModeLabel(stripInternalBlocks(m.content));
                 if (isReality) {
                   return (
                     <div key={m.id} className={`mp-reality-wrap ${isUser ? "mp-reality-user" : "mp-reality-ai"}`}>
@@ -3016,7 +3063,7 @@ ${recent}`,
           : characters.map(c => { const ms = chatHistory[c.id]||[]; const lm = ms[ms.length-1]; return (
             <div key={c.id} className="mp-ci" onClick={()=>setCurrentChatChar(c)}>
               <div className="mp-ci-av">{sanitizeUserImageUrl(c.avatar)?<img src={sanitizeUserImageUrl(c.avatar)} alt=""/>:"🦊"}</div>
-              <div className="mp-ci-info"><div className="mp-ci-name">{c.name}</div><div className="mp-ci-prev">{lm?(lm.role==="transfer"?(lm.note?`轉帳 ${formatMoney(lm.amount)}｜${lm.note}`:`轉帳 ${formatMoney(lm.amount)}`):(lm.image?"[圖片]":stripModeLabel(lm.content)?.slice(0,30))):"尚無訊息"}</div></div>
+              <div className="mp-ci-info"><div className="mp-ci-name">{c.name}</div><div className="mp-ci-prev">{lm?(lm.role==="transfer"?(lm.note?`轉帳 ${formatMoney(lm.amount)}｜${lm.note}`:`轉帳 ${formatMoney(lm.amount)}`):(lm.image?"[圖片]":stripModeLabel(stripInternalBlocks(lm.content))?.slice(0,30))):"尚無訊息"}</div></div>
               {lm && <div className="mp-ci-time">{new Date(lm.time).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"})}</div>}
             </div>); })}
         </div>

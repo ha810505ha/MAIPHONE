@@ -1,7 +1,11 @@
-const VERSION = "1.1.3";
+const VERSION = "1.1.4";
 const MALIPHONE_AI_PROXY = "https://orange-butterfly-8390.d778105.workers.dev";
 
 const CHANGELOG = {
+  "1.1.4": [
+    "06/03 更新",
+    "調整聊天提示詞與 Gemma/轉帳相關邏輯，改善角色誤輸出與轉帳一致性。",
+  ],
   "1.1.3": [
     "06/02 更新",
     "新增服務條款與免責聲明。",
