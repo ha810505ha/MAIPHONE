@@ -1,5 +1,6 @@
-﻿async function callAI(messages, apiConfig, sysPrompt) {
+async function callAI(messages, apiConfig, sysPrompt) {
   const { provider, baseUrl, apiKey, model } = apiConfig;
+  const cleanBaseUrl = (baseUrl || "https://aiplatform.googleapis.com/v1").replace(/\/+$/, "");
   const isOllamaLocal = provider === "ollama" && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(baseUrl || "");
   const providerNeedsApiKey = !(provider === "ollama" && isOllamaLocal);
   if (providerNeedsApiKey && !apiKey) throw new Error("請先設定 API Key");
@@ -59,6 +60,65 @@
     return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
   }
 
+  if (provider === "vertex") {
+    const endpoint = `${cleanBaseUrl}/publishers/google/models/${encodeURIComponent(model)}:streamGenerateContent?key=${encodeURIComponent(apiKey)}`;
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: `${sys}\n\n${messages.map((m) => `${m.role}: ${m.content || ""}`).join("\n")}` }],
+          },
+        ],
+      }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      const errMsg = data?.error?.message || `HTTP ${res.status}`;
+      if (res.status === 404) {
+        throw new Error(`Vertex 404：請確認模型名稱或快捷模式 region/設定是否正確（目前模型：${model || "-"}）`);
+      }
+      throw new Error(errMsg);
+    }
+    const text = await res.text();
+    const tryExtractText = (obj) =>
+      obj?.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") ||
+      obj?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      obj?.candidates?.[0]?.content?.text ||
+      obj?.text ||
+      "";
+
+    let out = "";
+    const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    for (const line of lines) {
+      const payload = line.startsWith("data:") ? line.slice(5).trim() : line;
+      if (!payload || payload === "[DONE]") continue;
+      try {
+        const chunk = JSON.parse(payload);
+        out += tryExtractText(chunk);
+      } catch (_) {}
+    }
+
+    if (!out.trim()) {
+      try {
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed)) {
+          out = parsed.map(tryExtractText).join("");
+        } else {
+          out = tryExtractText(parsed);
+        }
+      } catch (_) {}
+    }
+
+    const finalText = out.trim();
+    if (!finalText) throw new Error("Vertex 已連線但回覆空白，請先換成 `gemini-2.5-flash` 或 `gemini-2.5-pro` 測試");
+    return finalText;
+  }
+
   const headers = { "Content-Type": "application/json" };
   if (providerNeedsApiKey) headers.Authorization = `Bearer ${apiKey}`;
   if (provider === "openrouter") headers["HTTP-Referer"] = "https://maliphone.app";
@@ -113,6 +173,7 @@
 
 async function fetchAvailableModels(apiConfig) {
   const { provider, baseUrl, apiKey } = apiConfig;
+  const cleanBaseUrl = (baseUrl || "https://aiplatform.googleapis.com/v1").replace(/\/+$/, "");
   const isOllamaLocal = provider === "ollama" && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(baseUrl || "");
   const providerNeedsApiKey = !(provider === "ollama" && isOllamaLocal);
   if (providerNeedsApiKey && !apiKey) throw new Error("請先設定 API Key");
@@ -120,10 +181,9 @@ async function fetchAvailableModels(apiConfig) {
   if (provider === "ollama" && /ollama\.com/i.test(baseUrl || "")) {
     const cleanBase = (baseUrl || "").replace(/\/+$/, "");
     const candidates = [
-      `${cleanBase}/models`, // e.g. https://ollama.com/v1/models
-      `${cleanBase.replace(/\/v1$/i, "")}/api/tags`, // e.g. https://ollama.com/api/tags
+      `${cleanBase}/models`,
+      `${cleanBase.replace(/\/v1$/i, "")}/api/tags`,
     ];
-    const errs = [];
     for (const url of candidates) {
       try {
         const res = await fetch(url, {
@@ -133,9 +193,7 @@ async function fetchAvailableModels(apiConfig) {
         if (!res.ok) throw new Error(data?.error?.message || data?.error || `HTTP ${res.status}`);
         if (Array.isArray(data?.data)) return data.data.map((m) => m.id).filter(Boolean);
         if (Array.isArray(data?.models)) return data.models.map((m) => m.name).filter(Boolean);
-      } catch (e) {
-        errs.push(`${url}: ${e.message}`);
-      }
+      } catch (_) {}
     }
     throw new Error(`Ollama 模型抓取失敗（已嘗試 v1/models 與 api/tags）`);
   }
@@ -145,6 +203,19 @@ async function fetchAvailableModels(apiConfig) {
     const data = await res.json();
     if (!res.ok) throw new Error(data?.error?.message || `HTTP ${res.status}`);
     return (data.models || []).map((m) => (m.name || "").replace(/^models\//, "")).filter(Boolean);
+  }
+
+  if (provider === "vertex") {
+    const res = await fetch(`${cleanBaseUrl}/publishers/google/models?key=${encodeURIComponent(apiKey)}`);
+    const data = await res.json();
+    if (!res.ok) {
+      const errMsg = data?.error?.message || `HTTP ${res.status}`;
+      if (res.status === 404) {
+        throw new Error("Vertex 模型列表 404：請先確認快捷模式、API key 與網址是否正確");
+      }
+      throw new Error(errMsg);
+    }
+    return (data?.models || []).map((m) => (m.name || "").replace(/^.*\/models\//, "")).filter(Boolean);
   }
 
   if (provider === "claude") {
