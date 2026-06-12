@@ -40,17 +40,17 @@ const API_PROVIDERS = [
 ];
 
 const DEFAULT_APPS = [
-  { id: "chat", name: "聊天", icon: "💬", iconUrl: "./app-icons/chat.png" },
-  { id: "status", name: "狀態", icon: "📡", iconUrl: "./app-icons/status.png" },
-  { id: "social", name: "社群", icon: "🗯️", iconUrl: "./app-icons/social.png" },
-  { id: "gallery", name: "相簿", icon: "🖼️", iconUrl: "./app-icons/album.png" },
-  { id: "lorebook", name: "世界觀", icon: "📖", iconUrl: "./app-icons/worldbook.png" },
-  { id: "player", name: "玩家", icon: "🙂", iconUrl: "./app-icons/profile.png" },
-  { id: "wallet", name: "錢包", icon: "💰", iconUrl: "./app-icons/wallet.png" },
-  { id: "notebook", name: "筆記", icon: "📝", iconUrl: "./app-icons/notes.png" },
-  { id: "settings", name: "設定", icon: "⚙️", iconUrl: "./app-icons/settings.png" },
-  { id: "characters", name: "角色", icon: "👥", iconUrl: "./app-icons/contacts.png" },
-  { id: "phone", name: "手機", icon: "📱", iconUrl: "./app-icons/phone.png" },
+  { id: "chat", name: "聊天", icon: "💬", iconUrl: "./app-icons/chat.png?v=1.1.5" },
+  { id: "status", name: "狀態", icon: "📡", iconUrl: "./app-icons/status.png?v=1.1.5" },
+  { id: "social", name: "社群", icon: "🗯️", iconUrl: "./app-icons/social.png?v=1.1.5" },
+  { id: "gallery", name: "相簿", icon: "🖼️", iconUrl: "./app-icons/album.png?v=1.1.5" },
+  { id: "lorebook", name: "世界觀", icon: "📖", iconUrl: "./app-icons/worldbook.png?v=1.1.5" },
+  { id: "player", name: "玩家", icon: "🙂", iconUrl: "./app-icons/profile.png?v=1.1.5" },
+  { id: "wallet", name: "錢包", icon: "💰", iconUrl: "./app-icons/wallet.png?v=1.1.5" },
+  { id: "notebook", name: "筆記", icon: "📝", iconUrl: "./app-icons/notes.png?v=1.1.5" },
+  { id: "settings", name: "設定", icon: "⚙️", iconUrl: "./app-icons/settings.png?v=1.1.5" },
+  { id: "characters", name: "角色", icon: "👥", iconUrl: "./app-icons/contacts.png?v=1.1.5" },
+  { id: "phone", name: "手機", icon: "📱", iconUrl: "./app-icons/phone.png?v=1.1.5" },
 ];
 
 const DOCK_APPS = ["chat", "social", "characters", "settings"];
