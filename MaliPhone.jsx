@@ -4393,11 +4393,11 @@ ${roleProfile || "（無）"}`,
               </div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:12,marginTop:16}}>
                 <button className="mp-icon" style={{background:"rgba(255,255,255,.62)"}} onClick={() => setPhonePage("chatlist")}>
-                  <div className="mp-icon-c mp-icon-c-img">{renderAppIcon({ id: "chat", name: "聊天", icon: "💬", iconUrl: "./app-icons/chat.png" }, 56)}</div>
+                  <div className="mp-icon-c mp-icon-c-img">{renderAppIcon({ id: "chat", name: "聊天", icon: "💬", iconUrl: "./app-icons/chat.png?v=1.1.5" }, 56)}</div>
                   <span className="mp-icon-l">聊天</span>
                 </button>
                 <button className="mp-icon" style={{background:"rgba(255,255,255,.62)"}} onClick={() => setPhonePage("wallet")}>
-                  <div className="mp-icon-c mp-icon-c-img">{renderAppIcon({ id: "wallet", name: "錢包", icon: "💳", iconUrl: "./app-icons/wallet.png" }, 56)}</div>
+                  <div className="mp-icon-c mp-icon-c-img">{renderAppIcon({ id: "wallet", name: "錢包", icon: "💳", iconUrl: "./app-icons/wallet.png?v=1.1.5" }, 56)}</div>
                   <span className="mp-icon-l">錢包</span>
                 </button>
                 {[
