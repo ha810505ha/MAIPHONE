@@ -4,7 +4,7 @@ import { gid, ft, fd, sanitizeText, sanitizeUserImageUrl } from "./utils/coreUti
 import { parseSillyTavernJSON, parseSillyTavernPNG, buildSystemPrompt } from "./utils/characterParser";
 import { callAI, fetchAvailableModels } from "./services/aiService";
 import { loadAppState, saveAppState } from "./utils/indexedDbStorage";
-import css from "./styles/maliPhoneCss";
+import css, { THEME_PRESETS } from "./styles/maliPhoneCss";
 
 function AddCharModal({ setModal, setEditingCharacter, addCharacter, updateCharacter, exportCharacter, deleteCharacter, editingCharacter, sanitizeUserImageUrl }) {
   const [tab, setTab] = useState("manual");
@@ -321,7 +321,8 @@ export default function MaliPhone() {
         accessoryColor: "#90caf9",
       },
     },
-    apiConfig: { provider: "openai", baseUrl: "https://api.openai.com/v1", apiKey: "", model: "gpt-4o-mini" },
+    apiConfig: { provider: "openai", baseUrl: "https://api.openai.com/v1", apiKey: "", model: "gpt-4o-mini", location: "global" },
+    themeName: "莓果蘇打",
     screenLockTimeout: 5,
   };
   const [locked, setLocked] = useState(true);
@@ -369,6 +370,7 @@ export default function MaliPhone() {
   const [walletGenLoading, setWalletGenLoading] = useState(false);
   const [apiPresets, setApiPresets] = useState(defaultAppState.apiPresets);
   const [playerProfile, setPlayerProfile] = useState(defaultAppState.playerProfile);
+  const [themeName, setThemeName] = useState(defaultAppState.themeName);
   const [playerAvatarCrop, setPlayerAvatarCrop] = useState(null);
   const [screenLockTimeout, setScreenLockTimeout] = useState(defaultAppState.screenLockTimeout);
   const [phoneViewCharId, setPhoneViewCharId] = useState(null);
@@ -378,6 +380,7 @@ export default function MaliPhone() {
   const [memoryEditor, setMemoryEditor] = useState(null);
   const [activeMemoryId, setActiveMemoryId] = useState(null);
   const [apiConfig, setApiConfig] = useState(defaultAppState.apiConfig);
+  const [modelBadgeOpen, setModelBadgeOpen] = useState(false);
   const [modal, setModal] = useState(null);
   const [updateNoticeOpen, setUpdateNoticeOpen] = useState(false);
   const [editingCharacter, setEditingCharacter] = useState(null);
@@ -479,6 +482,7 @@ export default function MaliPhone() {
         setActiveLorebookId(null);
       }
       setApiConfig(data.apiConfig || defaultAppState.apiConfig);
+      setThemeName(data.themeName || defaultAppState.themeName);
       const initialDock = (data.dockOrder && Array.isArray(data.dockOrder)) ? data.dockOrder : DOCK_APPS;
       setDockOrder(initialDock);
       if (data.homeSlots && Array.isArray(data.homeSlots) && data.homeSlots.length === HOME_SLOT_COUNT) {
@@ -503,10 +507,10 @@ export default function MaliPhone() {
   useEffect(() => {
     if (!hydrated) return;
     const timer = setTimeout(() => {
-      saveAppState({ characters, activeCharId, chatHistory, chatModes, posts, memories, lorebooks, chatLorebookBindings, phoneInboxCache, wallet, characterWallets, screenLockTimeout, apiPresets, playerProfile, apiConfig, homeSlots, dockOrder }).catch(() => {});
+      saveAppState({ characters, activeCharId, chatHistory, chatModes, posts, memories, lorebooks, chatLorebookBindings, phoneInboxCache, wallet, characterWallets, screenLockTimeout, apiPresets, playerProfile, apiConfig, themeName, homeSlots, dockOrder }).catch(() => {});
     }, 180);
     return () => clearTimeout(timer);
-  }, [hydrated, characters, activeCharId, chatHistory, chatModes, posts, memories, lorebooks, chatLorebookBindings, phoneInboxCache, wallet, characterWallets, screenLockTimeout, apiPresets, playerProfile, apiConfig, homeSlots, dockOrder]);
+  }, [hydrated, characters, activeCharId, chatHistory, chatModes, posts, memories, lorebooks, chatLorebookBindings, phoneInboxCache, wallet, characterWallets, screenLockTimeout, apiPresets, playerProfile, apiConfig, themeName, homeSlots, dockOrder]);
   useEffect(() => {
     if (locked) return;
     const timeoutMs = screenLockTimeout === 0 ? null : Math.max(1, Number(screenLockTimeout) || 0) * 60 * 1000;
@@ -2375,7 +2379,45 @@ ${recent}`,
     return () => clearInterval(t);
   }, [hydrated, activeCharId, chatHistory, memories, apiConfig, characters]);
 
-  if (locked) return (<><style>{css}</style><div className="mp-wrap"><div className="mp-phone"><div className={`mp-lock ${unlocking?"out":""}`} onTouchStart={onLockTouchStart} onTouchEnd={onLockTouchEnd} onMouseDown={onLockMouseDown} onMouseUp={onLockMouseUp} onPointerDown={onLockPointerDown} onPointerUp={onLockPointerUp} onDoubleClick={handleUnlock}><BarClock ft={ft} /><LockClock ft={ft} fd={fd} /><div className="mp-lock-hint">向上滑動解鎖 MaliPhone（或雙擊）</div></div></div></div></>);
+  const activeTheme = THEME_PRESETS[themeName] || THEME_PRESETS["莓果蘇打"];
+  const isNightTheme = themeName === "夜色絨幕";
+  const themeCss = `
+    :root{
+      ${Object.entries(activeTheme?.vars || {}).map(([k, v]) => `${k}:${v};`).join("")}
+    }
+    .mp-wrap{background:${activeTheme?.surfaces?.wrapBg || "linear-gradient(135deg,#fce4ec 0%,#e8eaf6 50%,#e1f5fe 100%)"};}
+    .mp-phone{background:${activeTheme?.surfaces?.phoneBg || "linear-gradient(160deg,#fce4ec 0%,#f8bbd0 25%,#e1f5fe 50%,#b3e5fc 75%,#f3e5f5 100%)"};}
+    .mp-lock{background:${activeTheme?.surfaces?.lockBg || "linear-gradient(160deg,#fce4ec 0%,#f8bbd0 30%,#e8eaf6 60%,#b3e5fc 100%)"};}
+    .mp-page{background:${activeTheme?.surfaces?.pageBg || "linear-gradient(180deg,#fce4ec 0%,#fff 30%)"};}
+    ${isNightTheme ? `
+      .mp-modal,.mp-sg,.mp-cc,.mp-post,.mp-sc,.mp-cw{background:rgba(82,90,119,.96);border-color:rgba(255,255,255,.08);box-shadow:none;}
+      .mp-page{background:linear-gradient(180deg,#4c536f 0%,#474e68 42%,#3f455d 100%);}
+      .mp-cr{background:linear-gradient(180deg,#4d546f 0%,#464c66 30%,#41485f 100%);}
+      .mp-msg-ai{background:rgba(71,77,100,.96);color:#f4f7fb;border-color:rgba(255,255,255,.08);box-shadow:none;}
+      .mp-msg-ai .mp-msg-t{color:#c0c7d4;}
+      .mp-msg-user{background:linear-gradient(135deg,#95d7ff,#78bff0);color:#17324b;box-shadow:none;}
+      .mp-msg-user .mp-msg-t{color:rgba(23,50,75,.72);}
+      .mp-msg-t{font-size:10px;}
+      .mp-inp,.mp-sinp,.mp-ssel,.mp-ta{background:rgba(70,76,99,.98);color:#f4f7fb;border-color:rgba(255,255,255,.10);}
+      .mp-inp::placeholder,.mp-sinp::placeholder,.mp-ta::placeholder{color:#c0c7d4;}
+      .mp-cw-desc,.mp-ci-prev,.mp-msg-t,.mp-lbl{color:#c0c7d4;}
+      .mp-htitle,.mp-clock-big,.mp-clock-day,.mp-lock-time,.mp-cw-name,.mp-ctitle,.mp-sec-ct,.mp-persona{color:#f3f4f6;}
+      .mp-icon-l{color:#f3f4f6;}
+      .mp-ibtn,.mp-ibtn-chat{background:rgba(143,211,255,.12);border-color:rgba(143,211,255,.22);color:#b8e8ff;}
+      .mp-btn-img{background:rgba(255,255,255,.14);color:#f3f4f6;border:1px solid rgba(255,255,255,.12);}
+      .mp-btn-img.active{background:rgba(143,211,255,.18);color:#9fd4ff;border-color:rgba(143,211,255,.30);}
+      .mp-save{background:linear-gradient(135deg,#9bdcff,#7cc5ff);color:#17324b;}
+      .mp-bar,.mp-hdr,.mp-inp-bar{background:rgba(76,83,108,.92);border-color:rgba(255,255,255,.10);}
+      .mp-mode-tab.active{background:#5d657f;color:#fff;box-shadow:none;}
+      .mp-mode-tabs{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.10);}
+      .mp-page-dot.active{background:rgba(168,219,255,.82);}
+      .mp-page-dot{background:rgba(255,255,255,.18);}
+      .mp-dock{background:rgba(76,83,108,.92);border-color:rgba(255,255,255,.10);}
+      .mp-cw:hover,.mp-icon-c:hover,.mp-dock-i:hover{box-shadow:none;}
+    ` : ``}
+  `;
+
+  if (locked) return (<><style>{css}</style><style>{themeCss}</style><div className="mp-wrap"><div className="mp-phone"><div className={`mp-lock ${unlocking?"out":""}`} onTouchStart={onLockTouchStart} onTouchEnd={onLockTouchEnd} onMouseDown={onLockMouseDown} onMouseUp={onLockMouseUp} onPointerDown={onLockPointerDown} onPointerUp={onLockPointerUp} onDoubleClick={handleUnlock}><BarClock ft={ft} /><LockClock ft={ft} fd={fd} /><div className="mp-lock-hint">向上滑動解鎖 MaliPhone（或雙擊）</div></div></div></div></>);
 
   const appById = Object.fromEntries(DEFAULT_APPS.map(a => [a.id, a]));
   const renderAppIcon = (app, size = 26) => {
@@ -2698,8 +2740,27 @@ ${recent}`,
       const committedMode = getLastCommittedChatMode(currentChatChar.id);
       const hasPendingMode = selectedMode !== committedMode;
       const inputTextLimit = getChatTextLimit(selectedMode);
+      const providerShortMap = {
+        openai: "GPT",
+        claude: "Claude",
+        gemini: "Gemini",
+        vertex: "Vertex",
+        grok: "Grok",
+        openrouter: "OR",
+      };
+      const providerFullMap = {
+        openai: "OpenAI",
+        claude: "Claude",
+        gemini: "Gemini API",
+        vertex: "Vertex AI (快速模式)",
+        grok: "Grok",
+        openrouter: "OpenRouter",
+      };
+      const providerKey = apiConfig?.provider || "openai";
+      const modelShort = providerShortMap[providerKey] || "AI";
+      const modelFull = `${providerFullMap[providerKey] || providerKey} · ${apiConfig?.model || "-"}`;
       return (
-        <div className="mp-page">
+        <div className="mp-page" onClick={() => setModelBadgeOpen(false)}>
           <div className="mp-hdr">
             <div className="mp-back" onClick={() => {
               if (chatSettingsOpen) {
@@ -2709,8 +2770,29 @@ ${recent}`,
               setCurrentChatChar(null);
             }}>←</div>
             <div className="mp-htitle">{currentChatChar.name}</div>
-            <button className="mp-ibtn" style={{ marginLeft: "auto" }} onClick={() => { setChatSettingsExpandedBooks({}); setChatSettingsLorebookOpen(false); setChatroomManageOpen(false); setChatSettingsOpen(true); }}>設定</button>
+            <button
+              type="button"
+              className="mp-ibtn"
+              style={{ marginLeft: "auto" }}
+              title={modelFull}
+              onClick={(e) => {
+                e.stopPropagation();
+                setModelBadgeOpen((v) => !v);
+              }}
+            >
+              {modelShort}
+            </button>
+            <button className="mp-ibtn" onClick={() => { setChatSettingsExpandedBooks({}); setChatSettingsLorebookOpen(false); setChatroomManageOpen(false); setChatSettingsOpen(true); }}>設定</button>
           </div>
+          {modelBadgeOpen && (
+            <div
+              style={{ position: "absolute", top: 56, right: 74, zIndex: 40, background: "#fff", border: "1px solid rgba(244,143,177,.35)", borderRadius: 12, padding: "8px 10px", boxShadow: "0 8px 24px rgba(0,0,0,.12)", maxWidth: 220 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ fontSize: 11, fontWeight: 800, color: "#666", marginBottom: 2 }}>目前模型</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#222" }}>{modelFull}</div>
+            </div>
+          )}
           {chatSettingsOpen ? (
             <div className="mp-cm" style={{ paddingTop: 8 }}>
               <div className="mp-cc" style={{ marginBottom: 8 }}>
@@ -3502,6 +3584,17 @@ ${recent}`,
           </div>
           {settingsTab === "appearance" && (
             <div className="mp-sg">
+              <div className="mp-sg-t">主題</div>
+              <div className="mp-row">
+                <div className="mp-lbl">介面主題</div>
+                <select className="mp-ssel" value={themeName} onChange={(e) => setThemeName(e.target.value)}>
+                  <option value="莓果蘇打">莓果蘇打</option>
+                  <option value="夜色絨幕">夜色絨幕</option>
+                </select>
+              </div>
+              <div style={{fontSize:10,color:"var(--mp-txt-l)",lineHeight:1.6,marginBottom:10}}>
+                目前預設主題：莓果蘇打
+              </div>
               <div className="mp-sg-t">螢幕鎖定</div>
               <div className="mp-row">
                 <div className="mp-lbl">待機後自動鎖定</div>
@@ -3537,7 +3630,8 @@ ${recent}`,
                 <div className="mp-sg-t">AI 連線設定</div>
                 <div className="mp-row"><div className="mp-lbl">API 供應商</div><select className="mp-ssel" value={tc.provider} onChange={e=>{const p=API_PROVIDERS.find(x=>x.id===e.target.value);setTempConfig(c=>({...c,provider:p.id,baseUrl:getProviderBaseUrl(p.id,c?.baseUrl || ""),model:p.models[0]||""}));}}>{API_PROVIDERS.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
                 {tc.provider === "custom" && <div className="mp-row"><div className="mp-lbl">Base URL</div><input className="mp-sinp" value={tc.baseUrl} onChange={e=>setTempConfig(c=>({...c,baseUrl:e.target.value}))} placeholder="https://..." /></div>}
-                <div className="mp-row"><div className="mp-lbl">API Key</div><input className="mp-sinp" type="password" value={tc.apiKey} onChange={e=>setTempConfig(c=>({...c,apiKey:e.target.value}))} placeholder="sk-..." /></div>
+                {tc.provider === "vertex" && <div className="mp-row"><div className="mp-lbl">區域</div><input className="mp-sinp" value={tc.location || "global"} onChange={e=>setTempConfig(c=>({...c,location:e.target.value}))} placeholder="global" /></div>}
+                <div className="mp-row"><div className="mp-lbl">API Key</div><input className="mp-sinp" type="password" value={tc.apiKey} onChange={e=>setTempConfig(c=>({...c,apiKey:e.target.value}))} placeholder={tc.provider === "vertex" ? "AIza..." : "sk-..."} /></div>
                 <div className="mp-row">
                   <div className="mp-lbl" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
                     <span>模型</span>
@@ -3554,6 +3648,10 @@ ${recent}`,
                           setTempConfig(c => ({ ...c, model: models.includes(c.model) ? c.model : models[0] }));
                           showToast(`已抓取 ${models.length} 個模型`);
                         } catch (err) {
+                          if (tc.provider === "vertex") {
+                            showToast(`Vertex 抓取失敗，可直接手動輸入模型名稱：${err.message}`);
+                            return;
+                          }
                           showToast(`抓取失敗：${err.message}`);
                         } finally {
                           setFetchingModels(false);
@@ -4516,7 +4614,7 @@ ${roleProfile || "（無）"}`,
     if (x <= rect.left + edge) setHomePage(p => Math.max(0, p - 1));
     else if (x >= rect.right - edge) setHomePage(p => Math.min(maxPage, p + 1));
   };
-  return (<><style>{css}</style><div className="mp-wrap"><div className="mp-phone">
+  return (<><style>{css}</style><style>{themeCss}</style><div className="mp-wrap"><div className="mp-phone">
     <div className="mp-desk" onTouchStart={onHomeTouchStart} onTouchEnd={onHomeTouchEnd} onMouseDown={onHomeMouseDown} onMouseUp={onHomeMouseUp} onPointerDown={onHomePointerDown} onPointerUp={onHomePointerUp} onPointerMove={onHomePointerMove} onPointerCancel={cancelPointerDrag} onDragOver={onHomeDragOverPageEdge}><BarClock ft={ft} /><div className="mp-desk-scroll">
       <DeskClock ft={ft} fd={fd} />
       {activeChar && <div className="mp-cw" onClick={()=>openApp("status")}><div className="mp-av">{sanitizeUserImageUrl(activeChar.avatar)?<img src={sanitizeUserImageUrl(activeChar.avatar)} alt=""/>:"??"}</div><div className="mp-cw-info"><div className="mp-cw-name">{activeChar.name}<span className="mp-active-badge">ACTIVE</span></div><div className="mp-cw-desc">{(activeChar.statusText || activeChar.description || "在線中").slice(0,34)}</div><div style={{fontSize:10,color:"var(--mp-txt-l)",marginTop:2}}>更新：{activeChar.statusUpdatedAt ? new Date(activeChar.statusUpdatedAt).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"}) : "--:--"}</div></div></div>}
@@ -4695,7 +4793,3 @@ ${roleProfile || "（無）"}`,
     {toast && <div className="mp-toast">{toast}</div>}
   </div></div></>);
 }
-
-
-
-
