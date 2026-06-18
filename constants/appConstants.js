@@ -1,7 +1,14 @@
-const VERSION = "1.1.5";
+const VERSION = "1.1.6";
 const MALIPHONE_AI_PROXY = "https://orange-butterfly-8390.d778105.workers.dev";
 
 const CHANGELOG = {
+  "1.1.6": [
+    "06/19 更新",
+    "API 新增了 DeepSeek",
+    "聊天室新增了群聊功能",
+    "新增了聊天室釘選功能",
+    "聊天室增加了場景（可以設定地點跟小備註）",
+  ],
   "1.1.5": [
     "06/13 更新",
     "新增了 Vertex ai 可以選擇",
@@ -29,6 +36,7 @@ const CHANGELOG = {
 
 const API_PROVIDERS = [
   { id: "openai", name: "OpenAI", baseUrl: "https://api.openai.com/v1", models: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"] },
+  { id: "deepseek", name: "DeepSeek", baseUrl: "https://api.deepseek.com/v1", models: ["deepseek-v4-flash", "deepseek-v4-pro"] },
   { id: "claude", name: "Claude", baseUrl: `${MALIPHONE_AI_PROXY}/claude`, models: ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5-20251001", "claude-haiku-4-5", "claude-opus-4-6", "claude-sonnet-4-5-20250929", "claude-sonnet-4-5", "claude-opus-4-5-20251101", "claude-opus-4-5", "claude-opus-4-1-20250805", "claude-opus-4-1", "claude-sonnet-4-20250514"] },
   { id: "gemini", name: "Gemini API", baseUrl: "https://generativelanguage.googleapis.com/v1beta", models: ["gemini-2.0-flash", "gemini-1.5-pro"] },
   { id: "vertex", name: "Vertex AI (快速模式)", baseUrl: "https://aiplatform.googleapis.com/v1", models: ["gemini-3.1-pro-preview", "gemini-3-pro-preview", "gemini-3-flash-preview", "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash-001", "gemini-2.0-flash-lite-001"] },
