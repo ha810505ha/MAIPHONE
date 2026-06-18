@@ -291,6 +291,9 @@ export default function MaliPhone() {
     activeCharId: null,
     chatHistory: {},
     chatModes: {},
+    groupChats: [],
+    chatScenes: {},
+    groupScenes: {},
     posts: [],
     memories: {},
     lorebooks: [],
@@ -333,12 +336,35 @@ export default function MaliPhone() {
   const [activeCharId, setActiveCharId] = useState(defaultAppState.activeCharId);
   const [chatHistory, setChatHistory] = useState(defaultAppState.chatHistory);
   const [chatModes, setChatModes] = useState(defaultAppState.chatModes);
+  const [groupChats, setGroupChats] = useState(defaultAppState.groupChats);
+  const [chatScenes, setChatScenes] = useState(defaultAppState.chatScenes);
+  const [groupScenes, setGroupScenes] = useState(defaultAppState.groupScenes);
   const [chatInput, setChatInput] = useState("");
   const [chatImage, setChatImage] = useState(null);
   const [chatActionPanelOpen, setChatActionPanelOpen] = useState(false);
+  const [chatListTab, setChatListTab] = useState("friends");
+  const [groupCreateOpen, setGroupCreateOpen] = useState(false);
+  const [groupCreateName, setGroupCreateName] = useState("");
+  const [groupCreateRulePrompt, setGroupCreateRulePrompt] = useState("");
+  const [groupCreateMemberIds, setGroupCreateMemberIds] = useState([]);
+  const [groupCreateSearch, setGroupCreateSearch] = useState("");
+  const [groupCreateCover, setGroupCreateCover] = useState("");
+  const [groupEditOpen, setGroupEditOpen] = useState(false);
+  const [groupEditGroupId, setGroupEditGroupId] = useState(null);
+  const [groupEditName, setGroupEditName] = useState("");
+  const [groupEditRulePrompt, setGroupEditRulePrompt] = useState("");
+  const [groupEditMemberIds, setGroupEditMemberIds] = useState([]);
+  const [groupEditSearch, setGroupEditSearch] = useState("");
+  const [groupEditCover, setGroupEditCover] = useState("");
+  const [groupCoverCrop, setGroupCoverCrop] = useState(null);
+  const [groupEditCoverCrop, setGroupEditCoverCrop] = useState(null);
+  const [sceneEditor, setSceneEditor] = useState(null);
+  const groupCoverInputRef = useRef(null);
+  const groupEditCoverInputRef = useRef(null);
   const CHAT_IMAGE_MAX_BYTES = 1024 * 1024; // 1MB
   const [isTyping, setIsTyping] = useState(false);
   const [currentChatChar, setCurrentChatChar] = useState(null);
+  const [currentChatGroup, setCurrentChatGroup] = useState(null);
   const [activeMessageId, setActiveMessageId] = useState(null);
   const [messageEditor, setMessageEditor] = useState(null);
   const [posts, setPosts] = useState(defaultAppState.posts);
@@ -453,6 +479,9 @@ export default function MaliPhone() {
       setActiveCharId(data.activeCharId ?? null);
       setChatHistory(data.chatHistory || {});
       setChatModes(data.chatModes || {});
+      setGroupChats(Array.isArray(data.groupChats) ? data.groupChats : []);
+      setChatScenes(data.chatScenes && typeof data.chatScenes === "object" ? data.chatScenes : defaultAppState.chatScenes);
+      setGroupScenes(data.groupScenes && typeof data.groupScenes === "object" ? data.groupScenes : defaultAppState.groupScenes);
       setPosts(data.posts || []);
       setMemories(data.memories || {});
       setPhoneInboxCache(data.phoneInboxCache || {});
@@ -507,10 +536,17 @@ export default function MaliPhone() {
   useEffect(() => {
     if (!hydrated) return;
     const timer = setTimeout(() => {
-      saveAppState({ characters, activeCharId, chatHistory, chatModes, posts, memories, lorebooks, chatLorebookBindings, phoneInboxCache, wallet, characterWallets, screenLockTimeout, apiPresets, playerProfile, apiConfig, themeName, homeSlots, dockOrder }).catch(() => {});
+      saveAppState({ characters, activeCharId, chatHistory, chatModes, groupChats, chatScenes, groupScenes, posts, memories, lorebooks, chatLorebookBindings, phoneInboxCache, wallet, characterWallets, screenLockTimeout, apiPresets, playerProfile, apiConfig, themeName, homeSlots, dockOrder }).catch(() => {});
     }, 180);
     return () => clearTimeout(timer);
-  }, [hydrated, characters, activeCharId, chatHistory, chatModes, posts, memories, lorebooks, chatLorebookBindings, phoneInboxCache, wallet, characterWallets, screenLockTimeout, apiPresets, playerProfile, apiConfig, themeName, homeSlots, dockOrder]);
+  }, [hydrated, characters, activeCharId, chatHistory, chatModes, groupChats, chatScenes, groupScenes, posts, memories, lorebooks, chatLorebookBindings, phoneInboxCache, wallet, characterWallets, screenLockTimeout, apiPresets, playerProfile, apiConfig, themeName, homeSlots, dockOrder]);
+  useEffect(() => {
+    if (!currentChatGroup?.id) return;
+    const latest = groupChats.find((g) => g.id === currentChatGroup.id);
+    if (!latest) return;
+    if (latest === currentChatGroup) return;
+    setCurrentChatGroup(latest);
+  }, [groupChats, currentChatGroup?.id]);
   useEffect(() => {
     if (locked) return;
     const timeoutMs = screenLockTimeout === 0 ? null : Math.max(1, Number(screenLockTimeout) || 0) * 60 * 1000;
@@ -555,7 +591,7 @@ export default function MaliPhone() {
   };
   useEffect(() => {
     if (!hydrated || phonePage !== "wallet") return;
-    const selectedCharId = phoneViewCharId || activeCharId || characters[0]?.id || null;
+    const selectedCharId = phoneViewCharId || null;
     const selectedChar = characters.find((c) => c.id === selectedCharId) || null;
     const phoneWallet = selectedChar ? characterWallets[selectedChar.id] : null;
     if (!selectedChar || !phoneWallet?.summary || walletAutoRefreshBusyRef.current) return;
@@ -565,7 +601,7 @@ export default function MaliPhone() {
       .finally(() => {
         walletAutoRefreshBusyRef.current = false;
       });
-  }, [hydrated, phonePage, phoneViewCharId, activeCharId, characters, characterWallets]);
+  }, [hydrated, phonePage, phoneViewCharId, characters, characterWallets]);
   useEffect(() => {
     if (!hydrated) return;
     try {
@@ -630,6 +666,15 @@ export default function MaliPhone() {
     }, 0);
     return () => clearTimeout(t);
   }, [currentChatChar?.id, chatHistory, isTyping, chatVisibleCounts]);
+  useEffect(() => {
+    if (!currentChatGroup) return;
+    const el = chatMsgsRef.current || messagesEndRef.current?.parentElement;
+    if (!el) return;
+    const t = setTimeout(() => {
+      el.scrollTop = el.scrollHeight;
+    }, 0);
+    return () => clearTimeout(t);
+  }, [currentChatGroup?.id, groupChats, isTyping]);
   useEffect(() => {
     if (!currentChatChar) return;
     setChatVisibleCounts((prev) => {
@@ -798,8 +843,13 @@ export default function MaliPhone() {
     if (diff > 70) handleUnlock();
   };
   const openApp = (id) => {
+    suppressAppClickUntilRef.current = Date.now() + 450;
     if (id === "settings") setTempConfig({ ...apiConfig });
     if (id === "lorebook") setActiveLorebookId(null);
+    if (id === "phone") {
+      setPhonePage(phoneViewCharId ? "desktop" : "picker");
+      setPhoneActiveThreadId("player");
+    }
     setCurrentApp(id);
   };
   const closeApp = () => { setCurrentApp(null); setCurrentChatChar(null); };
@@ -819,23 +869,39 @@ export default function MaliPhone() {
     noticeLongPressTimerRef.current = null;
   };
   const saveEditedMessage = () => {
-    if (!currentChatChar || !messageEditor) return;
-    const cid = currentChatChar.id;
-    const limit = getChatTextLimit(messageEditor.mode);
-    const next = (chatHistory[cid] || []).map((m) =>
-      m.id === messageEditor.id ? { ...m, content: sanitizeText(messageEditor.content, limit) } : m
-    );
-    setChatHistory((h) => ({ ...h, [cid]: next }));
+    if (!messageEditor) return;
+    if (currentChatGroup && !currentChatChar) {
+      const next = (currentChatGroup.messages || []).map((m) =>
+        m.id === messageEditor.id ? { ...m, content: sanitizeText(messageEditor.content, 4000) } : m
+      );
+      setGroupChats((prev) => prev.map((g) => g.id === currentChatGroup.id ? { ...g, messages: next, updatedAt: Date.now() } : g));
+    } else if (currentChatChar) {
+      const cid = currentChatChar.id;
+      const limit = getChatTextLimit(messageEditor.mode);
+      const next = (chatHistory[cid] || []).map((m) =>
+        m.id === messageEditor.id ? { ...m, content: sanitizeText(messageEditor.content, limit) } : m
+      );
+      setChatHistory((h) => ({ ...h, [cid]: next }));
+    } else {
+      return;
+    }
     setMessageEditor(null);
     setActiveMessageId(null);
     showToast("訊息已更新");
   };
   const deleteMessageWithConfirm = () => {
-    if (!currentChatChar || !messageEditor) return;
+    if (!messageEditor) return;
     if (!confirm("確定要刪除這則對話嗎？")) return;
-    const cid = currentChatChar.id;
-    const next = (chatHistory[cid] || []).filter((m) => m.id !== messageEditor.id);
-    setChatHistory((h) => ({ ...h, [cid]: next }));
+    if (currentChatGroup && !currentChatChar) {
+      const next = (currentChatGroup.messages || []).filter((m) => m.id !== messageEditor.id);
+      setGroupChats((prev) => prev.map((g) => g.id === currentChatGroup.id ? { ...g, messages: next, updatedAt: Date.now() } : g));
+    } else if (currentChatChar) {
+      const cid = currentChatChar.id;
+      const next = (chatHistory[cid] || []).filter((m) => m.id !== messageEditor.id);
+      setChatHistory((h) => ({ ...h, [cid]: next }));
+    } else {
+      return;
+    }
     setMessageEditor(null);
     setActiveMessageId(null);
     showToast("訊息已刪除");
@@ -937,7 +1003,12 @@ export default function MaliPhone() {
   const getChatTextLimit = (mode) => (mode === "reality" ? REALITY_CHAT_TEXT_LIMIT : ONLINE_CHAT_TEXT_LIMIT);
   const isGemmaModel = (modelName) => /gemma/i.test(String(modelName || ""));
   const buildChatSystemPrompt = (char, memoryContext, modelName, selectedMode) => {
-    const base = `${buildSystemPrompt(char, memoryContext)}\n\n${buildModePrompt(selectedMode)}`;
+    const scene = chatScenes?.[char?.id] || {};
+    const sceneText = [
+      scene.location ? `地點：${sanitizeText(scene.location, 15)}` : "",
+      scene.note ? `小備註：${sanitizeText(scene.note, 50)}` : "",
+    ].filter(Boolean).join(" · ");
+    const base = `${buildSystemPrompt(char, memoryContext)}${sceneText ? `\n\n[目前場景]\n${sceneText}` : ""}\n\n${buildModePrompt(selectedMode)}`;
     if (!isGemmaModel(modelName)) return base;
     const compactProfile = [
       char.relationshipToUser ? `與玩家關係：${sanitizeText(char.relationshipToUser, 120)}` : "",
@@ -1017,7 +1088,93 @@ ${recentPosts || "（無）"}`;
   const getPostAuthorAvatar = (post) => post?.authorAvatar || post?.charAvatar || null;
   const getPostAuthorType = (post) => post?.authorType || (post?.charId ? "character" : "player");
   const getPlayerDisplayName = () => playerProfile?.nickname || playerProfile?.name || "你";
-  const getPlayerAvatar = () => playerProfile?.avatar || null;
+  const getPlayerAvatar = () => sanitizeUserImageUrl(playerProfile?.avatar) || null;
+  const getSceneState = (kind, id) => {
+    if (kind === "group") return groupScenes?.[id] || { location: "", note: "" };
+    return chatScenes?.[id] || { location: "", note: "" };
+  };
+  const getSceneLabel = (kind, id) => {
+    const scene = getSceneState(kind, id);
+    const bits = [
+      scene.location ? sanitizeText(scene.location, 15) : "",
+      scene.note ? sanitizeText(scene.note, 50) : "",
+    ].filter(Boolean);
+    return bits.join(" · ");
+  };
+  const renderSceneBar = (kind, id, title = "場景") => {
+    const scene = getSceneState(kind, id);
+    const label = getSceneLabel(kind, id);
+    const editing = sceneEditor?.kind === kind && sceneEditor?.id === id;
+    const icon = "⌁";
+    return (
+      <div
+        style={{
+          margin: "0 14px 6px",
+          padding: "0 2px",
+        }}
+      >
+        {!editing ? (
+          <div
+            style={{
+              fontSize: 11,
+              color: "var(--mp-txt-l)",
+              cursor: "pointer",
+              lineHeight: 1.35,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 5,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+            onClick={() => setSceneEditor({ kind, id, location: scene.location || "", note: scene.note || "" })}
+          >
+            <span style={{ flexShrink: 0 }}>{icon}</span>
+            <span style={{ fontWeight: 800, color: "var(--mp-txt)", flexShrink: 0 }}>{title}：</span>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{label || "點擊設定"}</span>
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 8 }}>
+            <input
+              className="mp-sinp"
+              value={sceneEditor.location}
+              onChange={(e) => setSceneEditor((s) => ({ ...s, location: e.target.value.slice(0, 15) }))}
+              maxLength={15}
+              placeholder="地點（15字內）"
+            />
+            <input
+              className="mp-sinp"
+              value={sceneEditor.note}
+              onChange={(e) => setSceneEditor((s) => ({ ...s, note: e.target.value.slice(0, 50) }))}
+              maxLength={50}
+              placeholder="小備註（50字內）"
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center" }}>
+              <button
+                className="mp-ibtn"
+                style={{ padding: "3px 9px", minHeight: 24, fontSize: 10 }}
+                onClick={() => {
+                  const next = {
+                    location: sanitizeText(sceneEditor.location || "", 15),
+                    note: sanitizeText(sceneEditor.note || "", 50),
+                  };
+                  if (kind === "group") {
+                    setGroupScenes((prev) => ({ ...prev, [id]: next }));
+                  } else {
+                    setChatScenes((prev) => ({ ...prev, [id]: next }));
+                  }
+                  setSceneEditor(null);
+                }}
+              >
+                完成
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
   const formatSocialCount = (value) => {
     const n = Math.max(0, Math.round(Number(value) || 0));
     if (n >= 10000) return `${(n / 10000).toFixed(n >= 100000 ? 0 : 1).replace(/\.0$/, "")}萬`;
@@ -1677,6 +1834,7 @@ ${memoryText || "（無）"}`;
       tags: Array.isArray(c.tags) ? c.tags.map((t) => sanitizeText(t, 30)).filter(Boolean).slice(0, 20) : [],
       statusText: sanitizeText(c.statusText || "", 80),
       statusUpdatedAt: c.statusUpdatedAt || 0,
+      pinned: !!c.pinned,
     };
     setCharacters(p => [...p, nc]);
     if (!activeCharId) setActiveCharId(nc.id);
@@ -1684,7 +1842,7 @@ ${memoryText || "（無）"}`;
     showToast(`${nc.name} 已加入`);
   };
   const updateCharacter = (id, patch) => {
-    setCharacters((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch, statusText: sanitizeText((patch.statusText ?? c.statusText) || "", 80) } : c)));
+    setCharacters((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch, statusText: sanitizeText((patch.statusText ?? c.statusText) || "", 80), pinned: typeof patch.pinned === "boolean" ? patch.pinned : !!c.pinned } : c)));
     setModal(null);
     setEditingCharacter(null);
     showToast("角色已更新");
@@ -2730,7 +2888,854 @@ ${recent}`,
       ))}
     </p>
   ));
+  const getChatThreadSortMeta = (char) => {
+    const msgs = chatHistory[char?.id] || [];
+    const lastMsg = msgs[msgs.length - 1] || null;
+    const lastAt = Number(lastMsg?.time || 0);
+    const pinned = !!char?.pinned || !!char?.chatPinned;
+    return { pinned, lastAt, name: String(char?.name || "") };
+  };
+  const sortChatThreads = (list) => [...list].sort((a, b) => {
+    const am = getChatThreadSortMeta(a);
+    const bm = getChatThreadSortMeta(b);
+    if (am.pinned !== bm.pinned) return am.pinned ? -1 : 1;
+    if (am.lastAt !== bm.lastAt) return bm.lastAt - am.lastAt;
+    return am.name.localeCompare(bm.name, "zh-Hant");
+  });
+  const sortGroupChats = (list) => [...list].sort((a, b) => {
+    const am = !!a?.pinned;
+    const bm = !!b?.pinned;
+    if (am !== bm) return am ? -1 : 1;
+    const at = Number(a?.updatedAt || a?.lastAt || (a?.messages || [])[((a?.messages || []).length - 1)]?.time || 0);
+    const bt = Number(b?.updatedAt || b?.lastAt || (b?.messages || [])[((b?.messages || []).length - 1)]?.time || 0);
+    if (at !== bt) return bt - at;
+    return String(a?.name || "").localeCompare(String(b?.name || ""), "zh-Hant");
+  });
+  // Pinning is a pure local UI/state action only. It must never trigger AI calls or alter prompt content.
+  const toggleChatPin = (charId) => {
+    setCharacters((prev) => {
+      const target = prev.find((c) => c.id === charId);
+      showToast(target?.pinned ? "已取消釘選" : "已釘選");
+      return prev.map((c) => (c.id === charId ? { ...c, pinned: !c.pinned } : c));
+    });
+  };
+  const getGroupMembers = (group) => {
+    const ids = Array.isArray(group?.memberIds) && group.memberIds.length ? group.memberIds : characters.map((c) => c.id);
+    return characters.filter((c) => ids.includes(c.id));
+  };
+  const compressGroupCoverFile = (file, done) => {
+    if (!file) return;
+    const r = new FileReader();
+    r.onload = () => {
+      const raw = String(r.result || "");
+      const safe = sanitizeUserImageUrl(raw);
+      if (!safe) return showToast("圖片格式不支援");
+      const img = new Image();
+      img.onload = () => {
+        const maxEdge = 720;
+        const maxSide = Math.max(img.width, img.height);
+        const scale = maxSide > maxEdge ? (maxEdge / maxSide) : 1;
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return showToast("圖片處理失敗");
+        ctx.drawImage(img, 0, 0, w, h);
+        const out = canvas.toDataURL("image/jpeg", 0.82);
+        const next = sanitizeUserImageUrl(out);
+        if (!next) return showToast("圖片處理失敗");
+        done(next);
+      };
+      img.onerror = () => showToast("圖片讀取失敗");
+      img.src = safe;
+    };
+    r.readAsDataURL(file);
+  };
+  const openGroupCoverCrop = (file, mode = "create") => {
+    if (!file) return;
+    const r = new FileReader();
+    r.onload = () => {
+      const safe = sanitizeUserImageUrl(String(r.result || ""));
+      if (!safe) return showToast("圖片格式不支援");
+      const img = new Image();
+      img.onload = () => {
+        const crop = { src: safe, width: img.width, height: img.height, zoom: 1, panX: 0, panY: 0, dragging: false, dragStartX: 0, dragStartY: 0, startPanX: 0, startPanY: 0 };
+        if (mode === "edit") setGroupEditCoverCrop(crop);
+        else setGroupCoverCrop(crop);
+      };
+      img.onerror = () => showToast("圖片讀取失敗");
+      img.src = safe;
+    };
+    r.readAsDataURL(file);
+  };
+  const applyGroupCoverCrop = (mode = "create") => {
+    const crop = mode === "edit" ? groupEditCoverCrop : groupCoverCrop;
+    if (!crop?.src) return;
+    const img = new Image();
+    img.onload = () => {
+      const size = 320;
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return showToast("圖片處理失敗");
+      const iw = img.width;
+      const ih = img.height;
+      const scale = Math.max(size / iw, size / ih) * Math.max(1, crop.zoom || 1);
+      const dw = iw * scale;
+      const dh = ih * scale;
+      const panX = Number(crop.panX || 0);
+      const panY = Number(crop.panY || 0);
+      const maxShiftX = Math.max(0, (dw - size) / 2);
+      const maxShiftY = Math.max(0, (dh - size) / 2);
+      const shiftX = (maxShiftX * panX) / 100;
+      const shiftY = (maxShiftY * panY) / 100;
+      const dx = (size - dw) / 2 + shiftX;
+      const dy = (size - dh) / 2 + shiftY;
+      ctx.drawImage(img, dx, dy, dw, dh);
+      const out = canvas.toDataURL("image/jpeg", 0.84);
+      const safe = sanitizeUserImageUrl(out);
+      if (!safe) return showToast("圖片處理失敗");
+      if (mode === "edit") {
+        setGroupEditCover(safe);
+        setGroupEditCoverCrop(null);
+      } else {
+        setGroupCreateCover(safe);
+        setGroupCoverCrop(null);
+      }
+      showToast("群組圖片已更新");
+    };
+    img.onerror = () => showToast("圖片讀取失敗");
+    img.src = crop.src;
+  };
+  const getGroupSpeakerForAssistant = (group, messages, excludeIds = []) => {
+    const members = getGroupMembers(group);
+    if (!members.length) return { name: "群組", avatar: null };
+    const used = new Set([...(excludeIds || [])]);
+    const pool = members.filter((m) => !used.has(m.id));
+    const baseList = pool.length ? pool : members;
+    const assistantCount = (messages || []).filter((m) => m.role === "assistant").length;
+    const idx = assistantCount % baseList.length;
+    const picked = baseList[idx] || baseList[0];
+    return { name: picked?.name || "群組", avatar: sanitizeUserImageUrl(picked?.avatar || null) };
+  };
+  const getGroupMemberProfileText = (char) => [
+    `角色：${char?.name || "未命名"}`,
+    char?.description ? `角色設定：${sanitizeText(char.description, 240)}` : "",
+    char?.personality ? `個性：${sanitizeText(char.personality, 180)}` : "",
+    char?.scenario ? `情境：${sanitizeText(char.scenario, 180)}` : "",
+    char?.relationshipToUser ? `與玩家關係：${sanitizeText(char.relationshipToUser, 120)}` : "",
+  ].filter(Boolean).join("\n");
+  const buildGroupChatSystemPrompt = (group, memberNames, memberProfiles, recent) => {
+    const scene = groupScenes?.[group?.id] || {};
+    const sceneText = [
+      scene.location ? `地點：${sanitizeText(scene.location, 15)}` : "",
+      scene.note ? `小備註：${sanitizeText(scene.note, 50)}` : "",
+    ].filter(Boolean).join(" · ");
+    return `你正在群組聊天室中回覆，請保持多人聊天感，不要提及系統、不要提到 AI 身份。
+群組成員：${memberNames}
+${sceneText ? `目前場景：${sceneText}\n` : ""}群組成員角色資料：
+${memberProfiles || "（無）"}
+回覆規則：
+1. 你要一次產生「這一輪群聊」的多位角色回覆，不要只回一位。
+2. 最多輸出 3 則回覆，至少 1 則。只有在自然適合時才讓多位角色發言，不要硬湊滿 3 則。
+3. 每一則回覆都要是不同角色，不能重複同一角色兩次。
+4. 每一則回覆都要維持一般聊天室的對話形式，像真的在群組裡接話，不要寫成公告、總結、條列或分析。
+5. 維持「線上聊天」感，只能講角色說出口的內容，不要加入旁白、動作、表情、內心獨白。
+6. 不要輸出像 *他站了起來*、（點頭）、【動作】這類格式，也不要寫成小說段落。
+7. 每則內容維持短到中等長度，通常 1~3 句；如果角色對這個話題很有興趣，可以讓同一段講得更完整一點，但不要超過 3 句。
+8. 若前文或這一輪明顯點名某角色，請優先安排該角色回覆。
+9. 可以有角色回玩家，也可以有角色回前一位角色，但每一則只能回一個對象，不要同時回兩個人。
+10. 可以自然接話、表態、提問、建議，並且主動推進話題，例如丟出新觀點、接續延伸、提出下一步或換一個相關話題，但幅度要小，不要一次推太多，也不要跳太遠。
+11. 不要輸出模式標籤、解說、分析或 Markdown，只能輸出 JSON。
+12. 請嚴格輸出以下格式，不要多字少字：
+{"replies":[{"speaker":"角色名稱","content":"回覆內容"}]}
+13. 如果這一輪只需要 1 則回覆，就只放 1 個物件。
+14. 需要承接最近對話：
+${recent || "（目前無內容）"}`;
+  };
+  const parseGroupReplies = (raw) => {
+    if (!raw) return [];
+    const text = String(raw).trim();
+    const candidates = [];
+    candidates.push(text);
+    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fenced?.[1]) candidates.push(fenced[1].trim());
+    const firstBrace = text.indexOf("{");
+    const lastBrace = text.lastIndexOf("}");
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      candidates.push(text.slice(firstBrace, lastBrace + 1).trim());
+    }
+    for (const candidate of candidates) {
+      try {
+        const parsed = JSON.parse(candidate);
+        const replies = Array.isArray(parsed?.replies) ? parsed.replies : Array.isArray(parsed?.turns) ? parsed.turns : [];
+        const cleaned = replies.map((item) => ({
+          speaker: sanitizeText(item?.speaker || item?.name || "", 80),
+          content: sanitizeText(item?.content || item?.reply || "", 4000).trim(),
+        })).filter((item) => item.speaker && item.content);
+        if (cleaned.length) return cleaned.slice(0, 3);
+      } catch (_) {}
+    }
+    const fallbackLines = text
+      .split(/\n+/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const m = line.match(/^(?:[-*•]|\d+[.)]?)\s*(.+?)\s*[:：]\s*(.+)$/);
+        if (m) return { speaker: sanitizeText(m[1], 80), content: sanitizeText(m[2], 4000).trim() };
+        return null;
+      })
+      .filter(Boolean);
+    return fallbackLines.slice(0, 3);
+  };
+  const currentGroupMessages = currentChatGroup ? (currentChatGroup.messages || []) : [];
+  const getCurrentGroupModelHint = () => {
+    const providerShortMap = {
+      openai: "GPT",
+      deepseek: "DS",
+      claude: "Claude",
+      gemini: "Gemini",
+      vertex: "Vertex",
+      grok: "Grok",
+      openrouter: "OR",
+    };
+    return providerShortMap[apiConfig?.provider || "openai"] || "AI";
+  };
+  const openCreateGroup = () => {
+    setGroupCreateName("");
+    setGroupCreateRulePrompt("");
+    setGroupCreateMemberIds([]);
+    setGroupCreateSearch("");
+    setGroupCreateCover("");
+    setGroupCreateOpen(true);
+  };
+  const openEditGroup = (group) => {
+    if (!group) return;
+    setGroupEditGroupId(group.id);
+    setGroupEditName(group.name || "");
+    setGroupEditRulePrompt(group.rulePrompt || "");
+    setGroupEditMemberIds(Array.isArray(group.memberIds) ? group.memberIds.slice(0, 5) : []);
+    setGroupEditSearch("");
+    setGroupEditCover(group.cover || "");
+    setGroupEditOpen(true);
+  };
+  const handleGroupCreateCoverUp = (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    openGroupCoverCrop(f, "create");
+    e.target.value = "";
+  };
+  const handleGroupEditCoverUp = (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    openGroupCoverCrop(f, "edit");
+    e.target.value = "";
+  };
+  const saveEditGroup = () => {
+    if (!groupEditGroupId) return;
+    const members = characters.filter((c) => groupEditMemberIds.includes(c.id)).slice(0, 5);
+    if (members.length === 0) {
+      showToast("請至少選擇 1 位角色");
+      return;
+    }
+    const fallbackName = `${members.map((m) => m.name).join("、")}的群組聊天室`;
+    const name = sanitizeText(groupEditName.trim() || fallbackName, 80);
+    setGroupChats((prev) => prev.map((g) => g.id === groupEditGroupId ? {
+      ...g,
+      name,
+      rulePrompt: sanitizeText(groupEditRulePrompt.trim(), 3000),
+      memberIds: members.map((m) => m.id),
+      cover: groupEditCover || "",
+      updatedAt: Date.now(),
+    } : g));
+    if (currentChatGroup?.id === groupEditGroupId) {
+      setCurrentChatGroup((prev) => prev ? {
+        ...prev,
+        name,
+        rulePrompt: sanitizeText(groupEditRulePrompt.trim(), 3000),
+        memberIds: members.map((m) => m.id),
+        cover: groupEditCover || "",
+        updatedAt: Date.now(),
+      } : prev);
+    }
+    setGroupEditOpen(false);
+    showToast("群組已更新");
+  };
+  const createGroupChat = () => {
+    if (groupCreateMemberIds.length === 0) {
+      showToast("請至少選擇 1 位角色");
+      return;
+    }
+    const members = characters.filter((c) => groupCreateMemberIds.includes(c.id)).slice(0, 5);
+    const fallbackName = `${members.map((m) => m.name).join("、")}的群組聊天室`;
+    const name = sanitizeText(groupCreateName.trim() || fallbackName, 80);
+    const payload = {
+      id: gid(),
+      name,
+      rulePrompt: sanitizeText(groupCreateRulePrompt.trim(), 3000),
+      memberIds: members.map((m) => m.id),
+      cover: groupCreateCover || "",
+      pinned: false,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      messages: [],
+    };
+    setGroupChats((prev) => [...prev, payload]);
+    setGroupCreateOpen(false);
+    setCurrentChatGroup(payload);
+    showToast(`已建立群組：${name || fallbackName}`);
+  };
+  const sendGroupMessage = async () => {
+    if (!currentChatGroup || isTyping) return;
+    const text = sanitizeText(chatInput.trim(), 4000);
+    const img = chatImage?.data || null;
+    if (!text && !img) return;
+    const nowMs = Date.now();
+    const members = getGroupMembers(currentChatGroup);
+    const now = new Date();
+    const nowDate = new Intl.DateTimeFormat("zh-TW", { year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+    const nowTime = new Intl.DateTimeFormat("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false }).format(now);
+    const nowTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Taipei";
+    const nowContext = `[系統時間] 目前時間：${nowDate} ${nowTime} (${nowTz})`;
+    const userMsg = {
+      id: gid(),
+      role: "user",
+      content: text,
+      image: img,
+      imageSummary: "",
+      time: nowMs,
+      speakerName: getPlayerDisplayName(),
+      speakerAvatar: sanitizeUserImageUrl(getPlayerAvatar()),
+    };
+    const nextMessages = [...(currentChatGroup.messages || []), userMsg];
+    setGroupChats((prev) => prev.map((g) => g.id === currentChatGroup.id ? { ...g, messages: nextMessages, updatedAt: nowMs } : g));
+    setChatInput("");
+    setChatImage(null);
+    setChatActionPanelOpen(false);
+    setIsTyping(true);
+    try {
+      const memberNames = members.map((m) => m.name).join("、") || "群組成員";
+      const memberProfiles = members
+        .map((c) => getGroupMemberProfileText(c))
+        .filter(Boolean)
+        .join("\n\n");
+      const hist = nextMessages
+        .slice(-18)
+        .map((m) => {
+          const summaryLine = m.imageSummary ? `\n[圖片摘要]\n${m.imageSummary}` : "";
+          return { role: m.role, content: `${m.content || ""}${summaryLine}`.trim(), image: m.image || null };
+        })
+        .filter(Boolean);
+      const safeHist = hist.map((m, idx) => {
+        const isLast = idx === hist.length - 1;
+        if (img && isLast) return m;
+        return { ...m, image: null };
+      });
+      const recent = safeHist.map((m) => `${m.role === "user" ? "玩家" : (m.speakerName || "群組")}: ${m.content || "[圖片]"}`).join("\n");
+      const sysP = `${nowContext}\n\n${buildGroupChatSystemPrompt(currentChatGroup, memberNames, memberProfiles, recent)}`;
+      const reply = await callAI(safeHist, apiConfig, sysP);
+      const parsedReplies = parseGroupReplies(stripInternalBlocks(reply));
+      const speakerMap = new Map(members.map((m) => [m.name, m]));
+      const usableReplies = [];
+      const seenSpeakers = new Set();
+      for (const item of parsedReplies) {
+        const matched = speakerMap.get(item.speaker) || members.find((m) => m.name === item.speaker);
+        const resolvedName = matched?.name || item.speaker;
+        if (!resolvedName || !item.content || seenSpeakers.has(resolvedName)) continue;
+        seenSpeakers.add(resolvedName);
+        usableReplies.push({
+          speakerName: resolvedName,
+          speakerAvatar: sanitizeUserImageUrl(matched?.avatar || ""),
+          content: item.content,
+        });
+      }
+      if (!usableReplies.length) {
+        const fallbackSpeaker = members[0];
+        const fallbackContent = sanitizeText(stripInternalBlocks(reply), 4000).trim();
+        if (fallbackSpeaker && fallbackContent) {
+          usableReplies.push({
+            speakerName: fallbackSpeaker.name,
+            speakerAvatar: sanitizeUserImageUrl(fallbackSpeaker.avatar || ""),
+            content: fallbackContent,
+          });
+        }
+      }
+      const replyMessages = usableReplies.map((r) => ({
+        id: gid(),
+        role: "assistant",
+        content: r.content,
+        time: Date.now(),
+        speakerName: r.speakerName,
+        speakerAvatar: r.speakerAvatar,
+      }));
+      if (replyMessages.length) {
+        let workingMessages = [...nextMessages];
+        for (let i = 0; i < replyMessages.length; i += 1) {
+          const msg = replyMessages[i];
+          if (i > 0) {
+            const lengthFactor = Math.max(0, Math.min(1, (replyMessages[i - 1]?.content?.length || 0) / 220));
+            const wait = Math.round(220 + (lengthFactor * 520));
+            await new Promise((resolve) => setTimeout(resolve, wait));
+          }
+          workingMessages = [...workingMessages, msg];
+          setGroupChats((prev) => prev.map((g) => g.id === currentChatGroup.id ? { ...g, messages: workingMessages, updatedAt: Date.now() } : g));
+        }
+      }
+      if (img && replyMessages.length) {
+        const latestReplyText = replyMessages.map((m) => m.content).join(" / ");
+        const base = text ? `{{user}} 訊息：${text}\n` : "";
+        const imageSummary = sanitizeText(`${base}重點：${latestReplyText}`.slice(0, 220), 220);
+        if (imageSummary) {
+          setGroupChats((prev) => prev.map((g) => g.id === currentChatGroup.id ? {
+            ...g,
+            messages: (g.messages || []).map((m) => (m.id === userMsg.id ? { ...m, imageSummary } : m)),
+            updatedAt: Date.now(),
+          } : g));
+        }
+      }
+    } catch (err) {
+      const notice = { id: gid(), role: "system_notice", content: `連線錯誤：${sanitizeText(err?.message || "未知錯誤", 500)}`, time: Date.now() };
+      setGroupChats((prev) => prev.map((g) => g.id === currentChatGroup.id ? { ...g, messages: [...nextMessages, notice], updatedAt: Date.now() } : g));
+    }
+    setIsTyping(false);
+  };
+  const retryGroupFromNotice = async (noticeId) => {
+    if (!currentChatGroup || isTyping) return;
+    const list = currentChatGroup.messages || [];
+    const noticeIdx = list.findIndex((m) => m.id === noticeId);
+    if (noticeIdx < 0) return;
+    const userMsg = [...list.slice(0, noticeIdx)].reverse().find((m) => m.role === "user");
+    if (!userMsg) return;
+    const nextMessages = list.filter((m) => m.id !== noticeId);
+    const members = getGroupMembers(currentChatGroup);
+    const now = new Date();
+    const nowDate = new Intl.DateTimeFormat("zh-TW", { year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+    const nowTime = new Intl.DateTimeFormat("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false }).format(now);
+    const nowTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Taipei";
+    const nowContext = `[系統時間] 目前時間：${nowDate} ${nowTime} (${nowTz})`;
+    setGroupChats((prev) => prev.map((g) => g.id === currentChatGroup.id ? { ...g, messages: nextMessages, updatedAt: Date.now() } : g));
+    setIsTyping(true);
+    try {
+      const memberNames = members.map((m) => m.name).join("、") || "群組成員";
+      const memberProfiles = members
+        .map((c) => getGroupMemberProfileText(c))
+        .filter(Boolean)
+        .join("\n\n");
+      const hist = nextMessages
+        .slice(-18)
+        .map((m) => {
+          const summaryLine = m.imageSummary ? `\n[圖片摘要]\n${m.imageSummary}` : "";
+          return { role: m.role, content: `${m.content || ""}${summaryLine}`.trim(), image: m.image || null };
+        })
+        .filter(Boolean);
+      const safeHist = hist.map((m) => ({ ...m, image: null }));
+      const recent = safeHist.map((m) => `${m.role === "user" ? "玩家" : (m.speakerName || "群組")}: ${m.content || "[圖片]"}`).join("\n");
+      const sysP = `${nowContext}\n\n${buildGroupChatSystemPrompt(currentChatGroup, memberNames, memberProfiles, recent)}`;
+      const reply = await callAI(safeHist, apiConfig, sysP);
+      const parsedReplies = parseGroupReplies(stripInternalBlocks(reply));
+      const speakerMap = new Map(members.map((m) => [m.name, m]));
+      const usableReplies = [];
+      const seenSpeakers = new Set();
+      for (const item of parsedReplies) {
+        const matched = speakerMap.get(item.speaker) || members.find((m) => m.name === item.speaker);
+        const resolvedName = matched?.name || item.speaker;
+        if (!resolvedName || !item.content || seenSpeakers.has(resolvedName)) continue;
+        seenSpeakers.add(resolvedName);
+        usableReplies.push({
+          speakerName: resolvedName,
+          speakerAvatar: sanitizeUserImageUrl(matched?.avatar || ""),
+          content: item.content,
+        });
+      }
+      if (!usableReplies.length) {
+        const fallbackSpeaker = members[0];
+        const fallbackContent = sanitizeText(stripInternalBlocks(reply), 4000).trim();
+        if (fallbackSpeaker && fallbackContent) {
+          usableReplies.push({
+            speakerName: fallbackSpeaker.name,
+            speakerAvatar: sanitizeUserImageUrl(fallbackSpeaker.avatar || ""),
+            content: fallbackContent,
+          });
+        }
+      }
+      if (usableReplies.length) {
+        let workingMessages = [...nextMessages];
+        for (let i = 0; i < usableReplies.length; i += 1) {
+          const item = usableReplies[i];
+          if (i > 0) {
+            const prevLen = usableReplies[i - 1]?.content?.length || 0;
+            const lengthFactor = Math.max(0, Math.min(1, prevLen / 220));
+            const wait = Math.round(220 + (lengthFactor * 520));
+            await new Promise((resolve) => setTimeout(resolve, wait));
+          }
+          const msg = {
+            id: gid(),
+            role: "assistant",
+            content: item.content,
+            time: Date.now(),
+            speakerName: item.speakerName,
+            speakerAvatar: item.speakerAvatar,
+          };
+          workingMessages = [...workingMessages, msg];
+          setGroupChats((prev) => prev.map((g) => g.id === currentChatGroup.id ? { ...g, messages: workingMessages, updatedAt: Date.now() } : g));
+        }
+      }
+    } catch (err) {
+      const notice = { id: gid(), role: "system_notice", content: `連線錯誤：${sanitizeText(err?.message || "未知錯誤", 500)}`, time: Date.now() };
+      setGroupChats((prev) => prev.map((g) => g.id === currentChatGroup.id ? { ...g, messages: [...nextMessages, notice], updatedAt: Date.now() } : g));
+    }
+    setIsTyping(false);
+  };
+  const renderGroupMemberGrid = (selectedIds, setSelectedIds, search, setSearch) => (
+    <>
+      <input
+        className="mp-sinp"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="搜尋角色名稱"
+      />
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, fontSize: 11, color: "var(--mp-txt-l)", marginTop: 6 }}>
+        <span>最多 5 位角色</span>
+        <span>已選 {selectedIds.length}/5</span>
+      </div>
+      <div style={{ marginTop: 6, maxHeight: 300, overflowY: "auto", paddingRight: 2 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 4 }}>
+          {sortChatThreads(characters)
+            .filter((c) => c.name?.includes(search.trim()) || !search.trim())
+            .map((c) => {
+              const selected = selectedIds.includes(c.id);
+              const disabled = !selected && selectedIds.length >= 5;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  className="mp-group-pick"
+                  style={{
+                    minHeight: 94,
+                    border: "none",
+                    boxShadow: "none",
+                    opacity: disabled ? 0.45 : (selected ? 1 : 0.5),
+                    background: "transparent",
+                  }}
+                  onClick={() => {
+                    if (selected) {
+                      setSelectedIds((prev) => prev.filter((id) => id !== c.id));
+                      return;
+                    }
+                    if (selectedIds.length >= 5) {
+                      showToast("最多只能加入 5 位角色");
+                      return;
+                    }
+                    setSelectedIds((prev) => [...prev, c.id]);
+                  }}
+                >
+                  <div style={{ position: "relative", width: "100%", aspectRatio: "1 / 1", borderRadius: 14, overflow: "hidden", background: "transparent", display: "flex", alignItems: "end", justifyContent: "start" }}>
+                    {sanitizeUserImageUrl(c.avatar) ? (
+                      <img src={sanitizeUserImageUrl(c.avatar)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    ) : (
+                      <div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", background: "linear-gradient(135deg,#fce4ec,#e1f5fe)", color: "#5c6f7b", fontSize: 24, fontWeight: 800 }}>
+                        {c.name?.[0] || "🙂"}
+                      </div>
+                    )}
+                    <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "12px 5px 6px", background: "linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,.48) 100%)", color: "#fff", fontSize: 11, fontWeight: 700, lineHeight: 1.05, boxSizing: "border-box" }}>
+                      <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</div>
+                    </div>
+                    {selected && <div style={{ position: "absolute", top: 4, right: 4, width: 16, height: 16, borderRadius: 999, background: "rgba(184,122,65,.95)", color: "#fff", display: "grid", placeItems: "center", fontSize: 10, boxShadow: "0 4px 10px rgba(0,0,0,.18)" }}>✓</div>}
+                  </div>
+                </button>
+              );
+            })}
+        </div>
+      </div>
+    </>
+  );
   const renderChat = () => {
+    if (currentChatGroup) {
+      const msgs = currentChatGroup.messages || [];
+      const visibleMsgs = msgs;
+      const members = getGroupMembers(currentChatGroup);
+      const providerShortMap = {
+        openai: "GPT",
+        deepseek: "DS",
+        claude: "Claude",
+        gemini: "Gemini",
+        vertex: "Vertex",
+        grok: "Grok",
+        openrouter: "OR",
+      };
+      const providerFullMap = {
+        openai: "OpenAI",
+        deepseek: "DeepSeek",
+        claude: "Claude",
+        gemini: "Gemini API",
+        vertex: "Vertex AI (快速模式)",
+        grok: "Grok",
+        openrouter: "OpenRouter",
+      };
+      const modelShort = providerShortMap[apiConfig?.provider || "openai"] || "AI";
+      const providerKey = apiConfig?.provider || "openai";
+      const modelFull = `${providerFullMap[providerKey] || providerKey} · ${apiConfig?.model || "-"}`;
+      return (
+        <div className="mp-page" onClick={() => setModelBadgeOpen(false)} style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
+          <div className="mp-hdr">
+            <div className="mp-back" onClick={() => setCurrentChatGroup(null)}>←</div>
+            <button
+              type="button"
+              className={`mp-chat-pin ${currentChatGroup?.pinned ? "active" : ""}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                setGroupChats((prev) => prev.map((g) => g.id === currentChatGroup.id ? { ...g, pinned: !g.pinned } : g));
+              }}
+              title={currentChatGroup?.pinned ? "取消釘選" : "釘選聊天室"}
+            >
+              {currentChatGroup?.pinned ? "♥" : "♡"}
+            </button>
+            <div className="mp-htitle" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentChatGroup.name}</div>
+            <button
+              type="button"
+              className="mp-ibtn"
+              style={{ marginLeft: "auto" }}
+              title={modelFull}
+              onClick={(e) => {
+                e.stopPropagation();
+                setModelBadgeOpen((v) => !v);
+              }}
+            >
+              {modelShort}
+            </button>
+            <button className="mp-ibtn" onClick={() => openEditGroup(currentChatGroup)}>設定</button>
+          </div>
+          {modelBadgeOpen && (
+            <div
+              style={{ position: "absolute", top: 56, right: 74, zIndex: 40, background: "#fff", border: "1px solid rgba(244,143,177,.35)", borderRadius: 12, padding: "8px 10px", boxShadow: "0 8px 24px rgba(0,0,0,.12)", maxWidth: 220 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ fontSize: 11, fontWeight: 800, color: "#666", marginBottom: 2 }}>目前模型</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#222" }}>{modelFull}</div>
+            </div>
+          )}
+          <div className="mp-cm" style={{ paddingTop: 8, paddingLeft: 0, paddingRight: 0, paddingBottom: 0, display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+            <div style={{ margin: "0 14px 8px", fontSize: 11, color: "var(--mp-txt-l)", lineHeight: 1.5, textAlign: "center" }}>
+              群組成員：{members.length ? members.map((m) => m.name).join("、") : "暫無成員"}
+            </div>
+            {renderSceneBar("group", currentChatGroup.id, "場景")}
+            <div className="mp-cr" style={{ flex: 1, minHeight: 0 }}>
+              <div className="mp-msgs" ref={chatMsgsRef} style={{ flex: 1, minHeight: 0, paddingBottom: 12 }}>
+                {visibleMsgs.map((m) => (
+                  m.role === "system_notice" ? (
+                    <div key={m.id} className="mp-msg-note-wrap">
+                      <div className="mp-msg-note">
+                        <div>{m.content}</div>
+                        {String(m.content || "").startsWith("連線錯誤：") && (
+                          <button className="mp-retry-btn" disabled={isTyping} onClick={(e) => { e.stopPropagation(); retryGroupFromNotice(m.id); }}>
+                            重新生成
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                  <div key={m.id} className={`mp-msg-wrap ${m.role === "user" ? "mp-msg-wrap-user mp-group-msg-wrap-user" : "mp-msg-wrap-ai mp-group-msg-wrap-ai"}`}>
+                    <div className="mp-group-msg-meta">
+                      <div className="mp-group-msg-avatar">
+                        {m.role === "user"
+                          ? (getPlayerAvatar() ? <img src={getPlayerAvatar()} alt="" /> : null)
+                          : (m.speakerAvatar ? <img src={m.speakerAvatar} alt="" /> : "👥")}
+                      </div>
+                      {m.role !== "user" && <div className="mp-group-msg-name">{m.speakerName || "群組"}</div>}
+                    </div>
+                    <div
+                      className={`mp-msg ${m.role === "user" ? "mp-msg-user" : "mp-msg-ai"}`}
+                      onClick={() => setActiveMessageId((p) => (p === m.id ? null : m.id))}
+                    >
+                      {m.image && <img src={`data:image/png;base64,${m.image}`} className="mp-msg-img" alt="" />}
+                      {m.content && <div>{m.content}</div>}
+                      <div className="mp-msg-t">{new Date(m.time).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"})}</div>
+                    </div>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      <button
+                        className={`mp-msg-editbtn ${activeMessageId === m.id ? "" : "mp-msg-editbtn-hidden"}`}
+                        onClick={() => setMessageEditor({ id: m.id, content: m.content || "", mode: "online" })}
+                      >
+                        ✎
+                      </button>
+                      <button
+                        className={`mp-msg-editbtn ${activeMessageId === m.id ? "" : "mp-msg-editbtn-hidden"}`}
+                        onClick={() => {
+                          if (!window.confirm("確定要刪除這則對話嗎？")) return;
+                          if (currentChatGroup) {
+                            const next = (currentChatGroup.messages || []).filter((x) => x.id !== m.id);
+                            setGroupChats((prev) => prev.map((g) => g.id === currentChatGroup.id ? { ...g, messages: next, updatedAt: Date.now() } : g));
+                          }
+                          setActiveMessageId(null);
+                        }}
+                      >
+                        🗑
+                      </button>
+                    </div>
+                  </div>
+                  )
+                ))}
+                {visibleMsgs.length === 0 && <div style={{fontSize:11,color:"var(--mp-txt-l)",textAlign:"center",padding:"18px 0"}}>目前沒有群組訊息</div>}
+                {isTyping && <div className="mp-typing"><span /><span /><span /></div>}
+                <div ref={messagesEndRef} />
+              </div>
+            </div>
+            {chatImage && (
+              <div className="mp-imgprev">
+                <img src={`data:${chatImage.mime};base64,${chatImage.data}`} alt="" />
+                <div style={{ fontSize: 10, color: "var(--mp-txt-l)", marginTop: 4 }}>
+                  {chatImage.width}x{chatImage.height} · {Math.round(chatImage.bytes / 1024)}KB
+                </div>
+                <button onClick={() => setChatImage(null)}>×</button>
+              </div>
+            )}
+            {chatActionPanelOpen && (
+              <div className="mp-chat-actions">
+                <button className="mp-chat-action" onClick={() => { setChatActionPanelOpen(false); fileInputRef.current?.click(); }}>
+                  <span className="mp-chat-action-i">🖼</span>
+                  <span>相片</span>
+                </button>
+                <button className="mp-chat-action" disabled>
+                  <span className="mp-chat-action-i">📅</span>
+                  <span>日程</span>
+                </button>
+                <button className="mp-chat-action" disabled>
+                  <span className="mp-chat-action-i">⚙️</span>
+                  <span>更多</span>
+                </button>
+              </div>
+            )}
+            <div className="mp-inp-bar" style={{ borderTopLeftRadius: 0, borderTopRightRadius: 0 }}>
+              <button className={`mp-btn mp-btn-img ${chatActionPanelOpen ? "active" : ""}`} onClick={()=>setChatActionPanelOpen((v) => !v)}>＋</button>
+              <input type="file" ref={fileInputRef} accept="image/*" style={{display:"none"}} onChange={handleImgUp} />
+              <div className="mp-inp-wrap">
+                <textarea
+                  className="mp-inp"
+                  placeholder="輸入群組訊息..."
+                  rows={1}
+                  maxLength={4000}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="sentences"
+                  spellCheck={false}
+                  data-form-type="other"
+                  data-lpignore="true"
+                  value={chatInput}
+                  onChange={e=>setChatInput(e.target.value.slice(0, 4000))}
+                  onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendGroupMessage();}}}
+                />
+                <div className="mp-char-counter">{chatInput.length}/4000</div>
+              </div>
+              <button className="mp-btn mp-btn-send" onClick={sendGroupMessage}>➤</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    if (!currentChatChar) {
+      return (
+        <div className="mp-page" onClick={() => setModelBadgeOpen(false)}>
+          <div className="mp-hdr">
+            <div className="mp-back" onClick={closeApp}>←</div>
+            <div className="mp-htitle">聊天</div>
+            {chatListTab === "groups" && (
+              <button
+                type="button"
+                className="mp-ibtn"
+                style={{ marginLeft: "auto", padding: "4px 10px", background: "linear-gradient(135deg,#f9e6ee,#fff6fb)" }}
+                onClick={openCreateGroup}
+                title="新增群組"
+              >
+                ＋
+              </button>
+            )}
+          </div>
+          <div className="mp-cm" style={{ paddingTop: 2 }}>
+            <div className="mp-chat-switch">
+              <button
+                className={`mp-chat-switch-btn ${chatListTab === "friends" ? "active" : ""}`}
+                onClick={() => setChatListTab("friends")}
+              >
+                <span>好友</span>
+              </button>
+              <button
+                className={`mp-chat-switch-btn ${chatListTab === "groups" ? "active" : ""}`}
+                onClick={() => setChatListTab("groups")}
+              >
+                <span>群組</span>
+              </button>
+            </div>
+            {chatListTab === "friends" ? (
+              characters.length === 0 ? (
+                <div className="mp-empty mp-chat-empty">
+                  <div className="mp-empty-i">💬</div>
+                  <div className="mp-empty-t">還沒有好友聊天室</div>
+                </div>
+              ) : (
+                <div className="mp-chat-list mp-chat-list-line">
+                  {sortChatThreads(characters).map((c) => {
+                    const ms = chatHistory[c.id] || [];
+                    const lm = ms[ms.length - 1];
+                    const isPinned = !!c.pinned || !!c.chatPinned;
+                    return (
+                      <button key={c.id} className={`mp-chat-row ${isPinned ? "pinned" : ""}`} onClick={() => setCurrentChatChar(c)}>
+                        <div className="mp-chat-row-avatar">
+                          {sanitizeUserImageUrl(c.avatar) ? <img src={sanitizeUserImageUrl(c.avatar)} alt="" /> : (c.name?.[0] || "🙂")}
+                        </div>
+                        <div className="mp-chat-row-body">
+                          <div className="mp-chat-row-top">
+                            <div className="mp-chat-row-name">
+                              {isPinned && <span className="mp-chat-row-pin">♥</span>}
+                              <span>{c.name}</span>
+                            </div>
+                            <div className="mp-chat-row-time">{lm?.time ? new Date(lm.time).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" }) : ""}</div>
+                          </div>
+                          <div className="mp-chat-row-preview">{lm?.content || "目前無訊息"}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )
+            ) : (
+              <div className="mp-chat-list mp-chat-list-line">
+                {sortGroupChats(groupChats).map((g) => {
+                  const msgs = g.messages || [];
+                  const lm = msgs[msgs.length - 1];
+                  const isPinned = !!g.pinned;
+                  const members = getGroupMembers(g);
+                  return (
+                    <button key={g.id} className={`mp-chat-row ${isPinned ? "pinned" : ""}`} onClick={() => setCurrentChatGroup(g)}>
+                      <div className="mp-chat-row-avatar">
+                        {sanitizeUserImageUrl(g.cover)
+                          ? <img src={sanitizeUserImageUrl(g.cover)} alt="" />
+                          : (members[0]?.avatar && sanitizeUserImageUrl(members[0].avatar)
+                            ? <img src={sanitizeUserImageUrl(members[0].avatar)} alt="" />
+                            : "👥")}
+                      </div>
+                      <div className="mp-chat-row-body">
+                        <div className="mp-chat-row-top">
+                          <div className="mp-chat-row-name">
+                            {isPinned && <span className="mp-chat-row-pin">♥</span>}
+                            <span>{g.name}</span>
+                          </div>
+                          <div className="mp-chat-row-time">{lm?.time ? new Date(lm.time).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" }) : ""}</div>
+                        </div>
+                        <div className="mp-chat-row-preview">{lm?.content || `${members.length || characters.length} 位成員`}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
     if (currentChatChar) {
       const msgs = chatHistory[currentChatChar.id] || [];
       const visibleCount = Math.max(50, chatVisibleCounts[currentChatChar.id] || 50);
@@ -2742,6 +3747,7 @@ ${recent}`,
       const inputTextLimit = getChatTextLimit(selectedMode);
       const providerShortMap = {
         openai: "GPT",
+        deepseek: "DS",
         claude: "Claude",
         gemini: "Gemini",
         vertex: "Vertex",
@@ -2750,6 +3756,7 @@ ${recent}`,
       };
       const providerFullMap = {
         openai: "OpenAI",
+        deepseek: "DeepSeek",
         claude: "Claude",
         gemini: "Gemini API",
         vertex: "Vertex AI (快速模式)",
@@ -2769,7 +3776,19 @@ ${recent}`,
               }
               setCurrentChatChar(null);
             }}>←</div>
-            <div className="mp-htitle">{currentChatChar.name}</div>
+            <button
+              type="button"
+              className={`mp-chat-pin ${currentChatChar?.pinned ? "active" : ""}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                toggleChatPin(currentChatChar.id);
+              }}
+              title={currentChatChar?.pinned ? "取消釘選" : "釘選聊天室"}
+            >
+              {currentChatChar?.pinned ? "♥" : "♡"}
+            </button>
+            <div className="mp-htitle" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentChatChar.name}</div>
             <button
               type="button"
               className="mp-ibtn"
@@ -2930,6 +3949,7 @@ ${recent}`,
             </div>
           ) : (
             <div className="mp-cr">
+              {renderSceneBar("char", currentChatChar.id, "場景")}
             <div
               className="mp-msgs"
               ref={chatMsgsRef}
@@ -3905,7 +4925,7 @@ ${recent}`,
             <div className="mp-row">
               <div className="mp-lbl">大頭貼</div>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
-                <div className="mp-av" style={{cursor:"pointer"}} onClick={() => playerAvatarRef.current?.click()}>
+                <div className="mp-av" style={{cursor:"pointer",width:84,height:84,borderRadius:22}} onClick={() => playerAvatarRef.current?.click()}>
                   {sanitizeUserImageUrl(playerProfile?.avatar) ? <img src={sanitizeUserImageUrl(playerProfile?.avatar)} alt="" /> : "🐱"}
                 </div>
                 <input type="file" ref={playerAvatarRef} accept="image/*" style={{display:"none"}} onChange={handlePlayerAvatarUpload} />
@@ -4126,7 +5146,8 @@ ${recent}`,
   const reconcileWalletLedger = (openingBalance, transactions, limit = CHARACTER_WALLET_TX_LIMIT) => {
     let balance = Math.max(0, Math.round(Number(openingBalance) || 0));
     const reconciled = [];
-    (transactions || []).forEach((tx) => {
+    const ordered = [...(transactions || [])].sort((a, b) => Number(a?.time || 0) - Number(b?.time || 0));
+    ordered.forEach((tx) => {
       if (!tx) return;
       const type = tx.type === "income" ? "income" : "expense";
       let amount = Math.max(1, Math.round(Number(tx.amount) || 0));
@@ -4147,12 +5168,15 @@ ${recent}`,
         time: Number(tx.time) || Date.now(),
       });
     });
-    return { balance, transactions: reconciled.slice(0, limit) };
+    return { balance, transactions: reconciled.slice(0, limit).reverse() };
   };
   const buildWalletRoleProfile = (char) => [
     char.description ? `角色描述：${sanitizeText(char.description, 900)}` : "",
     char.systemPrompt ? `系統提示詞：${sanitizeText(char.systemPrompt, 600)}` : "",
+    char.personality ? `個性：${sanitizeText(char.personality, 500)}` : "",
+    char.scenario ? `情境：${sanitizeText(char.scenario, 500)}` : "",
     char.relationshipToUser ? `與玩家關係：${sanitizeText(char.relationshipToUser, 120)}` : "",
+    Array.isArray(char.tags) && char.tags.length ? `標籤：${sanitizeText(char.tags.join("、"), 120)}` : "",
   ].filter(Boolean).join("\n");
   const buildWalletRefreshHistory = (cw) => (cw?.transactions || [])
     .slice(0, 3)
@@ -4193,13 +5217,15 @@ ${refreshHistory || "（無）"}
           : `請根據角色設定，生成角色「${char.name}」自己的錢包狀態與錢包摘要，只輸出有效 JSON。
 規則：
 1) balance 是合理餘額，整數，不要太誇張。
-2) transactions 產生 8~12 筆，包含 income/expense，金額與備註要貼近角色職業、生活、興趣。
-3) 若角色是醫生，收入/支出可部分和醫療、值班、書籍、交通有關，但不能全部都醫療；也要有飲食、娛樂、興趣、人際等生活花費。
-4) 不要提到 {{user}}，這是角色自己的錢包。
-5) 另外產生一份只用於錢包的 summary，並同步產生 walletProfile。walletProfile 只保留職業、收入來源、消費習慣、生活風格、財務風格等財務相關資訊，不要包含對 {{user}} 的態度、性行為、曖昧互動或私密感情。
-6) walletProfile 會用於之後的錢包刷新，請寫得簡短、穩定、方便長期重複使用。
-7) 所有支出必須能被目前餘額支撐，若錢不夠，請改成較小額支出、臨時收入、借貸、預支，或直接不產生支出。
-8) time 使用目前時間附近的毫秒 timestamp，可用 ${Date.now()} 往前推。
+2) transactions 產生 8~12 筆，包含 income/expense，金額與備註要貼近角色職業、生活、興趣、作息、社交圈。
+3) 收入/支出要明顯符合角色身分，不要出現與角色設定衝突的來源或消費。例：學生不要有高薪月薪；居家型角色不要頻繁高額外出消費；上班族收入可來自薪資/兼職/獎金，但不要莫名其妙像企業老闆。
+4) 若角色是醫生，收入/支出可部分和醫療、值班、書籍、交通有關，但不能全部都醫療；也要有飲食、娛樂、興趣、人際等生活花費。
+5) 不要提到 {{user}}，這是角色自己的錢包。
+6) 另外產生一份只用於錢包的 summary，並同步產生 walletProfile。walletProfile 只保留職業、收入來源、消費習慣、生活風格、財務風格等財務相關資訊，不要包含對 {{user}} 的態度、性行為、曖昧互動或私密感情。
+7) walletProfile 會用於之後的錢包刷新，請寫得簡短、穩定、方便長期重複使用。
+8) 所有支出必須能被目前餘額支撐，若錢不夠，請改成較小額支出、臨時收入、借貸、預支，或直接不產生支出。
+9) 每筆流水的 note 要像角色真的會有的消費/收入，不要是泛用模板。
+10) time 使用目前時間附近的毫秒 timestamp，可用 ${Date.now()} 往前推。
 格式：
 {"balance":1200,"summary":"一句 20~50 字生活摘要","walletProfile":"一句更短的錢包摘要","transactions":[{"type":"income","amount":3000,"note":"薪資入帳","time":1710000000000}]}
 
@@ -4217,8 +5243,9 @@ ${roleProfile || "（無）"}`,
         const mergedTransactions = isRefresh
           ? [...(next.transactions || []), ...(current.transactions || [])].slice(0, CHARACTER_WALLET_TX_LIMIT)
           : (next.transactions || []).slice(0, CHARACTER_WALLET_TX_LIMIT);
+        const orderedTransactions = [...mergedTransactions].sort((a, b) => Number(a?.time || 0) - Number(b?.time || 0));
         const openingBalance = isRefresh ? (current.balance || 0) : (Number(parsed.balance) || 0);
-        const reconciled = reconcileWalletLedger(openingBalance, mergedTransactions, CHARACTER_WALLET_TX_LIMIT);
+        const reconciled = reconcileWalletLedger(openingBalance, orderedTransactions, CHARACTER_WALLET_TX_LIMIT);
         return {
           ...prev,
           [char.id]: {
@@ -4324,7 +5351,7 @@ ${roleProfile || "（無）"}`,
   };
 
   const renderPhone = () => {
-    const selectedCharId = phoneViewCharId || activeCharId || characters[0]?.id || null;
+    const selectedCharId = phoneViewCharId || null;
     const selectedChar = characters.find((c) => c.id === selectedCharId) || null;
     const playerMsgs = selectedChar ? (chatHistory[selectedChar.id] || []).slice(-20) : [];
     const npcThreads = selectedChar ? (phoneInboxCache[selectedChar.id]?.threads || []) : [];
@@ -4790,6 +5817,204 @@ ${roleProfile || "（無）"}`,
         </div>
       </div>
     )}
-    {toast && <div className="mp-toast">{toast}</div>}
+    {groupCreateOpen && (
+      <div className="mp-overlay" onClick={() => setGroupCreateOpen(false)}>
+        <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="mp-modal-t">新增群組</div>
+          <div className="mp-row">
+            <div className="mp-lbl">群組名稱</div>
+            <input
+              className="mp-sinp"
+              value={groupCreateName}
+              onChange={(e) => setGroupCreateName(e.target.value)}
+              placeholder="可留空，建立後再命名"
+            />
+            <div style={{ fontSize: 11, color: "var(--mp-txt-l)", marginTop: 6 }}>未命名時，會自動依成員名稱生成群組名。</div>
+          </div>
+            <div className="mp-row">
+            <div className="mp-lbl">群組圖片</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div className="mp-av" style={{ cursor: "pointer" }} onClick={() => groupCoverInputRef.current?.click()}>
+                {groupCreateCover ? <img src={groupCreateCover} alt="" /> : "👥"}
+              </div>
+              <input type="file" ref={groupCoverInputRef} accept="image/*" style={{ display: "none" }} onChange={handleGroupCreateCoverUp} />
+              <button className="mp-ibtn" style={{ padding: "6px 12px", fontSize: 12, lineHeight: 1 }} onClick={() => groupCoverInputRef.current?.click()}>上傳</button>
+              <button className="mp-ibtn-r" style={{ padding: "6px 12px", fontSize: 12, lineHeight: 1 }} onClick={() => setGroupCreateCover("")}>移除</button>
+            </div>
+            <div style={{ fontSize: 11, color: "var(--mp-txt-l)", marginTop: 6 }}>會顯示在群組聊天室列表。</div>
+          </div>
+          <div className="mp-row">
+            <div className="mp-lbl">要加入的角色</div>
+            {renderGroupMemberGrid(groupCreateMemberIds, setGroupCreateMemberIds, groupCreateSearch, setGroupCreateSearch)}
+          </div>
+          <div className="mp-row">
+            <div className="mp-lbl">群組聊天規則</div>
+            <textarea
+              className="mp-ta"
+              value={groupCreateRulePrompt}
+              onChange={(e) => setGroupCreateRulePrompt(e.target.value)}
+              placeholder="例如：自然聊天、可互相吐槽、不要提系統..."
+              style={{ minHeight: 120, resize: "vertical" }}
+            />
+            <div style={{ fontSize: 11, color: "var(--mp-txt-l)", marginTop: 6 }}>之後可作為群組 AI 回覆的專屬 Prompt。</div>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+            <button className="mp-save" style={{ flex: 1, background: "linear-gradient(135deg,#b0bec5,#90a4ae)" }} onClick={() => setGroupCreateOpen(false)}>取消</button>
+            <button className="mp-save" style={{ flex: 1 }} onClick={createGroupChat}>建立群組</button>
+          </div>
+        </div>
+      </div>
+    )}
+    {groupEditOpen && (
+      <div className="mp-overlay" onClick={() => setGroupEditOpen(false)}>
+        <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="mp-modal-t">編輯群組</div>
+          <div className="mp-row">
+            <div className="mp-lbl">群組名稱</div>
+            <input
+              className="mp-sinp"
+              value={groupEditName}
+              onChange={(e) => setGroupEditName(e.target.value)}
+              placeholder="可留空，儲存後再命名"
+            />
+            <div style={{ fontSize: 11, color: "var(--mp-txt-l)", marginTop: 6 }}>未命名時，會自動依成員名稱生成群組名。</div>
+          </div>
+          <div className="mp-row">
+            <div className="mp-lbl">群組圖片</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div className="mp-av" style={{ cursor: "pointer" }} onClick={() => groupEditCoverInputRef.current?.click()}>
+                {groupEditCover ? <img src={groupEditCover} alt="" /> : "👥"}
+              </div>
+              <input type="file" ref={groupEditCoverInputRef} accept="image/*" style={{ display: "none" }} onChange={handleGroupEditCoverUp} />
+              <button className="mp-ibtn" style={{ padding: "6px 12px", fontSize: 12, lineHeight: 1 }} onClick={() => groupEditCoverInputRef.current?.click()}>上傳</button>
+              <button className="mp-ibtn-r" style={{ padding: "6px 12px", fontSize: 12, lineHeight: 1 }} onClick={() => setGroupEditCover("")}>移除</button>
+            </div>
+            <div style={{ fontSize: 11, color: "var(--mp-txt-l)", marginTop: 6 }}>會顯示在群組聊天室列表。</div>
+          </div>
+          <div className="mp-row">
+            <div className="mp-lbl">要加入的角色</div>
+            {renderGroupMemberGrid(groupEditMemberIds, setGroupEditMemberIds, groupEditSearch, setGroupEditSearch)}
+          </div>
+          <div className="mp-row">
+            <div className="mp-lbl">群組聊天規則</div>
+            <textarea
+              className="mp-ta"
+              value={groupEditRulePrompt}
+              onChange={(e) => setGroupEditRulePrompt(e.target.value)}
+              placeholder="例如：自然聊天、可互相吐槽、不要提系統..."
+              style={{ minHeight: 120, resize: "vertical" }}
+            />
+            <div style={{ fontSize: 11, color: "var(--mp-txt-l)", marginTop: 6 }}>之後可作為群組 AI 回覆的專屬 Prompt。</div>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+            <button className="mp-save" style={{ flex: 1, background: "linear-gradient(135deg,#b0bec5,#90a4ae)" }} onClick={() => setGroupEditOpen(false)}>取消</button>
+            <button className="mp-save" style={{ flex: 1 }} onClick={saveEditGroup}>儲存</button>
+          </div>
+          </div>
+        </div>
+      )}
+      {(groupCoverCrop || groupEditCoverCrop) && (
+        <div className="mp-overlay" onClick={() => { setGroupCoverCrop(null); setGroupEditCoverCrop(null); }}>
+          <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="mp-modal-t">裁切群組圖片</div>
+            <div style={{ fontSize: 11, color: "var(--mp-txt-l)", marginBottom: 10 }}>可拖曳調整位置，完成後會自動壓縮。</div>
+            <div
+              style={{ width: 220, height: 220, borderRadius: 18, overflow: "hidden", border: "1px solid rgba(244,143,177,.35)", background: "#fff", touchAction: "none", cursor: "grab", position: "relative", margin: "0 auto" }}
+              onPointerDown={(e) => {
+                const crop = groupEditCoverCrop || groupCoverCrop;
+                if (!crop) return;
+                e.preventDefault();
+                try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch (_) {}
+                const px = e.clientX ?? 0;
+                const py = e.clientY ?? 0;
+                const next = { ...crop, dragging: true, dragStartX: px, dragStartY: py, startPanX: crop.panX || 0, startPanY: crop.panY || 0 };
+                if (groupEditCoverCrop) setGroupEditCoverCrop(next); else setGroupCoverCrop(next);
+              }}
+              onPointerMove={(e) => {
+                const crop = groupEditCoverCrop || groupCoverCrop;
+                if (!crop?.dragging) return;
+                e.preventDefault();
+                const px = e.clientX ?? 0;
+                const py = e.clientY ?? 0;
+                const nextPanX = (crop.startPanX || 0) + ((px - (crop.dragStartX || 0)) / 1.8);
+                const nextPanY = (crop.startPanY || 0) + ((py - (crop.dragStartY || 0)) / 1.8);
+                const next = { ...crop, panX: Math.max(-100, Math.min(100, nextPanX)), panY: Math.max(-100, Math.min(100, nextPanY)) };
+                if (groupEditCoverCrop) setGroupEditCoverCrop(next); else setGroupCoverCrop(next);
+              }}
+              onPointerUp={(e) => {
+                try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch (_) {}
+                const crop = groupEditCoverCrop || groupCoverCrop;
+                if (!crop) return;
+                const next = { ...crop, dragging: false };
+                if (groupEditCoverCrop) setGroupEditCoverCrop(next); else setGroupCoverCrop(next);
+              }}
+            >
+              <img
+                src={(groupEditCoverCrop || groupCoverCrop)?.src}
+                alt=""
+                style={{
+                  position: "absolute",
+                  width: (() => {
+                    const crop = groupEditCoverCrop || groupCoverCrop;
+                    const box = 220;
+                    const iw = Number(crop?.width || 1);
+                    const ih = Number(crop?.height || 1);
+                    return iw * Math.max(box / iw, box / ih) * Math.max(1, Number(crop?.zoom || 1));
+                  })(),
+                  height: (() => {
+                    const crop = groupEditCoverCrop || groupCoverCrop;
+                    const box = 220;
+                    const iw = Number(crop?.width || 1);
+                    const ih = Number(crop?.height || 1);
+                    return ih * Math.max(box / iw, box / ih) * Math.max(1, Number(crop?.zoom || 1));
+                  })(),
+                  left: (() => {
+                    const crop = groupEditCoverCrop || groupCoverCrop;
+                    const box = 220;
+                    const iw = Number(crop?.width || 1);
+                    const ih = Number(crop?.height || 1);
+                    const scale = Math.max(box / iw, box / ih) * Math.max(1, Number(crop?.zoom || 1));
+                    const dw = iw * scale;
+                    const maxShiftX = Math.max(0, (dw - box) / 2);
+                    return (box - dw) / 2 + (maxShiftX * Number(crop?.panX || 0)) / 100;
+                  })(),
+                  top: (() => {
+                    const crop = groupEditCoverCrop || groupCoverCrop;
+                    const box = 220;
+                    const iw = Number(crop?.width || 1);
+                    const ih = Number(crop?.height || 1);
+                    const scale = Math.max(box / iw, box / ih) * Math.max(1, Number(crop?.zoom || 1));
+                    const dh = ih * scale;
+                    const maxShiftY = Math.max(0, (dh - box) / 2);
+                    return (box - dh) / 2 + (maxShiftY * Number(crop?.panY || 0)) / 100;
+                  })(),
+                  objectFit: "cover",
+                  pointerEvents: "none",
+                  userSelect: "none",
+                }}
+              />
+            </div>
+            <div className="mp-row">
+              <div className="mp-lbl">縮放</div>
+              <input
+                type="range"
+                min="1"
+                max="3"
+                step="0.01"
+                value={(groupEditCoverCrop || groupCoverCrop)?.zoom || 1}
+                onChange={(e) => {
+                  const value = Number(e.target.value);
+                  if (groupEditCoverCrop) setGroupEditCoverCrop((s) => ({ ...(s || {}), zoom: value })); else setGroupCoverCrop((s) => ({ ...(s || {}), zoom: value }));
+                }}
+              />
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <button className="mp-save" style={{ flex: 1, background: "linear-gradient(135deg,#b0bec5,#90a4ae)" }} onClick={() => { setGroupCoverCrop(null); setGroupEditCoverCrop(null); }}>取消</button>
+              <button className="mp-save" style={{ flex: 1 }} onClick={() => applyGroupCoverCrop(groupEditCoverCrop ? "edit" : "create")}>完成裁切</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {toast && <div className="mp-toast">{toast}</div>}
   </div></div></>);
 }
