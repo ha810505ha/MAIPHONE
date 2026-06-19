@@ -1,0 +1,375 @@
+﻿<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<title>世界盃射門小遊戲</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#071b16;color:#fff;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+body{min-height:100svh;background:radial-gradient(circle at top,rgba(255,255,255,.16),transparent 35%),linear-gradient(180deg,#173d2e,#071b16 72%)}
+.wrap{width:min(100vw,520px);height:100svh;margin:0 auto;display:flex;flex-direction:column;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 10px)}
+.hud{padding:14px 14px 8px;display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;z-index:5;flex:0 0 auto}
+.title{font-weight:800;letter-spacing:.04em}
+.score{font-size:14px;opacity:.95;white-space:nowrap}
+.hint{grid-column:1/-1;font-size:13px;color:rgba(255,255,255,.76);line-height:1.45}
+.field{position:relative;flex:1;min-height:0;margin:0 12px;border:2px solid rgba(255,255,255,.18);border-radius:26px;overflow:hidden;background:linear-gradient(90deg,rgba(255,255,255,.06) 1px,transparent 1px) 0 0/52px 52px,repeating-linear-gradient(90deg,rgba(255,255,255,.035) 0,rgba(255,255,255,.035) 44px,rgba(255,255,255,.015) 44px,rgba(255,255,255,.015) 88px),linear-gradient(180deg,#247b48,#135d38);touch-action:none;user-select:none}
+.goal{position:absolute;top:92px;left:50%;transform:translateX(-50%);width:72%;height:82px;border:5px solid rgba(255,255,255,.88);border-bottom:0;border-radius:10px 10px 0 0;background:linear-gradient(90deg,rgba(255,255,255,.15) 1px,transparent 1px) 0 0/24px 24px,linear-gradient(0deg,rgba(255,255,255,.12) 1px,transparent 1px) 0 0/24px 24px;box-shadow:inset 0 0 18px rgba(255,255,255,.16)}
+.goal:after{content:"GOAL";position:absolute;top:-24px;left:50%;transform:translateX(-50%);font-size:11px;letter-spacing:.25em;opacity:.65}
+.keeper,.defender,.ball,.shadow{position:absolute;left:0;top:0;transform:translate(-50%,-50%)}
+.keeper{width:46px;height:46px;border-radius:16px 16px 20px 20px;background:linear-gradient(135deg,#ffd166,#ef476f);border:3px solid rgba(255,255,255,.82);z-index:3;display:grid;place-items:center;font-size:24px;box-shadow:0 8px 20px rgba(0,0,0,.22)}
+.keeper.dive{transform:translate(-50%,-50%) rotate(var(--diveRotate,0deg)) scale(1.08)}
+.defender{width:38px;height:38px;border-radius:13px;background:linear-gradient(135deg,#8ecae6,#3a86ff);border:3px solid rgba(255,255,255,.78);z-index:2;display:grid;place-items:center;font-size:20px;box-shadow:0 8px 18px rgba(0,0,0,.2)}
+.ball{width:44px;height:44px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff 0 18%,transparent 19%),radial-gradient(circle at 63% 62%,#222 0 13%,transparent 14%),radial-gradient(circle at 42% 68%,#222 0 10%,transparent 11%),radial-gradient(circle at 62% 35%,#222 0 10%,transparent 11%),#f8f8f8;border:2px solid #d5d5d5;z-index:4;box-shadow:0 9px 18px rgba(0,0,0,.28)}
+.shadow{width:46px;height:14px;border-radius:50%;background:rgba(0,0,0,.22);z-index:1}
+.aim-line{position:absolute;height:3px;background:linear-gradient(90deg,rgba(255,255,255,.9),rgba(255,255,255,.08));transform-origin:left center;border-radius:999px;z-index:2;pointer-events:none;display:none}
+.trail-dot{position:absolute;width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.65);transform:translate(-50%,-50%);pointer-events:none;z-index:2}
+.message{position:absolute;left:50%;top:14px;transform:translateX(-50%);width:calc(100% - 34px);padding:11px 13px;border-radius:18px;background:rgba(0,0,0,.38);border:1px solid rgba(255,255,255,.18);backdrop-filter:blur(8px);font-size:13px;line-height:1.38;z-index:6;pointer-events:none}
+.badge{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border-radius:999px;background:rgba(255,255,255,.16);margin-top:5px;font-size:12px;color:rgba(255,255,255,.9)}
+.controls{position:absolute;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:7;display:flex;gap:8px}
+button{border:0;color:#fff;background:rgba(0,0,0,.36);border:1px solid rgba(255,255,255,.18);padding:9px 12px;border-radius:14px;font-weight:700}
+.flash{position:absolute;inset:0;background:rgba(255,255,255,.18);opacity:0;pointer-events:none;z-index:8}
+.flash.show{animation:flash .25s ease}
+@keyframes flash{0%{opacity:0}35%{opacity:1}100%{opacity:0}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hud">
+    <div class="title">世界盃射門小遊戲</div>
+    <div class="score">進球 <span id="goals">0</span> / 射門 <span id="shots">0</span></div>
+    <div class="hint">球可以左右拖曳微調位置，再往後拉蓄力，放開後就會射門。</div>
+  </div>
+  <div class="field" id="field">
+    <div class="goal"></div>
+    <div class="keeper" id="keeper">🧤</div>
+    <div class="defender" id="def1">🛡️</div>
+    <div class="defender" id="def2">🛡️</div>
+    <div class="shadow" id="shadow"></div>
+    <div class="ball" id="ball"></div>
+    <div class="aim-line" id="aimLine"></div>
+    <div class="message" id="message">先左右調整，再往後拉放開射門<br><span class="badge">往下拉代表蓄力</span></div>
+    <div class="controls"><button id="resetBtn">重置</button></div>
+    <div class="flash" id="flash"></div>
+  </div>
+</div>
+<script>
+const field = document.getElementById('field');
+const ball = document.getElementById('ball');
+const shadow = document.getElementById('shadow');
+const keeper = document.getElementById('keeper');
+const def1 = document.getElementById('def1');
+const def2 = document.getElementById('def2');
+const aimLine = document.getElementById('aimLine');
+const message = document.getElementById('message');
+const goalsEl = document.getElementById('goals');
+const shotsEl = document.getElementById('shots');
+const resetBtn = document.getElementById('resetBtn');
+const flash = document.getElementById('flash');
+
+let W = 0, H = 0;
+let ballPos = { x: 0, y: 0 };
+let startPos = { x: 0, y: 0 };
+let pointerStart = { x: 0, y: 0 };
+let dragPoints = [];
+let dragging = false;
+let aiming = false;
+let shooting = false;
+let goals = 0;
+let shots = 0;
+let keeperBase = { x: 0, y: 0 };
+
+const defenders = [
+  { el: def1, x: 0, y: 0, dir: 1, speed: 0.75 },
+  { el: def2, x: 0, y: 0, dir: -1, speed: 0.55 },
+];
+
+function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
+function distance(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+function setEl(el, x, y) { el.style.left = x + 'px'; el.style.top = y + 'px'; }
+function getPoint(e) {
+  const r = field.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top, t: performance.now() };
+}
+function clearTrail() { field.querySelectorAll('.trail-dot').forEach((el) => el.remove()); }
+function drawTrail() {
+  clearTrail();
+  dragPoints.slice(-9).forEach((p, i) => {
+    const dot = document.createElement('div');
+    dot.className = 'trail-dot';
+    dot.style.opacity = String((i + 1) / 10);
+    dot.style.left = p.x + 'px';
+    dot.style.top = p.y + 'px';
+    field.appendChild(dot);
+  });
+}
+function resize() {
+  const r = field.getBoundingClientRect();
+  W = r.width;
+  H = r.height;
+  resetPositions();
+}
+function resetPositions() {
+  shooting = false;
+  dragging = false;
+  aiming = false;
+  ballPos = { x: W / 2, y: H - 58 };
+  startPos = { ...ballPos };
+  keeperBase = { x: W / 2, y: 178 };
+  defenders[0].x = W * 0.34;
+  defenders[0].y = H * 0.47;
+  defenders[1].x = W * 0.66;
+  defenders[1].y = H * 0.60;
+  setEl(ball, ballPos.x, ballPos.y);
+  setEl(shadow, ballPos.x, ballPos.y + 18);
+  setEl(keeper, keeperBase.x, keeperBase.y);
+  keeper.classList.remove('dive');
+  defenders.forEach((d) => setEl(d.el, d.x, d.y));
+  aimLine.style.display = 'none';
+  clearTrail();
+}
+function updateAimLine(p) {
+  const dx = p.x - startPos.x;
+  const dy = p.y - startPos.y;
+  const len = Math.max(20, Math.min(200, Math.hypot(dx, dy)));
+  const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+  aimLine.style.display = aiming ? 'block' : 'none';
+  aimLine.style.left = startPos.x + 'px';
+  aimLine.style.top = startPos.y + 'px';
+  aimLine.style.width = len + 'px';
+  aimLine.style.transform = `rotate(${angle}deg)`;
+}
+function pointToSegmentDistance(p, a, b) {
+  const apx = p.x - a.x;
+  const apy = p.y - a.y;
+  const abx = b.x - a.x;
+  const aby = b.y - a.y;
+  const ab2 = abx * abx + aby * aby;
+  const t = ab2 ? clamp((apx * abx + apy * aby) / ab2, 0, 1) : 0;
+  const x = a.x + abx * t;
+  const y = a.y + aby * t;
+  return Math.hypot(p.x - x, p.y - y);
+}
+function pointToPointDistance(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+function analyzeGesture(points) {
+  const first = points[0];
+  const last = points[points.length - 1];
+  const totalDrag = distance(first, last);
+  const pullBack = Math.max(0, last.y - first.y);
+  const lateral = last.x - first.x;
+  let pathLen = 0;
+  let directionChanges = 0;
+  let prevSign = 0;
+  for (let i = 1; i < points.length; i += 1) {
+    pathLen += distance(points[i - 1], points[i]);
+    const sign = Math.sign(points[i].x - points[i - 1].x);
+    if (prevSign && sign && sign !== prevSign) directionChanges += 1;
+    if (sign) prevSign = sign;
+  }
+  const duration = Math.max(1, last.t - first.t);
+  const releaseSpeed = totalDrag / duration;
+  const curveAmount = pathLen - totalDrag;
+  let type = '一般射門';
+  let specialBonus = 0;
+  let goalieDebuff = 0;
+  let defenderDebuff = 0;
+  let accuracyPenalty = 0;
+  let powerBoost = 0;
+  if (curveAmount > 65) { type = '弧線球'; specialBonus = 10; goalieDebuff = 12; }
+  if (totalDrag > 115 && releaseSpeed > 0.42) { type = '重砲射門'; specialBonus = 14; powerBoost = 18; accuracyPenalty = 10; }
+  if (pullBack > 30) { type = '後拉射門'; specialBonus += 12; powerBoost += Math.min(20, pullBack / 2); }
+  if (lateral < -30 && pullBack > 18) { type = '左側後拉'; specialBonus += 10; }
+  if (lateral > 30 && pullBack > 18) { type = '右側後拉'; specialBonus += 10; }
+  if (directionChanges >= 2) { type = '變向射門'; specialBonus += 12; goalieDebuff += 24; }
+  return { type, totalDrag, pullBack, releaseSpeed, specialBonus, goalieDebuff, defenderDebuff, accuracyPenalty, powerBoost };
+}
+function chanceLabel(c) {
+  if (c <= 0) return '射偏了';
+  if (c < 31) return '偏低';
+  if (c < 61) return '普通';
+  if (c < 81) return '不錯';
+  return '很有機會';
+}
+function evaluateShot(g, p) {
+  const lateral = p.x - startPos.x;
+  const pullBack = Math.max(0, p.y - startPos.y);
+  const aimX = startPos.x + lateral * 1.85;
+  const targetX = clamp(aimX, W * 0.08, W * 0.92);
+  const targetY = 134 + Math.random() * 38;
+  const ballRadius = 22;
+  const goalLeft = W * 0.14 + ballRadius * 0.55;
+  const goalRight = W * 0.86 - ballRadius * 0.55;
+  const centerError = Math.abs(targetX - W / 2) / (W / 2);
+  let accuracy = clamp(1 - centerError, 0, 1) - g.accuracyPenalty / 100;
+  const power = clamp((g.totalDrag / 145) + (pullBack / 130) + (g.powerBoost / 100), 0, 1.45);
+  const powerQuality = 1 - Math.abs(0.82 - power);
+  let defenderPressure = 12;
+  defenders.forEach((d) => {
+    const dist = pointToSegmentDistance(d, startPos, { x: targetX, y: targetY });
+    if (dist < 50) defenderPressure += 18;
+  });
+  defenderPressure = Math.max(0, defenderPressure - g.defenderDebuff);
+  const goalieSkill = 31 - g.goalieDebuff;
+  let chance = 50;
+  chance += accuracy * 30;
+  chance += powerQuality * 20;
+  chance += g.specialBonus;
+  chance -= goalieSkill;
+  chance -= defenderPressure;
+  chance -= 4;
+  const offTarget = targetX < goalLeft || targetX > goalRight || accuracy < 0.22 || power < 0.22;
+  chance = offTarget ? 0 : clamp(chance, 5, 95);
+  return { targetX, targetY, chance, offTarget, defenderPressure, goalieSkill, accuracy, power, label: chanceLabel(chance) };
+}
+function shootAnimation(result, g) {
+  shooting = true;
+  shots += 1;
+  shotsEl.textContent = String(shots);
+  const roll = Math.random() * 100;
+  const goalIn = !result.offTarget && roll <= result.chance;
+  let t = 0;
+  const start = { ...ballPos };
+  const end = result.offTarget
+    ? { x: result.targetX + (result.targetX < W / 2 ? -55 : 55), y: result.targetY }
+    : { x: result.targetX, y: result.targetY };
+  const keeperTargetX = clamp(result.targetX + (goalIn ? (Math.random() > 0.5 ? -42 : 42) : 0), W * 0.2, W * 0.8);
+  keeper.style.setProperty('--diveRotate', keeperTargetX < keeperBase.x ? '-28deg' : '28deg');
+  keeper.classList.add('dive');
+  let blocked = false;
+  let blockedBy = null;
+  function anim() {
+    t += 0.035;
+    const ease = 1 - Math.pow(1 - t, 3);
+    const curve = g.type.includes('弧線') ? Math.sin(t * Math.PI) * 62 : 0;
+    const lob = g.pullBack > 30 ? -Math.sin(t * Math.PI) * (26 + Math.min(50, g.pullBack / 2.2)) : 0;
+    const prev = { x: ballPos.x, y: ballPos.y };
+    ballPos.x = start.x + (end.x - start.x) * ease + curve;
+    ballPos.y = start.y + (end.y - start.y) * ease + lob;
+    setEl(ball, ballPos.x, ballPos.y);
+    setEl(shadow, ballPos.x, start.y + (end.y - start.y) * ease + 20);
+    setEl(keeper, keeperBase.x + (keeperTargetX - keeperBase.x) * ease, keeperBase.y);
+    if (!blocked && !result.offTarget) {
+      for (const d of defenders) {
+        const dist = pointToSegmentDistance(d, prev, { x: ballPos.x, y: ballPos.y });
+        const nearBall = pointToPointDistance(d, ballPos);
+        if (dist < 18 || nearBall < 34) {
+          blocked = true;
+          blockedBy = d;
+          break;
+        }
+      }
+    }
+    if (blocked) {
+      const awayX = ballPos.x < W / 2 ? -60 : 60;
+      const awayY = Math.max(36, ballPos.y - 18);
+      ballPos.x += awayX * 0.08;
+      ballPos.y = awayY;
+      setEl(ball, ballPos.x, ballPos.y);
+      setEl(shadow, ballPos.x, ballPos.y + 20);
+      const hitName = blockedBy === defenders[0] ? '中路防守' : '右側防守';
+      message.innerHTML = `被${hitName}攔下了<br><span class="badge">球被擋住 / 踢偏了</span>`;
+      finishShot(false, { ...result, offTarget: true, defenderPressure: result.defenderPressure + 22, blockReason: hitName }, g);
+      return;
+    }
+    if (t < 1) requestAnimationFrame(anim);
+    else finishShot(goalIn, result, g);
+  }
+  requestAnimationFrame(anim);
+}
+function finishShot(goalIn, result, g) {
+  if (goalIn) {
+    goals += 1;
+    goalsEl.textContent = String(goals);
+    flash.classList.add('show');
+    setTimeout(() => flash.classList.remove('show'), 260);
+    message.innerHTML = `進球！<b>${g.type}</b>，${result.label}<br><span class="badge">球真的拉出去了</span>`;
+  } else {
+    const reason = result.blockReason
+      ? `被${result.blockReason}擋下了`
+      : result.offTarget
+      ? '射門角度太開，偏出球門了'
+      : result.defenderPressure > 30
+        ? '被防守球員擋到了'
+        : '力道或準度還差一點';
+    message.innerHTML = `沒進！${reason}<br><span class="badge">${g.type} · ${result.label}</span>`;
+  }
+  setTimeout(resetPositions, 850);
+}
+field.addEventListener('pointerdown', (e) => {
+  if (shooting) return;
+  const p = getPoint(e);
+  if (distance(p, ballPos) > 58) return;
+  dragging = true;
+  aiming = false;
+  pointerStart = p;
+  startPos = { ...ballPos };
+  dragPoints = [{ ...p }];
+  message.innerHTML = '先左右調整方向，再往後拉放開射門<br><span class="badge">往下拉代表蓄力</span>';
+});
+field.addEventListener('pointermove', (e) => {
+  if (!dragging || shooting) return;
+  const p = getPoint(e);
+  const dx = p.x - pointerStart.x;
+  const dy = p.y - pointerStart.y;
+  if (!aiming) {
+    aiming = true;
+    dragPoints = [{ ...startPos, t: performance.now() }, p];
+    message.innerHTML = '左右可調方向，往後拉會蓄力<br><span class="badge">球越往後拉，射門越有力</span>';
+  }
+  ballPos.x = clamp(startPos.x + dx, 34, W - 34);
+  ballPos.y = startPos.y;
+  setEl(ball, ballPos.x, ballPos.y);
+  setEl(shadow, ballPos.x, ballPos.y + 18);
+  dragPoints.push(p);
+  updateAimLine(p);
+  drawTrail();
+});
+field.addEventListener('pointerup', (e) => {
+  if (!dragging || shooting) return;
+  const p = getPoint(e);
+  dragging = false;
+  aimLine.style.display = 'none';
+  if (!aiming) {
+    clearTrail();
+    message.innerHTML = '剛剛移動太小，還沒形成蓄力射門<br><span class="badge">往後拉再放開試試</span>';
+    return;
+  }
+  dragPoints.push(p);
+  const g = analyzeGesture(dragPoints);
+  const result = evaluateShot(g, p);
+  message.innerHTML = `${g.type}<br><span class="badge">${result.label}</span>`;
+  clearTrail();
+  shootAnimation(result, g);
+});
+function defenseLoop() {
+  if (dragging && !shooting) {
+    defenders.forEach((d, idx) => {
+      d.x += d.dir * d.speed * 2.8;
+      const min = idx === 0 ? W * 0.22 : W * 0.42;
+      const max = idx === 0 ? W * 0.58 : W * 0.78;
+      if (d.x < min || d.x > max) d.dir *= -1;
+      d.x = clamp(d.x, min, max);
+      setEl(d.el, d.x, d.y);
+    });
+    setEl(keeper, keeperBase.x + Math.sin(performance.now() / 190) * 22, keeperBase.y);
+  }
+  requestAnimationFrame(defenseLoop);
+}
+resetBtn.addEventListener('click', () => {
+  goals = 0;
+  shots = 0;
+  goalsEl.textContent = String(goals);
+  shotsEl.textContent = String(shots);
+  message.innerHTML = '先左右調整，再往後拉射門<br><span class="badge">世足小遊戲</span>';
+  resetPositions();
+});
+window.addEventListener('resize', resize);
+resize();
+defenseLoop();
+</script>
+</body>
+</html>
+
+
