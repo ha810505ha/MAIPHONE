@@ -5563,7 +5563,7 @@ ${roleProfile || "（無）"}`,
           </div>
           <iframe
             title="世界盃射門小遊戲"
-            src="/game.html"
+            src="./game.html"
             style={{ flex: 1, width: "100%", border: 0, background: "#071b16" }}
           />
         </div>
@@ -5598,7 +5598,7 @@ ${roleProfile || "（無）"}`,
       </div>
       <iframe
         title="解答之書"
-        src="/book.html"
+        src="./book.html"
         style={{ flex: 1, width: "100%", border: 0, background: "#f7eef6" }}
       />
     </div>
@@ -6072,3 +6072,4 @@ ${roleProfile || "（無）"}`,
       {toast && <div className="mp-toast">{toast}</div>}
   </div></div></>);
 }
+
