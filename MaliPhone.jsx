@@ -436,6 +436,7 @@ export default function MaliPhone() {
   const [chatroomManageOpen, setChatroomManageOpen] = useState(false);
   const [chatVisibleCounts, setChatVisibleCounts] = useState({});
   const [genLoading, setGenLoading] = useState(false);
+  const [gamePage, setGamePage] = useState("hub");
   const [homePage, setHomePage] = useState(1);
   const PAGE_SIZE = 12;
   const HOME_SLOT_COUNT = PAGE_SIZE * 3;
@@ -846,6 +847,7 @@ export default function MaliPhone() {
     suppressAppClickUntilRef.current = Date.now() + 450;
     if (id === "settings") setTempConfig({ ...apiConfig });
     if (id === "lorebook") setActiveLorebookId(null);
+    if (id === "game") setGamePage("hub");
     if (id === "phone") {
       setPhonePage(phoneViewCharId ? "desktop" : "picker");
       setPhoneActiveThreadId("player");
@@ -5551,6 +5553,56 @@ ${roleProfile || "（無）"}`,
   };
 
   const renderPlaceholder = (i, n) => (<div className="mp-page"><div className="mp-hdr"><div className="mp-back" onClick={closeApp}>←</div><div className="mp-htitle">{i} {n}</div></div><div className="mp-empty" style={{flex:1}}><div className="mp-empty-i">{i}</div><div className="mp-empty-t">即將推出<br/>敬請期待</div></div></div>);
+  const renderGame = () => {
+    if (gamePage === "football") {
+      return (
+        <div className="mp-page" style={{ background: "#071b16" }}>
+          <div className="mp-hdr">
+            <div className="mp-back" onClick={() => setGamePage("hub")}>←</div>
+            <div className="mp-htitle">世足Kick</div>
+          </div>
+          <iframe
+            title="世界盃射門小遊戲"
+            src="/game.html"
+            style={{ flex: 1, width: "100%", border: 0, background: "#071b16" }}
+          />
+        </div>
+      );
+    }
+    return (
+      <div className="mp-page">
+        <div className="mp-hdr">
+          <div className="mp-back" onClick={closeApp}>←</div>
+          <div className="mp-htitle">遊戲中心</div>
+        </div>
+        <div style={{ padding: 16, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+          <button
+            className="mp-cw"
+            onClick={() => setGamePage("football")}
+            style={{ width: "100%", border: "1px solid rgba(231,197,214,.6)", background: "rgba(255,255,255,.88)", textAlign: "center", padding: 14, flexDirection: "column", alignItems: "center", gap: 10, borderRadius: 22 }}
+          >
+            <div className="mp-av" style={{ width: 72, height: 72, borderRadius: 20, overflow: "hidden", flex: "0 0 auto" }}>
+              <img src="./app-icons/game-football.png?v=1.1.6" alt="世足射門" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            </div>
+            <div className="mp-cw-name" style={{ fontSize: 16, marginTop: 2 }}>世足Kick</div>
+          </button>
+        </div>
+      </div>
+    );
+  };
+  const renderBook = () => (
+    <div className="mp-page" style={{ background: "#f7eef6" }}>
+      <div className="mp-hdr">
+        <div className="mp-back" onClick={closeApp}>←</div>
+        <div className="mp-htitle">解答之書</div>
+      </div>
+      <iframe
+        title="解答之書"
+        src="/book.html"
+        style={{ flex: 1, width: "100%", border: 0, background: "#f7eef6" }}
+      />
+    </div>
+  );
 
   const renderApp = () => {
     switch(currentApp) {
@@ -5563,6 +5615,8 @@ ${roleProfile || "（無）"}`,
       case "player": return renderPlayer();
       case "wallet": return renderWallet();
       case "gallery": return renderPlaceholder("🖼️","相簿");
+      case "game": return renderGame();
+      case "lbook": return renderBook();
       case "notebook": return renderPlaceholder("📒","筆記");
       case "phone": return renderPhone();
       default: return null;

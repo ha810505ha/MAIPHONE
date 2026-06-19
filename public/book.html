@@ -1,0 +1,533 @@
+﻿<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>解答之書</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Noto+Serif+TC:wght@500;700&family=Dancing+Script:wght@600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+
+body{
+    min-height:100vh;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    font-family:'Noto Serif TC','Cormorant Garamond',serif;
+    color:#5a4a7a;
+    overflow:hidden;
+    position:relative;
+    background:
+        radial-gradient(ellipse at 20% 10%, #ffd6ec 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 20%, #d4c4ff 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 80%, #c4e8ff 0%, transparent 55%),
+        radial-gradient(ellipse at 90% 90%, #ffe4b8 0%, transparent 45%),
+        linear-gradient(135deg,#fce7f3 0%,#e0d4ff 50%,#c4e8ff 100%);
+}
+
+/* ========= 漂浮星塵 / 光點 ========= */
+.stars{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden;}
+.star{
+    position:absolute;
+    border-radius:50%;
+    background:radial-gradient(circle,#fff 0%,rgba(255,255,255,.4) 40%,transparent 70%);
+    box-shadow:0 0 12px rgba(255,255,255,.9);
+    animation:twinkle 4s ease-in-out infinite;
+}
+@keyframes twinkle{
+    0%,100%{opacity:.3;transform:scale(.8);}
+    50%{opacity:1;transform:scale(1.3);}
+}
+.sparkle{
+    position:absolute;
+    color:#fff;
+    font-size:16px;
+    text-shadow:0 0 10px #ffd6ec,0 0 20px #fff;
+    animation:floatSparkle 8s ease-in-out infinite;
+}
+@keyframes floatSparkle{
+    0%,100%{transform:translateY(0) rotate(0);opacity:.6;}
+    50%{transform:translateY(-30px) rotate(180deg);opacity:1;}
+}
+
+/* ========= 書本容器 ========= */
+.book-container{
+    perspective:2000px;
+    width:360px;
+    max-width:90vw;
+    height:500px;
+    position:relative;
+    z-index:2;
+    filter:drop-shadow(0 25px 45px rgba(160,120,200,.45));
+}
+
+.book{
+    width:100%;
+    height:100%;
+    position:relative;
+    transform-style:preserve-3d;
+    animation:bookFloat 6s ease-in-out infinite;
+}
+@keyframes bookFloat{
+    0%,100%{transform:translateY(0) rotateX(2deg);}
+    50%{transform:translateY(-15px) rotateX(-1deg);}
+}
+
+.page{
+    position:absolute;
+    inset:0;
+    border-radius:6px 22px 22px 6px;
+    transform-origin:left center;
+    backface-visibility:hidden;
+    transition:transform 1s cubic-bezier(.645,.045,.355,1);
+}
+
+/* ========= 答案頁（內頁）========= */
+.answer-page{
+    z-index:1;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    align-items:center;
+    padding:40px 30px;
+    text-align:center;
+    background:
+        radial-gradient(circle at 50% 30%, #fff5fb 0%, #fef0ff 40%, #f0e8ff 100%);
+    border:1px solid rgba(255,255,255,.9);
+    box-shadow:
+        inset 18px 0 25px -12px rgba(180,140,220,.15),
+        inset 0 0 60px rgba(255,200,230,.3);
+    overflow:hidden;
+}
+.answer-page::before{
+    content:'';
+    position:absolute;
+    inset:14px;
+    border:1.5px solid transparent;
+    border-radius:4px 16px 16px 4px;
+    background:
+        linear-gradient(135deg,#ffb8d9,#c4a8ff,#a8d8ff,#ffd9b8) border-box;
+    -webkit-mask:linear-gradient(#000 0 0) padding-box,linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor;
+    mask-composite:exclude;
+    opacity:.6;
+    pointer-events:none;
+}
+.answer-page::after{
+    content:'✦';
+    position:absolute;
+    top:24px;left:50%;
+    transform:translateX(-50%);
+    color:#c8a8e8;
+    font-size:18px;
+    opacity:.7;
+}
+
+/* ========= 封面 ========= */
+.cover{
+    z-index:5;
+    cursor:pointer;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    align-items:center;
+    padding:30px;
+    text-align:center;
+    background:
+        radial-gradient(circle at 30% 20%, rgba(255,200,230,.7) 0%, transparent 50%),
+        radial-gradient(circle at 70% 80%, rgba(200,200,255,.6) 0%, transparent 50%),
+        linear-gradient(135deg,#f4d8ff 0%,#d8c4ff 40%,#b8d4ff 100%);
+    border:1px solid rgba(255,255,255,.9);
+    box-shadow:
+        inset 0 0 80px rgba(255,255,255,.4),
+        inset 15px 0 25px -10px rgba(120,80,160,.25),
+        0 4px 15px rgba(140,100,180,.3);
+    overflow:hidden;
+}
+
+/* 封面外框 */
+.cover-frame{
+    position:absolute;
+    inset:18px;
+    border:2px solid rgba(255,255,255,.7);
+    border-radius:4px 18px 18px 4px;
+    pointer-events:none;
+    box-shadow:inset 0 0 30px rgba(255,255,255,.3);
+}
+.cover-frame::before,.cover-frame::after{
+    content:'❀';
+    position:absolute;
+    color:#fff;
+    font-size:14px;
+    opacity:.85;
+    text-shadow:0 0 8px #ffb8d9;
+}
+.cover-frame::before{top:8px;left:50%;transform:translateX(-50%);}
+.cover-frame::after{bottom:8px;left:50%;transform:translateX(-50%);}
+
+/* 封面裝飾光暈 */
+.cover-glow{
+    position:absolute;
+    width:200px;height:200px;
+    border-radius:50%;
+    background:radial-gradient(circle,rgba(255,255,255,.6) 0%,rgba(255,200,230,.3) 40%,transparent 70%);
+    top:50%;left:50%;
+    transform:translate(-50%,-50%);
+    animation:glowPulse 4s ease-in-out infinite;
+    pointer-events:none;
+}
+@keyframes glowPulse{
+    0%,100%{transform:translate(-50%,-50%) scale(1);opacity:.7;}
+    50%{transform:translate(-50%,-50%) scale(1.15);opacity:1;}
+}
+
+/* 封面星星裝飾 */
+.cover-stars{
+    position:absolute;inset:0;pointer-events:none;
+}
+.cover-stars span{
+    position:absolute;
+    color:#fff;
+    text-shadow:0 0 8px #ffd6ec,0 0 14px #fff;
+    animation:twinkle 2.5s ease-in-out infinite;
+}
+.cover-stars span:nth-child(1){top:18%;left:20%;font-size:14px;animation-delay:0s;}
+.cover-stars span:nth-child(2){top:25%;right:18%;font-size:10px;animation-delay:.5s;}
+.cover-stars span:nth-child(3){top:65%;left:15%;font-size:12px;animation-delay:1s;}
+.cover-stars span:nth-child(4){bottom:18%;right:22%;font-size:14px;animation-delay:1.5s;}
+.cover-stars span:nth-child(5){top:45%;right:12%;font-size:9px;animation-delay:.8s;}
+.cover-stars span:nth-child(6){bottom:35%;left:22%;font-size:11px;animation-delay:1.3s;}
+
+.cover-title{
+    font-family:'Cormorant Garamond','Noto Serif TC',serif;
+    font-size:14px;
+    letter-spacing:8px;
+    color:rgba(255,255,255,.85);
+    text-transform:uppercase;
+    margin-bottom:8px;
+    font-weight:500;
+    position:relative;
+    z-index:2;
+}
+
+.cover h2{
+    font-family:'Noto Serif TC',serif;
+    color:#fff;
+    font-size:38px;
+    letter-spacing:10px;
+    margin-bottom:18px;
+    font-weight:700;
+    text-shadow:
+        0 2px 8px rgba(140,100,180,.4),
+        0 0 20px rgba(255,255,255,.5);
+    position:relative;
+    z-index:2;
+}
+
+.cover-divider{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin-bottom:18px;
+    position:relative;
+    z-index:2;
+}
+.cover-divider .line{
+    width:40px;height:1px;
+    background:linear-gradient(to right,transparent,rgba(255,255,255,.9),transparent);
+}
+.cover-divider .diamond{
+    color:#fff;font-size:10px;
+    text-shadow:0 0 8px #ffd6ec;
+}
+
+.cover p{
+    font-size:14px;
+    color:rgba(255,255,255,.95);
+    line-height:2;
+    letter-spacing:3px;
+    text-shadow:0 1px 4px rgba(120,80,160,.3);
+    position:relative;
+    z-index:2;
+    font-weight:500;
+}
+
+.cover-hint{
+    margin-top:24px;
+    font-size:11px;
+    letter-spacing:4px;
+    color:rgba(255,255,255,.75);
+    font-family:'Cormorant Garamond',serif;
+    font-style:italic;
+    position:relative;
+    z-index:2;
+    animation:hintPulse 2s ease-in-out infinite;
+}
+@keyframes hintPulse{
+    0%,100%{opacity:.6;}
+    50%{opacity:1;}
+}
+
+/* ========= 翻頁 ========= */
+.dummy3{z-index:2;background:linear-gradient(135deg,#fff8fc,#f8e8ff);border:1px solid rgba(255,255,255,.8);box-shadow:inset 12px 0 18px -10px rgba(180,140,220,.15);}
+.dummy2{z-index:3;background:linear-gradient(135deg,#fff,#fde8f5);border:1px solid rgba(255,255,255,.8);box-shadow:inset 12px 0 18px -10px rgba(180,140,220,.15);}
+.dummy1{z-index:4;background:linear-gradient(135deg,#fff,#f4d8ff);border:1px solid rgba(255,255,255,.8);box-shadow:inset 12px 0 18px -10px rgba(180,140,220,.15);}
+
+.book.open .cover{transform:rotateY(-180deg);transition-delay:0s;}
+.book.open .dummy1{transform:rotateY(-178deg);transition-delay:.15s;}
+.book.open .dummy2{transform:rotateY(-176deg);transition-delay:.3s;}
+.book.open .dummy3{transform:rotateY(-174deg);transition-delay:.45s;}
+
+/* ========= 魔法球 ========= */
+.magic-orb{
+    position:absolute;
+    width:60px;height:60px;
+    border-radius:50%;
+    background:radial-gradient(circle,#fff 0%,#ffd6ec 30%,#c4a8ff 60%,transparent 80%);
+    opacity:0;
+    transform:scale(.3);
+    pointer-events:none;
+    top:35%;
+}
+.book.open .magic-orb{
+    animation:orbGlow 1.8s ease-in-out .9s forwards;
+}
+@keyframes orbGlow{
+    0%{opacity:0;transform:scale(.3);}
+    40%{opacity:1;transform:scale(2);box-shadow:0 0 60px #ffb8e8,0 0 100px #c4a8ff;}
+    100%{opacity:0;transform:scale(5);box-shadow:0 0 100px transparent;}
+}
+
+/* ========= 答案內容 ========= */
+.answer-content{
+    opacity:0;
+    transform:translateY(15px);
+    transition:opacity 1.5s ease 2.4s,transform 1.5s ease 2.4s;
+    width:100%;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    position:relative;
+    z-index:2;
+}
+.book.open .answer-content{opacity:1;transform:translateY(0);}
+
+.answer-decoration{
+    font-size:20px;
+    color:#c8a8e8;
+    margin-bottom:14px;
+    letter-spacing:4px;
+    text-shadow:0 0 8px rgba(200,168,232,.4);
+}
+
+.answer-text{
+    font-family:'Noto Serif TC',serif;
+    font-size:22px;
+    font-weight:700;
+    background:linear-gradient(135deg,#a878d8 0%,#7088c8 50%,#d878a8 100%);
+    -webkit-background-clip:text;
+    background-clip:text;
+    -webkit-text-fill-color:transparent;
+    margin-bottom:8px;
+    line-height:1.8;
+    min-height:60px;
+    letter-spacing:2px;
+    padding:0 10px;
+}
+
+.answer-sub{
+    font-family:'Cormorant Garamond',serif;
+    font-style:italic;
+    font-size:12px;
+    color:#b098c8;
+    letter-spacing:3px;
+    margin-bottom:32px;
+}
+
+button{
+    background:linear-gradient(135deg,#ffd6ec 0%,#e0d4ff 50%,#c4e8ff 100%);
+    border:1px solid rgba(255,255,255,.9);
+    border-radius:30px;
+    padding:13px 22px;
+    font-size:14px;
+    font-family:'Noto Serif TC',serif;
+    color:#7058a8;
+    font-weight:700;
+    letter-spacing:3px;
+    cursor:pointer;
+    box-shadow:
+        0 6px 18px rgba(180,140,220,.35),
+        inset 0 1px 2px rgba(255,255,255,.8);
+    width:82%;
+    margin-bottom:10px;
+    transition:transform .25s ease,box-shadow .25s ease;
+}
+button:hover{
+    transform:translateY(-2px);
+    box-shadow:
+        0 10px 22px rgba(180,140,220,.5),
+        inset 0 1px 2px rgba(255,255,255,.9);
+}
+button:active{transform:scale(.96);}
+
+#send-btn{
+    background:linear-gradient(135deg,#c4e8ff 0%,#d4c4ff 50%,#ffd6ec 100%);
+    color:#5878a8;
+}
+</style>
+</head>
+<body>
+
+<!-- 背景星塵 -->
+<div class="stars" id="stars"></div>
+
+<div class="book-container">
+<div class="book" id="myBook">
+
+<!-- 答案內頁 -->
+<div class="page answer-page">
+    <div class="magic-orb"></div>
+    <div class="answer-content">
+        <div class="answer-decoration">✦ ⋆ ✦</div>
+        <div class="answer-text" id="answer-display"></div>
+        <div class="answer-sub">— the book whispers —</div>
+        <button onclick="resetBook()">闔上書本</button>
+    </div>
+</div>
+
+<div class="page dummy3"></div>
+<div class="page dummy2"></div>
+<div class="page dummy1"></div>
+
+<!-- 封面 -->
+<div class="page cover" onclick="drawAnswer()">
+    <div class="cover-frame"></div>
+    <div class="cover-glow"></div>
+    <div class="cover-stars">
+        <span>✦</span><span>✧</span><span>⋆</span><span>✦</span><span>✧</span><span>⋆</span>
+    </div>
+    <div class="cover-title">Book of Whispers</div>
+    <h2>解答之書</h2>
+    <div class="cover-divider">
+        <span class="line"></span><span class="diamond">❖</span><span class="line"></span>
+    </div>
+    <p>在心中默念你的問題<br>輕觸封面 翻閱命運</p>
+    <div class="cover-hint">— tap to reveal —</div>
+</div>
+
+</div>
+</div>
+
+<script>
+// 產生背景星塵
+const starsContainer=document.getElementById('stars');
+for(let i=0;i<50;i++){
+    const s=document.createElement('div');
+    s.className='star';
+    const size=Math.random()*3+1;
+    s.style.width=s.style.height=size+'px';
+    s.style.left=Math.random()*100+'%';
+    s.style.top=Math.random()*100+'%';
+    s.style.animationDelay=Math.random()*4+'s';
+    s.style.animationDuration=(Math.random()*3+3)+'s';
+    starsContainer.appendChild(s);
+}
+for(let i=0;i<15;i++){
+    const sp=document.createElement('div');
+    sp.className='sparkle';
+    sp.innerText=['✦','✧','⋆','✺'][Math.floor(Math.random()*4)];
+    sp.style.left=Math.random()*100+'%';
+    sp.style.top=Math.random()*100+'%';
+    sp.style.fontSize=(Math.random()*10+10)+'px';
+    sp.style.animationDelay=Math.random()*8+'s';
+    sp.style.animationDuration=(Math.random()*4+6)+'s';
+    starsContainer.appendChild(sp);
+}
+
+const answerDatabase = [
+  // Positive_Encourage
+  { text: "毫無疑問地前進吧。", tag: "Positive_Encourage" },
+  { text: "順從你的直覺，它是對的。", tag: "Positive_Encourage" },
+  { text: "你比自己想像得更加堅強。", tag: "Positive_Encourage" },
+  { text: "答案其實早已存在你的心裡。", tag: "Positive_Encourage" },
+  { text: "保持現在的方向。", tag: "Positive_Encourage" },
+  { text: "相信自己的選擇。", tag: "Positive_Encourage" },
+
+  // Positive_Action
+  { text: "現在正是採取行動的時候。", tag: "Positive_Action" },
+  { text: "主動踏出第一步吧。", tag: "Positive_Action" },
+  { text: "不要再等待時機了。", tag: "Positive_Action" },
+  { text: "你需要親自去確認答案。", tag: "Positive_Action" },
+  { text: "試著開口，你會得到回應。", tag: "Positive_Action" },
+  { text: "勇敢一次，結果值得期待。", tag: "Positive_Action" },
+
+  // Positive_Opportunity
+  { text: "新的機會正在靠近。", tag: "Positive_Opportunity" },
+  { text: "留意意想不到的邀請。", tag: "Positive_Opportunity" },
+  { text: "這是一個值得把握的契機。", tag: "Positive_Opportunity" },
+  { text: "有人正在向你靠近。", tag: "Positive_Opportunity" },
+
+  // Neutral_Wait
+  { text: "時間會給你最好的交代。", tag: "Neutral_Wait" },
+  { text: "現在還不是揭曉的時刻。", tag: "Neutral_Wait" },
+  { text: "再等等，局勢仍在變化。", tag: "Neutral_Wait" },
+  { text: "不必急著得到答案。", tag: "Neutral_Wait" },
+
+  // Neutral_Reflect
+  { text: "換個角度，你會看到不同的風景。", tag: "Neutral_Reflect" },
+  { text: "問題或許不在你以為的地方。", tag: "Neutral_Reflect" },
+  { text: "先理解自己，再理解世界。", tag: "Neutral_Reflect" },
+  { text: "試著重新定義你的問題。", tag: "Neutral_Reflect" },
+
+  // Mystic_Fate
+  { text: "命運已經悄悄開始轉動。", tag: "Mystic_Fate" },
+  { text: "有些事情正在暗中發生。", tag: "Mystic_Fate" },
+  { text: "看似偶然，其實早有安排。", tag: "Mystic_Fate" },
+  { text: "答案將從意料之外的地方出現。", tag: "Mystic_Fate" },
+
+  // Negative_Caution
+  { text: "放下無謂的執念。", tag: "Negative_Caution" },
+  { text: "這件事背後有你沒看清的代價。", tag: "Negative_Caution" },
+  { text: "現在的判斷可能受到情緒影響。", tag: "Negative_Caution" },
+  { text: "小心你忽略的細節。", tag: "Negative_Caution" },
+
+  // Negative_Stop
+  { text: "別鬧了。", tag: "Negative_Stop" },
+  { text: "別浪費你的時間。", tag: "Negative_Stop" },
+  { text: "現在不建議繼續推進。", tag: "Negative_Stop" },
+  { text: "停下來重新思考。", tag: "Negative_Stop" },
+  { text: "強求不會得到理想的結果。", tag: "Negative_Stop" },
+  { text: "這條路可能並不適合你。", tag: "Negative_Stop" }
+];
+let currentResult=null;
+let clearAnswerTimer=null;
+
+function drawAnswer(){
+    const book=document.getElementById('myBook');
+    if(book.classList.contains('open')) return;
+    if(clearAnswerTimer){
+        clearTimeout(clearAnswerTimer);
+        clearAnswerTimer=null;
+    }
+    const r=Math.floor(Math.random()*answerDatabase.length);
+    currentResult=answerDatabase[r];
+    document.getElementById('answer-display').innerText=currentResult?.text || '書頁微微翻動，但暫時沒有回應。';
+    book.classList.add('open');
+}
+
+function resetBook(){
+    const book=document.getElementById('myBook');
+    book.classList.remove('open');
+    if(clearAnswerTimer) clearTimeout(clearAnswerTimer);
+    clearAnswerTimer = setTimeout(()=>{
+        document.getElementById('answer-display').innerText='';
+        currentResult=null;
+        clearAnswerTimer=null;
+    },1500);
+}
+
+</script>
+
+</body>
+</html>
+
