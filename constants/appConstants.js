@@ -1,7 +1,12 @@
-﻿const VERSION = "1.1.8";
+﻿const VERSION = "1.1.9";
 const MALIPHONE_AI_PROXY = "https://orange-butterfly-8390.d778105.workers.dev";
 
 const CHANGELOG = {
+  "1.1.9": [
+    "06/29 更新",
+    "新增角色心聲功能，支援自動生成、手動查看與心聲紀錄",
+    "新增角色語音功能（測試版），支援 ElevenLabs 聲線設定、試聽與聊天室手動播放",
+  ],
   "1.1.8": [
     "06/25 更新",
     "新增英文、日文、韓文介面語言，角色回應會根據 UI 語言設定回覆",
