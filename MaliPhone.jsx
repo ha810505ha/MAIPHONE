@@ -1,18 +1,41 @@
 ﻿import React, { useState, useEffect, useRef } from "react";
 import { VERSION, CHANGELOG, API_PROVIDERS, DEFAULT_APPS, DOCK_APPS } from "./constants/appConstants";
+import { ArrowDown, ChevronLeft, ChevronRight, Eye, LoaderCircle, Pause, RefreshCw, Volume2 } from "lucide-react";
 import { gid, ft, fd, sanitizeText, sanitizeUserImageUrl } from "./utils/coreUtils";
 import { parseSillyTavernJSON, parseSillyTavernPNG, buildSystemPrompt } from "./utils/characterParser";
 import { callAI, fetchAvailableModels } from "./services/aiService";
+import { fetchElevenLabsDefaultVoices, synthesizeSpeech } from "./services/ttsService";
 import { loadAppState, saveAppState } from "./utils/indexedDbStorage";
 import css, { THEME_PRESETS } from "./styles/maliPhoneCss";
 
-function AddCharModal({ setModal, setEditingCharacter, addCharacter, updateCharacter, exportCharacter, deleteCharacter, editingCharacter, sanitizeUserImageUrl, uiLanguage }) {
+const createDefaultVoiceSettings = () => ({
+  enabled: false,
+  elevenlabs: { voiceId: "", speed: 1, stability: 0.5, similarity: 0.75 },
+  minimax: { voiceId: "", speed: 1, pitch: 0, volume: 1, emotion: "auto" },
+});
+
+const normalizeCharacterVoiceSettings = (value) => {
+  const defaults = createDefaultVoiceSettings();
+  const source = value && typeof value === "object" ? value : {};
+  return {
+    ...defaults,
+    ...source,
+    enabled: !!source.enabled,
+    elevenlabs: { ...defaults.elevenlabs, ...(source.elevenlabs || {}) },
+    minimax: { ...defaults.minimax, ...(source.minimax || {}) },
+  };
+};
+
+function AddCharModal({ setModal, setEditingCharacter, addCharacter, updateCharacter, exportCharacter, deleteCharacter, editingCharacter, sanitizeUserImageUrl, uiLanguage, ttsConfig, ttsVoices, onVoicePreview }) {
   const [tab, setTab] = useState("manual");
   const [n, sn] = useState(""); const [d, sd] = useState(""); const [p, sp] = useState(""); const [rel, srel] = useState(""); const [av, sav] = useState("");
   const [importErr, setImportErr] = useState(""); const [importing, setImporting] = useState(false);
   const [avatarCrop, setAvatarCrop] = useState(null);
+  const [voiceSettings, setVoiceSettings] = useState(createDefaultVoiceSettings);
+  const [voicePreviewing, setVoicePreviewing] = useState(false);
   const AVATAR_MAX_BYTES = 400 * 1024;
   const tr = (zh, en, ja, ko) => ({ "zh-TW": zh, en, ja, ko }[uiLanguage] || zh);
+  const ask = (zh, en = zh, ja = zh, ko = zh) => window.confirm(tr(zh, en, ja, ko));
   const avRef = useRef(null); const importRef = useRef(null);
   const closeModal = () => {
     setModal(null);
@@ -26,7 +49,14 @@ function AddCharModal({ setModal, setEditingCharacter, addCharacter, updateChara
     sp(editingCharacter.systemPrompt || "");
     srel(editingCharacter.relationshipToUser || "");
     sav(editingCharacter.avatar || "");
+    setVoiceSettings(normalizeCharacterVoiceSettings(editingCharacter.voiceSettings));
   }, [editingCharacter]);
+  const voiceProvider = ttsConfig?.provider || "elevenlabs";
+  const activeVoice = voiceSettings[voiceProvider] || createDefaultVoiceSettings()[voiceProvider];
+  const updateActiveVoice = (patch) => setVoiceSettings((current) => ({
+    ...current,
+    [voiceProvider]: { ...(current[voiceProvider] || {}), ...patch },
+  }));
   const onAv = (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
@@ -188,11 +218,33 @@ function AddCharModal({ setModal, setEditingCharacter, addCharacter, updateChara
           <div className="mp-row"><div className="mp-lbl">{tr("角色設定（Character Description）", "Character description", "キャラ説明", "캐릭터 설명")}</div><textarea className="mp-ta" value={d} maxLength={8000} onChange={e=>sd(e.target.value.slice(0, 8000))} placeholder={tr("描述角色背景、行為、語氣與互動方式", "Describe the character's background, behavior, tone, and interaction style", "背景、行動、口調、やり取りの雰囲気を説明", "배경, 행동, 말투, 상호작용 분위기를 설명")} style={{minHeight:90,resize:"vertical"}} /><div className="mp-char-counter mp-char-counter-modal">{d.length}/8000</div></div>
             <div className="mp-row"><div className="mp-lbl">{tr("System prompt", "System prompt", "システムプロンプト", "시스템 프롬프트")}</div><textarea className="mp-ta" value={p} maxLength={8000} onChange={e=>sp(e.target.value.slice(0, 8000))} placeholder={tr("Define tone, personality, and reply style", "Define tone, personality, and reply style", "口調、人柄、返答方針を定義", "말투, 성격, 응답 방식을 정의")} /><div className="mp-char-counter mp-char-counter-modal">{p.length}/8000</div></div>
             <div className="mp-row"><div className="mp-lbl">{tr("與玩家關係", "Relationship to player", "プレイヤーとの関係", "플레이어와의 관계")}</div><input className="mp-sinp" value={rel} onChange={e=>srel(e.target.value)} placeholder={tr("例如：青梅竹馬、同事、戀人、陌生人", "e.g. childhood friend, coworker, lover, stranger", "例: 幼なじみ、同僚、恋人、見知らぬ人", "예: 소꿉친구, 동료, 연인, 낯선 사람")} /></div>
+            <div className="mp-sg" style={{padding:12,marginTop:12}}>
+              <div className="mp-sg-t">{tr("角色語音", "Character voice", "キャラクターボイス", "캐릭터 음성")}</div>
+              <div className="mp-row" style={{display:"flex",alignItems:"center",gap:8}}>
+                <input id="char_voice_enabled" type="checkbox" checked={!!voiceSettings.enabled} onChange={(e) => setVoiceSettings((current) => ({ ...current, enabled: e.target.checked }))} />
+                <label htmlFor="char_voice_enabled" className="mp-lbl" style={{margin:0}}>{tr("啟用這個角色的語音", "Enable voice for this character", "このキャラの音声を有効にする", "이 캐릭터 음성 활성화")}</label>
+              </div>
+              <div style={{fontSize:10,color:"var(--mp-txt-l)",marginBottom:8}}>{tr("目前全域供應商", "Current global provider", "現在の共通プロバイダー", "현재 전역 제공업체")}：{voiceProvider === "minimax" ? "MiniMax" : "ElevenLabs"}</div>
+              {voiceSettings.enabled && <>
+                {voiceProvider === "elevenlabs" && <div className="mp-row"><div className="mp-lbl">{tr("選擇可用聲音", "Choose an available voice", "利用可能な音声を選択", "사용 가능한 음성 선택")}</div><select className="mp-ssel" value={(ttsVoices || []).some((voice) => voice.id === activeVoice.voiceId) ? activeVoice.voiceId : "__custom"} onChange={(e) => { if (e.target.value !== "__custom") updateActiveVoice({ voiceId: e.target.value }); }}><option value="__custom">{tr("手動輸入 Voice ID", "Enter Voice ID manually", "Voice ID を手動入力", "Voice ID 직접 입력")}</option>{(ttsVoices || []).map((voice) => <option key={voice.id} value={voice.id}>{voice.name}{voice.category ? ` · ${voice.category}` : ""}</option>)}</select>{!(ttsVoices || []).length && <div style={{fontSize:10,color:"var(--mp-txt-l)",marginTop:4}}>{tr("請先到語音 API 設定載入可用聲音。", "Load available voices in Voice API settings first.", "先に音声 API 設定で利用可能な音声を読み込んでください。", "먼저 음성 API 설정에서 사용 가능한 음성을 불러오세요.")}</div>}</div>}
+                <div className="mp-row"><div className="mp-lbl">Voice ID</div><input className="mp-sinp" value={activeVoice.voiceId || ""} onChange={(e) => updateActiveVoice({ voiceId: e.target.value })} placeholder={voiceProvider === "minimax" ? "female-shaonv" : "JBFqnCBsd6RMkjVDRZzb"} /></div>
+                <div className="mp-row"><div className="mp-lbl">{tr("語速", "Speed", "速度", "속도")}：{Number(activeVoice.speed || 1).toFixed(2)}</div><input style={{width:"100%"}} type="range" min={voiceProvider === "minimax" ? "0.5" : "0.7"} max={voiceProvider === "minimax" ? "2" : "1.2"} step="0.05" value={activeVoice.speed ?? 1} onChange={(e) => updateActiveVoice({ speed: Number(e.target.value) })} /></div>
+                {voiceProvider === "elevenlabs" ? <>
+                  <div className="mp-row"><div className="mp-lbl">{tr("穩定度", "Stability", "安定性", "안정성")}：{Number(activeVoice.stability ?? .5).toFixed(2)}</div><input style={{width:"100%"}} type="range" min="0" max="1" step="0.05" value={activeVoice.stability ?? .5} onChange={(e) => updateActiveVoice({ stability: Number(e.target.value) })} /></div>
+                  <div className="mp-row"><div className="mp-lbl">{tr("相似度", "Similarity", "類似度", "유사도")}：{Number(activeVoice.similarity ?? .75).toFixed(2)}</div><input style={{width:"100%"}} type="range" min="0" max="1" step="0.05" value={activeVoice.similarity ?? .75} onChange={(e) => updateActiveVoice({ similarity: Number(e.target.value) })} /></div>
+                </> : <>
+                  <div className="mp-row"><div className="mp-lbl">{tr("音高", "Pitch", "ピッチ", "피치")}：{activeVoice.pitch ?? 0}</div><input style={{width:"100%"}} type="range" min="-12" max="12" step="1" value={activeVoice.pitch ?? 0} onChange={(e) => updateActiveVoice({ pitch: Number(e.target.value) })} /></div>
+                  <div className="mp-row"><div className="mp-lbl">{tr("音量", "Volume", "音量", "볼륨")}：{Number(activeVoice.volume ?? 1).toFixed(1)}</div><input style={{width:"100%"}} type="range" min="0.1" max="2" step="0.1" value={activeVoice.volume ?? 1} onChange={(e) => updateActiveVoice({ volume: Number(e.target.value) })} /></div>
+                  <div className="mp-row"><div className="mp-lbl">{tr("情緒", "Emotion", "感情", "감정")}</div><select className="mp-ssel" value={activeVoice.emotion || "auto"} onChange={(e) => updateActiveVoice({ emotion: e.target.value })}><option value="auto">Auto</option><option value="happy">Happy</option><option value="sad">Sad</option><option value="angry">Angry</option><option value="fearful">Fearful</option><option value="disgusted">Disgusted</option><option value="surprised">Surprised</option><option value="neutral">Neutral</option></select></div>
+                </>}
+                <button type="button" className="mp-ibtn-chat" disabled={voicePreviewing || !activeVoice.voiceId?.trim()} onClick={async () => { try { setVoicePreviewing(true); await onVoicePreview?.(voiceSettings, tr("你好，這是我的聲音。", "Hello, this is my voice.", "こんにちは、これが私の声です。", "안녕하세요, 제 목소리예요.")); } finally { setVoicePreviewing(false); } }}>{voicePreviewing ? tr("試聽生成中...", "Generating preview...", "試聴を生成中...", "미리듣기 생성 중...") : tr("試聽語音", "Preview voice", "音声を試聴", "음성 미리듣기")}</button>
+              </>}
+            </div>
             <div className={editingCharacter ? "mp-char-actions" : ""} style={{marginTop:10}}>
             <button className="mp-save" style={editingCharacter ? {} : {marginTop:10}} onClick={() => {
               if(!n.trim()) return alert(tr("請輸入角色名稱", "Please enter a character name", "キャラ名を入力してください", "캐릭터 이름을 입력해주세요"));
               if (editingCharacter && !ask(`確定要儲存角色「${n.trim()}」的變更嗎？`, `Save changes for ${n.trim()}?`)) return;
-              const payload = {name:n.trim(),description:d.trim(),systemPrompt:p.trim(),relationshipToUser:rel.trim(),avatar:av,personality:editingCharacter?.personality||"",scenario:editingCharacter?.scenario||"",firstMessage:editingCharacter?.firstMessage||"",messageExamples:editingCharacter?.messageExamples||"",tags:editingCharacter?.tags||[],creator:editingCharacter?.creator||"",creatorNotes:editingCharacter?.creatorNotes||""};
+              const payload = {name:n.trim(),description:d.trim(),systemPrompt:p.trim(),relationshipToUser:rel.trim(),avatar:av,voiceSettings:normalizeCharacterVoiceSettings(voiceSettings),personality:editingCharacter?.personality||"",scenario:editingCharacter?.scenario||"",firstMessage:editingCharacter?.firstMessage||"",messageExamples:editingCharacter?.messageExamples||"",tags:editingCharacter?.tags||[],creator:editingCharacter?.creator||"",creatorNotes:editingCharacter?.creatorNotes||""};
               if (editingCharacter) updateCharacter(editingCharacter.id, payload);
               else addCharacter(payload);
             }}>{editingCharacter ? tr("儲存變更", "Save changes", "変更を保存", "변경 저장") : tr("建立角色", "Create character", "キャラを作成", "캐릭터 생성")}</button>
@@ -242,15 +294,15 @@ function AddCharModal({ setModal, setEditingCharacter, addCharacter, updateChara
   );
 }
 
-function BarClock({ ft }) {
+function BarClock({ ft, hideTime = false }) {
   const [now, setNow] = useState(new Date());
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
   return (
-    <div className="mp-bar">
-      <span>{ft(now)}</span>
+    <div className={`mp-bar ${hideTime ? "mp-lock-bar" : ""}`}>
+      {!hideTime && <span>{ft(now)}</span>}
       <div className="mp-bar-r"><span>📶</span><span>100%</span><span>🔋</span></div>
     </div>
   );
@@ -296,6 +348,7 @@ export default function MaliPhone() {
     groupChats: [],
     chatScenes: {},
     groupScenes: {},
+    innerThoughtSettings: {},
     posts: [],
     memories: {},
     lorebooks: [],
@@ -327,6 +380,12 @@ export default function MaliPhone() {
       },
     },
     apiConfig: { provider: "openai", baseUrl: "https://api.openai.com/v1", apiKey: "", model: "gpt-4o-mini", location: "global" },
+    ttsConfig: {
+      enabled: false,
+      provider: "elevenlabs",
+      elevenlabs: { apiKey: "", model: "eleven_flash_v2_5", defaultVoiceId: "JBFqnCBsd6RMkjVDRZzb" },
+      minimax: { apiKey: "", model: "speech-2.8-turbo", baseUrl: "https://api.minimax.io", defaultVoiceId: "English_expressive_narrator" },
+    },
     themeName: "莓果蘇打",
     uiLanguage: "zh-TW",
     screenLockTimeout: 5,
@@ -350,6 +409,9 @@ export default function MaliPhone() {
   const [groupChats, setGroupChats] = useState(defaultAppState.groupChats);
   const [chatScenes, setChatScenes] = useState(defaultAppState.chatScenes);
   const [groupScenes, setGroupScenes] = useState(defaultAppState.groupScenes);
+  const [innerThoughtSettings, setInnerThoughtSettings] = useState(defaultAppState.innerThoughtSettings);
+  const [expandedInnerThoughts, setExpandedInnerThoughts] = useState({});
+  const [innerThoughtLoading, setInnerThoughtLoading] = useState({});
   const [chatInput, setChatInput] = useState("");
   const [chatImage, setChatImage] = useState(null);
   const [chatActionPanelOpen, setChatActionPanelOpen] = useState(false);
@@ -400,6 +462,7 @@ export default function MaliPhone() {
   const TOTAL_CONTEXT_TOKEN_LIMIT = 40000;
   const [memories, setMemories] = useState(defaultAppState.memories);
   const [lorebooks, setLorebooks] = useState(defaultAppState.lorebooks);
+  const lorebookImportInputRef = useRef(null);
   const [chatLorebookBindings, setChatLorebookBindings] = useState(defaultAppState.chatLorebookBindings);
   const [phoneInboxCache, setPhoneInboxCache] = useState(defaultAppState.phoneInboxCache);
   const [wallet, setWallet] = useState(defaultAppState.wallet);
@@ -418,6 +481,12 @@ export default function MaliPhone() {
   const [memoryEditor, setMemoryEditor] = useState(null);
   const [activeMemoryId, setActiveMemoryId] = useState(null);
   const [apiConfig, setApiConfig] = useState(defaultAppState.apiConfig);
+  const [ttsConfig, setTtsConfig] = useState(defaultAppState.ttsConfig);
+  const [ttsVoices, setTtsVoices] = useState([]);
+  const [ttsConnectionState, setTtsConnectionState] = useState("idle");
+  const [voicePlayback, setVoicePlayback] = useState({ key: null, status: "idle" });
+  const voiceAudioRef = useRef(null);
+  const voiceAudioCacheRef = useRef(new Map());
   const [modelBadgeOpen, setModelBadgeOpen] = useState(false);
   const [modal, setModal] = useState(null);
   const [updateNoticeOpen, setUpdateNoticeOpen] = useState(false);
@@ -440,12 +509,18 @@ export default function MaliPhone() {
   const [dataImportPreview, setDataImportPreview] = useState(null);
   const [editingLorebookEntry, setEditingLorebookEntry] = useState(null);
   const [editingLorebookBook, setEditingLorebookBook] = useState(null);
+  const [pendingLorebookExport, setPendingLorebookExport] = useState(null);
   const [activeLorebookId, setActiveLorebookId] = useState(null);
   const [viewingLorebookEntry, setViewingLorebookEntry] = useState(null);
   const [chatSettingsOpen, setChatSettingsOpen] = useState(false);
   const [chatSettingsExpandedBooks, setChatSettingsExpandedBooks] = useState({});
   const [chatSettingsBackgroundOpen, setChatSettingsBackgroundOpen] = useState(false);
   const [chatSettingsLorebookOpen, setChatSettingsLorebookOpen] = useState(false);
+  const [chatSettingsThoughtsOpen, setChatSettingsThoughtsOpen] = useState(false);
+  const [thoughtHistoryPage, setThoughtHistoryPage] = useState(0);
+  const [pendingThoughtScrollId, setPendingThoughtScrollId] = useState(null);
+  const [highlightedThoughtMessageId, setHighlightedThoughtMessageId] = useState(null);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [chatroomManageOpen, setChatroomManageOpen] = useState(false);
   const [chatVisibleCounts, setChatVisibleCounts] = useState({});
   const [genLoading, setGenLoading] = useState(false);
@@ -482,6 +557,7 @@ export default function MaliPhone() {
   const [chatroomImporting, setChatroomImporting] = useState(false);
   const chatMsgsRef = useRef(null);
   const chatLoadAdjustRef = useRef(null);
+  const thoughtJumpInProgressRef = useRef(false);
   const [walletSettingsOpen, setWalletSettingsOpen] = useState(false);
   const [walletSettingsPage, setWalletSettingsPage] = useState("main");
   const t = (key) => UI_TEXT[uiLanguage]?.[key] || UI_TEXT["zh-TW"]?.[key] || key;
@@ -516,6 +592,7 @@ export default function MaliPhone() {
       setGroupChats(Array.isArray(data.groupChats) ? data.groupChats : []);
       setChatScenes(data.chatScenes && typeof data.chatScenes === "object" ? data.chatScenes : defaultAppState.chatScenes);
       setGroupScenes(data.groupScenes && typeof data.groupScenes === "object" ? data.groupScenes : defaultAppState.groupScenes);
+      setInnerThoughtSettings(data.innerThoughtSettings && typeof data.innerThoughtSettings === "object" ? data.innerThoughtSettings : defaultAppState.innerThoughtSettings);
       setPosts(data.posts || []);
       setMemories(data.memories || {});
       setPhoneInboxCache(data.phoneInboxCache || {});
@@ -545,6 +622,12 @@ export default function MaliPhone() {
         setActiveLorebookId(null);
       }
       setApiConfig(data.apiConfig || defaultAppState.apiConfig);
+      setTtsConfig(data.ttsConfig && typeof data.ttsConfig === "object" ? {
+        ...defaultAppState.ttsConfig,
+        ...data.ttsConfig,
+        elevenlabs: { ...defaultAppState.ttsConfig.elevenlabs, ...(data.ttsConfig.elevenlabs || {}) },
+        minimax: { ...defaultAppState.ttsConfig.minimax, ...(data.ttsConfig.minimax || {}) },
+      } : defaultAppState.ttsConfig);
       setThemeName(data.themeName || defaultAppState.themeName);
       setUiLanguage(data.uiLanguage || defaultAppState.uiLanguage);
       const initialDock = (data.dockOrder && Array.isArray(data.dockOrder)) ? data.dockOrder : DOCK_APPS;
@@ -571,10 +654,14 @@ export default function MaliPhone() {
   useEffect(() => {
     if (!hydrated) return;
     const timer = setTimeout(() => {
-      saveAppState({ characters, activeCharId, chatHistory, chatModes, chatBackgrounds, groupChats, chatScenes, groupScenes, posts, memories, lorebooks, chatLorebookBindings, phoneInboxCache, wallet, characterWallets, screenLockTimeout, apiPresets, playerProfile, apiConfig, themeName, uiLanguage, homeSlots, dockOrder }).catch(() => {});
+      saveAppState({ characters, activeCharId, chatHistory, chatModes, chatBackgrounds, groupChats, chatScenes, groupScenes, innerThoughtSettings, posts, memories, lorebooks, chatLorebookBindings, phoneInboxCache, wallet, characterWallets, screenLockTimeout, apiPresets, playerProfile, apiConfig, ttsConfig, themeName, uiLanguage, homeSlots, dockOrder }).catch(() => {});
     }, 180);
     return () => clearTimeout(timer);
-  }, [hydrated, characters, activeCharId, chatHistory, chatModes, chatBackgrounds, groupChats, chatScenes, groupScenes, posts, memories, lorebooks, chatLorebookBindings, phoneInboxCache, wallet, characterWallets, screenLockTimeout, apiPresets, playerProfile, apiConfig, themeName, uiLanguage, homeSlots, dockOrder]);
+  }, [hydrated, characters, activeCharId, chatHistory, chatModes, chatBackgrounds, groupChats, chatScenes, groupScenes, innerThoughtSettings, posts, memories, lorebooks, chatLorebookBindings, phoneInboxCache, wallet, characterWallets, screenLockTimeout, apiPresets, playerProfile, apiConfig, ttsConfig, themeName, uiLanguage, homeSlots, dockOrder]);
+  useEffect(() => {
+    if (!hydrated || ttsConfig.provider !== "minimax") return;
+    setTtsConfig((current) => ({ ...current, provider: "elevenlabs" }));
+  }, [hydrated, ttsConfig.provider]);
   useEffect(() => {
     if (!currentChatGroup?.id) return;
     const latest = groupChats.find((g) => g.id === currentChatGroup.id);
@@ -582,6 +669,24 @@ export default function MaliPhone() {
     if (latest === currentChatGroup) return;
     setCurrentChatGroup(latest);
   }, [groupChats, currentChatGroup?.id]);
+  useEffect(() => {
+    if (!pendingThoughtScrollId || chatSettingsOpen) return;
+    const frame = requestAnimationFrame(() => {
+      const container = chatMsgsRef.current;
+      const target = container
+        ? Array.from(container.querySelectorAll("[data-message-id]")).find((node) => node.dataset.messageId === pendingThoughtScrollId)
+        : null;
+      if (!target) return;
+      const targetTop = target.offsetTop - (container.clientHeight - target.clientHeight) / 2;
+      container.scrollTop = Math.max(0, targetTop);
+      setExpandedInnerThoughts((prev) => ({ ...prev, [pendingThoughtScrollId]: true }));
+      setHighlightedThoughtMessageId(pendingThoughtScrollId);
+      setPendingThoughtScrollId(null);
+      setTimeout(() => { thoughtJumpInProgressRef.current = false; }, 500);
+      setTimeout(() => setHighlightedThoughtMessageId(null), 1800);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [pendingThoughtScrollId, chatSettingsOpen, chatVisibleCounts, chatHistory]);
   useEffect(() => {
     if (locked) return;
     const timeoutMs = screenLockTimeout === 0 ? null : Math.max(1, Number(screenLockTimeout) || 0) * 60 * 1000;
@@ -694,10 +799,12 @@ export default function MaliPhone() {
   }, [hydrated]);
   useEffect(() => {
     if (!currentChatChar) return;
+    if (thoughtJumpInProgressRef.current) return;
     const el = chatMsgsRef.current || messagesEndRef.current?.parentElement;
     if (!el) return;
     const t = setTimeout(() => {
       el.scrollTop = el.scrollHeight;
+      setShowScrollToBottom(false);
     }, 0);
     return () => clearTimeout(t);
   }, [currentChatChar?.id, chatHistory, isTyping, chatVisibleCounts]);
@@ -707,9 +814,23 @@ export default function MaliPhone() {
     if (!el) return;
     const t = setTimeout(() => {
       el.scrollTop = el.scrollHeight;
+      setShowScrollToBottom(false);
     }, 0);
     return () => clearTimeout(t);
   }, [currentChatGroup?.id, groupChats, isTyping]);
+  const updateScrollToBottomVisibility = (element) => {
+    if (!element) return;
+    const distanceFromBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
+    setShowScrollToBottom(distanceFromBottom > 250);
+  };
+  const scrollCurrentChatToBottom = () => {
+    const element = chatMsgsRef.current;
+    if (!element) return;
+    thoughtJumpInProgressRef.current = false;
+    setHighlightedThoughtMessageId(null);
+    element.scrollTo({ top: element.scrollHeight, behavior: "smooth" });
+    setShowScrollToBottom(false);
+  };
   useEffect(() => {
     if (!currentChatChar) return;
     setChatVisibleCounts((prev) => {
@@ -745,7 +866,158 @@ export default function MaliPhone() {
   }, []);
 
   const showToast = (m) => { setToast(m); setTimeout(() => setToast(null), 2200); };
+  const stopCurrentVoiceAudio = () => {
+    const current = voiceAudioRef.current;
+    if (!current) return;
+    current.audio.pause();
+    URL.revokeObjectURL(current.url);
+    voiceAudioRef.current = null;
+  };
+  const playVoiceBlob = async (blob, key) => {
+    stopCurrentVoiceAudio();
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    voiceAudioRef.current = { audio, url, key };
+    audio.onended = () => {
+      if (voiceAudioRef.current?.audio === audio) voiceAudioRef.current = null;
+      URL.revokeObjectURL(url);
+      setVoicePlayback({ key: null, status: "idle" });
+    };
+    audio.onerror = () => {
+      if (voiceAudioRef.current?.audio === audio) voiceAudioRef.current = null;
+      URL.revokeObjectURL(url);
+      setVoicePlayback({ key: null, status: "idle" });
+      showToast(tr("語音播放失敗", "Voice playback failed", "音声の再生に失敗しました", "음성 재생 실패"));
+    };
+    await audio.play();
+    setVoicePlayback({ key, status: "playing" });
+  };
+  const previewCharacterVoice = async (voiceSettings, text) => {
+    try {
+      const blob = await synthesizeSpeech({ text, config: ttsConfig, voiceSettings });
+      await playVoiceBlob(blob, "voice-preview");
+    } catch (err) {
+      showToast(`${tr("語音試聽失敗", "Voice preview failed", "音声試聴に失敗しました", "음성 미리듣기 실패")}：${sanitizeText(err?.message || "", 120)}`);
+    }
+  };
+  const loadElevenLabsDefaultVoices = async () => {
+    const apiKey = ttsConfig.elevenlabs?.apiKey || "";
+    try {
+      setTtsConnectionState("loading");
+      const voices = await fetchElevenLabsDefaultVoices(apiKey);
+      if (!voices.length) throw new Error(tr("找不到可用聲音", "No available voices found", "利用可能な音声が見つかりません", "사용 가능한 음성을 찾을 수 없습니다"));
+      setTtsVoices(voices);
+      setTtsConfig((current) => ({
+        ...current,
+        elevenlabs: {
+          ...current.elevenlabs,
+          availableVoices: voices,
+          defaultVoiceId: voices.some((voice) => voice.id === current.elevenlabs?.defaultVoiceId) ? current.elevenlabs.defaultVoiceId : voices[0].id,
+        },
+      }));
+      setTtsConnectionState("success");
+      showToast(tr(`連線成功，已載入 ${voices.length} 個可用聲音`, `Connected; loaded ${voices.length} available voices`, `接続成功：${voices.length}件の音声を読み込みました`, `연결 성공: 사용 가능한 음성 ${voices.length}개를 불러왔습니다`));
+    } catch (err) {
+      setTtsVoices([]);
+      setTtsConnectionState("error");
+      showToast(`${tr("ElevenLabs 連線失敗", "ElevenLabs connection failed", "ElevenLabs 接続失敗", "ElevenLabs 연결 실패")}：${sanitizeText(err?.message || "", 120)}`);
+    }
+  };
+  const previewDefaultTtsVoice = async () => {
+    const provider = ttsConfig.provider || "elevenlabs";
+    const voiceId = ttsConfig[provider]?.defaultVoiceId || "";
+    try {
+      setTtsConnectionState("previewing");
+      const voiceSettings = createDefaultVoiceSettings();
+      voiceSettings.enabled = true;
+      voiceSettings[provider].voiceId = voiceId;
+      const blob = await synthesizeSpeech({
+        text: tr("你好，語音 API 已連線成功。", "Hello, the voice API is connected.", "こんにちは、音声 API の接続に成功しました。", "안녕하세요, 음성 API 연결에 성공했습니다."),
+        config: ttsConfig,
+        voiceSettings,
+      });
+      await playVoiceBlob(blob, "tts-default-preview");
+      setTtsConnectionState("success");
+    } catch (err) {
+      setTtsConnectionState("error");
+      showToast(`${tr("語音測試失敗", "Voice test failed", "音声テストに失敗しました", "음성 테스트 실패")}：${sanitizeText(err?.message || "", 120)}`);
+    }
+  };
+  const extractRealitySpeech = (text) => {
+    const parts = [];
+    const source = String(text || "");
+    const pattern = /「([^」]+)」|“([^”]+)”|"([^"]+)"/g;
+    let match;
+    while ((match = pattern.exec(source))) parts.push(match[1] || match[2] || match[3]);
+    return parts.join(" ").trim();
+  };
+  const getReplySpeechText = (charId, message) => {
+    const history = chatHistory[charId] || [];
+    const group = message.replyGroupId
+      ? history.filter((item) => item.role === "assistant" && item.replyGroupId === message.replyGroupId)
+      : [message];
+    const combined = group.map((item) => stripModeLabel(stripInternalBlocks(item.content || ""))).filter(Boolean).join("\n");
+    const speech = getMessageMode(message) === "reality" ? extractRealitySpeech(combined) : combined;
+    return speech.replace(/\*\*|__|[*_`#]/g, "").trim();
+  };
+  const toggleCharacterVoice = async (char, message) => {
+    const voiceSettings = char?.voiceSettings;
+    if (!ttsConfig.enabled || !voiceSettings?.enabled) return;
+    const provider = ttsConfig.provider || "elevenlabs";
+    const voiceId = voiceSettings?.[provider]?.voiceId?.trim();
+    if (!ttsConfig?.[provider]?.apiKey) return showToast(tr("請先到設定填寫語音 API Key", "Set the voice API key in Settings first", "設定で音声 API Key を入力してください", "설정에서 음성 API Key를 입력해주세요"));
+    if (!voiceId) return showToast(tr("請先在角色設定填寫 Voice ID", "Set a Voice ID in character settings first", "キャラ設定で Voice ID を入力してください", "캐릭터 설정에서 Voice ID를 입력해주세요"));
+    const key = `${provider}:${char.id}:${message.replyGroupId || message.id}`;
+    if (voicePlayback.key === key && voicePlayback.status === "playing" && voiceAudioRef.current?.audio) {
+      voiceAudioRef.current.audio.pause();
+      setVoicePlayback({ key, status: "paused" });
+      return;
+    }
+    if (voicePlayback.key === key && voicePlayback.status === "paused" && voiceAudioRef.current?.audio) {
+      await voiceAudioRef.current.audio.play();
+      setVoicePlayback({ key, status: "playing" });
+      return;
+    }
+    const text = getReplySpeechText(char.id, message);
+    if (!text) return showToast(tr("這段回覆沒有可朗讀的角色台詞", "This reply has no character dialogue to read", "この返信には読み上げる台詞がありません", "이 답변에는 읽을 캐릭터 대사가 없습니다"));
+    const cacheKey = `${key}:${ttsConfig[provider]?.model || ""}:${voiceId}:${text}`;
+    try {
+      setVoicePlayback({ key, status: "loading" });
+      let blob = voiceAudioCacheRef.current.get(cacheKey);
+      if (!blob) {
+        blob = await synthesizeSpeech({ text, config: ttsConfig, voiceSettings });
+        voiceAudioCacheRef.current.set(cacheKey, blob);
+      }
+      await playVoiceBlob(blob, key);
+    } catch (err) {
+      setVoicePlayback({ key: null, status: "idle" });
+      showToast(`${tr("語音生成失敗", "Voice generation failed", "音声生成に失敗しました", "음성 생성 실패")}：${sanitizeText(err?.message || "", 120)}`);
+    }
+  };
+  const renderCharacterVoiceAction = (char, message, isActive, collapseWhenHidden = false) => {
+    if (!ttsConfig.enabled || !char?.voiceSettings?.enabled) return null;
+    const key = `${ttsConfig.provider || "elevenlabs"}:${char.id}:${message.replyGroupId || message.id}`;
+    const status = voicePlayback.key === key ? voicePlayback.status : "idle";
+    const isVisible = isActive || status !== "idle";
+    return (
+      <button
+        type="button"
+        className={`mp-voice-action ${isVisible ? "" : (collapseWhenHidden ? "mp-voice-action-collapsed" : "mp-voice-action-hidden")} ${status === "playing" ? "mp-voice-action-playing" : ""}`}
+        disabled={status === "loading"}
+        title={status === "playing" ? tr("暫停語音", "Pause voice", "音声を一時停止", "음성 일시정지") : tr("播放角色語音", "Play character voice", "キャラクター音声を再生", "캐릭터 음성 재생")}
+        aria-label={status === "playing" ? tr("暫停語音", "Pause voice", "音声を一時停止", "음성 일시정지") : tr("播放角色語音", "Play character voice", "キャラクター音声を再生", "캐릭터 음성 재생")}
+        onClick={(event) => { event.stopPropagation(); void toggleCharacterVoice(char, message); }}
+      >
+        {status === "loading" ? <LoaderCircle size={14} className="mp-voice-spinner" aria-hidden="true" /> : status === "playing" ? <Pause size={14} aria-hidden="true" /> : <Volume2 size={14} aria-hidden="true" />}
+      </button>
+    );
+  };
   const CHANGELOG_TEXT = {
+    "1.1.9": {
+      en: ["06/29 Update", "Added character inner thoughts with automatic generation, manual viewing, and thought history", "Added character voice support (beta), including ElevenLabs voice settings, previews, and manual playback in chat"],
+      ja: ["06/29 更新", "キャラの心の声機能を追加し、自動生成・手動表示・履歴に対応", "キャラクター音声機能（テスト版）を追加し、ElevenLabs の音声設定・試聴・チャットでの手動再生に対応"],
+      ko: ["06/29 업데이트", "캐릭터 속마음 기능을 추가하고 자동 생성, 수동 확인, 속마음 기록을 지원", "캐릭터 음성 기능(테스트 버전)을 추가하고 ElevenLabs 음성 설정, 미리듣기, 채팅 수동 재생을 지원"],
+    },
     "1.1.8": {
       en: ["06/25 Update", "Added English, Japanese, and Korean UI languages; character replies now follow the selected UI language", "Added chatroom background image uploads", "Adjusted the player dialogue box in Reality mode"],
       ja: ["06/25 更新", "英語・日本語・韓国語の UI 言語を追加し、キャラの返信が選択中の UI 言語に合わせるようになりました", "チャットルーム背景画像のアップロード機能を追加", "現実モードのプレイヤー会話ボックスを調整"],
@@ -1031,6 +1303,140 @@ export default function MaliPhone() {
     const maxBubbles = 6;
     if (normalized.length <= maxBubbles) return normalized;
     return [...normalized.slice(0, maxBubbles - 1), normalized.slice(maxBubbles - 1).join("\n")];
+  };
+  const isInnerThoughtAutoEnabled = (charId) => innerThoughtSettings?.[charId]?.auto !== false;
+  const setInnerThoughtAutoEnabled = (charId, enabled) => {
+    setInnerThoughtSettings((prev) => ({
+      ...(prev || {}),
+      [charId]: { ...(prev?.[charId] || {}), auto: !!enabled },
+    }));
+  };
+  const normalizeInnerThought = (text) => {
+    let clean = stripInternalBlocks(String(text || ""))
+      .replace(/^\s*(?:心聲|內心(?:想法|獨白)?|想法)\s*[：:]\s*/i, "")
+      .replace(/^[「『\"']+|[」』\"']+$/g, "")
+      .replace(/\{\{char\}\}/gi, "")
+      .replace(/\{\{user\}\}/gi, getUserDisplayName())
+      .replace(/\n{2,}/g, "\n")
+      .trim();
+    return sanitizeText(clean, 240);
+  };
+  const generateInnerThought = async ({ char, messageId, source = "manual", historySnapshot = null }) => {
+    if (!char?.id || !messageId || innerThoughtLoading[messageId]) return;
+    const fullHistory = Array.isArray(historySnapshot) ? historySnapshot : (chatHistory[char.id] || []);
+    const targetIndex = fullHistory.findIndex((m) => m.id === messageId);
+    if (targetIndex < 0 || fullHistory[targetIndex]?.role !== "assistant") return;
+    const target = fullHistory[targetIndex];
+    const replyMessages = target.replyGroupId
+      ? fullHistory.slice(0, targetIndex + 1).filter((m) => m.role === "assistant" && m.replyGroupId === target.replyGroupId)
+      : (() => {
+          const group = [];
+          for (let index = targetIndex; index >= 0 && fullHistory[index]?.role === "assistant"; index -= 1) group.unshift(fullHistory[index]);
+          return group;
+        })();
+    const targetReply = replyMessages.map((m) => m.content || "").filter(Boolean).join("\n");
+    const contextMessages = fullHistory
+      .slice(0, targetIndex + 1)
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .slice(-14)
+      .map((m) => ({
+        role: m.role,
+        content: sanitizeText(m.content || (m.image ? "[圖片]" : ""), 1200),
+      }));
+    const memoryContext = pickMemoriesForPrompt(char.id, contextMessages)
+      .map((m, i) => `- ${i + 1}. ${m.text}`)
+      .join("\n");
+    const scene = chatScenes?.[char.id] || {};
+    const sceneContext = [scene.location ? `地點：${sanitizeText(scene.location, 30)}` : "", scene.note ? `備註：${sanitizeText(scene.note, 100)}` : ""].filter(Boolean).join("\n");
+    const prompt = `${getOutputLanguageDirective()}
+
+你要寫的是角色「${char.name}」在目標訊息當下沒有說出口的心聲。
+
+規則：
+1. 必須使用角色第一人稱，並與目標訊息及當時劇情直接相關。
+2. 只輸出心聲本身，不要角色名、標籤、引號、旁白、Markdown 或「我心想」。
+3. 只寫 1 到 2 句，簡短自然，最多 80 字。
+4. 可以呈現嘴硬、猶豫、期待、隱瞞或話語與真心的反差，但不要為了反差硬加感情。
+5. 不要替玩家描述內心、感受或未說出口的意圖。
+6. 不要使用角色在當時不可能知道的資訊，也不要參考目標訊息之後的劇情。
+7. 保留曖昧與留白，不要一次揭露角色所有秘密。
+
+${sceneContext ? `[當時場景]\n${sceneContext}\n` : ""}${memoryContext ? `[相關記憶]\n${memoryContext}\n` : ""}
+目標回覆（前端可能拆成多個氣泡，但屬於同一次回覆）：
+${targetReply || target.content || "（無文字）"}`;
+    setInnerThoughtLoading((prev) => ({ ...prev, [messageId]: true }));
+    try {
+      const raw = await callAI(contextMessages, apiConfig, applyUserPlaceholder(prompt));
+      const content = normalizeInnerThought(raw);
+      if (!content) throw new Error(tr("模型沒有產生心聲", "No inner thought was generated", "心の声が生成されませんでした", "속마음이 생성되지 않았습니다"));
+      setChatHistory((prev) => ({
+        ...prev,
+        [char.id]: (prev[char.id] || []).map((m) => m.id === messageId ? {
+          ...m,
+          innerThought: { content, generatedAt: Date.now(), source, seen: source !== "auto" },
+        } : m),
+      }));
+      setExpandedInnerThoughts((prev) => ({ ...prev, [messageId]: source !== "auto" }));
+    } catch (err) {
+      showToast(`${tr("心聲生成失敗", "Failed to generate inner thought", "心の声の生成に失敗しました", "속마음 생성 실패")}：${sanitizeText(err?.message || "", 120)}`);
+    } finally {
+      setInnerThoughtLoading((prev) => ({ ...prev, [messageId]: false }));
+    }
+  };
+  const renderInnerThought = (char, message) => {
+    if (message?.role !== "assistant") return null;
+    const thought = message.innerThought?.content || "";
+    const expanded = !!expandedInnerThoughts[message.id];
+    const loading = !!innerThoughtLoading[message.id];
+    const unseenAutoThought = !!thought && message.innerThought?.source === "auto" && message.innerThought?.seen === false;
+    const markInnerThoughtSeen = () => {
+      if (!unseenAutoThought) return;
+      setChatHistory((prev) => ({
+        ...prev,
+        [char.id]: (prev[char.id] || []).map((m) => m.id === message.id ? {
+          ...m,
+          innerThought: { ...m.innerThought, seen: true },
+        } : m),
+      }));
+    };
+    return (
+      <div className={`mp-thought ${expanded && thought ? "expanded" : ""}`} onClick={(e) => e.stopPropagation()}>
+        <div className="mp-thought-bar">
+          <button
+            type="button"
+            className="mp-thought-peek"
+            disabled={loading}
+            title={thought ? tr("顯示或收起心聲", "Show or hide inner thought", "心の声を表示・非表示", "속마음 표시 또는 숨기기") : tr("窺探心聲", "Peek at inner thought", "心の声をのぞく", "속마음 엿보기")}
+            onClick={() => {
+              if (thought) {
+                if (!expanded) markInnerThoughtSeen();
+                setExpandedInnerThoughts((prev) => ({ ...prev, [message.id]: !prev[message.id] }));
+              } else {
+                void generateInnerThought({ char, messageId: message.id, source: "manual" });
+              }
+            }}
+          >
+            <span className={unseenAutoThought ? "mp-thought-unseen-icon" : ""} aria-hidden="true">
+              <Eye size={12} strokeWidth={2.1} />
+            </span>
+            <span>{loading ? tr("讀取中...", "Reading...", "読込中...", "읽는 중...") : tr("心聲", "Inner thought", "心の声", "속마음")}</span>
+          </button>
+          {thought && (
+            <button
+              type="button"
+              className="mp-thought-refresh"
+              disabled={loading}
+              title={tr("重新生成心聲", "Regenerate inner thought", "心の声を再生成", "속마음 다시 생성")}
+              aria-label={tr("重新生成心聲", "Regenerate inner thought", "心の声を再生成", "속마음 다시 생성")}
+              onClick={() => void generateInnerThought({ char, messageId: message.id, source: "manual" })}
+            >
+              <RefreshCw size={13} strokeWidth={2.1} aria-hidden="true" />
+            </button>
+          )}
+        </div>
+        {thought && expanded && <div className="mp-thought-content">{thought}</div>}
+      </div>
+    );
   };
   const isChatMode = (mode) => mode === "reality" || mode === "online";
   const getMessageMode = (m) => (isChatMode(m?.mode) ? m.mode : "online");
@@ -1784,10 +2190,24 @@ ${memoryText || "（無）"}`;
         }));
       }
       const bubbles = cleanReply.trim() ? (selectedMode === "reality" ? [cleanReply] : splitAssistantBubbles(cleanReply)) : [];
+      const replyGroupId = gid();
+      const assistantMessages = bubbles.map((content, index) => ({
+        id: gid(),
+        replyGroupId,
+        replyGroupIndex: index,
+        replyGroupSize: bubbles.length,
+        role: "assistant",
+        content,
+        mode: selectedMode,
+        time: Date.now(),
+      }));
+      let lastAssistantMessage = null;
       for (let i = 0; i < bubbles.length; i++) {
         const delay = i === 0 ? 420 : Math.min(1200, 520 + bubbles[i].length * 18);
         await wait(delay);
-        setChatHistory(h => ({ ...h, [cid]: [...(h[cid] || []), { id: gid(), role: "assistant", content: bubbles[i], mode: selectedMode, time: Date.now() }] }));
+        lastAssistantMessage = { ...assistantMessages[i], time: Date.now() };
+        assistantMessages[i] = lastAssistantMessage;
+        setChatHistory(h => ({ ...h, [cid]: [...(h[cid] || []), lastAssistantMessage] }));
       }
       if (pendingTransfer?.amount > 0 && canApplyPendingTransfer) {
         await wait(220);
@@ -1795,6 +2215,10 @@ ${memoryText || "（無）"}`;
       } else if (transferFailureNotice) {
         await wait(220);
         setChatHistory((h) => ({ ...h, [cid]: [...(h[cid] || []), { id: gid(), role: "system_notice", content: transferFailureNotice, time: Date.now() }] }));
+      }
+      if (lastAssistantMessage && isInnerThoughtAutoEnabled(cid) && Math.random() < 0.25) {
+        const snapshot = [...nextForDisplay, ...assistantMessages];
+        void generateInnerThought({ char, messageId: lastAssistantMessage.id, source: "auto", historySnapshot: snapshot });
       }
   };
 
@@ -1944,6 +2368,7 @@ ${memoryText || "（無）"}`;
       statusText: sanitizeText(c.statusText || "", 80),
       statusUpdatedAt: c.statusUpdatedAt || 0,
       pinned: !!c.pinned,
+      voiceSettings: normalizeCharacterVoiceSettings(c.voiceSettings),
     };
     setCharacters(p => [...p, nc]);
     if (!activeCharId) setActiveCharId(nc.id);
@@ -1951,7 +2376,7 @@ ${memoryText || "（無）"}`;
     showToast(`${nc.name} 已加入`);
   };
   const updateCharacter = (id, patch) => {
-    setCharacters((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch, avatar: sanitizeUserImageUrl(patch.avatar ?? c.avatar) || null, statusText: sanitizeText((patch.statusText ?? c.statusText) || "", 80), pinned: typeof patch.pinned === "boolean" ? patch.pinned : !!c.pinned } : c)));
+    setCharacters((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch, voiceSettings: normalizeCharacterVoiceSettings(patch.voiceSettings ?? c.voiceSettings), avatar: sanitizeUserImageUrl(patch.avatar ?? c.avatar) || null, statusText: sanitizeText((patch.statusText ?? c.statusText) || "", 80), pinned: typeof patch.pinned === "boolean" ? patch.pinned : !!c.pinned } : c)));
     setModal(null);
     setEditingCharacter(null);
     showToast(tr("角色已更新", "Character updated", "キャラを更新しました", "캐릭터가 업데이트되었습니다"));
@@ -1968,6 +2393,7 @@ ${memoryText || "（無）"}`;
         description: sanitizeText(char.description, 8000),
         systemPrompt: sanitizeText(char.systemPrompt, 8000),
         relationshipToUser: sanitizeText(char.relationshipToUser, 120),
+        voiceSettings: char.voiceSettings || createDefaultVoiceSettings(),
       },
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
@@ -1996,6 +2422,7 @@ ${memoryText || "（無）"}`;
       groupChats,
       chatScenes,
       groupScenes,
+      innerThoughtSettings,
       posts,
       memories,
       lorebooks,
@@ -2007,6 +2434,7 @@ ${memoryText || "（無）"}`;
       apiPresets,
       playerProfile,
       apiConfig,
+      ttsConfig,
       themeName,
       uiLanguage,
       homeSlots,
@@ -2060,6 +2488,11 @@ ${memoryText || "（無）"}`;
       delete next[charId];
       return next;
     });
+    setInnerThoughtSettings((prev) => {
+      const next = { ...prev };
+      delete next[charId];
+      return next;
+    });
     if (currentChatChar?.id === charId) {
       setChatActionPanelOpen(false);
       setMessageEditor(null);
@@ -2081,6 +2514,7 @@ ${memoryText || "（無）"}`;
       chatMode: chatModes?.[charId] || "online",
       chatBackground: chatBackgrounds?.[charId] || "",
       chatLorebookBinding: chatLorebookBindings?.[charId] || null,
+      innerThoughtSetting: innerThoughtSettings?.[charId] || null,
     };
     const safeName = sanitizeText(charName || "chatroom", 40).replace(/[\\/:*?"<>|]+/g, "_").trim() || "chatroom";
     const dateTag = new Date().toISOString().slice(0, 10).replace(/-/g, "");
@@ -2145,6 +2579,9 @@ ${memoryText || "（無）"}`;
     if (raw?.chatLorebookBinding) {
       setChatLorebookBindings((prev) => ({ ...prev, [targetId]: raw.chatLorebookBinding }));
     }
+    if (raw?.innerThoughtSetting) {
+      setInnerThoughtSettings((prev) => ({ ...prev, [targetId]: raw.innerThoughtSetting }));
+    }
     if (currentChatChar?.id === targetId) {
       setChatActionPanelOpen(false);
       setMessageEditor(null);
@@ -2185,6 +2622,7 @@ ${memoryText || "（無）"}`;
       groupChats: Array.isArray(src.groupChats) ? src.groupChats : [],
       chatScenes: src.chatScenes && typeof src.chatScenes === "object" ? src.chatScenes : {},
       groupScenes: src.groupScenes && typeof src.groupScenes === "object" ? src.groupScenes : {},
+      innerThoughtSettings: src.innerThoughtSettings && typeof src.innerThoughtSettings === "object" ? src.innerThoughtSettings : {},
       posts: Array.isArray(src.posts) ? src.posts : [],
       memories: src.memories && typeof src.memories === "object" ? src.memories : {},
       lorebooks: Array.isArray(src.lorebooks) ? src.lorebooks : [],
@@ -2196,6 +2634,12 @@ ${memoryText || "（無）"}`;
       apiPresets: Array.isArray(src.apiPresets) && src.apiPresets.length ? src.apiPresets : defaultAppState.apiPresets,
       playerProfile: src.playerProfile && typeof src.playerProfile === "object" ? src.playerProfile : defaultAppState.playerProfile,
       apiConfig: src.apiConfig && typeof src.apiConfig === "object" ? src.apiConfig : defaultAppState.apiConfig,
+      ttsConfig: src.ttsConfig && typeof src.ttsConfig === "object" ? {
+        ...defaultAppState.ttsConfig,
+        ...src.ttsConfig,
+        elevenlabs: { ...defaultAppState.ttsConfig.elevenlabs, ...(src.ttsConfig.elevenlabs || {}) },
+        minimax: { ...defaultAppState.ttsConfig.minimax, ...(src.ttsConfig.minimax || {}) },
+      } : defaultAppState.ttsConfig,
       themeName: src.themeName || defaultAppState.themeName,
       uiLanguage: src.uiLanguage || defaultAppState.uiLanguage,
       homeSlots: Array.isArray(src.homeSlots) && src.homeSlots.length === HOME_SLOT_COUNT ? src.homeSlots : Array.from({ length: HOME_SLOT_COUNT }, () => null),
@@ -2209,6 +2653,7 @@ ${memoryText || "（無）"}`;
     setGroupChats(nextState.groupChats);
     setChatScenes(nextState.chatScenes);
     setGroupScenes(nextState.groupScenes);
+    setInnerThoughtSettings(nextState.innerThoughtSettings);
     setPosts(nextState.posts);
     setMemories(nextState.memories);
     setLorebooks(nextState.lorebooks);
@@ -2220,6 +2665,7 @@ ${memoryText || "（無）"}`;
     setApiPresets(nextState.apiPresets);
     setPlayerProfile(nextState.playerProfile);
     setApiConfig(nextState.apiConfig);
+    setTtsConfig(nextState.ttsConfig);
     setThemeName(nextState.themeName);
     setUiLanguage(nextState.uiLanguage);
     setHomeSlots(nextState.homeSlots);
@@ -2278,7 +2724,9 @@ ${memoryText || "（無）"}`;
     const nowTs = Date.now();
     const fourHours = 4 * 60 * 60 * 1000;
     if (!force && char.statusUpdatedAt && nowTs - char.statusUpdatedAt < fourHours) return;
-    const msgs = (chatHistory[charId] || []).slice(-12);
+    const msgs = (chatHistory[charId] || [])
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .slice(-12);
     if (!force && msgs.length === 0) return;
     if (!canUseCurrentProvider()) { showToast(tr("請先完成 AI 連線設定（API Key）", "Please finish AI connection setup (API key) first", "先にAI接続設定（APIキー）を完了してください", "먼저 AI 연결 설정(API 키)을 완료해주세요")); return; }
     try {
@@ -2707,62 +3155,66 @@ ${recent}`,
     .mp-lock-hint{max-width:min(82vw,320px);padding:0 12px;text-align:center;line-height:1.4;word-break:keep-all;overflow-wrap:anywhere;font-size:12px;}
     .mp-page{background:${activeTheme?.surfaces?.pageBg || "linear-gradient(180deg,#fce4ec 0%,#fff 30%)"};}
     ${isNightTheme ? `
-      .mp-modal,.mp-sg,.mp-cc,.mp-post,.mp-sc,.mp-cw{background:rgba(82,90,119,.96);border-color:rgba(255,255,255,.08);box-shadow:none;}
-      .mp-page{background:linear-gradient(180deg,#4c536f 0%,#474e68 42%,#3f455d 100%);}
-      .mp-cr{background:linear-gradient(180deg,#4d546f 0%,#464c66 30%,#41485f 100%);}
-      .mp-msg-ai{background:rgba(71,77,100,.96);color:#f4f7fb;border-color:rgba(255,255,255,.08);box-shadow:none;}
-      .mp-msg-ai .mp-msg-t{color:#c0c7d4;}
-      .mp-msg-user{background:linear-gradient(135deg,#95d7ff,#78bff0);color:#17324b;box-shadow:none;}
-      .mp-msg-user .mp-msg-t{color:rgba(23,50,75,.72);}
-      .mp-reality-wrap{display:flex;align-items:flex-end;gap:8px;margin:6px 0;padding:0 2px;}
-      .mp-reality-user{justify-content:flex-end;}
-      .mp-reality-ai{justify-content:flex-start;}
-      .mp-reality-msg{
-        max-width:min(80%,540px);
-        padding:15px 18px;
-        border-radius:18px;
-        background:rgba(255,229,241,.12);
-        border:0;
-        box-shadow:none;
-        backdrop-filter:blur(20px) saturate(130%);
-        -webkit-backdrop-filter:blur(20px) saturate(130%);
-        color:#203247;
-        overflow:hidden;
-        position:relative;
-        margin-left:0;
-      }
-      .mp-reality-user .mp-reality-msg{
-        background:rgba(255,229,241,.16);
-      }
-      .mp-reality-ai .mp-reality-msg{
-        background:rgba(255,229,241,.08);
-      }
-      .mp-reality-t{font-size:10px;opacity:.56;margin-top:4px;text-align:right;}
-      .mp-reality-p{margin:0 0 6px;line-height:1.7;padding:0;border:0;background:none;box-shadow:none;}
-      .mp-reality-p:last-child{margin-bottom:0;}
-      .mp-reality-dialogue{font-weight:600;color:#203247;display:inline;letter-spacing:.01em;border:0;padding:0;margin:0;background:none;box-shadow:none;border-radius:0;}
-      .mp-reality-thought{font-style:italic;color:#6b7c8c;}
-      .mp-msg-t{font-size:10px;}
-      .mp-inp,.mp-sinp,.mp-ssel,.mp-ta{background:rgba(70,76,99,.98);color:#f4f7fb;border-color:rgba(255,255,255,.10);}
-      .mp-inp::placeholder,.mp-sinp::placeholder,.mp-ta::placeholder{color:#c0c7d4;}
-      .mp-cw-desc,.mp-ci-prev,.mp-msg-t,.mp-lbl{color:#c0c7d4;}
-      .mp-htitle,.mp-clock-big,.mp-clock-day,.mp-lock-time,.mp-cw-name,.mp-ctitle,.mp-sec-ct,.mp-persona{color:#f3f4f6;}
-      .mp-icon-l{color:#f3f4f6;}
-      .mp-ibtn,.mp-ibtn-chat{background:rgba(143,211,255,.12);border-color:rgba(143,211,255,.22);color:#b8e8ff;}
-      .mp-btn-img{background:rgba(255,255,255,.14);color:#f3f4f6;border:1px solid rgba(255,255,255,.12);}
-      .mp-btn-img.active{background:rgba(143,211,255,.18);color:#9fd4ff;border-color:rgba(143,211,255,.30);}
-      .mp-save{background:linear-gradient(135deg,#9bdcff,#7cc5ff);color:#17324b;}
-      .mp-bar,.mp-hdr,.mp-inp-bar{background:rgba(76,83,108,.92);border-color:rgba(255,255,255,.10);}
-      .mp-mode-tab.active{background:#5d657f;color:#fff;box-shadow:none;}
-      .mp-mode-tabs{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.10);}
-      .mp-page-dot.active{background:rgba(168,219,255,.82);}
-      .mp-page-dot{background:rgba(255,255,255,.18);}
-      .mp-dock{background:rgba(76,83,108,.92);border-color:rgba(255,255,255,.10);}
-      .mp-cw:hover,.mp-icon-c:hover,.mp-dock-i:hover{box-shadow:none;}
+      .mp-page{background:${activeTheme.surfaces.pageBg};}
+      .mp-cr{background:linear-gradient(180deg,rgba(36,27,51,.97),rgba(26,22,37,.99));}
+      .mp-bar,.mp-hdr,.mp-inp-bar,.mp-dock{background:rgba(26,22,37,.95);border-color:#3a2d4f;}
+      .mp-modal,.mp-sg,.mp-cc,.mp-post,.mp-sc,.mp-cw,.mp-transfer-card{background:rgba(36,27,51,.95);border-color:#3a2d4f;box-shadow:0 8px 24px rgba(7,4,12,.26);}
+      .mp-icon-c,.mp-dock-i,.mp-back{background:rgba(47,36,64,.9);border-color:#3a2d4f;box-shadow:0 3px 12px rgba(7,4,12,.24);}
+      .mp-icon-c:hover,.mp-dock-i:hover,.mp-cw:hover{background:rgba(58,45,79,.96);box-shadow:0 5px 16px rgba(7,4,12,.3);}
+      .mp-chat-switch,.mp-mode-tabs{background:rgba(47,36,64,.72);border-color:#3a2d4f;box-shadow:none;}
+      .mp-chat-switch-btn{color:#b8a8c9;}
+      .mp-chat-switch-btn.active{color:#f0e6f5;background:rgba(244,143,177,.18);box-shadow:0 2px 8px rgba(7,4,12,.2);}
+      .mp-chat-row,.mp-ci{border-color:rgba(122,107,138,.24);}
+      .mp-chat-row:hover,.mp-chat-row.pinned:hover,.mp-ci:hover{background:rgba(255,255,255,.055);}
+      .mp-chat-row:active{background:rgba(244,143,177,.1);}
+      .mp-msg-ai{background:#2f2440;color:#f0e6f5;border-color:#3a2d4f;box-shadow:0 2px 8px rgba(7,4,12,.2);}
+      .mp-msg-user{background:linear-gradient(135deg,#ec6a95,#d95e88);color:#fff;box-shadow:0 2px 8px rgba(7,4,12,.22);}
+      .mp-msg-ai .mp-msg-t{color:#9384a2;}
+      .mp-msg-user .mp-msg-t{color:rgba(255,255,255,.72);}
+      .mp-reality-msg{background:transparent;border-color:transparent;box-shadow:none;color:#c9b8da;}
+      .mp-reality-user .mp-reality-msg{background:linear-gradient(135deg,#465d79,#394b66);color:#f4f8fc;box-shadow:inset 0 0 0 1px rgba(165,201,232,.22),0 2px 10px rgba(7,4,12,.22);}
+      .mp-reality-ai .mp-reality-msg{background:transparent;color:#b5a3c4;box-shadow:none;}
+      .mp-reality-dialogue{color:#fff7fc;font-weight:400;}
+      .mp-reality-thought{color:#d9a6e8;font-style:italic;font-weight:600;}
+      .mp-reality-strong{color:#ff91b8;font-weight:800;}
+      .mp-mode-sep{color:#a5c9e8;}
+      .mp-mode-sep::before{background:linear-gradient(90deg,rgba(165,201,232,0),rgba(165,201,232,.42));}
+      .mp-mode-sep::after{background:linear-gradient(90deg,rgba(165,201,232,.42),rgba(165,201,232,0));}
+      .mp-mode-sep span{background:#26384d;border-color:rgba(165,201,232,.34);color:#c5def2;}
+      .mp-chat-mode-reality .mp-inp-bar{background:rgba(30,24,43,.97);border-top-color:rgba(165,201,232,.28);box-shadow:0 -6px 18px rgba(7,4,12,.22);}
+      .mp-chat-mode-reality .mp-inp{background:#292039;border-color:rgba(165,201,232,.24);}
+      .mp-chat-mode-reality .mp-btn-send{background:linear-gradient(135deg,#a5c9e8,#7ba8d1);color:#1a1625;}
+      .mp-thought-content{background:rgba(47,36,64,.72);border-color:rgba(200,168,224,.5);}
+      .mp-inp,.mp-sinp,.mp-ssel,.mp-ta{background:#2f2440;color:#f0e6f5;border-color:#3a2d4f;}
+      .mp-ssel option{background:#241b33;color:#f0e6f5;}
+      .mp-inp:focus,.mp-sinp:focus,.mp-ta:focus{border-color:#7ba8d1;}
+      .mp-inp::placeholder,.mp-sinp::placeholder,.mp-ta::placeholder{color:#9384a2;}
+      .mp-cw-desc,.mp-ci-prev,.mp-lbl,.mp-mode-hint{color:#b8a8c9;}
+      .mp-msg-t,.mp-reality-t,.mp-char-counter{color:#81728f;}
+      .mp-htitle,.mp-clock-big,.mp-clock-day,.mp-lock-time,.mp-cw-name,.mp-ctitle,.mp-sec-ct,.mp-persona,.mp-icon-l{color:#f0e6f5;}
+      .mp-ibtn,.mp-ibtn-chat{background:rgba(165,201,232,.1);border-color:rgba(165,201,232,.3);color:#a5c9e8;}
+      .mp-ibtn-view{background:rgba(130,177,255,.12);border-color:rgba(130,177,255,.34);color:#a9c8ff;}
+      .mp-ibtn-r{background:rgba(229,115,115,.1);border-color:rgba(229,115,115,.28);color:#ef9696;}
+      .mp-badge-enabled{background:rgba(129,199,132,.16);color:#9bd29e;}
+      .mp-badge-disabled{background:rgba(122,107,138,.18);color:#b8a8c9;}
+      .mp-lorebook-content{background:#2f2440;border-color:#3a2d4f;color:#f0e6f5;}
+      .mp-btn-img{background:rgba(47,36,64,.9);color:#f0e6f5;border-color:#3a2d4f;}
+      .mp-btn-img.active{background:rgba(165,201,232,.14);color:#a5c9e8;border-color:rgba(165,201,232,.32);}
+      .mp-save{background:linear-gradient(135deg,#f48fb1,#ec6a95);color:#1a1625;}
+      .mp-mode-tab{color:#b8a8c9;}
+      .mp-mode-tab.active{background:#3a2d4f;color:#f0e6f5;box-shadow:0 2px 8px rgba(7,4,12,.24);}
+      .mp-msg-note{background:rgba(47,36,64,.72);border-color:#3a2d4f;color:#b8a8c9;}
+      .mp-msg-editbtn{background:#2f2440;border-color:rgba(165,201,232,.34);color:#a5c9e8;box-shadow:0 2px 7px rgba(7,4,12,.32);}
+      .mp-msg-editbtn:hover{background:#3a2d4f;border-color:rgba(165,201,232,.52);color:#c5def2;}
+      .mp-msg-editbtn + .mp-msg-editbtn{border-color:rgba(229,115,115,.34);color:#e98a8a;}
+      .mp-msg-editbtn + .mp-msg-editbtn:hover{border-color:rgba(229,115,115,.52);color:#ffaaaa;}
+      .mp-page-dot{background:rgba(255,255,255,.2);}
+      .mp-page-dot.active{background:#f48fb1;}
+      .mp-scroll-bottom{color:#f0e6f5;filter:drop-shadow(0 1px 3px rgba(7,4,12,.78));}
     ` : ``}
   `;
 
-  if (locked) return (<><style>{css}</style><style>{themeCss}</style><div className="mp-wrap"><div className="mp-phone"><div className={`mp-lock ${unlocking?"out":""}`} onTouchStart={onLockTouchStart} onTouchEnd={onLockTouchEnd} onMouseDown={onLockMouseDown} onMouseUp={onLockMouseUp} onPointerDown={onLockPointerDown} onPointerUp={onLockPointerUp} onDoubleClick={handleUnlock}><BarClock ft={ft} /><LockClock ft={ft} fd={fd} /><div className="mp-lock-hint">{tr("向上滑動解鎖 MaliPhone（或雙擊）", "Swipe up to unlock MaliPhone (or double-click)", "MaliPhone を上にスワイプしてロック解除（またはダブルクリック）", "MaliPhone을 위로 밀어 잠금 해제(또는 더블클릭)")}</div></div></div></div></>);
+  if (locked) return (<><style>{css}</style><style>{themeCss}</style><div className="mp-wrap"><div className="mp-phone"><div className={`mp-lock ${unlocking?"out":""}`} onTouchStart={onLockTouchStart} onTouchEnd={onLockTouchEnd} onMouseDown={onLockMouseDown} onMouseUp={onLockMouseUp} onPointerDown={onLockPointerDown} onPointerUp={onLockPointerUp} onDoubleClick={handleUnlock}><BarClock ft={ft} hideTime /><LockClock ft={ft} fd={fd} /><div className="mp-lock-hint">{tr("向上滑動解鎖 MaliPhone（或雙擊）", "Swipe up to unlock MaliPhone (or double-click)", "MaliPhone を上にスワイプしてロック解除（またはダブルクリック）", "MaliPhone을 위로 밀어 잠금 해제(또는 더블클릭)")}</div></div></div></div></>);
 
   const localizedAppById = {
     chat: { ...DEFAULT_APPS.find((a) => a.id === "chat"), name: t("chat") },
@@ -2978,11 +3430,18 @@ ${recent}`,
           {characters.length === 0 ? <div className="mp-empty"><div className="mp-empty-i">🧩</div><div className="mp-empty-t">{tr("目前尚未建立角色", "No characters yet", "まだキャラがありません", "아직 캐릭터가 없습니다")}</div></div>
           : characters.map(c => {
             const msgs = chatHistory[c.id] || [];
+            const dialogueMsgs = msgs.filter((m) => m.role === "user" || m.role === "assistant");
             const mems = memories[c.id] || [];
-            const uMsgs = msgs.filter(m => m.role === "user").length;
-            const aMsgs = msgs.filter(m => m.role === "assistant").length;
-            const firstD = msgs.length > 0 ? new Date(msgs[0].time).toLocaleDateString("zh-TW") : "--";
-            const lastD = msgs.length > 0 ? new Date(msgs[msgs.length-1].time).toLocaleDateString("zh-TW") : "--";
+            const uMsgs = dialogueMsgs.filter(m => m.role === "user").length;
+            const assistantReplyKeys = new Set(
+              dialogueMsgs
+                .filter((m) => m.role === "assistant")
+                .map((m) => m.replyGroupId || m.id)
+            );
+            const aMsgs = assistantReplyKeys.size;
+            const conversationCount = uMsgs + aMsgs;
+            const firstD = dialogueMsgs.length > 0 ? new Date(dialogueMsgs[0].time).toLocaleDateString("zh-TW") : "--";
+            const lastD = dialogueMsgs.length > 0 ? new Date(dialogueMsgs[dialogueMsgs.length-1].time).toLocaleDateString("zh-TW") : "--";
             const days = msgs.length > 0 ? Math.max(1, Math.ceil((Date.now() - msgs[0].time) / 86400000)) : 0;
             const exp = statusExpandedCharId === c.id;
             const memoryExpanded = statusMemoryExpandedCharId === c.id;
@@ -3000,7 +3459,7 @@ ${recent}`,
                   {c.tags?.length > 0 && <div className="mp-sc-tags">{c.tags.map((t,i) => <span key={i} className="mp-tag">{t}</span>)}</div>}
                   {c.creator && <div style={{fontSize:10,color:"var(--mp-txt-l)",marginTop:4}}>by {c.creator}</div>}
                   <div className="mp-sc-stats">
-                    <div className="mp-stat"><div className="mp-stat-v">{msgs.length}</div><div className="mp-stat-lb">{tr("訊息", "Messages", "メッセージ", "메시지")}</div></div>
+                    <div className="mp-stat"><div className="mp-stat-v">{conversationCount}</div><div className="mp-stat-lb">{tr("訊息", "Messages", "メッセージ", "메시지")}</div></div>
                     <div className="mp-stat"><div className="mp-stat-v">{days}</div><div className="mp-stat-lb">{tr("互動天數", "Days", "日数", "일수")}</div></div>
                     <div className="mp-stat"><div className="mp-stat-v">{mems.length}</div><div className="mp-stat-lb">{tr("記憶", "Memories", "記憶", "기억")}</div></div>
                     <div className="mp-stat"><div className="mp-stat-v">{posts.filter(p=>p.charId===c.id).length}</div><div className="mp-stat-lb">{tr("貼文", "Posts", "投稿", "게시물")}</div></div>
@@ -3074,13 +3533,15 @@ ${recent}`,
   const renderRealityInline = (text) => {
     const raw = String(text || "");
     const nodes = [];
-    const re = /(「[^」]{1,500}」|"[^"\n]{1,500}"|\*[^*\n]{1,500}\*|_[^_\n]{1,500}_)/g;
+    const re = /(\*\*[^*\n]{1,500}\*\*|__[^_\n]{1,500}__|「[^」]{1,500}」|"[^"\n]{1,500}"|\*[^*\n]{1,500}\*|_[^_\n]{1,500}_)/g;
     let last = 0;
     let match;
     while ((match = re.exec(raw))) {
       if (match.index > last) nodes.push(raw.slice(last, match.index));
       const token = match[0];
-      if (token.startsWith("「") || token.startsWith("\"")) {
+      if (token.startsWith("**") || token.startsWith("__")) {
+        nodes.push(<strong key={`b-${match.index}`} className="mp-reality-strong">{token.slice(2, -2)}</strong>);
+      } else if (token.startsWith("「") || token.startsWith("\"")) {
         nodes.push(<span key={`d-${match.index}`} className="mp-reality-dialogue">{token}</span>);
       } else {
         nodes.push(<span key={`t-${match.index}`} className="mp-reality-thought">{token.slice(1, -1)}</span>);
@@ -3827,7 +4288,7 @@ ${recent || "（目前無內容）"}`;
             </div>
             {renderSceneBar("group", currentChatGroup.id, tr("場景", "Scene", "シーン", "장면"))}
             <div className="mp-cr" style={{ flex: 1, minHeight: 0 }}>
-              <div className="mp-msgs" ref={chatMsgsRef} style={{ flex: 1, minHeight: 0, paddingBottom: 12 }}>
+              <div className="mp-msgs" ref={chatMsgsRef} style={{ flex: 1, minHeight: 0, paddingBottom: 12 }} onScroll={(e) => updateScrollToBottomVisibility(e.currentTarget)}>
                 {visibleMsgs.map((m) => (
                   m.role === "system_notice" ? (
                     <div key={m.id} className="mp-msg-note-wrap">
@@ -3886,6 +4347,18 @@ ${recent || "（目前無內容）"}`;
                 {isTyping && <div className="mp-typing"><span /><span /><span /></div>}
                 <div ref={messagesEndRef} />
               </div>
+              {showScrollToBottom && (
+                <button
+                  type="button"
+                  className="mp-scroll-bottom"
+                  style={{ bottom: 8 }}
+                  aria-label={tr("捲到最新訊息", "Scroll to latest message", "最新メッセージへ移動", "최신 메시지로 이동")}
+                  title={tr("捲到最新訊息", "Scroll to latest message", "最新メッセージへ移動", "최신 메시지로 이동")}
+                  onClick={scrollCurrentChatToBottom}
+                >
+                  <ArrowDown size={23} strokeWidth={2.2} aria-hidden="true" />
+                </button>
+              )}
             </div>
             {chatImage && (
               <div className="mp-imgprev">
@@ -4043,6 +4516,36 @@ ${recent || "（目前無內容）"}`;
       const msgs = chatHistory[currentChatChar.id] || [];
       const visibleCount = Math.max(50, chatVisibleCounts[currentChatChar.id] || 50);
       const visibleMsgs = msgs.slice(Math.max(0, msgs.length - visibleCount));
+      const innerThoughtAnchorIds = new Set();
+      msgs.forEach((message, index) => {
+        if (message?.role !== "assistant") return;
+        if (message.replyGroupId) {
+          if (message.replyGroupIndex === message.replyGroupSize - 1) innerThoughtAnchorIds.add(message.id);
+          return;
+        }
+        if (msgs[index + 1]?.role !== "assistant") innerThoughtAnchorIds.add(message.id);
+      });
+      const latestInnerThoughtAnchorId = [...msgs].reverse().find((message) => message?.role === "assistant")?.id || null;
+      const canRenderInnerThought = (message) => (
+        innerThoughtAnchorIds.has(message.id) && (
+          !!message.innerThought?.content ||
+          (!isTyping && message.id === latestInnerThoughtAnchorId)
+        )
+      );
+      const thoughtRecords = msgs
+        .filter((message) => message?.role === "assistant" && message.innerThought?.content)
+        .slice()
+        .sort((a, b) => (b.innerThought.generatedAt || b.time || 0) - (a.innerThought.generatedAt || a.time || 0));
+      const thoughtPageSize = 5;
+      const thoughtPageCount = Math.max(1, Math.ceil(thoughtRecords.length / thoughtPageSize));
+      const activeThoughtPage = Math.min(thoughtHistoryPage, thoughtPageCount - 1);
+      const visibleThoughtRecords = thoughtRecords.slice(activeThoughtPage * thoughtPageSize, (activeThoughtPage + 1) * thoughtPageSize);
+      const jumpToThoughtMessage = (messageId) => {
+        thoughtJumpInProgressRef.current = true;
+        setChatVisibleCounts((prev) => ({ ...prev, [currentChatChar.id]: msgs.length }));
+        setPendingThoughtScrollId(messageId);
+        setChatSettingsOpen(false);
+      };
       const binding = getChatLorebookBinding(currentChatChar.id);
       const selectedMode = getSelectedChatMode(currentChatChar.id);
       const committedMode = getLastCommittedChatMode(currentChatChar.id);
@@ -4114,7 +4617,7 @@ ${recent || "（目前無內容）"}`;
             >
               {modelShort}
             </button>
-            <button className="mp-ibtn" onClick={() => { setChatSettingsExpandedBooks({}); setChatSettingsBackgroundOpen(false); setChatSettingsLorebookOpen(false); setChatroomManageOpen(false); setChatBgEditor(null); setChatSettingsOpen(true); }}>{tr("設定", "Settings", "設定", "설정")}</button>
+            <button className="mp-ibtn" onClick={() => { setChatSettingsExpandedBooks({}); setChatSettingsBackgroundOpen(false); setChatSettingsLorebookOpen(false); setChatSettingsThoughtsOpen(false); setThoughtHistoryPage(0); setChatroomManageOpen(false); setChatBgEditor(null); setChatSettingsOpen(true); }}>{tr("設定", "Settings", "設定", "설정")}</button>
           </div>
           {modelBadgeOpen && (
             <div
@@ -4144,6 +4647,76 @@ ${recent || "（目前無內容）"}`;
                     ? tr("現實模式會以段落形式呈現，可包含敘述、動作、內心想法與對話。", "Reality mode uses full-width paragraphs and supports narration, actions, inner thoughts, and dialogue.", "現実モードは段落形式で、地の文、動作、内心、会話を含められます。", "현실 모드는 문단 형식으로 묘사, 행동, 내면, 대화를 포함할 수 있습니다.")
                     : tr("線上聊天會維持手機訊息風格與短訊節奏。", "Online chat keeps the phone-bubble style and short-message pace.", "オンラインチャットはスマホの吹き出し形式と短文ペースを維持します。", "온라인 채팅은 휴대폰 말풍선 스타일과 짧은 메시지 템포를 유지합니다.")}
                 </div>
+              </div>
+              <div className="mp-cc">
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>{tr("自動心聲", "Automatic inner thoughts", "心の声の自動生成", "속마음 자동 생성")}</div>
+                    <div style={{ fontSize: 10, color: "var(--mp-txt-l)", marginTop: 3, lineHeight: 1.5 }}>
+                      {tr("偶爾在角色回覆後產生；關閉後仍可手動窺探。", "Occasionally appears after replies. Manual peeking remains available when off.", "返信後に時々生成されます。オフでも手動で確認できます。", "답장 후 가끔 생성됩니다. 꺼도 수동으로 볼 수 있습니다.")}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={isInnerThoughtAutoEnabled(currentChatChar.id)}
+                    className={`mp-switch ${isInnerThoughtAutoEnabled(currentChatChar.id) ? "active" : ""}`}
+                    onClick={() => setInnerThoughtAutoEnabled(currentChatChar.id, !isInnerThoughtAutoEnabled(currentChatChar.id))}
+                  >
+                    <span />
+                  </button>
+                </div>
+                <div className="mp-thought-history-divider" />
+                <button
+                  type="button"
+                  className="mp-thought-history-toggle"
+                  onClick={() => setChatSettingsThoughtsOpen((open) => !open)}
+                >
+                  <span>{tr("心聲紀錄", "Inner thought history", "心の声の履歴", "속마음 기록")} · {thoughtRecords.length}</span>
+                  <span>{chatSettingsThoughtsOpen ? tr("收合", "Collapse", "折りたたむ", "접기") : tr("展開", "Expand", "展開", "펼치기")}</span>
+                </button>
+                {chatSettingsThoughtsOpen && (
+                  <div className="mp-thought-history">
+                    {visibleThoughtRecords.length ? visibleThoughtRecords.map((message) => (
+                      <button
+                        key={message.id}
+                        type="button"
+                        className="mp-thought-record"
+                        onClick={() => jumpToThoughtMessage(message.id)}
+                      >
+                        <div className="mp-thought-record-meta">
+                          <Eye size={12} strokeWidth={2} aria-hidden="true" />
+                          <span>{new Date(message.innerThought.generatedAt || message.time).toLocaleString(uiLanguage, { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                        </div>
+                        <div className="mp-thought-record-content">{message.innerThought.content}</div>
+                        <div className="mp-thought-record-preview">{tr("原回覆", "Reply", "元の返信", "원래 답장")}：{sanitizeText(message.content || "", 46)}</div>
+                      </button>
+                    )) : (
+                      <div className="mp-thought-history-empty">{tr("還沒有留下任何心聲", "No inner thoughts yet", "心の声はまだありません", "아직 남겨진 속마음이 없습니다")}</div>
+                    )}
+                    {thoughtRecords.length > thoughtPageSize && (
+                      <div className="mp-thought-history-pages">
+                        <button
+                          type="button"
+                          aria-label={tr("上一頁", "Previous page", "前のページ", "이전 페이지")}
+                          disabled={activeThoughtPage === 0}
+                          onClick={() => setThoughtHistoryPage((page) => Math.max(0, page - 1))}
+                        >
+                          <ChevronLeft size={15} aria-hidden="true" />
+                        </button>
+                        <span>{activeThoughtPage + 1} / {thoughtPageCount}</span>
+                        <button
+                          type="button"
+                          aria-label={tr("下一頁", "Next page", "次のページ", "다음 페이지")}
+                          disabled={activeThoughtPage >= thoughtPageCount - 1}
+                          onClick={() => setThoughtHistoryPage((page) => Math.min(thoughtPageCount - 1, page + 1))}
+                        >
+                          <ChevronRight size={15} aria-hidden="true" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="mp-cc">
                 <div
@@ -4459,7 +5032,7 @@ ${recent || "（目前無內容）"}`;
               </div>
             </div>
           ) : (
-            <div className="mp-cr" style={chatCrStyle}>
+            <div className={`mp-cr mp-chat-mode-${selectedMode}`} style={chatCrStyle}>
             {chatBgUrl && (
               <>
                 <div
@@ -4469,7 +5042,7 @@ ${recent || "（目前無內容）"}`;
                     zIndex: 0,
                   }}
                 />
-                <div style={{ position: "absolute", inset: 0, background: "rgba(255,255,255,.52)", pointerEvents: "none", zIndex: 0 }} />
+                <div style={{ position: "absolute", inset: 0, background: isNightTheme ? "rgba(18,12,28,.46)" : "rgba(255,255,255,.52)", pointerEvents: "none", zIndex: 0 }} />
               </>
             )}
             <div style={{position:"relative",zIndex:1}}>
@@ -4481,6 +5054,7 @@ ${recent || "（目前無內容）"}`;
               style={{ position: "relative", zIndex: 1 }}
               onScroll={(e) => {
                 const el = e.currentTarget;
+                updateScrollToBottomVisibility(el);
                 if (el.scrollTop > 0) return;
                 if (visibleCount >= msgs.length) return;
                 const nextCount = Math.min(msgs.length, visibleCount + 50);
@@ -4599,32 +5173,55 @@ ${recent || "（目前無內容）"}`;
                 const displayContent = stripModeLabel(stripInternalBlocks(m.content));
                 if (isReality) {
                   return (
-                    <div key={m.id} className={`mp-reality-wrap ${isUser ? "mp-reality-user" : "mp-reality-ai"}`}>
+                    <div data-message-id={m.id} key={m.id} className={`mp-reality-wrap ${isUser ? "mp-reality-user" : "mp-reality-ai"} ${highlightedThoughtMessageId === m.id ? "mp-thought-jump-highlight" : ""}`}>
                       {isUser && <button className={`mp-msg-editbtn ${isActive ? "" : "mp-msg-editbtn-hidden"}`} onClick={() => setMessageEditor({ id: m.id, content: m.content || "", mode: getMessageMode(m) })}>✎</button>}
-                      <div className="mp-reality-msg" onClick={() => setActiveMessageId((p) => (p === m.id ? null : m.id))}>
-                        {m.image && <img src={`data:image/png;base64,${m.image}`} className="mp-msg-img" alt="" />}
-                        {displayContent && renderRealityText(displayContent)}
-                        <div className="mp-reality-t">{new Date(m.time).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"})}</div>
+                      <div className={`mp-thought-stack ${isUser ? "mp-thought-stack-user" : ""}`}>
+                        <div className="mp-reality-msg" onClick={() => setActiveMessageId((p) => (p === m.id ? null : m.id))}>
+                          {m.image && <img src={`data:image/png;base64,${m.image}`} className="mp-msg-img" alt="" />}
+                          {displayContent && renderRealityText(displayContent)}
+                          {isUser && <div className="mp-reality-t">{new Date(m.time).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"})}</div>}
+                        </div>
+                        {!isUser && <div className="mp-reality-footer">
+                          <span className="mp-reality-t">{new Date(m.time).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"})}</span>
+                          {isActive && <button className="mp-msg-editbtn" onClick={() => setMessageEditor({ id: m.id, content: m.content || "", mode: getMessageMode(m) })}>✎</button>}
+                          {renderCharacterVoiceAction(currentChatChar, m, isActive, true)}
+                        </div>}
+                        {!isUser && canRenderInnerThought(m) && renderInnerThought(currentChatChar, m)}
                       </div>
-                      {!isUser && <button className={`mp-msg-editbtn ${isActive ? "" : "mp-msg-editbtn-hidden"}`} onClick={() => setMessageEditor({ id: m.id, content: m.content || "", mode: getMessageMode(m) })}>✎</button>}
                     </div>
                   );
                 }
                 return (
-                  <div key={m.id} className={`mp-msg-wrap ${isUser?"mp-msg-wrap-user":"mp-msg-wrap-ai"}`}>
+                  <div data-message-id={m.id} key={m.id} className={`mp-msg-wrap ${isUser?"mp-msg-wrap-user":"mp-msg-wrap-ai"} ${highlightedThoughtMessageId === m.id ? "mp-thought-jump-highlight" : ""}`}>
                     {isUser && <button className={`mp-msg-editbtn ${isActive ? "" : "mp-msg-editbtn-hidden"}`} onClick={() => setMessageEditor({ id: m.id, content: m.content || "", mode: getMessageMode(m) })}>✎</button>}
-                    <div className={`mp-msg ${isUser?"mp-msg-user":"mp-msg-ai"}`} onClick={() => setActiveMessageId((p) => (p === m.id ? null : m.id))}>
-                      {m.image && <img src={`data:image/png;base64,${m.image}`} className="mp-msg-img" alt="" />}
-                      {displayContent && <div>{displayContent}</div>}
-                      <div className="mp-msg-t">{new Date(m.time).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"})}</div>
+                    <div className={`mp-thought-stack ${isUser ? "mp-thought-stack-user" : ""}`}>
+                      <div className={`mp-msg ${isUser?"mp-msg-user":"mp-msg-ai"}`} onClick={() => setActiveMessageId((p) => (p === m.id ? null : m.id))}>
+                        {m.image && <img src={`data:image/png;base64,${m.image}`} className="mp-msg-img" alt="" />}
+                        {displayContent && <div>{displayContent}</div>}
+                        <div className="mp-msg-t">{new Date(m.time).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"})}</div>
+                      </div>
+                      {!isUser && canRenderInnerThought(m) && renderInnerThought(currentChatChar, m)}
                     </div>
                     {!isUser && <button className={`mp-msg-editbtn ${isActive ? "" : "mp-msg-editbtn-hidden"}`} onClick={() => setMessageEditor({ id: m.id, content: m.content || "", mode: getMessageMode(m) })}>✎</button>}
+                    {!isUser && renderCharacterVoiceAction(currentChatChar, m, isActive)}
                   </div>
                 );
               })}
               {isTyping && <div className="mp-typing"><span /><span /><span /></div>}
               <div ref={messagesEndRef} />
             </div>
+            {showScrollToBottom && (
+              <button
+                type="button"
+                className="mp-scroll-bottom"
+                style={{ bottom: chatActionPanelOpen ? 142 : (chatImage ? 148 : 68) }}
+                aria-label={tr("捲到最新訊息", "Scroll to latest message", "最新メッセージへ移動", "최신 메시지로 이동")}
+                title={tr("捲到最新訊息", "Scroll to latest message", "最新メッセージへ移動", "최신 메시지로 이동")}
+                onClick={scrollCurrentChatToBottom}
+              >
+                <ArrowDown size={23} strokeWidth={2.2} aria-hidden="true" />
+              </button>
+            )}
             {chatImage && (
               <div className="mp-imgprev">
                 <img src={`data:${chatImage.mime};base64,${chatImage.data}`} alt="" />
@@ -4840,6 +5437,89 @@ ${recent || "（目前無內容）"}`;
     const entries = activeBook?.entries || [];
     const sortedEntries = [...entries].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
     const sortedBooks = [...lorebooks].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    const exportLorebook = (book) => {
+      if (!book) return;
+      const safeName = sanitizeText(book.name || "lorebook", 80)
+        .replace(/[\\/:*?"<>|]+/g, "-")
+        .trim() || "lorebook";
+      downloadJsonFile({
+        format: "maliphone-lorebook",
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        lorebook: {
+          name: book.name || "",
+          description: book.description || "",
+          enabled: book.enabled !== false,
+          entries: (book.entries || []).map((entry) => ({
+            title: entry.title || "",
+            keywords: Array.isArray(entry.keywords) ? entry.keywords : [],
+            content: entry.content || "",
+            enabled: entry.enabled !== false,
+          })),
+        },
+      }, `${safeName}.malilorebook.json`);
+      showToast(tr("世界書已匯出", "Lorebook exported", "世界観を書き出しました", "월드북을 내보냈습니다"));
+    };
+    const normalizeImportedLorebook = (rawBook, fallbackName) => {
+      if (!rawBook || typeof rawBook !== "object") return null;
+      const rawEntries = Array.isArray(rawBook.entries)
+        ? rawBook.entries
+        : rawBook.entries && typeof rawBook.entries === "object"
+          ? Object.values(rawBook.entries)
+          : [];
+      const now = Date.now();
+      const normalizedEntries = rawEntries.map((entry, index) => {
+        if (!entry || typeof entry !== "object") return null;
+        const rawKeywords = entry.keywords ?? entry.keys ?? entry.key ?? [];
+        const keywords = (Array.isArray(rawKeywords) ? rawKeywords : String(rawKeywords || "").split(","))
+          .map((keyword) => sanitizeText(String(keyword).trim(), 32))
+          .filter(Boolean)
+          .slice(0, 20);
+        const title = sanitizeText(
+          entry.title || entry.comment || entry.name || keywords[0] || `${tr("條目", "Entry", "項目", "항목")} ${index + 1}`,
+          120
+        );
+        return {
+          id: gid(),
+          title,
+          keywords,
+          content: sanitizeText(entry.content || entry.text || "", 3000),
+          enabled: typeof entry.enabled === "boolean" ? entry.enabled : !entry.disable,
+          updatedAt: now + index,
+        };
+      }).filter(Boolean);
+      return {
+        id: gid(),
+        name: sanitizeText(rawBook.name || rawBook.title || fallbackName || tr("匯入的世界書", "Imported lorebook", "インポートした世界観", "가져온 월드북"), 80),
+        description: sanitizeText(rawBook.description || "", 400),
+        enabled: rawBook.enabled !== false,
+        updatedAt: now,
+        entries: normalizedEntries,
+      };
+    };
+    const importLorebookFile = async (event) => {
+      const file = event.target.files?.[0];
+      event.target.value = "";
+      if (!file) return;
+      try {
+        const parsed = JSON.parse(await file.text());
+        const fallbackName = file.name.replace(/(?:\.malilorebook)?\.json$/i, "");
+        const candidates = Array.isArray(parsed?.lorebooks)
+          ? parsed.lorebooks
+          : Array.isArray(parsed?.state?.lorebooks)
+            ? parsed.state.lorebooks
+            : [parsed?.lorebook || parsed];
+        const importedBooks = candidates
+          .map((book, index) => normalizeImportedLorebook(book, candidates.length > 1 ? `${fallbackName} ${index + 1}` : fallbackName))
+          .filter(Boolean);
+        if (importedBooks.length === 0) throw new Error(tr("找不到可匯入的世界書", "No importable lorebook found", "インポートできる世界観が見つかりません", "가져올 수 있는 월드북을 찾을 수 없습니다"));
+        setLorebooks((prev) => [...importedBooks, ...prev]);
+        setActiveLorebookId(importedBooks[0].id);
+        showToast(tr(`已匯入 ${importedBooks.length} 本世界書`, `Imported ${importedBooks.length} lorebook(s)`, `${importedBooks.length}件の世界観をインポートしました`, `월드북 ${importedBooks.length}개를 가져왔습니다`));
+      } catch (err) {
+        showToast(`${tr("世界書匯入失敗", "Lorebook import failed", "世界観のインポートに失敗しました", "월드북 가져오기에 실패했습니다")}：${sanitizeText(err?.message || tr("檔案格式錯誤", "Invalid file format", "ファイル形式が正しくありません", "파일 형식이 올바르지 않습니다"), 120)}`);
+      }
+    };
     const saveBook = () => {
       if (!editingLorebookBook?.name?.trim()) return showToast(tr("請輸入世界書名稱", "Please enter a lorebook name", "ワールドブック名を入力してください", "월드북 이름을 입력해주세요"));
         const payload = {
@@ -4901,7 +5581,11 @@ ${recent || "（目前無內容）"}`;
           <div className="mp-hdr"><div className="mp-back" onClick={() => { if (activeBook) setActiveLorebookId(null); else closeApp(); }}>←</div><div className="mp-htitle">{tr("世界書", "Lorebook", "世界観", "월드북")}</div></div>
         <div className="mp-cm">
           {!activeBook ? <>
-              <button className="mp-add" onClick={() => setEditingLorebookBook({ id: null, name: "", description: "", enabled: true })}>{tr("新增世界書", "Add lorebook", "世界観を追加", "월드북 추가")}</button>
+              <div style={{display:"flex",gap:8}}>
+                <button className="mp-add" style={{flex:1}} onClick={() => setEditingLorebookBook({ id: null, name: "", description: "", enabled: true })}>{tr("新增世界書", "Add lorebook", "世界観を追加", "월드북 추가")}</button>
+                <button className="mp-add" style={{flex:1}} onClick={() => lorebookImportInputRef.current?.click()}>{t("import")}</button>
+                <input ref={lorebookImportInputRef} type="file" accept="application/json,.json" hidden onChange={importLorebookFile} />
+              </div>
             <div style={{height:8}} />
             {sortedBooks.length === 0 ? <div className="mp-empty"><div className="mp-empty-i">📚</div><div className="mp-empty-t">{tr("目前沒有世界書", "No lorebooks yet", "まだ世界観がありません", "아직 월드북이 없습니다")}</div></div> : sortedBooks.map((b) => (
               <div key={b.id} className="mp-cc">
@@ -4909,7 +5593,7 @@ ${recent || "（目前無內容）"}`;
                     <div style={{fontWeight:700,fontSize:13}}>{b.name}</div>
                   </div>
                 <div style={{fontSize:11,color:"var(--mp-txt-l)",marginTop:4}}>{tr("條目", "Entries", "項目", "항목")}：{(b.entries || []).length}</div>
-                {b.description && <div style={{fontSize:12,lineHeight:1.55,marginTop:8}}>{b.description}</div>}
+                {b.description && <div className="mp-lorebook-description" style={{fontSize:12,lineHeight:1.55,marginTop:8}}>{b.description}</div>}
                 <div style={{display:"flex",gap:6,marginTop:10}}>
                   <button className="mp-ibtn-chat" onClick={() => setActiveLorebookId(b.id)}>{tr("展開", "Open", "開く", "열기")}</button>
                     <button className="mp-ibtn" onClick={() => setEditingLorebookBook({ id: b.id, name: b.name || "", description: b.description || "", enabled: true })}>{tr("編輯", "Edit", "編集", "편집")}</button>
@@ -4921,9 +5605,12 @@ ${recent || "（目前無內容）"}`;
             <div className="mp-cc" style={{marginBottom:8}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
                 <div style={{fontWeight:700,fontSize:14}}>{activeBook.name}</div>
-                <button className="mp-ibtn" onClick={() => setActiveLorebookId(null)}>{t("backToList")}</button>
+                <div style={{display:"flex",gap:6}}>
+                  <button className="mp-ibtn" onClick={() => setPendingLorebookExport(activeBook)}>{t("export")}</button>
+                  <button className="mp-ibtn" onClick={() => setActiveLorebookId(null)}>{t("backToList")}</button>
+                </div>
               </div>
-              {activeBook.description && <div style={{fontSize:12,color:"var(--mp-txt-l)",marginTop:6}}>{activeBook.description}</div>}
+              {activeBook.description && <div className="mp-lorebook-description" style={{fontSize:12,color:"var(--mp-txt-l)",marginTop:6}}>{activeBook.description}</div>}
             </div>
             <button className="mp-add" onClick={() => setEditingLorebookEntry({ id: null, title: "", keywords: "", content: "", enabled: true })}>{tr("新增條目", "Add entry", "項目を追加", "항목 추가")}</button>
             <div style={{height:8}} />
@@ -4931,12 +5618,12 @@ ${recent || "（目前無內容）"}`;
               <div key={e.id} className="mp-cc">
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
                   <div style={{fontWeight:700,fontSize:13}}>{e.title}</div>
-                  <span className="mp-active-badge" style={{background:e.enabled?"rgba(129,199,132,.2)":"rgba(120,144,156,.18)",color:e.enabled?"#2e7d32":"#546e7a"}}>{e.enabled ? tr("啟用", "Enabled", "有効", "활성") : tr("停用", "Disabled", "無効", "비활성")}</span>
+                  <span className={`mp-active-badge ${e.enabled ? "mp-badge-enabled" : "mp-badge-disabled"}`}>{e.enabled ? tr("啟用", "Enabled", "有効", "활성") : tr("停用", "Disabled", "無効", "비활성")}</span>
                 </div>
                 <div style={{fontSize:11,color:"var(--mp-txt-l)",marginTop:4}}>{tr("關鍵字", "Keywords", "キーワード", "키워드")}：{(e.keywords||[]).join("、") || tr("無", "None", "なし", "없음")}</div>
                 <div style={{fontSize:12,lineHeight:1.55,marginTop:8,display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical",overflow:"hidden",whiteSpace:"pre-wrap"}}>{e.content || ""}</div>
                 <div style={{display:"flex",gap:6,marginTop:10}}>
-                  <button className="mp-ibtn" style={{background:"rgba(144,202,249,.16)",border:"1px solid rgba(144,202,249,.35)",color:"#1565c0"}} onClick={() => setViewingLorebookEntry(e)}>{tr("展開", "Open", "開く", "열기")}</button>
+                  <button className="mp-ibtn mp-ibtn-view" onClick={() => setViewingLorebookEntry(e)}>{tr("展開", "Open", "開く", "열기")}</button>
                   <button className="mp-ibtn" onClick={() => setLorebooks((prev) => prev.map((b) => b.id === activeBook.id ? { ...b, entries: (b.entries || []).map((x) => x.id === e.id ? { ...x, enabled: !x.enabled, updatedAt: Date.now() } : x), updatedAt: Date.now() } : b))}>{e.enabled ? tr("停用", "Disable", "無効", "비활성") : tr("啟用", "Enable", "有効", "활성")}</button>
                   <div style={{marginLeft:"auto"}} />
                   <button className="mp-ibtn-r" onClick={() => deleteEntry(e.id)}>{tr("刪除", "Delete", "削除", "삭제")}</button>
@@ -4945,15 +5632,32 @@ ${recent || "（目前無內容）"}`;
             ))}
           </>}
         </div>
+        {pendingLorebookExport && (
+          <div className="mp-overlay" onClick={() => setPendingLorebookExport(null)}>
+            <div className="mp-modal" onClick={(ev) => ev.stopPropagation()}>
+              <div className="mp-modal-t">{tr("確認匯出世界書", "Confirm lorebook export", "世界観の書き出し確認", "월드북 내보내기 확인")}</div>
+              <div style={{fontSize:13,lineHeight:1.65,color:"var(--mp-txt)",marginTop:8}}>
+                {tr("即將匯出", "You are about to export", "書き出す世界観", "내보낼 월드북")}：<strong>{pendingLorebookExport.name || tr("未命名世界書", "Untitled lorebook", "無題の世界観", "이름 없는 월드북")}</strong>
+              </div>
+              <div style={{fontSize:11,color:"var(--mp-txt-l)",marginTop:4}}>
+                {tr("條目", "Entries", "項目", "항목")}：{(pendingLorebookExport.entries || []).length}
+              </div>
+              <div style={{display:"flex",gap:8,marginTop:16}}>
+                <button className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#b0bec5,#90a4ae)"}} onClick={() => setPendingLorebookExport(null)}>{t("cancel")}</button>
+                <button className="mp-save" style={{flex:1}} onClick={() => { exportLorebook(pendingLorebookExport); setPendingLorebookExport(null); }}>{tr("確認匯出", "Confirm export", "書き出す", "내보내기 확인")}</button>
+              </div>
+            </div>
+          </div>
+        )}
         {viewingLorebookEntry && (
           <div className="mp-overlay" onClick={() => setViewingLorebookEntry(null)}>
             <div className="mp-modal" onClick={(ev) => ev.stopPropagation()}>
               <div className="mp-modal-t" style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
                 <span>{viewingLorebookEntry.title || t("title")}</span>
-                <span className="mp-active-badge" style={{background:viewingLorebookEntry.enabled?"rgba(129,199,132,.2)":"rgba(120,144,156,.18)",color:viewingLorebookEntry.enabled?"#2e7d32":"#546e7a"}}>{viewingLorebookEntry.enabled?t("enable"):t("disable")}</span>
+                <span className={`mp-active-badge ${viewingLorebookEntry.enabled ? "mp-badge-enabled" : "mp-badge-disabled"}`}>{viewingLorebookEntry.enabled?t("enable"):t("disable")}</span>
               </div>
               <div className="mp-row"><div className="mp-lbl">{t("keywords")}</div><div style={{fontSize:12,color:"var(--mp-txt-l)"}}>{(viewingLorebookEntry.keywords || []).join("、") || "無"}</div></div>
-              <div className="mp-row"><div className="mp-lbl">{t("content")}</div><div style={{fontSize:12,lineHeight:1.6,whiteSpace:"pre-wrap",maxHeight:260,overflowY:"auto",padding:10,border:"1px solid rgba(244,143,177,.18)",borderRadius:8,background:"rgba(255,255,255,.55)"}}>{viewingLorebookEntry.content || ""}</div></div>
+              <div className="mp-row"><div className="mp-lbl">{t("content")}</div><div className="mp-lorebook-content">{viewingLorebookEntry.content || ""}</div></div>
               <div style={{display:"flex",gap:8,marginTop:8}}>
                 <button className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#b0bec5,#90a4ae)"}} onClick={() => setViewingLorebookEntry(null)}>{t("close")}</button>
                 <button className="mp-save" style={{flex:1}} onClick={() => { setViewingLorebookEntry(null); setEditingLorebookEntry({ id: viewingLorebookEntry.id, title: viewingLorebookEntry.title || "", keywords: (viewingLorebookEntry.keywords || []).join(", "), content: viewingLorebookEntry.content || "", enabled: !!viewingLorebookEntry.enabled }); }}>{t("edit")}</button>
@@ -5020,6 +5724,12 @@ ${recent || "（目前無內容）"}`;
 
   const renderSettings = () => {
     const tc = tempConfig || apiConfig;
+    const activeTtsConfig = ttsConfig[ttsConfig.provider] || {};
+    const availableTtsVoices = ttsVoices.length ? ttsVoices : (ttsConfig.elevenlabs?.availableVoices || []);
+    const updateActiveTtsConfig = (patch) => setTtsConfig((current) => ({
+      ...current,
+      [current.provider]: { ...(current[current.provider] || {}), ...patch },
+    }));
     const cp = API_PROVIDERS.find(p=>p.id===tc.provider);
     const modelOptions = providerModelOptions[tc.provider] || cp?.models || [];
     const getProviderBaseUrl = (provider, fallback = "") => {
@@ -5118,9 +5828,13 @@ ${recent || "（目前無內容）"}`;
                   padding: "8px 6px",
                   minWidth: 0,
                   fontWeight: 800,
-                  background: settingsTab === tab.id ? "linear-gradient(135deg,#9aa8b3,#7b8791)" : "rgba(255,255,255,.72)",
+                  background: settingsTab === tab.id
+                    ? (isNightTheme ? "linear-gradient(135deg,#4b3a62,#3a2d4f)" : "linear-gradient(135deg,#9aa8b3,#7b8791)")
+                    : (isNightTheme ? "rgba(47,36,64,.72)" : "rgba(255,255,255,.72)"),
                   color: settingsTab === tab.id ? "#fff" : "var(--mp-txt)",
-                  border: settingsTab === tab.id ? "1px solid rgba(123,135,145,.35)" : "1px solid rgba(160,176,186,.25)",
+                  border: settingsTab === tab.id
+                    ? (isNightTheme ? "1px solid rgba(200,168,224,.38)" : "1px solid rgba(123,135,145,.35)")
+                    : (isNightTheme ? "1px solid #3a2d4f" : "1px solid rgba(160,176,186,.25)"),
                 }}
                 onClick={() => setSettingsTab(tab.id)}
               >
@@ -5167,7 +5881,7 @@ ${recent || "（目前無內容）"}`;
           {settingsTab === "api" && (
             <>
               <div className="mp-sg">
-                <div className="mp-sg-t">API Presets</div>
+                <div className="mp-sg-t">{tr("API 預設", "API presets", "API プリセット", "API 프리셋")}</div>
                 <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
                   {[0,1,2].map((idx) => (
                     <button key={idx} className="mp-ibtn" style={{minWidth:44,padding:"4px 8px"}} onClick={() => applyApiPreset(idx)}>{`P${idx + 1}`}</button>
@@ -5175,19 +5889,19 @@ ${recent || "（目前無內容）"}`;
                 </div>
                 <div style={{fontSize:10,color:"var(--mp-txt-l)",marginTop:6}}>
                   {activePresetIndex >= 0
-                    ? `當前預設：P${activePresetIndex + 1} · ${tc.provider || "-"} · ${tc.model || "-"}`
-                  : `當前預設：自訂 · ${tc.provider || "-"} · ${tc.model || "-"}`}
+                    ? `${tr("目前預設", "Current preset", "現在のプリセット", "현재 프리셋")}：P${activePresetIndex + 1} · ${tc.provider || "-"} · ${tc.model || "-"}`
+                  : `${tr("目前預設", "Current preset", "現在のプリセット", "현재 프리셋")}：${tr("自訂", "Custom", "カスタム", "사용자 지정")} · ${tc.provider || "-"} · ${tc.model || "-"}`}
                 </div>
               </div>
               <div className="mp-sg">
-                <div className="mp-sg-t">AI Connection</div>
-                <div className="mp-row"><div className="mp-lbl">API Provider</div><select className="mp-ssel" value={tc.provider} onChange={e=>{const p=API_PROVIDERS.find(x=>x.id===e.target.value);setTempConfig(c=>({...c,provider:p.id,baseUrl:getProviderBaseUrl(p.id,c?.baseUrl || ""),model:p.models[0]||""}));}}>{API_PROVIDERS.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+                <div className="mp-sg-t">{tr("AI 連線", "AI connection", "AI 接続", "AI 연결")}</div>
+                <div className="mp-row"><div className="mp-lbl">{tr("API 供應商", "API provider", "API プロバイダー", "API 제공업체")}</div><select className="mp-ssel" value={tc.provider} onChange={e=>{const p=API_PROVIDERS.find(x=>x.id===e.target.value);setTempConfig(c=>({...c,provider:p.id,baseUrl:getProviderBaseUrl(p.id,c?.baseUrl || ""),model:p.models[0]||""}));}}>{API_PROVIDERS.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
                 {tc.provider === "custom" && <div className="mp-row"><div className="mp-lbl">Base URL</div><input className="mp-sinp" value={tc.baseUrl} onChange={e=>setTempConfig(c=>({...c,baseUrl:e.target.value}))} placeholder="https://..." /></div>}
-                {tc.provider === "vertex" && <div className="mp-row"><div className="mp-lbl">Region</div><input className="mp-sinp" value={tc.location || "global"} onChange={e=>setTempConfig(c=>({...c,location:e.target.value}))} placeholder="global" /></div>}
-                <div className="mp-row"><div className="mp-lbl">API Key</div><input className="mp-sinp" type="password" value={tc.apiKey} onChange={e=>setTempConfig(c=>({...c,apiKey:e.target.value}))} placeholder={tc.provider === "vertex" ? "AIza..." : "sk-..."} /></div>
+                {tc.provider === "vertex" && <div className="mp-row"><div className="mp-lbl">{tr("區域", "Region", "リージョン", "리전")}</div><input className="mp-sinp" value={tc.location || "global"} onChange={e=>setTempConfig(c=>({...c,location:e.target.value}))} placeholder="global" /></div>}
+                <div className="mp-row"><div className="mp-lbl">{tr("API 金鑰", "API key", "API キー", "API 키")}</div><input className="mp-sinp" type="password" value={tc.apiKey} onChange={e=>setTempConfig(c=>({...c,apiKey:e.target.value}))} placeholder={tc.provider === "vertex" ? "AIza..." : "sk-..."} /></div>
                 <div className="mp-row">
                   <div className="mp-lbl" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
-                    <span>Model</span>
+                    <span>{tr("模型", "Model", "モデル", "모델")}</span>
                     <button
                       type="button"
                       className="mp-ibtn"
@@ -5196,7 +5910,7 @@ ${recent || "（目前無內容）"}`;
                         try {
                           setFetchingModels(true);
                           const models = sortModelsByProvider(tc.provider, await fetchAvailableModels(tc));
-                          if (!models.length) throw new Error("No models found");
+                          if (!models.length) throw new Error(tr("找不到可用模型", "No models found", "利用可能なモデルが見つかりません", "사용 가능한 모델을 찾을 수 없습니다"));
                           setProviderModelOptions(prev => ({ ...prev, [tc.provider]: models }));
                           setTempConfig(c => ({ ...c, model: models.includes(c.model) ? c.model : models[0] }));
                           showToast(tr(`已抓取 ${models.length} 個模型`, `Fetched ${models.length} models`, `${models.length}件のモデルを取得しました`, `모델 ${models.length}개를 가져왔습니다`));
@@ -5211,26 +5925,46 @@ ${recent || "（目前無內容）"}`;
                         }
                       }}
                     >
-                      {fetchingModels ? t("loading") : "Fetch latest models"}
+                      {fetchingModels ? t("loading") : tr("取得最新模型", "Fetch latest models", "最新モデルを取得", "최신 모델 가져오기")}
                     </button>
                   </div>
                   {modelOptions?.length>0
-                    ? <select className="mp-ssel" value={tc.model} onChange={e=>setTempConfig(c=>({...c,model:e.target.value}))}>{modelOptions.map(m=><option key={m} value={m}>{m}</option>)}<option value="__custom">Custom...</option></select>
+                    ? <select className="mp-ssel" value={tc.model} onChange={e=>setTempConfig(c=>({...c,model:e.target.value}))}>{modelOptions.map(m=><option key={m} value={m}>{m}</option>)}<option value="__custom">{tr("自訂...", "Custom...", "カスタム...", "사용자 지정...")}</option></select>
                     : <input className="mp-sinp" value={tc.model} onChange={e=>setTempConfig(c=>({...c,model:e.target.value}))} placeholder="model-name" />}
                 </div>
-                {tc.model==="__custom"&&<div className="mp-row"><div className="mp-lbl">Custom model name</div><input className="mp-sinp" onChange={e=>setTempConfig(c=>({...c,model:e.target.value}))} placeholder="model-name" /></div>}
+                {tc.model==="__custom"&&<div className="mp-row"><div className="mp-lbl">{tr("自訂模型名稱", "Custom model name", "カスタムモデル名", "사용자 지정 모델 이름")}</div><input className="mp-sinp" onChange={e=>setTempConfig(c=>({...c,model:e.target.value}))} placeholder="model-name" /></div>}
                 <div style={{display:"flex",gap:8}}>
-                  <button type="button" className="mp-save" disabled={testingConnection} style={{flex:1,background:"linear-gradient(135deg,#80cbc4,#26a69a)"}} onClick={testApiConnection}>{testingConnection ? t("testing") : "Test connection"}</button>
+                  <button type="button" className="mp-save" disabled={testingConnection} style={{flex:1,background:"linear-gradient(135deg,#80cbc4,#26a69a)"}} onClick={testApiConnection}>{testingConnection ? tr("測試中...", "Testing...", "テスト中...", "테스트 중...") : tr("測試連線", "Test connection", "接続テスト", "연결 테스트")}</button>
                   <button className="mp-save" style={{flex:1}} onClick={()=>{setApiConfig(tc);notify(tr("設定已儲存", "Settings saved", "設定を保存しました", "설정이 저장되었습니다"), "Settings saved");}}>{tr("儲存設定", "Save settings", "設定を保存", "설정 저장")}</button>
-                  <button type="button" className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#90caf9,#42a5f5)"}} onClick={()=>setPresetSavePickerOpen(true)}>Save preset</button>
+                  <button type="button" className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#90caf9,#42a5f5)"}} onClick={()=>setPresetSavePickerOpen(true)}>{tr("儲存預設", "Save preset", "プリセット保存", "프리셋 저장")}</button>
                 </div>
+              </div>
+              <div className="mp-sg">
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                  <div className="mp-sg-t" style={{marginBottom:0}}>{tr("語音 API", "Voice API", "音声 API", "음성 API")}</div>
+                  <button type="button" className={ttsConfig.enabled ? "mp-ibtn-chat" : "mp-ibtn"} style={{flex:"0 0 auto",padding:"5px 12px"}} onClick={() => setTtsConfig((current) => ({ ...current, enabled: !current.enabled }))}>{ttsConfig.enabled ? tr("啟用", "Enabled", "有効", "활성") : tr("關閉", "Off", "オフ", "꺼짐")}</button>
+                </div>
+                {!ttsConfig.enabled && <div style={{fontSize:10,color:"var(--mp-txt-l)",lineHeight:1.6,marginTop:8}}>{tr("語音功能目前關閉，設定已保留。", "Voice is off; your settings are retained.", "音声機能はオフです。設定は保持されます。", "음성 기능이 꺼져 있으며 설정은 유지됩니다.")}</div>}
+                {ttsConfig.enabled && <div style={{marginTop:12}}>
+                  <div className="mp-row"><div className="mp-lbl">{tr("全域語音供應商", "Global voice provider", "共通音声プロバイダー", "전역 음성 제공업체")}</div><select className="mp-ssel" value="elevenlabs" onChange={(e) => { setTtsVoices([]); setTtsConnectionState("idle"); setTtsConfig((current) => ({ ...current, provider: e.target.value })); }}><option value="elevenlabs">ElevenLabs</option></select></div>
+                  <div className="mp-row"><div className="mp-lbl">API Key</div><input className="mp-sinp" type="password" value={activeTtsConfig.apiKey || ""} onChange={(e) => { setTtsConnectionState("idle"); if (ttsConfig.provider === "elevenlabs") setTtsVoices([]); updateActiveTtsConfig(ttsConfig.provider === "elevenlabs" ? { apiKey: e.target.value, availableVoices: [] } : { apiKey: e.target.value }); }} placeholder={ttsConfig.provider === "elevenlabs" ? "xi-api-key" : "MiniMax API key"} /></div>
+                  <div className="mp-row"><div className="mp-lbl">{tr("語音模型", "Voice model", "音声モデル", "음성 모델")}</div>{ttsConfig.provider === "elevenlabs" ? <select className="mp-ssel" value={activeTtsConfig.model || "eleven_flash_v2_5"} onChange={(e) => updateActiveTtsConfig({ model: e.target.value })}><option value="eleven_flash_v2_5">eleven_flash_v2_5</option><option value="eleven_multilingual_v2">eleven_multilingual_v2</option><option value="eleven_v3">eleven_v3</option></select> : <select className="mp-ssel" value={activeTtsConfig.model || "speech-2.8-turbo"} onChange={(e) => updateActiveTtsConfig({ model: e.target.value })}><option value="speech-2.8-turbo">speech-2.8-turbo</option><option value="speech-2.8-hd">speech-2.8-hd</option><option value="speech-2.6-turbo">speech-2.6-turbo</option><option value="speech-2.6-hd">speech-2.6-hd</option></select>}</div>
+                  {ttsConfig.provider === "minimax" && <div className="mp-row"><div className="mp-lbl">Base URL</div><input className="mp-sinp" value={activeTtsConfig.baseUrl || "https://api.minimax.io"} onChange={(e) => updateActiveTtsConfig({ baseUrl: e.target.value })} /></div>}
+                  {ttsConfig.provider === "elevenlabs" ? <>
+                    <div className="mp-row"><div className="mp-lbl">{tr("ElevenLabs 可用聲音", "ElevenLabs available voices", "ElevenLabs 利用可能な音声", "ElevenLabs 사용 가능 음성")}</div><select className="mp-ssel" value={activeTtsConfig.defaultVoiceId || "JBFqnCBsd6RMkjVDRZzb"} onChange={(e) => updateActiveTtsConfig({ defaultVoiceId: e.target.value })}>{availableTtsVoices.length ? availableTtsVoices.map((voice) => <option key={voice.id} value={voice.id}>{voice.name}{voice.category ? ` · ${voice.category}` : ""}</option>) : <option value={activeTtsConfig.defaultVoiceId || "JBFqnCBsd6RMkjVDRZzb"}>{tr("George（文件範例）", "George (documentation example)", "George（ドキュメント例）", "George (문서 예시)")}</option>}</select></div>
+                    <button type="button" className="mp-save" disabled={ttsConnectionState === "loading" || !activeTtsConfig.apiKey} style={{background:"linear-gradient(135deg,#80cbc4,#26a69a)",marginBottom:8}} onClick={() => void loadElevenLabsDefaultVoices()}>{ttsConnectionState === "loading" ? tr("連線中...", "Connecting...", "接続中...", "연결 중...") : tr("測試連線並載入可用聲音", "Test connection and load voices", "接続テストと音声の読み込み", "연결 테스트 및 음성 불러오기")}</button>
+                  </> : <div className="mp-row"><div className="mp-lbl">{tr("測試 Voice ID", "Test Voice ID", "テスト Voice ID", "테스트 Voice ID")}</div><input className="mp-sinp" value={activeTtsConfig.defaultVoiceId || ""} onChange={(e) => updateActiveTtsConfig({ defaultVoiceId: e.target.value })} /></div>}
+                  <button type="button" className="mp-save" disabled={ttsConnectionState === "previewing" || !activeTtsConfig.apiKey || !activeTtsConfig.defaultVoiceId} style={{background:"linear-gradient(135deg,#90caf9,#42a5f5)"}} onClick={() => void previewDefaultTtsVoice()}>{ttsConnectionState === "previewing" ? tr("生成測試語音中...", "Generating test voice...", "テスト音声を生成中...", "테스트 음성 생성 중...") : tr("試聽預設聲音", "Preview default voice", "デフォルト音声を試聴", "기본 음성 미리듣기")}</button>
+                  {ttsConnectionState === "success" && <div style={{fontSize:10,color:"#43a047",marginTop:7}}>{tr("API 連線成功", "API connected", "API 接続成功", "API 연결 성공")}</div>}
+                  {ttsConnectionState === "error" && <div style={{fontSize:10,color:"#e57373",marginTop:7}}>{tr("連線或測試失敗，請檢查 Key 與權限。", "Connection or test failed. Check the key and permissions.", "接続またはテストに失敗しました。Key と権限を確認してください。", "연결 또는 테스트에 실패했습니다. Key와 권한을 확인해주세요.")}</div>}
+                </div>}
               </div>
             </>
           )}
           {presetSavePickerOpen && (
             <div className="mp-overlay" style={{zIndex:120}} onClick={() => setPresetSavePickerOpen(false)}>
               <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
-                <div className="mp-modal-t">Save API preset</div>
+                <div className="mp-modal-t">{tr("儲存 API 預設", "Save API preset", "API プリセットを保存", "API 프리셋 저장")}</div>
                 <div style={{display:"grid",gap:8}}>
                   {[0,1,2].map((idx) => (
                     <button
@@ -5238,13 +5972,13 @@ ${recent || "（目前無內容）"}`;
                       key={idx}
                       className="mp-ibtn-chat"
                       onClick={() => {
-                        const ok = ask(`確定要覆寫 P${idx + 1} 嗎？`, `Overwrite P${idx + 1}?`);
+                        const ok = window.confirm(tr(`確定要覆寫 P${idx + 1} 嗎？`, `Overwrite P${idx + 1}?`, `P${idx + 1} を上書きしますか？`, `P${idx + 1}을(를) 덮어쓸까요?`));
                         if (!ok) return;
                         saveApiPreset(idx);
                         setPresetSavePickerOpen(false);
                       }}
                     >
-                      Save to P{idx + 1}
+                      {tr(`儲存至 P${idx + 1}`, `Save to P${idx + 1}`, `P${idx + 1} に保存`, `P${idx + 1}에 저장`)}
                     </button>
                   ))}
                 </div>
@@ -5401,6 +6135,9 @@ ${recent || "（目前無內容）"}`;
                         setChatModes({});
                         setChatBackgrounds({});
                         setGroupChats([]);
+                        setInnerThoughtSettings({});
+                        setExpandedInnerThoughts({});
+                        setInnerThoughtLoading({});
                         setChatScenes({});
                         setGroupScenes({});
                         setChatLorebookBindings({});
@@ -5414,6 +6151,10 @@ ${recent || "（目前無內容）"}`;
                         setApiPresets(defaultAppState.apiPresets);
                         setPlayerProfile(defaultAppState.playerProfile);
                         setApiConfig(defaultAppState.apiConfig);
+                        setTtsConfig(defaultAppState.ttsConfig);
+                        stopCurrentVoiceAudio();
+                        voiceAudioCacheRef.current.clear();
+                        setVoicePlayback({ key: null, status: "idle" });
                         setScreenLockTimeout(defaultAppState.screenLockTimeout);
                         setHomeSlots(Array.from({ length: HOME_SLOT_COUNT }, () => null));
                         setDockOrder(DOCK_APPS);
@@ -6301,7 +7042,7 @@ ${roleProfile || "（無）"}`;
       </div>
     )}
     {currentApp && renderApp()}
-    {modal === "addChar" && <AddCharModal setModal={setModal} setEditingCharacter={setEditingCharacter} addCharacter={addCharacter} updateCharacter={updateCharacter} exportCharacter={exportCharacter} deleteCharacter={deleteCharacter} editingCharacter={editingCharacter} sanitizeUserImageUrl={sanitizeUserImageUrl} uiLanguage={uiLanguage} />}
+    {modal === "addChar" && <AddCharModal setModal={setModal} setEditingCharacter={setEditingCharacter} addCharacter={addCharacter} updateCharacter={updateCharacter} exportCharacter={exportCharacter} deleteCharacter={deleteCharacter} editingCharacter={editingCharacter} sanitizeUserImageUrl={sanitizeUserImageUrl} uiLanguage={uiLanguage} ttsConfig={ttsConfig} ttsVoices={ttsVoices.length ? ttsVoices : (ttsConfig.elevenlabs?.availableVoices || [])} onVoicePreview={previewCharacterVoice} />}
     {memoryEditor && (
       <div className="mp-overlay" onClick={() => setMemoryEditor(null)}>
         <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
