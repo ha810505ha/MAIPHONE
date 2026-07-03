@@ -7,6 +7,8 @@ import { callAI, fetchAvailableModels } from "./services/aiService";
 import { fetchElevenLabsDefaultVoices, synthesizeSpeech } from "./services/ttsService";
 import { loadAppState, saveAppState } from "./utils/indexedDbStorage";
 import css, { THEME_PRESETS } from "./styles/maliPhoneCss";
+import PetHome from "./PetHome";
+import DesktopPet from "./DesktopPet";
 
 const createDefaultVoiceSettings = () => ({
   enabled: false,
@@ -349,7 +351,10 @@ export default function MaliPhone() {
     chatScenes: {},
     groupScenes: {},
     innerThoughtSettings: {},
+    proactiveSettings: {},
+    proactiveUnread: {},
     posts: [],
+    socialSettings: { autoPost: false },
     memories: {},
     lorebooks: [],
     chatLorebookBindings: {},
@@ -410,6 +415,8 @@ export default function MaliPhone() {
   const [chatScenes, setChatScenes] = useState(defaultAppState.chatScenes);
   const [groupScenes, setGroupScenes] = useState(defaultAppState.groupScenes);
   const [innerThoughtSettings, setInnerThoughtSettings] = useState(defaultAppState.innerThoughtSettings);
+  const [proactiveSettings, setProactiveSettings] = useState(defaultAppState.proactiveSettings);
+  const [proactiveUnread, setProactiveUnread] = useState(defaultAppState.proactiveUnread);
   const [expandedInnerThoughts, setExpandedInnerThoughts] = useState({});
   const [innerThoughtLoading, setInnerThoughtLoading] = useState({});
   const [chatInput, setChatInput] = useState("");
@@ -441,6 +448,12 @@ export default function MaliPhone() {
   const [activeMessageId, setActiveMessageId] = useState(null);
   const [messageEditor, setMessageEditor] = useState(null);
   const [posts, setPosts] = useState(defaultAppState.posts);
+  const [socialSettings, setSocialSettings] = useState(defaultAppState.socialSettings);
+  const [socialSettingsOpen, setSocialSettingsOpen] = useState(false);
+  const [activePostMenuId, setActivePostMenuId] = useState(null);
+  const [pendingPostScrollId, setPendingPostScrollId] = useState(null);
+  const [highlightedPostId, setHighlightedPostId] = useState(null);
+  const socialFeedRef = useRef(null);
   const [postCommentInputs, setPostCommentInputs] = useState({});
   const [activeCommentPostId, setActiveCommentPostId] = useState(null);
   const [activeLikePostId, setActiveLikePostId] = useState(null);
@@ -535,7 +548,11 @@ export default function MaliPhone() {
   const [hydrated, setHydrated] = useState(false);
   const socialLastGlobalPostAtRef = useRef(0);
   const socialLastPostByCharRef = useRef({});
+  const socialAutoPostingRef = useRef(false);
+  const socialAutoPostGapRef = useRef(0);
   const walletAutoRefreshBusyRef = useRef(false);
+  const proactiveSweepingRef = useRef(false);
+  const currentChatCharIdRef = useRef(null);
   const SOCIAL_GLOBAL_COOLDOWN_MS = 60 * 1000;
   const SOCIAL_CHAR_COOLDOWN_MS = 3 * 60 * 1000;
   const messagesEndRef = useRef(null);
@@ -593,7 +610,10 @@ export default function MaliPhone() {
       setChatScenes(data.chatScenes && typeof data.chatScenes === "object" ? data.chatScenes : defaultAppState.chatScenes);
       setGroupScenes(data.groupScenes && typeof data.groupScenes === "object" ? data.groupScenes : defaultAppState.groupScenes);
       setInnerThoughtSettings(data.innerThoughtSettings && typeof data.innerThoughtSettings === "object" ? data.innerThoughtSettings : defaultAppState.innerThoughtSettings);
+      setProactiveSettings(data.proactiveSettings && typeof data.proactiveSettings === "object" ? data.proactiveSettings : defaultAppState.proactiveSettings);
+      setProactiveUnread(data.proactiveUnread && typeof data.proactiveUnread === "object" ? data.proactiveUnread : defaultAppState.proactiveUnread);
       setPosts(data.posts || []);
+      setSocialSettings(data.socialSettings && typeof data.socialSettings === "object" ? data.socialSettings : defaultAppState.socialSettings);
       setMemories(data.memories || {});
       setPhoneInboxCache(data.phoneInboxCache || {});
       setWallet(data.wallet || defaultAppState.wallet);
@@ -654,10 +674,10 @@ export default function MaliPhone() {
   useEffect(() => {
     if (!hydrated) return;
     const timer = setTimeout(() => {
-      saveAppState({ characters, activeCharId, chatHistory, chatModes, chatBackgrounds, groupChats, chatScenes, groupScenes, innerThoughtSettings, posts, memories, lorebooks, chatLorebookBindings, phoneInboxCache, wallet, characterWallets, screenLockTimeout, apiPresets, playerProfile, apiConfig, ttsConfig, themeName, uiLanguage, homeSlots, dockOrder }).catch(() => {});
+      saveAppState({ characters, activeCharId, chatHistory, chatModes, chatBackgrounds, groupChats, chatScenes, groupScenes, innerThoughtSettings, proactiveSettings, proactiveUnread, posts, socialSettings, memories, lorebooks, chatLorebookBindings, phoneInboxCache, wallet, characterWallets, screenLockTimeout, apiPresets, playerProfile, apiConfig, ttsConfig, themeName, uiLanguage, homeSlots, dockOrder }).catch(() => {});
     }, 180);
     return () => clearTimeout(timer);
-  }, [hydrated, characters, activeCharId, chatHistory, chatModes, chatBackgrounds, groupChats, chatScenes, groupScenes, innerThoughtSettings, posts, memories, lorebooks, chatLorebookBindings, phoneInboxCache, wallet, characterWallets, screenLockTimeout, apiPresets, playerProfile, apiConfig, ttsConfig, themeName, uiLanguage, homeSlots, dockOrder]);
+  }, [hydrated, characters, activeCharId, chatHistory, chatModes, chatBackgrounds, groupChats, chatScenes, groupScenes, innerThoughtSettings, proactiveSettings, proactiveUnread, posts, socialSettings, memories, lorebooks, chatLorebookBindings, phoneInboxCache, wallet, characterWallets, screenLockTimeout, apiPresets, playerProfile, apiConfig, ttsConfig, themeName, uiLanguage, homeSlots, dockOrder]);
   useEffect(() => {
     if (!hydrated || ttsConfig.provider !== "minimax") return;
     setTtsConfig((current) => ({ ...current, provider: "elevenlabs" }));
@@ -1013,6 +1033,11 @@ export default function MaliPhone() {
     );
   };
   const CHANGELOG_TEXT = {
+    "1.2.0": {
+      en: ["07/04 Update", "Added Pet Home with pet care, free roaming, map interactions, desktop pets, and data backup", "Added Matcha Lemon and Sea Salt Soda themes with unified primary-action colors", "Added automatic social posts so characters can share updates on their own", "Added proactive character messages with per-character controls and frequency settings"],
+      ja: ["07/04 更新", "ペットのお世話、自由移動、マップ交流、デスクトップペット、データバックアップに対応したペットハウスを追加", "抹茶レモンとシーソルトソーダのテーマを追加し、主要操作ボタンの配色を統一", "キャラクターが自動で近況を投稿するSNS自動投稿機能を追加", "キャラクターごとにオン・オフと頻度を設定できる主動メッセージ機能を追加"],
+      ko: ["07/04 업데이트", "펫 돌보기, 자유 이동, 지도 상호작용, 데스크톱 펫, 데이터 백업을 지원하는 펫 하우스 추가", "말차 레몬과 씨솔트 소다 테마를 추가하고 주요 동작 버튼 색상을 통일", "캐릭터가 스스로 근황을 공유하는 소셜 자동 게시 기능 추가", "캐릭터별 활성화와 빈도를 설정할 수 있는 선제 메시지 기능 추가"],
+    },
     "1.1.9": {
       en: ["06/29 Update", "Added character inner thoughts with automatic generation, manual viewing, and thought history", "Added character voice support (beta), including ElevenLabs voice settings, previews, and manual playback in chat"],
       ja: ["06/29 更新", "キャラの心の声機能を追加し、自動生成・手動表示・履歴に対応", "キャラクター音声機能（テスト版）を追加し、ElevenLabs の音声設定・試聴・チャットでの手動再生に対応"],
@@ -1311,6 +1336,20 @@ export default function MaliPhone() {
       [charId]: { ...(prev?.[charId] || {}), auto: !!enabled },
     }));
   };
+  const isProactiveEnabled = (charId) => !!proactiveSettings?.[charId]?.enabled;
+  const getProactiveFrequency = (charId) => proactiveSettings?.[charId]?.frequency || "normal";
+  const setProactiveEnabled = (charId, enabled) => {
+    setProactiveSettings((prev) => ({
+      ...(prev || {}),
+      [charId]: { ...(prev?.[charId] || {}), enabled: !!enabled },
+    }));
+  };
+  const setProactiveFrequency = (charId, frequency) => {
+    setProactiveSettings((prev) => ({
+      ...(prev || {}),
+      [charId]: { ...(prev?.[charId] || {}), frequency },
+    }));
+  };
   const normalizeInnerThought = (text) => {
     let clean = stripInternalBlocks(String(text || ""))
       .replace(/^\s*(?:心聲|內心(?:想法|獨白)?|想法)\s*[：:]\s*/i, "")
@@ -1584,6 +1623,20 @@ ${recentChat || "（近期沒有可參考的聊天）"}
 
 近期貼文（避免重複語氣與主題）：
 ${recentPosts || "（無）"}`;
+  };
+  const formatPostTime = (ts) => {
+    const time = Number(ts) || 0;
+    const diff = Date.now() - time;
+    if (diff < 60 * 1000) return tr("剛剛", "Just now", "たった今", "방금");
+    const mins = Math.floor(diff / 60000);
+    if (mins < 60) return tr(`${mins} 分鐘前`, `${mins}m ago`, `${mins}分前`, `${mins}분 전`);
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return tr(`${hours} 小時前`, `${hours}h ago`, `${hours}時間前`, `${hours}시간 전`);
+    const days = Math.floor(hours / 24);
+    if (days === 1) return tr("昨天", "Yesterday", "昨日", "어제");
+    if (days <= 3) return tr(`${days} 天前`, `${days}d ago`, `${days}日前`, `${days}일 전`);
+    const locale = { "zh-TW": "zh-TW", en: "en-US", ja: "ja-JP", ko: "ko-KR" }[uiLanguage] || "zh-TW";
+    return new Date(time).toLocaleDateString(locale, { year: "numeric", month: "short", day: "numeric" });
   };
   const getPostAuthorName = (post) => post?.authorName || post?.charName || tr("未知", "Unknown", "不明", "알 수 없음");
   const getPostAuthorAvatar = (post) => post?.authorAvatar || post?.charAvatar || null;
@@ -2070,35 +2123,34 @@ ${memoryText || "（無）"}`;
     return Array.from(uniq.values()).slice(0, 8);
   };
 
+  const formatMessagesForPrompt = (list) => (list || [])
+    .map((m) => {
+      if (m.role === "mode_transition") {
+        return { role: "user", content: `[模式切換]\n接下來從${getModeLabel(m.fromMode)}切換為${getModeLabel(m.toMode)}。請自然承接同一條時間線。`, image: null };
+      }
+      if (m.role === "transfer") {
+        const fromName = m.fromType === "player" ? "你" : (m.fromName || "對方");
+        const toName = m.toType === "player" ? "你" : (m.toName || "對方");
+        return { role: "user", content: `[轉帳] ${fromName}→${toName} ${formatMoney(m.amount || 0)}${m.note ? ` 備註:${sanitizeText(m.note, 60)}` : ""}`, image: null };
+      }
+      if (m.role === "system_notice") {
+        if (isConnectionErrorNotice(m.content)) return null;
+        return { role: "user", content: `[系統備註]\n${m.content || ""}`, image: null };
+      }
+      if (m.role === "user" || m.role === "assistant" || m.role === "system") {
+        const summaryLine = m.imageSummary ? `\n[圖片摘要]\n${m.imageSummary}` : "";
+        return { role: m.role, content: `${m.content || ""}${summaryLine}`.trim(), image: m.image || null };
+      }
+      return null;
+    })
+    .filter(Boolean);
   const generateAssistantForHistory = async ({ cid, char, nextForDisplay, selectedMode, um, text }) => {
       const now = new Date();
       const nowDate = new Intl.DateTimeFormat("zh-TW", { year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
       const nowTime = new Intl.DateTimeFormat("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false }).format(now);
       const nowTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Taipei";
       const nowContext = `[系統時間] 目前時間：${nowDate} ${nowTime} (${nowTz})`;
-      const hist = nextForDisplay
-        .slice(-30)
-        .map((m) => {
-          if (m.role === "mode_transition") {
-            return { role: "user", content: `[模式切換]\n接下來從${getModeLabel(m.fromMode)}切換為${getModeLabel(m.toMode)}。請自然承接同一條時間線。`, image: null };
-          }
-          if (m.role === "transfer") {
-            const fromName = m.fromType === "player" ? "你" : (m.fromName || "對方");
-            const toName = m.toType === "player" ? "你" : (m.toName || "對方");
-            return { role: "user", content: `[轉帳] ${fromName}→${toName} ${formatMoney(m.amount || 0)}${m.note ? ` 備註:${sanitizeText(m.note, 60)}` : ""}`, image: null };
-          }
-          if (m.role === "system_notice") {
-            if (isConnectionErrorNotice(m.content)) return null;
-            return { role: "user", content: `[系統備註]\n${m.content || ""}`, image: null };
-          }
-          if (m.role === "user" || m.role === "assistant" || m.role === "system") {
-            const summaryLine = m.imageSummary ? `\n[圖片摘要]\n${m.imageSummary}` : "";
-            return { role: m.role, content: `${m.content || ""}${summaryLine}`.trim(), image: m.image || null };
-          }
-          return null;
-        })
-        .filter(Boolean)
-        .slice(-20);
+      const hist = formatMessagesForPrompt(nextForDisplay.slice(-30)).slice(-20);
       const hasCurrentImage = !!um.image;
       // 視覺 token 只花在本輪新圖：舊圖一律改用摘要文字，不再重送 image。
       const safeHist = hist.map((m, idx) => {
@@ -2220,6 +2272,82 @@ ${memoryText || "（無）"}`;
         const snapshot = [...nextForDisplay, ...assistantMessages];
         void generateInnerThought({ char, messageId: lastAssistantMessage.id, source: "auto", historySnapshot: snapshot });
       }
+  };
+
+  const PROACTIVE_FREQUENCY_HOURS = { low: [8, 16], normal: [4, 8], high: [1, 3] };
+  const getProactiveIdleThresholdMs = (frequency) => {
+    const [minH, maxH] = PROACTIVE_FREQUENCY_HOURS[frequency] || PROACTIVE_FREQUENCY_HOURS.normal;
+    return (minH + Math.random() * (maxH - minH)) * 60 * 60 * 1000;
+  };
+  const getProactiveEligibleCharacters = () => {
+    const now = Date.now();
+    return characters.filter((c) => {
+      const settings = proactiveSettings?.[c.id];
+      if (!settings?.enabled) return false;
+      if (proactiveUnread?.[c.id]) return false;
+      const list = chatHistory[c.id] || [];
+      if (!list.length) return false;
+      const lastMsg = list[list.length - 1];
+      const idle = now - (lastMsg?.time || 0);
+      return idle > getProactiveIdleThresholdMs(settings.frequency);
+    });
+  };
+  const triggerProactiveMessage = async (char) => {
+    const cid = char.id;
+    try {
+      const recent = formatMessagesForPrompt((chatHistory[cid] || []).slice(-16));
+      const memoryContext = pickMemoriesForPrompt(cid, recent).map((m, i) => `- ${i + 1}. ${m.text}`).join("\n");
+      const pinnedLoreContext = pickLorebookEntriesForPrompt(cid, recent)
+        .filter((x) => x.mode === "PIN")
+        .map((x, i) => `${i + 1}. [${x.bookName}] ${x.entry.title || "條目"}：${x.entry.content || ""}`)
+        .join("\n");
+      const mergedMemoryContext = [memoryContext, pinnedLoreContext ? `[強制條目]\n${pinnedLoreContext}` : ""].filter(Boolean).join("\n\n");
+      const selectedMode = getLastCommittedChatMode(cid);
+      const proactiveRule = selectedMode === "reality"
+        ? `[主動互動觸發 - 系統規則]\n距離上次互動已經過了一段時間。現在請你以 {{char}} 的身份，在現實場景中主動與 {{user}} 互動，用一段連貫的段落呈現（可包含敘述、動作、對話），自然地開啟話題或延續先前情境，符合角色個性與最近脈絡。不要提到「系統」「AI」「觸發」等字眼，也不要解釋自己為什麼開口，也不要輸出轉帳指令。`
+        : `[主動訊息觸發 - 系統規則]\n距離上次互動已經過了一段時間沒有新訊息。現在請你以 {{char}} 的身份，主動傳一則（或幾則）訊息給 {{user}}，自然地開啟話題或延續先前對話，語氣與內容要符合角色個性與最近對話脈絡。不要提到「系統」「AI」「觸發」等字眼，也不要解釋自己為什麼傳訊息，也不要輸出轉帳指令。`;
+      const sysP = applyUserPlaceholder(`${buildChatSystemPrompt(char, mergedMemoryContext, apiConfig.model, selectedMode)}\n\n${proactiveRule}`);
+      const triggerMsg = { role: "user", content: applyUserPlaceholder("[系統觸發]\n這不是 {{user}} 說的話，只是系統提示：時間已經過去，請 {{char}} 主動傳訊息給 {{user}}。"), image: null };
+      const finalHist = [...recent.map((m) => ({ ...m, content: applyUserPlaceholder(m.content) })), triggerMsg];
+      const reply = await callAI(finalHist, apiConfig, sysP);
+      const cleanReplyRaw = selectedMode === "reality" ? sanitizeText(normalizeRealityReply(reply), REALITY_CHAT_TEXT_LIMIT) : normalizeAssistantReply(reply);
+      const cleanReply = stripModeLabel(stripInternalBlocks(cleanReplyRaw));
+      if (!cleanReply.trim()) return;
+      const bubbles = selectedMode === "reality" ? [cleanReply] : splitAssistantBubbles(cleanReply);
+      const replyGroupId = gid();
+      let firedAny = false;
+      for (let i = 0; i < bubbles.length; i++) {
+        await wait(i === 0 ? 260 : Math.min(900, 400 + bubbles[i].length * 14));
+        const msg = {
+          id: gid(),
+          replyGroupId,
+          replyGroupIndex: i,
+          replyGroupSize: bubbles.length,
+          role: "assistant",
+          content: bubbles[i],
+          mode: selectedMode,
+          proactive: true,
+          time: Date.now(),
+        };
+        firedAny = true;
+        setChatHistory((h) => ({ ...h, [cid]: [...(h[cid] || []), msg] }));
+      }
+      if (!firedAny) return;
+      if (currentChatCharIdRef.current !== cid) {
+        setProactiveUnread((prev) => ({ ...prev, [cid]: (Number(prev?.[cid]) || 0) + bubbles.length }));
+        showToast(tr(`${char.name} 傳了訊息給你`, `${char.name} sent you a message`, `${char.name} からメッセージが届きました`, `${char.name}님이 메시지를 보냈습니다`));
+      }
+    } catch (err) {
+      console.warn("[proactive message]", err);
+    }
+  };
+  const runProactiveSweep = () => {
+    if (!hydrated || proactiveSweepingRef.current || !canUseCurrentProvider()) return;
+    const eligible = getProactiveEligibleCharacters();
+    if (!eligible.length) return;
+    const pick = eligible[Math.floor(Math.random() * eligible.length)];
+    proactiveSweepingRef.current = true;
+    triggerProactiveMessage(pick).finally(() => { proactiveSweepingRef.current = false; });
   };
 
   const addChatErrorNotice = (cid, err) => {
@@ -2423,7 +2551,10 @@ ${memoryText || "（無）"}`;
       chatScenes,
       groupScenes,
       innerThoughtSettings,
+      proactiveSettings,
+      proactiveUnread,
       posts,
+      socialSettings,
       memories,
       lorebooks,
       chatLorebookBindings,
@@ -2623,7 +2754,10 @@ ${memoryText || "（無）"}`;
       chatScenes: src.chatScenes && typeof src.chatScenes === "object" ? src.chatScenes : {},
       groupScenes: src.groupScenes && typeof src.groupScenes === "object" ? src.groupScenes : {},
       innerThoughtSettings: src.innerThoughtSettings && typeof src.innerThoughtSettings === "object" ? src.innerThoughtSettings : {},
+      proactiveSettings: src.proactiveSettings && typeof src.proactiveSettings === "object" ? src.proactiveSettings : {},
+      proactiveUnread: src.proactiveUnread && typeof src.proactiveUnread === "object" ? src.proactiveUnread : {},
       posts: Array.isArray(src.posts) ? src.posts : [],
+      socialSettings: src.socialSettings && typeof src.socialSettings === "object" ? src.socialSettings : { autoPost: false },
       memories: src.memories && typeof src.memories === "object" ? src.memories : {},
       lorebooks: Array.isArray(src.lorebooks) ? src.lorebooks : [],
       chatLorebookBindings: src.chatLorebookBindings && typeof src.chatLorebookBindings === "object" ? src.chatLorebookBindings : {},
@@ -2654,7 +2788,10 @@ ${memoryText || "（無）"}`;
     setChatScenes(nextState.chatScenes);
     setGroupScenes(nextState.groupScenes);
     setInnerThoughtSettings(nextState.innerThoughtSettings);
+    setProactiveSettings(nextState.proactiveSettings);
+    setProactiveUnread(nextState.proactiveUnread);
     setPosts(nextState.posts);
+    setSocialSettings(nextState.socialSettings);
     setMemories(nextState.memories);
     setLorebooks(nextState.lorebooks);
     setChatLorebookBindings(nextState.chatLorebookBindings);
@@ -2780,6 +2917,8 @@ ${memoryText || "（無）"}`;
     setChatLorebookBindings(h => { const n = { ...h }; delete n[id]; return n; });
     setMemories(m => { const n = { ...m }; delete n[id]; return n; });
     setCharacterWallets((w) => { const n = { ...w }; delete n[id]; return n; });
+    setProactiveSettings((p) => { const n = { ...p }; delete n[id]; return n; });
+    setProactiveUnread((p) => { const n = { ...p }; delete n[id]; return n; });
     setPhoneInboxCache((prev) => {
       const next = { ...prev };
       delete next[id];
@@ -2950,16 +3089,16 @@ ${recent}`,
           likes: rollCharacterPostLikes(char),
           liked: false,
         }, ...p]);
-        showToast(`${char.name} 已發佈貼文`);
+        showToast(tr(`${char.name} 已發佈貼文`, `${char.name} published a post`, `${char.name} が投稿しました`, `${char.name}님이 게시물을 올렸습니다`));
       } catch (err) {
-        showToast(`發文失敗：${err.message}`);
+        showToast(`${tr("發文失敗", "Failed to post", "投稿に失敗しました", "게시 실패")}：${err.message}`);
       }
     };
   const handleRandomSocialPost = () => {
     const nowTs = Date.now();
     const globalLeft = SOCIAL_GLOBAL_COOLDOWN_MS - (nowTs - (socialLastGlobalPostAtRef.current || 0));
     if (globalLeft > 0) {
-      showToast(`刷新太快，請 ${Math.ceil(globalLeft / 1000)} 秒後再試`);
+      showToast(tr(`刷新太快，請 ${Math.ceil(globalLeft / 1000)} 秒後再試`, `Too fast, try again in ${Math.ceil(globalLeft / 1000)}s`, `更新が早すぎます。${Math.ceil(globalLeft / 1000)}秒後にもう一度お試しください`, `너무 빨라요. ${Math.ceil(globalLeft / 1000)}초 후 다시 시도해주세요`));
       return;
     }
     const c = pickRandomSocialCharacter();
@@ -2967,7 +3106,7 @@ ${recent}`,
     const lastForChar = socialLastPostByCharRef.current?.[c.id] || 0;
     const charLeft = SOCIAL_CHAR_COOLDOWN_MS - (nowTs - lastForChar);
     if (charLeft > 0) {
-      showToast(`${c.name} 剛發過文，請 ${Math.ceil(charLeft / 1000)} 秒後再試`);
+      showToast(tr(`${c.name} 剛發過文，請 ${Math.ceil(charLeft / 1000)} 秒後再試`, `${c.name} just posted, try again in ${Math.ceil(charLeft / 1000)}s`, `${c.name} は投稿したばかりです。${Math.ceil(charLeft / 1000)}秒後にお試しください`, `${c.name}님이 방금 게시했어요. ${Math.ceil(charLeft / 1000)}초 후 다시 시도해주세요`));
       return;
     }
     socialLastGlobalPostAtRef.current = nowTs;
@@ -3015,7 +3154,7 @@ ${recent}`,
   const submitPlayerPost = async () => {
     if (playerPostSubmitting) return;
     const content = sanitizeText(playerPostText.trim(), PLAYER_SOCIAL_POST_LIMIT);
-    if (!content) { showToast("請輸入貼文內容"); return; }
+    if (!content) { showToast(tr("請輸入貼文內容", "Please enter post content", "投稿内容を入力してください", "게시물 내용을 입력해주세요")); return; }
     const post = {
       id: gid(),
       authorType: "player",
@@ -3105,7 +3244,7 @@ ${recent}`,
   };
   const sharePostToChat = (post) => {
     if (getPostAuthorType(post) !== "character" || !post.charId) {
-      showToast("玩家貼文目前不分享到角色聊天室");
+      showToast(tr("玩家貼文目前不分享到角色聊天室", "Player posts can't be shared to character chats yet", "プレイヤーの投稿は今のところキャラのチャットに共有できません", "플레이어 게시물은 아직 캐릭터 채팅에 공유할 수 없습니다"));
       return;
     }
     if (!window.confirm("要分享到此角色聊天室嗎？")) return;
@@ -3143,7 +3282,91 @@ ${recent}`,
     return () => clearInterval(t);
   }, [hydrated, activeCharId, chatHistory, memories, apiConfig, characters]);
 
-  const activeTheme = THEME_PRESETS[themeName] || THEME_PRESETS["莓果蘇打"];
+  useEffect(() => {
+    currentChatCharIdRef.current = currentChatChar?.id || null;
+  }, [currentChatChar]);
+
+  useEffect(() => {
+    if (currentApp !== "social") setSocialSettingsOpen(false);
+    setActivePostMenuId(null);
+  }, [currentApp]);
+
+  const [, setSocialTimeTick] = useState(0);
+  useEffect(() => {
+    if (currentApp !== "social") return;
+    const iv = setInterval(() => setSocialTimeTick((n) => n + 1), 60 * 1000);
+    return () => clearInterval(iv);
+  }, [currentApp]);
+
+  useEffect(() => {
+    if (!pendingPostScrollId || socialSettingsOpen || currentApp !== "social") return;
+    const frame = requestAnimationFrame(() => {
+      const container = socialFeedRef.current;
+      const target = container
+        ? Array.from(container.querySelectorAll("[data-post-id]")).find((node) => node.dataset.postId === pendingPostScrollId)
+        : null;
+      setPendingPostScrollId(null);
+      if (!target || !container) return;
+      const targetTop = target.offsetTop - (container.clientHeight - target.clientHeight) / 2;
+      container.scrollTop = Math.max(0, targetTop);
+      setHighlightedPostId(pendingPostScrollId);
+      setTimeout(() => setHighlightedPostId(null), 1800);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [pendingPostScrollId, socialSettingsOpen, currentApp, posts]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    const onVisible = () => { if (document.visibilityState === "visible") runProactiveSweep(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    const kick = setTimeout(runProactiveSweep, 4000);
+    const iv = setInterval(runProactiveSweep, 15 * 60 * 1000);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+      clearTimeout(kick);
+      clearInterval(iv);
+    };
+  }, [hydrated, characters, chatHistory, proactiveSettings, proactiveUnread, apiConfig]);
+
+  const SOCIAL_AUTO_POST_GAP_RANGE_MS = [40 * 60 * 1000, 90 * 60 * 1000];
+  const rollSocialAutoPostGap = () => {
+    const [minMs, maxMs] = SOCIAL_AUTO_POST_GAP_RANGE_MS;
+    return minMs + Math.random() * (maxMs - minMs);
+  };
+  const runSocialAutoPostSweep = () => {
+    if (!hydrated || !socialSettings?.autoPost || socialAutoPostingRef.current || !canUseCurrentProvider()) return;
+    if (!Array.isArray(characters) || !characters.length) return;
+    if (!socialAutoPostGapRef.current) socialAutoPostGapRef.current = rollSocialAutoPostGap();
+    const lastCharPost = (posts || []).find((p) => getPostAuthorType(p) === "character");
+    const lastAt = Math.max(lastCharPost?.time || 0, socialLastGlobalPostAtRef.current || 0);
+    if (Date.now() - lastAt < socialAutoPostGapRef.current) return;
+    const c = pickRandomSocialCharacter();
+    if (!c) return;
+    socialAutoPostingRef.current = true;
+    socialLastGlobalPostAtRef.current = Date.now();
+    socialLastPostByCharRef.current = { ...(socialLastPostByCharRef.current || {}), [c.id]: Date.now() };
+    socialAutoPostGapRef.current = rollSocialAutoPostGap();
+    generatePost(c).finally(() => { socialAutoPostingRef.current = false; });
+  };
+  useEffect(() => {
+    if (!hydrated || !socialSettings?.autoPost) return;
+    const onVisible = () => { if (document.visibilityState === "visible") runSocialAutoPostSweep(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    const kick = setTimeout(runSocialAutoPostSweep, 6000);
+    const iv = setInterval(runSocialAutoPostSweep, 10 * 60 * 1000);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+      clearTimeout(kick);
+      clearInterval(iv);
+    };
+  }, [hydrated, socialSettings, characters, posts, apiConfig]);
+
+  const normalizedThemeName = themeName === "湖水藍" ? "海鹽汽水" : themeName;
+  const activeTheme = THEME_PRESETS[normalizedThemeName] || THEME_PRESETS["莓果蘇打"];
   const isNightTheme = themeName === "夜色絨幕";
   const themeCss = `
     :root{
@@ -3169,6 +3392,7 @@ ${recent}`,
       .mp-chat-row:active{background:rgba(244,143,177,.1);}
       .mp-msg-ai{background:#2f2440;color:#f0e6f5;border-color:#3a2d4f;box-shadow:0 2px 8px rgba(7,4,12,.2);}
       .mp-msg-user{background:linear-gradient(135deg,#ec6a95,#d95e88);color:#fff;box-shadow:0 2px 8px rgba(7,4,12,.22);}
+      .mp-post-menu{background:rgba(36,27,51,.98);border-color:#3a2d4f;box-shadow:0 8px 24px rgba(7,4,12,.4);}
       .mp-msg-ai .mp-msg-t{color:#9384a2;}
       .mp-msg-user .mp-msg-t{color:rgba(255,255,255,.72);}
       .mp-reality-msg{background:transparent;border-color:transparent;box-shadow:none;color:#c9b8da;}
@@ -3192,6 +3416,8 @@ ${recent}`,
       .mp-cw-desc,.mp-ci-prev,.mp-lbl,.mp-mode-hint{color:#b8a8c9;}
       .mp-msg-t,.mp-reality-t,.mp-char-counter{color:#81728f;}
       .mp-htitle,.mp-clock-big,.mp-clock-day,.mp-lock-time,.mp-cw-name,.mp-ctitle,.mp-sec-ct,.mp-persona,.mp-icon-l{color:#f0e6f5;}
+      .mp-lock-notif{background:rgba(47,36,64,.72);border-color:rgba(165,201,232,.24);}
+      .mp-lock-notif-name{color:#f0e6f5;}
       .mp-ibtn,.mp-ibtn-chat{background:rgba(165,201,232,.1);border-color:rgba(165,201,232,.3);color:#a5c9e8;}
       .mp-ibtn-view{background:rgba(130,177,255,.12);border-color:rgba(130,177,255,.34);color:#a9c8ff;}
       .mp-ibtn-r{background:rgba(229,115,115,.1);border-color:rgba(229,115,115,.28);color:#ef9696;}
@@ -3214,7 +3440,25 @@ ${recent}`,
     ` : ``}
   `;
 
-  if (locked) return (<><style>{css}</style><style>{themeCss}</style><div className="mp-wrap"><div className="mp-phone"><div className={`mp-lock ${unlocking?"out":""}`} onTouchStart={onLockTouchStart} onTouchEnd={onLockTouchEnd} onMouseDown={onLockMouseDown} onMouseUp={onLockMouseUp} onPointerDown={onLockPointerDown} onPointerUp={onLockPointerUp} onDoubleClick={handleUnlock}><BarClock ft={ft} hideTime /><LockClock ft={ft} fd={fd} /><div className="mp-lock-hint">{tr("向上滑動解鎖 MaliPhone（或雙擊）", "Swipe up to unlock MaliPhone (or double-click)", "MaliPhone を上にスワイプしてロック解除（またはダブルクリック）", "MaliPhone을 위로 밀어 잠금 해제(또는 더블클릭)")}</div></div></div></div></>);
+  const lockNotifications = Object.keys(proactiveUnread || {})
+    .filter((cid) => proactiveUnread[cid])
+    .map((cid) => {
+      const nc = characters.find((c) => c.id === cid);
+      if (!nc) return null;
+      const ms = chatHistory[cid] || [];
+      const lm = ms[ms.length - 1];
+      return { charId: cid, char: nc, time: lm?.time || 0, preview: lm?.content || "" };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.time - a.time)
+    .slice(0, 2);
+  const openLockNotification = (notif) => {
+    setProactiveUnread((prev) => { const n = { ...prev }; delete n[notif.charId]; return n; });
+    setCurrentChatChar(notif.char);
+    openApp("chat");
+    handleUnlock();
+  };
+  if (locked) return (<><style>{css}</style><style>{themeCss}</style><div className="mp-wrap"><div className="mp-phone"><div className={`mp-lock ${unlocking?"out":""}`} onTouchStart={onLockTouchStart} onTouchEnd={onLockTouchEnd} onMouseDown={onLockMouseDown} onMouseUp={onLockMouseUp} onPointerDown={onLockPointerDown} onPointerUp={onLockPointerUp} onDoubleClick={handleUnlock}><BarClock ft={ft} hideTime /><LockClock ft={ft} fd={fd} />{lockNotifications.length > 0 && (<div className="mp-lock-notifs">{lockNotifications.map((notif) => (<button key={notif.charId} type="button" className="mp-lock-notif" onClick={(e) => { e.stopPropagation(); openLockNotification(notif); }}><div className="mp-lock-notif-avatar">{sanitizeUserImageUrl(notif.char.avatar) ? <img src={sanitizeUserImageUrl(notif.char.avatar)} alt="" /> : (notif.char.name?.[0] || "🙂")}</div><div className="mp-lock-notif-body"><div className="mp-lock-notif-name">{notif.char.name}</div><div className="mp-lock-notif-preview">{notif.preview}</div></div></button>))}</div>)}<div className="mp-lock-hint">{tr("向上滑動解鎖 MaliPhone（或雙擊）", "Swipe up to unlock MaliPhone (or double-click)", "MaliPhone を上にスワイプしてロック解除（またはダブルクリック）", "MaliPhone을 위로 밀어 잠금 해제(또는 더블클릭)")}</div></div></div></div></>);
 
   const localizedAppById = {
     chat: { ...DEFAULT_APPS.find((a) => a.id === "chat"), name: t("chat") },
@@ -3225,6 +3469,7 @@ ${recent}`,
     player: { ...DEFAULT_APPS.find((a) => a.id === "player"), name: t("player") },
     wallet: { ...DEFAULT_APPS.find((a) => a.id === "wallet"), name: t("wallet") },
     game: { ...DEFAULT_APPS.find((a) => a.id === "game"), name: t("gameCenter") },
+    petHome: { ...DEFAULT_APPS.find((a) => a.id === "petHome"), name: tr("寵物小屋", "Pet Home", "ペットのおうち", "펫 하우스") },
     lbook: { ...DEFAULT_APPS.find((a) => a.id === "lbook"), name: t("answerBook") },
     notebook: { ...DEFAULT_APPS.find((a) => a.id === "notebook"), name: t("notebook") },
     settings: { ...DEFAULT_APPS.find((a) => a.id === "settings"), name: t("settings") },
@@ -4457,8 +4702,14 @@ ${recent || "（目前無內容）"}`;
                     const ms = chatHistory[c.id] || [];
                     const lm = ms[ms.length - 1];
                     const isPinned = !!c.pinned || !!c.chatPinned;
+                    const unreadCount = Number(proactiveUnread?.[c.id]) || 0;
+                    const isUnread = unreadCount > 0;
                     return (
-                      <button key={c.id} className={`mp-chat-row ${isPinned ? "pinned" : ""}`} onClick={() => Date.now() > suppressAppClickUntilRef.current && setCurrentChatChar(c)}>
+                      <button key={c.id} className={`mp-chat-row ${isPinned ? "pinned" : ""}`} onClick={() => {
+                        if (Date.now() <= suppressAppClickUntilRef.current) return;
+                        if (isUnread) setProactiveUnread((prev) => { const n = { ...prev }; delete n[c.id]; return n; });
+                        setCurrentChatChar(c);
+                      }}>
                         <div className="mp-chat-row-avatar">
                           {sanitizeUserImageUrl(c.avatar) ? <img src={sanitizeUserImageUrl(c.avatar)} alt="" /> : (c.name?.[0] || "🙂")}
                         </div>
@@ -4470,7 +4721,10 @@ ${recent || "（目前無內容）"}`;
                             </div>
                             <div className="mp-chat-row-time">{lm?.time ? new Date(lm.time).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" }) : ""}</div>
                           </div>
-                          <div className="mp-chat-row-preview">{lm?.content || t("noMessagesShort")}</div>
+                          <div className="mp-chat-row-bottom">
+                            <div className="mp-chat-row-preview" style={isUnread ? { fontWeight: 700, color: "var(--mp-txt)" } : undefined}>{lm?.content || t("noMessagesShort")}</div>
+                            {isUnread && <span className="mp-chat-row-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>}
+                          </div>
                         </div>
                       </button>
                     );
@@ -4715,6 +4969,32 @@ ${recent || "（目前無內容）"}`;
                         </button>
                       </div>
                     )}
+                  </div>
+                )}
+              </div>
+              <div className="mp-cc">
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>{tr("主動傳訊息", "Proactive messages", "自発的なメッセージ", "먼저 보내는 메시지")}</div>
+                    <div style={{ fontSize: 10, color: "var(--mp-txt-l)", marginTop: 3, lineHeight: 1.5 }}>
+                      {tr("離開一段時間再回來時，角色有機會主動傳訊息給你。", "When you're away and come back, the character may occasionally message you first.", "しばらく離れてから戻ると、キャラが時々先にメッセージを送ることがあります。", "자리를 비웠다 돌아오면 캐릭터가 가끔 먼저 메시지를 보낼 수 있습니다.")}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={isProactiveEnabled(currentChatChar.id)}
+                    className={`mp-switch ${isProactiveEnabled(currentChatChar.id) ? "active" : ""}`}
+                    onClick={() => setProactiveEnabled(currentChatChar.id, !isProactiveEnabled(currentChatChar.id))}
+                  >
+                    <span />
+                  </button>
+                </div>
+                {isProactiveEnabled(currentChatChar.id) && (
+                  <div className="mp-mode-tabs" style={{ marginTop: 10, gridTemplateColumns: "repeat(3,1fr)" }}>
+                    <button className={`mp-mode-tab ${getProactiveFrequency(currentChatChar.id) === "low" ? "active" : ""}`} onClick={() => setProactiveFrequency(currentChatChar.id, "low")}>{tr("低頻率", "Low", "低頻度", "낮음")}</button>
+                    <button className={`mp-mode-tab ${getProactiveFrequency(currentChatChar.id) === "normal" ? "active" : ""}`} onClick={() => setProactiveFrequency(currentChatChar.id, "normal")}>{tr("一般", "Normal", "普通", "보통")}</button>
+                    <button className={`mp-mode-tab ${getProactiveFrequency(currentChatChar.id) === "high" ? "active" : ""}`} onClick={() => setProactiveFrequency(currentChatChar.id, "high")}>{tr("高頻率", "High", "高頻度", "높음")}</button>
                   </div>
                 )}
               </div>
@@ -5297,22 +5577,91 @@ ${recent || "（目前無內容）"}`;
   };
 
   const renderSocial = () => (
+    socialSettingsOpen ? (
+      <div className="mp-page">
+        <div className="mp-hdr">
+          <div className="mp-back" onClick={() => setSocialSettingsOpen(false)}>←</div>
+          <div className="mp-htitle">{t("settings")}</div>
+        </div>
+        <div className="mp-set">
+          <div className="mp-sg">
+            <div className="mp-sg-t">{tr("動態", "Feed", "フィード", "피드")}</div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>{tr("自動貼文", "Auto posts", "自動投稿", "자동 게시")}</div>
+                <div style={{ fontSize: 10, color: "var(--mp-txt-l)", marginTop: 3, lineHeight: 1.5 }}>
+                  {tr("開啟後，角色會不定時自己發佈新貼文。", "When on, characters will occasionally publish new posts on their own.", "オンにすると、キャラが時々自分から新しい投稿をします。", "켜면 캐릭터가 가끔 스스로 새 게시물을 올립니다.")}
+                </div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={!!socialSettings?.autoPost}
+                className={`mp-switch ${socialSettings?.autoPost ? "active" : ""}`}
+                onClick={() => setSocialSettings((prev) => ({ ...(prev || {}), autoPost: !prev?.autoPost }))}
+              >
+                <span />
+              </button>
+            </div>
+          </div>
+          <div className="mp-sg">
+            <div className="mp-sg-t">{tr("珍藏的貼文", "Saved posts", "保存した投稿", "저장한 게시물")}</div>
+            {(posts || []).filter((p) => p.bookmarked).length === 0 ? (
+              <div style={{ fontSize: 11, color: "var(--mp-txt-l)", lineHeight: 1.6 }}>
+                {tr("還沒有珍藏任何貼文。在貼文右上角的「⋯」選單即可珍藏。", "No saved posts yet. Use the ⋯ menu at the top right of a post to save it.", "まだ保存した投稿はありません。投稿右上の「⋯」メニューから保存できます。", "저장한 게시물이 없습니다. 게시물 오른쪽 위 ⋯ 메뉴에서 저장할 수 있어요.")}
+              </div>
+            ) : (
+              (posts || []).filter((p) => p.bookmarked).map((p) => (
+                <div
+                  key={p.id}
+                  style={{ padding: "8px 0", borderBottom: "1px solid rgba(128,128,128,.14)", cursor: "pointer" }}
+                  onClick={() => {
+                    setSocialSettingsOpen(false);
+                    setPendingPostScrollId(p.id);
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getPostAuthorName(p)}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                      <span style={{ fontSize: 10, color: "var(--mp-txt-l)" }}>{formatPostTime(p.time)}</span>
+                      <button
+                        className="mp-ibtn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!window.confirm(tr("確定要取消珍藏這則貼文嗎？", "Remove this post from saved?", "この投稿の保存を解除しますか？", "이 게시물의 저장을 해제할까요?"))) return;
+                          setPosts((ps) => ps.map((x) => (x.id === p.id ? { ...x, bookmarked: false } : x)));
+                          showToast(tr("已取消珍藏", "Removed from saved", "保存を解除しました", "저장을 해제했습니다"));
+                        }}
+                      >
+                        {tr("取消珍藏", "Unsave", "保存解除", "저장 해제")}
+                      </button>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 12, lineHeight: 1.5, marginTop: 4, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{p.content}</div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    ) : (
     <div className="mp-page">
       <div className="mp-hdr">
         <div className="mp-back" onClick={closeApp}>←</div>
             <div className="mp-htitle">{t("social")}</div>
         <div className="mp-social-head-actions">
-          <button className="mp-pill-btn mp-pill-btn-ghost" onClick={() => setPlayerPostModalOpen(true)}>Post</button>
+          <button className="mp-pill-btn mp-pill-btn-ghost" onClick={() => setPlayerPostModalOpen(true)}>{tr("發文", "Post", "投稿", "게시")}</button>
           {characters.length > 0 && (
             <button className="mp-pill-btn" onClick={handleRandomSocialPost}>{t("refresh")}</button>
           )}
+          <button className="mp-pill-btn mp-pill-btn-ghost" onClick={() => setSocialSettingsOpen(true)}>{t("settings")}</button>
         </div>
       </div>
-      <div className="mp-feed">
+      <div className="mp-feed" ref={socialFeedRef}>
         {posts.length === 0 ? (
           <div className="mp-empty">
             <div className="mp-empty-i">📰</div>
-            <div className="mp-empty-t">No posts yet<br/>Try posting an update</div>
+            <div className="mp-empty-t">{tr("目前還沒有貼文", "No posts yet", "まだ投稿はありません", "아직 게시물이 없습니다")}<br/>{tr("發一則動態試試吧", "Try posting an update", "投稿してみましょう", "게시물을 올려보세요")}</div>
           </div>
         ) : posts.map((p) => {
           const authorName = getPostAuthorName(p);
@@ -5327,15 +5676,48 @@ ${recent || "（目前無內容）"}`;
           const canExpandPost = shouldClampSocialPost(p.content);
           const scrollComments = shouldScrollComments(comments);
           return (
-            <div key={p.id} className="mp-post">
+            <div key={p.id} data-post-id={p.id} className={`mp-post ${highlightedPostId === p.id ? "mp-thought-jump-highlight" : ""}`}>
               <div className="mp-post-hd">
                 <div className={`mp-post-av ${isPlayerPost ? "player" : ""}`}>
                   {authorAvatar ? <img src={authorAvatar} alt="" /> : (isPlayerPost ? "👤" : "🦊")}
                 </div>
                 <div>
                   <div className="mp-post-au">{authorName}</div>
-                  <div className="mp-post-tm">{new Date(p.time).toLocaleString("zh-TW")}</div>
+                  <div className="mp-post-tm">{formatPostTime(p.time)}{p.bookmarked ? " · 🔖" : ""}</div>
                 </div>
+                <button
+                  type="button"
+                  className="mp-post-menu-btn"
+                  aria-label={tr("更多選項", "More options", "その他のオプション", "더 보기")}
+                  onClick={() => setActivePostMenuId((id) => (id === p.id ? null : p.id))}
+                >⋯</button>
+                {activePostMenuId === p.id && (
+                  <div className="mp-post-menu">
+                    <button
+                      className="mp-post-menu-item"
+                      onClick={() => {
+                        setPosts((ps) => ps.map((x) => (x.id === p.id ? { ...x, bookmarked: !x.bookmarked } : x)));
+                        setActivePostMenuId(null);
+                        showToast(p.bookmarked
+                          ? tr("已取消珍藏", "Removed from saved", "保存を解除しました", "저장을 해제했습니다")
+                          : tr("已珍藏貼文", "Post saved", "投稿を保存しました", "게시물을 저장했습니다"));
+                      }}
+                    >
+                      {p.bookmarked ? tr("取消珍藏", "Unsave", "保存解除", "저장 해제") : tr("珍藏", "Save", "保存", "저장")}
+                    </button>
+                    <button
+                      className="mp-post-menu-item danger"
+                      onClick={() => {
+                        if (!window.confirm(tr("確定要刪除這則貼文嗎？", "Delete this post?", "この投稿を削除しますか？", "이 게시물을 삭제할까요?"))) return;
+                        setPosts((ps) => ps.filter((x) => x.id !== p.id));
+                        setActivePostMenuId(null);
+                        showToast(tr("貼文已刪除", "Post deleted", "投稿を削除しました", "게시물을 삭제했습니다"));
+                      }}
+                    >
+                      {tr("刪除", "Delete", "削除", "삭제")}
+                    </button>
+                  </div>
+                )}
               </div>
               <div className={`mp-post-ct ${canExpandPost && !postExpanded ? "clamped" : ""}`}>{p.content}</div>
               {canExpandPost && (
@@ -5343,7 +5725,7 @@ ${recent || "（目前無內容）"}`;
                   className="mp-post-more"
                   onClick={() => setExpandedSocialPosts((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
                 >
-                  {postExpanded ? "Collapse" : "Show more"}
+                  {postExpanded ? tr("收合", "Collapse", "折りたたむ", "접기") : tr("顯示更多", "Show more", "もっと見る", "더 보기")}
                 </button>
               )}
               <div className="mp-post-acts">
@@ -5359,12 +5741,12 @@ ${recent || "（目前無內容）"}`;
                   {formatSocialCount(getPostLikeCount(p))}
                 </button>
                 <button className="mp-post-act" onClick={() => { setSocialReplyTarget(null); setActiveCommentPostId((id) => id === p.id ? null : p.id); }}>
-                  Comments {comments.length}
+                  {tr("留言", "Comments", "コメント", "댓글")} {comments.length}
                 </button>
-                {!isPlayerPost && <button className="mp-post-act" onClick={() => sharePostToChat(p)}>Share</button>}
+                {!isPlayerPost && <button className="mp-post-act" onClick={() => sharePostToChat(p)}>{tr("分享", "Share", "共有", "공유")}</button>}
               </div>
               {isPlayerPost && likesOpen && (
-                <div className="mp-liked-by">{likeListText || "No likes yet"}</div>
+                <div className="mp-liked-by">{likeListText || tr("還沒有人按讚", "No likes yet", "まだいいねはありません", "아직 좋아요가 없습니다")}</div>
               )}
               {commentsOpen && (
                 <div className={`mp-comments ${scrollComments ? "scroll" : ""}`}>
@@ -5407,7 +5789,7 @@ ${recent || "（目前無內容）"}`;
                             autoFocus
                           />
                           <button className="mp-ibtn" onClick={() => setSocialReplyTarget(null)}>{t("cancel")}</button>
-                          <button className="mp-ibtn" onClick={() => addPostComment(p.id, targetForThis)}>Send</button>
+                          <button className="mp-ibtn" onClick={() => addPostComment(p.id, targetForThis)}>{tr("送出", "Send", "送信", "보내기")}</button>
                         </div>
                       )}
                     </div>
@@ -5415,13 +5797,13 @@ ${recent || "（目前無內容）"}`;
                   <div className="mp-comment-input">
                     <input
                       className="mp-sinp"
-                      placeholder="Write a comment..."
+                      placeholder={tr("寫下留言...", "Write a comment...", "コメントを書く...", "댓글을 입력...")}
                       value={postCommentInputs[p.id] || ""}
                       maxLength={240}
                       onChange={(e) => setPostCommentInputs((prev) => ({ ...prev, [p.id]: e.target.value }))}
                       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addPostComment(p.id); } }}
                     />
-                    <button className="mp-ibtn" onClick={() => addPostComment(p.id)}>Send</button>
+                    <button className="mp-ibtn" onClick={() => addPostComment(p.id)}>{tr("送出", "Send", "送信", "보내기")}</button>
                   </div>
                 </div>
               )}
@@ -5430,6 +5812,7 @@ ${recent || "（目前無內容）"}`;
         })}
       </div>
     </div>
+    )
   );
 
   const renderLorebook = () => {
@@ -5847,12 +6230,14 @@ ${recent || "（目前無內容）"}`;
               <div className="mp-sg-t">{t("theme")}</div>
               <div className="mp-row">
                 <div className="mp-lbl">{t("theme")}</div>
-                <select className="mp-ssel" value={themeName} onChange={(e) => setThemeName(e.target.value)}>
+                <select className="mp-ssel" value={themeName === "湖水藍" ? "海鹽汽水" : themeName} onChange={(e) => setThemeName(e.target.value)}>
                   <option value="莓果蘇打">{tr("莓果蘇打", "Berry Soda", "ベリーソーダ", "베리 소다")}</option>
                   <option value="夜色絨幕">{tr("夜色絨幕", "Velvet Night", "夜色ベルベット", "밤빛 벨벳")}</option>
+                  <option value="抹茶檸檬">{tr("抹茶檸檬", "Matcha Lemon", "抹茶レモン", "말차 레몬")}</option>
+                  <option value="海鹽汽水">{tr("海鹽汽水", "Sea Salt Soda", "シーソルトソーダ", "솔트 소다")}</option>
                 </select>
               </div>
-              <div style={{fontSize:10,color:"var(--mp-txt-l)",lineHeight:1.6,marginBottom:10}}>{t("defaultTheme")}</div>
+              <div style={{fontSize:10,color:"var(--mp-txt-l)",lineHeight:1.6,marginBottom:10}}>{tr("目前主題：", "Current theme: ", "現在のテーマ：", "현재 테마: ")}{themeName === "莓果蘇打" ? tr("莓果蘇打", "Berry Soda", "ベリーソーダ", "베리 소다") : themeName === "夜色絨幕" ? tr("夜色絨幕", "Velvet Night", "夜色ベルベット", "밤빛 벨벳") : themeName === "抹茶檸檬" ? tr("抹茶檸檬", "Matcha Lemon", "抹茶レモン", "말차 레몬") : tr("海鹽汽水", "Sea Salt Soda", "シーソルトソーダ", "솔트 소다")}</div>
               <div className="mp-row">
                 <div className="mp-lbl">{t("language")}</div>
                 <select className="mp-ssel" value={uiLanguage} onChange={(e) => setUiLanguage(e.target.value)}>
@@ -6136,6 +6521,8 @@ ${recent || "（目前無內容）"}`;
                         setChatBackgrounds({});
                         setGroupChats([]);
                         setInnerThoughtSettings({});
+                        setProactiveSettings({});
+                        setProactiveUnread({});
                         setExpandedInnerThoughts({});
                         setInnerThoughtLoading({});
                         setChatScenes({});
@@ -6902,6 +7289,7 @@ ${roleProfile || "（無）"}`;
       case "wallet": return renderWallet();
       case "gallery": return renderPlaceholder("🖼️", t("gallery"));
       case "game": return renderGame();
+      case "petHome": return <PetHome onClose={closeApp} />;
       case "lbook": return renderBook();
       case "notebook": return renderPlaceholder("📒", t("notebook"));
       case "phone": return renderPhone();
@@ -7042,6 +7430,7 @@ ${roleProfile || "（無）"}`;
       </div>
     )}
     {currentApp && renderApp()}
+    <DesktopPet currentApp={currentApp} />
     {modal === "addChar" && <AddCharModal setModal={setModal} setEditingCharacter={setEditingCharacter} addCharacter={addCharacter} updateCharacter={updateCharacter} exportCharacter={exportCharacter} deleteCharacter={deleteCharacter} editingCharacter={editingCharacter} sanitizeUserImageUrl={sanitizeUserImageUrl} uiLanguage={uiLanguage} ttsConfig={ttsConfig} ttsVoices={ttsVoices.length ? ttsVoices : (ttsConfig.elevenlabs?.availableVoices || [])} onVoicePreview={previewCharacterVoice} />}
     {memoryEditor && (
       <div className="mp-overlay" onClick={() => setMemoryEditor(null)}>
@@ -7360,4 +7749,3 @@ ${roleProfile || "（無）"}`;
       {toast && <div className="mp-toast">{toast}</div>}
   </div></div></>);
 }
-

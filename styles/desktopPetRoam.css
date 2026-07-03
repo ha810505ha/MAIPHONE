@@ -1,0 +1,1 @@
+.desktop-pet.desktop-pet-roaming{transition:left 1.45s cubic-bezier(.4,0,.2,1),top 1.05s ease;will-change:left,top}.desktop-pet.desktop-pet-roaming .desktop-pet-sprite{animation:desktopPetRoamBob .5s ease-in-out infinite alternate}@keyframes desktopPetRoamBob{from{transform:translateY(0)}to{transform:translateY(-4px)}}

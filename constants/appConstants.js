@@ -1,7 +1,14 @@
-﻿const VERSION = "1.1.9";
 const MALIPHONE_AI_PROXY = "https://orange-butterfly-8390.d778105.workers.dev";
+const CURRENT_VERSION = "1.2.0";
 
 const CHANGELOG = {
+  "1.2.0": [
+    "07/04 更新",
+    "新增寵物小屋，支援寵物照顧、自由活動、地圖互動、桌面小寵物與資料備份",
+    "新增抹茶檸檬與海鹽汽水主題，統一主要操作按鈕的配色",
+    "新增社群自動發文功能，角色會依設定自行分享近況",
+    "新增聊天室角色主動訊息，可為每位角色設定開關與互動頻率",
+  ],
   "1.1.9": [
     "06/29 更新",
     "新增角色心聲功能，支援自動生成、手動查看與心聲紀錄",
@@ -67,6 +74,7 @@ const DEFAULT_APPS = [
   { id: "player", name: "玩家", icon: "🪪", iconUrl: "./app-icons/profile.png?v=1.1.5" },
   { id: "wallet", name: "錢包", icon: "💰", iconUrl: "./app-icons/wallet.png?v=1.1.5" },
   { id: "game", name: "遊戲中心", icon: "🎮", iconUrl: "./app-icons/game.png?v=1.1.7" },
+  { id: "petHome", name: "寵物小屋", icon: "🐾" },
   { id: "lbook", name: "解答之書", icon: "📖", iconUrl: "./app-icons/book.png?v=1.1.1" },
   { id: "notebook", name: "筆記", icon: "📒", iconUrl: "./app-icons/notes.png?v=1.1.5" },
   { id: "settings", name: "設定", icon: "⚙️", iconUrl: "./app-icons/settings.png?v=1.1.5" },
@@ -76,7 +84,7 @@ const DEFAULT_APPS = [
 
 const DOCK_APPS = ["chat", "social", "characters", "settings"];
 
-export { VERSION, CHANGELOG, API_PROVIDERS, DEFAULT_APPS, DOCK_APPS };
+export { CURRENT_VERSION as VERSION, CHANGELOG, API_PROVIDERS, DEFAULT_APPS, DOCK_APPS };
 
 
 
