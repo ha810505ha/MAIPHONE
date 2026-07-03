@@ -1,0 +1,1 @@
+.pet-character{transition:left 2.8s cubic-bezier(.4,0,.2,1),bottom 1.1s ease,transform .2s}.pet-character.wandering .pet-sprite-image{animation-duration:.8s}.desktop-pet.desktop-pet-roaming{transition:left 2.8s cubic-bezier(.4,0,.2,1),top 2.5s ease}.desktop-pet.desktop-pet-roaming .desktop-pet-sprite-image{animation-duration:.8s}
