@@ -1,4 +1,7 @@
-﻿const gid = () => Math.random().toString(36).substr(2, 9);
+﻿const gid = () => {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 11)}`;
+};
 const ft = (d) => `${d.getHours().toString().padStart(2,"0")}:${d.getMinutes().toString().padStart(2,"0")}`;
 const fd = (d) => {
   const days = ["SUN","MON","TUE","WED","THU","FRI","SAT"];

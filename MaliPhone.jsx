@@ -2,344 +2,46 @@
 import { VERSION, CHANGELOG, API_PROVIDERS, DEFAULT_APPS, DOCK_APPS } from "./constants/appConstants";
 import { ArrowDown, ChevronLeft, ChevronRight, Eye, LoaderCircle, Pause, RefreshCw, Volume2 } from "lucide-react";
 import { gid, ft, fd, sanitizeText, sanitizeUserImageUrl } from "./utils/coreUtils";
+import { UI_TEXT } from "./constants/uiText";
 import { parseSillyTavernJSON, parseSillyTavernPNG, buildSystemPrompt } from "./utils/characterParser";
 import { callAI, fetchAvailableModels } from "./services/aiService";
 import { fetchElevenLabsDefaultVoices, synthesizeSpeech } from "./services/ttsService";
 import { loadAppState, saveAppState } from "./utils/indexedDbStorage";
+import { createDefaultVoiceSettings, normalizeCharacterVoiceSettings } from "./utils/voiceSettings";
+import { sanitizeCustomCss } from "./utils/customCss";
 import css, { THEME_PRESETS } from "./styles/maliPhoneCss";
 import PetHome from "./PetHome";
 import DesktopPet from "./DesktopPet";
+import CustomCssGuide from "./CustomCssGuide";
+import CustomCssSettings from "./components/settings/CustomCssSettings";
+import HeroImageSettings from "./components/settings/HeroImageSettings";
+import ThemeSettings from "./components/settings/ThemeSettings";
+import InterfaceSettings from "./components/settings/InterfaceSettings";
+import ApiPresetSettings from "./components/settings/ApiPresetSettings";
+import DataBackupSettings from "./components/settings/DataBackupSettings";
+import AiConnectionSettings from "./components/settings/AiConnectionSettings";
+import VoiceApiSettings from "./components/settings/VoiceApiSettings";
+import ApiPresetModal from "./components/settings/ApiPresetModal";
+import DataImportPreviewModal from "./components/settings/DataImportPreviewModal";
+import ChatroomImportPreviewModal from "./components/settings/ChatroomImportPreviewModal";
+import AboutInfoSettings from "./components/settings/AboutInfoSettings";
+import ResetDataSettings from "./components/settings/ResetDataSettings";
+import GameCenter from "./components/apps/GameCenter";
+import AnswerBookApp from "./components/apps/AnswerBookApp";
+import PlayerProfileApp from "./components/apps/PlayerProfileApp";
+import ContactsApp from "./components/apps/ContactsApp";
+import WalletSettingsApp from "./components/apps/WalletSettingsApp";
+import PhoneApp from "./components/apps/PhoneApp";
+import SocialApp from "./components/apps/SocialApp";
+import LorebookApp from "./components/apps/LorebookApp";
+import StatusApp from "./components/apps/StatusApp";
+import AddCharacterModal from "./components/characters/AddCharacterModal";
+import PeachHero, { heroImgStyle } from "./components/home/PeachHero";
+import WalletLedgerView from "./components/wallet/WalletLedgerView";
+import { BarClock, LockClock, DeskClock } from "./components/common/PhoneClocks";
 
-const createDefaultVoiceSettings = () => ({
-  enabled: false,
-  elevenlabs: { voiceId: "", speed: 1, stability: 0.5, similarity: 0.75 },
-  minimax: { voiceId: "", speed: 1, pitch: 0, volume: 1, emotion: "auto" },
-});
-
-const normalizeCharacterVoiceSettings = (value) => {
-  const defaults = createDefaultVoiceSettings();
-  const source = value && typeof value === "object" ? value : {};
-  return {
-    ...defaults,
-    ...source,
-    enabled: !!source.enabled,
-    elevenlabs: { ...defaults.elevenlabs, ...(source.elevenlabs || {}) },
-    minimax: { ...defaults.minimax, ...(source.minimax || {}) },
-  };
-};
-
-function AddCharModal({ setModal, setEditingCharacter, addCharacter, updateCharacter, exportCharacter, deleteCharacter, editingCharacter, sanitizeUserImageUrl, uiLanguage, ttsConfig, ttsVoices, onVoicePreview }) {
-  const [tab, setTab] = useState("manual");
-  const [n, sn] = useState(""); const [d, sd] = useState(""); const [p, sp] = useState(""); const [rel, srel] = useState(""); const [av, sav] = useState("");
-  const [importErr, setImportErr] = useState(""); const [importing, setImporting] = useState(false);
-  const [avatarCrop, setAvatarCrop] = useState(null);
-  const [voiceSettings, setVoiceSettings] = useState(createDefaultVoiceSettings);
-  const [voicePreviewing, setVoicePreviewing] = useState(false);
-  const AVATAR_MAX_BYTES = 400 * 1024;
-  const tr = (zh, en, ja, ko) => ({ "zh-TW": zh, en, ja, ko }[uiLanguage] || zh);
-  const ask = (zh, en = zh, ja = zh, ko = zh) => window.confirm(tr(zh, en, ja, ko));
-  const avRef = useRef(null); const importRef = useRef(null);
-  const closeModal = () => {
-    setModal(null);
-    setEditingCharacter?.(null);
-  };
-  useEffect(() => {
-    if (!editingCharacter) return;
-    setTab("manual");
-    sn(editingCharacter.name || "");
-    sd(editingCharacter.description || "");
-    sp(editingCharacter.systemPrompt || "");
-    srel(editingCharacter.relationshipToUser || "");
-    sav(editingCharacter.avatar || "");
-    setVoiceSettings(normalizeCharacterVoiceSettings(editingCharacter.voiceSettings));
-  }, [editingCharacter]);
-  const voiceProvider = ttsConfig?.provider || "elevenlabs";
-  const activeVoice = voiceSettings[voiceProvider] || createDefaultVoiceSettings()[voiceProvider];
-  const updateActiveVoice = (patch) => setVoiceSettings((current) => ({
-    ...current,
-    [voiceProvider]: { ...(current[voiceProvider] || {}), ...patch },
-  }));
-  const onAv = (e) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    const r = new FileReader();
-    r.onload = () => {
-      const safe = sanitizeUserImageUrl(String(r.result || ""));
-      if (!safe) {
-        alert(tr("頭像格式不支援", "Unsupported avatar format", "アバター形式に対応していません", "아바타 형식을 지원하지 않습니다"));
-        return;
-      }
-      const img = new Image();
-      img.onload = () => {
-        setAvatarCrop({ src: safe, width: img.width, height: img.height, zoom: 1, panX: 0, panY: 0, dragging: false, dragStartX: 0, dragStartY: 0, startPanX: 0, startPanY: 0 });
-      };
-      img.onerror = () => alert(tr("頭像讀取失敗", "Image load failed", "画像の読み込みに失敗しました", "이미지 읽기에 실패했습니다"));
-      img.src = safe;
-    };
-    r.readAsDataURL(f);
-    e.target.value = "";
-  };
-  const applyAvatarCrop = () => {
-    if (!avatarCrop?.src) return;
-    const img = new Image();
-    img.onload = () => {
-        const candidates = [
-          { size: 512, quality: 0.82 },
-          { size: 448, quality: 0.76 },
-          { size: 384, quality: 0.7 },
-          { size: 320, quality: 0.64 },
-        ];
-        let picked = null;
-        for (const c of candidates) {
-          const canvas = document.createElement("canvas");
-          canvas.width = c.size;
-          canvas.height = c.size;
-          const ctx = canvas.getContext("2d");
-          if (!ctx) continue;
-          ctx.fillStyle = "#fff";
-          ctx.fillRect(0, 0, c.size, c.size);
-          const scale = Math.max(c.size / img.width, c.size / img.height) * Math.max(1, avatarCrop.zoom || 1);
-          const dw = img.width * scale;
-          const dh = img.height * scale;
-          const maxShiftX = Math.max(0, (dw - c.size) / 2);
-          const maxShiftY = Math.max(0, (dh - c.size) / 2);
-          const dx = (c.size - dw) / 2 + (maxShiftX * Number(avatarCrop.panX || 0)) / 100;
-          const dy = (c.size - dh) / 2 + (maxShiftY * Number(avatarCrop.panY || 0)) / 100;
-          ctx.drawImage(img, dx, dy, dw, dh);
-          const out = canvas.toDataURL("image/jpeg", c.quality);
-          const b64 = out.split(",")[1] || "";
-          const bytes = Math.ceil((b64.length * 3) / 4);
-          picked = { out, bytes, size: c.size };
-          if (bytes <= AVATAR_MAX_BYTES) break;
-        }
-        if (!picked || picked.bytes > AVATAR_MAX_BYTES) {
-          alert(tr("頭像壓縮後仍超過 400KB，請改用尺寸更小或內容更簡單的圖片", "The compressed avatar is still larger than 400KB. Please use a smaller or simpler image.", "圧縮後も400KBを超えています。もっと小さい、またはシンプルな画像を使ってください。", "압축 후에도 400KB를 초과했습니다. 더 작거나 단순한 이미지를 사용해주세요."));
-          return;
-        }
-        sav(picked.out);
-        setAvatarCrop(null);
-    };
-    img.onerror = () => alert(tr("頭像讀取失敗", "Image load failed", "画像の読み込みに失敗しました", "이미지 읽기에 실패했습니다"));
-    img.src = avatarCrop.src;
-  };
-  const startAvatarDrag = (e) => {
-    if (!avatarCrop) return;
-    const px = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
-    const py = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
-    setAvatarCrop((s) => ({ ...(s || {}), dragging: true, dragStartX: px, dragStartY: py, startPanX: s?.panX || 0, startPanY: s?.panY || 0 }));
-  };
-  const moveAvatarDrag = (e) => {
-    setAvatarCrop((s) => {
-      if (!s?.dragging) return s;
-      const px = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
-      const py = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
-      const nextPanX = (s.startPanX || 0) + ((px - (s.dragStartX || 0)) / 1.8);
-      const nextPanY = (s.startPanY || 0) + ((py - (s.dragStartY || 0)) / 1.8);
-      return { ...s, panX: Math.max(-100, Math.min(100, nextPanX)), panY: Math.max(-100, Math.min(100, nextPanY)) };
-    });
-  };
-  const endAvatarDrag = () => setAvatarCrop((s) => s ? { ...s, dragging: false } : s);
-  const onAvatarPointerDown = (e) => {
-    e.preventDefault();
-    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch (_) {}
-    startAvatarDrag(e);
-  };
-  const onAvatarPointerMove = (e) => {
-    if (!avatarCrop?.dragging) return;
-    e.preventDefault();
-    moveAvatarDrag(e);
-  };
-  const onAvatarPointerUp = (e) => {
-    try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch (_) {}
-    endAvatarDrag();
-  };
-  const getAvatarCropImageStyle = () => {
-    const box = 220;
-    const iw = Number(avatarCrop?.width || 1);
-    const ih = Number(avatarCrop?.height || 1);
-    const scale = Math.max(box / iw, box / ih) * Math.max(1, Number(avatarCrop?.zoom || 1));
-    const dw = iw * scale;
-    const dh = ih * scale;
-    const maxShiftX = Math.max(0, (dw - box) / 2);
-    const maxShiftY = Math.max(0, (dh - box) / 2);
-    return {
-      position: "absolute",
-      width: dw,
-      height: dh,
-      left: (box - dw) / 2 + (maxShiftX * Number(avatarCrop?.panX || 0)) / 100,
-      top: (box - dh) / 2 + (maxShiftY * Number(avatarCrop?.panY || 0)) / 100,
-      userSelect: "none",
-      WebkitUserDrag: "none",
-      pointerEvents: "none",
-    };
-  };
-  const handleImport = async (e) => {
-    const file = e.target.files?.[0]; if (!file) return;
-    setImportErr(""); setImporting(true);
-    try {
-      if (file.name.endsWith(".json")) {
-        const t = await file.text();
-        const raw = JSON.parse(t);
-        if (raw?.format === "maliphone-character" && raw?.character) addCharacter(raw.character);
-        else addCharacter(parseSillyTavernJSON(raw));
-      }
-      else if (file.type === "image/png") { addCharacter(await parseSillyTavernPNG(file)); }
-      else setImportErr(tr("不支援的檔案格式，請使用 .json 或 .png", "Unsupported file format. Use .json or .png.", "対応していないファイル形式です。.json または .png を使用してください。", "지원하지 않는 파일 형식입니다. .json 또는 .png를 사용하세요."));
-    } catch (err) { setImportErr(err.message || tr("匯入失敗", "Import failed", "インポートに失敗しました", "가져오기에 실패했습니다")); }
-    setImporting(false); if (importRef.current) importRef.current.value = "";
-  };
-  return (
-    <div className="mp-overlay" onClick={closeModal}>
-      <div className="mp-modal" onClick={e => e.stopPropagation()}>
-        <div className="mp-modal-t">{editingCharacter ? tr("編輯角色", "Edit character", "キャラを編集", "캐릭터 편집") : tr("新增角色", "Create character", "キャラを作成", "캐릭터 생성")}</div>
-        {!editingCharacter && <div className="mp-tabs">
-          <div className={`mp-tab ${tab==="manual"?"active":""}`} onClick={() => setTab("manual")}>{tr("手動建立", "Manual create", "手動作成", "수동 생성")}</div>
-          <div className={`mp-tab ${tab==="import"?"active":""}`} onClick={() => setTab("import")}>{tr("匯入角色卡", "Import character card", "キャラカードを取り込む", "캐릭터 카드 가져오기")}</div>
-        </div>}
-        {tab === "import" ? (<>
-          <div className="mp-drop" onClick={() => importRef.current?.click()}>
-            <div className="mp-drop-icon">📥</div>
-            <div className="mp-drop-text">
-              {importing ? tr("匯入中...", "Importing...", "インポート中...", "가져오는 중...") : tr("點擊選擇 SillyTavern 角色卡", "Tap to choose a SillyTavern character card", "タップしてSillyTavernキャラカードを選択", "탭하여 SillyTavern 캐릭터 카드를 선택")}
-              <br />
-              <span style={{fontSize:10,color:"var(--mp-txt-l)"}}>{tr("支援 .json 與 .png", "Supports .json and .png", ".json と .png に対応", ".json 및 .png 지원")}</span>
-            </div>
-          </div>
-          <input type="file" ref={importRef} accept=".json,.png" style={{display:"none"}} onChange={handleImport} />
-          {importErr && <div style={{fontSize:12,color:"#e53935",marginTop:6,textAlign:"center"}}>{importErr}</div>}
-          <div style={{marginTop:12,padding:10,background:"rgba(244,143,177,.05)",borderRadius:10,fontSize:11,color:"var(--mp-txt-l)",lineHeight:1.6}}>
-            <strong>{tr("支援格式：", "Supported formats:", "対応形式:", "지원 형식:")}</strong><br/>
-            MaliPhone {tr("角色卡", "character card", "キャラカード", "캐릭터 카드")} JSON<br/>
-            SillyTavern V1/V2 JSON<br/>
-            SillyTavern PNG（{tr("含", "including", "含む", "포함")} chara tEXt chunk）<br/>
-            {tr("會自動讀取", "Auto-reads", "自動で読み込み", "자동으로 읽음")} name、description、personality、scenario、first_mes、mes_example、system_prompt、tags
-          </div>
-        </>) : (<>
-          <div className="mp-row"><div className="mp-lbl">{tr("角色頭像", "Avatar", "アバター", "아바타")}</div><div style={{display:"flex",alignItems:"center",gap:10}}><div className="mp-av" style={{cursor:"pointer"}} onClick={() => avRef.current?.click()}>{av ? <img src={av} alt="" /> : "🦊"}</div><input type="file" ref={avRef} accept="image/*" style={{display:"none"}} onChange={onAv} /><span style={{fontSize:11,color:"var(--mp-txt-l)"}}>{tr("點擊更換", "Tap to change", "タップして変更", "탭하여 변경")}</span></div></div>
-          <div className="mp-row"><div className="mp-lbl">{tr("角色名稱 *", "Character name *", "キャラ名 *", "캐릭터 이름 *")}</div><input className="mp-sinp" value={n} onChange={e=>sn(e.target.value)} placeholder={tr("例如 Luna", "e.g. Luna", "例: Luna", "예: Luna")} /></div>
-          <div className="mp-row"><div className="mp-lbl">{tr("角色設定（Character Description）", "Character description", "キャラ説明", "캐릭터 설명")}</div><textarea className="mp-ta" value={d} maxLength={8000} onChange={e=>sd(e.target.value.slice(0, 8000))} placeholder={tr("描述角色背景、行為、語氣與互動方式", "Describe the character's background, behavior, tone, and interaction style", "背景、行動、口調、やり取りの雰囲気を説明", "배경, 행동, 말투, 상호작용 분위기를 설명")} style={{minHeight:90,resize:"vertical"}} /><div className="mp-char-counter mp-char-counter-modal">{d.length}/8000</div></div>
-            <div className="mp-row"><div className="mp-lbl">{tr("System prompt", "System prompt", "システムプロンプト", "시스템 프롬프트")}</div><textarea className="mp-ta" value={p} maxLength={8000} onChange={e=>sp(e.target.value.slice(0, 8000))} placeholder={tr("Define tone, personality, and reply style", "Define tone, personality, and reply style", "口調、人柄、返答方針を定義", "말투, 성격, 응답 방식을 정의")} /><div className="mp-char-counter mp-char-counter-modal">{p.length}/8000</div></div>
-            <div className="mp-row"><div className="mp-lbl">{tr("與玩家關係", "Relationship to player", "プレイヤーとの関係", "플레이어와의 관계")}</div><input className="mp-sinp" value={rel} onChange={e=>srel(e.target.value)} placeholder={tr("例如：青梅竹馬、同事、戀人、陌生人", "e.g. childhood friend, coworker, lover, stranger", "例: 幼なじみ、同僚、恋人、見知らぬ人", "예: 소꿉친구, 동료, 연인, 낯선 사람")} /></div>
-            <div className="mp-sg" style={{padding:12,marginTop:12}}>
-              <div className="mp-sg-t">{tr("角色語音", "Character voice", "キャラクターボイス", "캐릭터 음성")}</div>
-              <div className="mp-row" style={{display:"flex",alignItems:"center",gap:8}}>
-                <input id="char_voice_enabled" type="checkbox" checked={!!voiceSettings.enabled} onChange={(e) => setVoiceSettings((current) => ({ ...current, enabled: e.target.checked }))} />
-                <label htmlFor="char_voice_enabled" className="mp-lbl" style={{margin:0}}>{tr("啟用這個角色的語音", "Enable voice for this character", "このキャラの音声を有効にする", "이 캐릭터 음성 활성화")}</label>
-              </div>
-              <div style={{fontSize:10,color:"var(--mp-txt-l)",marginBottom:8}}>{tr("目前全域供應商", "Current global provider", "現在の共通プロバイダー", "현재 전역 제공업체")}：{voiceProvider === "minimax" ? "MiniMax" : "ElevenLabs"}</div>
-              {voiceSettings.enabled && <>
-                {voiceProvider === "elevenlabs" && <div className="mp-row"><div className="mp-lbl">{tr("選擇可用聲音", "Choose an available voice", "利用可能な音声を選択", "사용 가능한 음성 선택")}</div><select className="mp-ssel" value={(ttsVoices || []).some((voice) => voice.id === activeVoice.voiceId) ? activeVoice.voiceId : "__custom"} onChange={(e) => { if (e.target.value !== "__custom") updateActiveVoice({ voiceId: e.target.value }); }}><option value="__custom">{tr("手動輸入 Voice ID", "Enter Voice ID manually", "Voice ID を手動入力", "Voice ID 직접 입력")}</option>{(ttsVoices || []).map((voice) => <option key={voice.id} value={voice.id}>{voice.name}{voice.category ? ` · ${voice.category}` : ""}</option>)}</select>{!(ttsVoices || []).length && <div style={{fontSize:10,color:"var(--mp-txt-l)",marginTop:4}}>{tr("請先到語音 API 設定載入可用聲音。", "Load available voices in Voice API settings first.", "先に音声 API 設定で利用可能な音声を読み込んでください。", "먼저 음성 API 설정에서 사용 가능한 음성을 불러오세요.")}</div>}</div>}
-                <div className="mp-row"><div className="mp-lbl">Voice ID</div><input className="mp-sinp" value={activeVoice.voiceId || ""} onChange={(e) => updateActiveVoice({ voiceId: e.target.value })} placeholder={voiceProvider === "minimax" ? "female-shaonv" : "JBFqnCBsd6RMkjVDRZzb"} /></div>
-                <div className="mp-row"><div className="mp-lbl">{tr("語速", "Speed", "速度", "속도")}：{Number(activeVoice.speed || 1).toFixed(2)}</div><input style={{width:"100%"}} type="range" min={voiceProvider === "minimax" ? "0.5" : "0.7"} max={voiceProvider === "minimax" ? "2" : "1.2"} step="0.05" value={activeVoice.speed ?? 1} onChange={(e) => updateActiveVoice({ speed: Number(e.target.value) })} /></div>
-                {voiceProvider === "elevenlabs" ? <>
-                  <div className="mp-row"><div className="mp-lbl">{tr("穩定度", "Stability", "安定性", "안정성")}：{Number(activeVoice.stability ?? .5).toFixed(2)}</div><input style={{width:"100%"}} type="range" min="0" max="1" step="0.05" value={activeVoice.stability ?? .5} onChange={(e) => updateActiveVoice({ stability: Number(e.target.value) })} /></div>
-                  <div className="mp-row"><div className="mp-lbl">{tr("相似度", "Similarity", "類似度", "유사도")}：{Number(activeVoice.similarity ?? .75).toFixed(2)}</div><input style={{width:"100%"}} type="range" min="0" max="1" step="0.05" value={activeVoice.similarity ?? .75} onChange={(e) => updateActiveVoice({ similarity: Number(e.target.value) })} /></div>
-                </> : <>
-                  <div className="mp-row"><div className="mp-lbl">{tr("音高", "Pitch", "ピッチ", "피치")}：{activeVoice.pitch ?? 0}</div><input style={{width:"100%"}} type="range" min="-12" max="12" step="1" value={activeVoice.pitch ?? 0} onChange={(e) => updateActiveVoice({ pitch: Number(e.target.value) })} /></div>
-                  <div className="mp-row"><div className="mp-lbl">{tr("音量", "Volume", "音量", "볼륨")}：{Number(activeVoice.volume ?? 1).toFixed(1)}</div><input style={{width:"100%"}} type="range" min="0.1" max="2" step="0.1" value={activeVoice.volume ?? 1} onChange={(e) => updateActiveVoice({ volume: Number(e.target.value) })} /></div>
-                  <div className="mp-row"><div className="mp-lbl">{tr("情緒", "Emotion", "感情", "감정")}</div><select className="mp-ssel" value={activeVoice.emotion || "auto"} onChange={(e) => updateActiveVoice({ emotion: e.target.value })}><option value="auto">Auto</option><option value="happy">Happy</option><option value="sad">Sad</option><option value="angry">Angry</option><option value="fearful">Fearful</option><option value="disgusted">Disgusted</option><option value="surprised">Surprised</option><option value="neutral">Neutral</option></select></div>
-                </>}
-                <button type="button" className="mp-ibtn-chat" disabled={voicePreviewing || !activeVoice.voiceId?.trim()} onClick={async () => { try { setVoicePreviewing(true); await onVoicePreview?.(voiceSettings, tr("你好，這是我的聲音。", "Hello, this is my voice.", "こんにちは、これが私の声です。", "안녕하세요, 제 목소리예요.")); } finally { setVoicePreviewing(false); } }}>{voicePreviewing ? tr("試聽生成中...", "Generating preview...", "試聴を生成中...", "미리듣기 생성 중...") : tr("試聽語音", "Preview voice", "音声を試聴", "음성 미리듣기")}</button>
-              </>}
-            </div>
-            <div className={editingCharacter ? "mp-char-actions" : ""} style={{marginTop:10}}>
-            <button className="mp-save" style={editingCharacter ? {} : {marginTop:10}} onClick={() => {
-              if(!n.trim()) return alert(tr("請輸入角色名稱", "Please enter a character name", "キャラ名を入力してください", "캐릭터 이름을 입력해주세요"));
-              if (editingCharacter && !ask(`確定要儲存角色「${n.trim()}」的變更嗎？`, `Save changes for ${n.trim()}?`)) return;
-              const payload = {name:n.trim(),description:d.trim(),systemPrompt:p.trim(),relationshipToUser:rel.trim(),avatar:av,voiceSettings:normalizeCharacterVoiceSettings(voiceSettings),personality:editingCharacter?.personality||"",scenario:editingCharacter?.scenario||"",firstMessage:editingCharacter?.firstMessage||"",messageExamples:editingCharacter?.messageExamples||"",tags:editingCharacter?.tags||[],creator:editingCharacter?.creator||"",creatorNotes:editingCharacter?.creatorNotes||""};
-              if (editingCharacter) updateCharacter(editingCharacter.id, payload);
-              else addCharacter(payload);
-            }}>{editingCharacter ? tr("儲存變更", "Save changes", "変更を保存", "변경 저장") : tr("建立角色", "Create character", "キャラを作成", "캐릭터 생성")}</button>
-            {editingCharacter && <>
-              <button className="mp-ibtn" onClick={() => {
-                if (!ask(`要匯出角色「${editingCharacter.name}」的角色卡嗎？`, `Export ${editingCharacter.name}?`)) return;
-                exportCharacter?.(editingCharacter);
-              }}>{tr("匯出", "Export", "エクスポート", "내보내기")}</button>
-              <button className="mp-ibtn-r" onClick={() => {
-                if (!ask(`確定要刪除角色「${editingCharacter.name}」嗎？這會一併刪除此角色的聊天室、記憶與其他聊天快取。`, `Delete ${editingCharacter.name}? This also removes chats and memories.`)) return;
-                deleteCharacter?.(editingCharacter.id);
-                closeModal();
-              }}>{tr("刪除", "Delete", "削除", "삭제")}</button>
-            </>}
-            </div>
-        </>)}
-      </div>
-      {avatarCrop && (
-        <div className="mp-overlay" style={{zIndex:130}} onClick={(e) => { e.stopPropagation(); setAvatarCrop(null); }}>
-          <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="mp-modal-t">{tr("裁切角色頭像", "Crop avatar", "アバターをトリミング", "아바타 자르기")}</div>
-            <div style={{display:"grid",placeItems:"center",marginBottom:10}}>
-              <div
-                style={{width:220,height:220,borderRadius:18,overflow:"hidden",border:"1px solid rgba(244,143,177,.35)",background:"#fff",touchAction:"none",cursor: avatarCrop.dragging ? "grabbing" : "grab",position:"relative"}}
-                onPointerDown={onAvatarPointerDown}
-                onPointerMove={onAvatarPointerMove}
-                onPointerUp={onAvatarPointerUp}
-                onPointerCancel={onAvatarPointerUp}
-              >
-                <img
-                  src={avatarCrop.src}
-                  alt=""
-                  style={getAvatarCropImageStyle()}
-                />
-              </div>
-            </div>
-            <div className="mp-row"><div className="mp-lbl">{tr("縮放", "Zoom", "ズーム", "확대")}</div><input type="range" min="1" max="3" step="0.01" value={avatarCrop.zoom} onChange={e=>setAvatarCrop(s=>({...(s||{}),zoom:Number(e.target.value)}))} /></div>
-            <div style={{fontSize:11,color:"var(--mp-txt-l)",marginTop:4}}>{tr("拖曳圖片調整位置，套用後會自動壓縮到 400KB 以內", "Drag the image to adjust its position. It will be compressed under 400KB when applied.", "画像をドラッグして位置を調整できます。適用後は400KB以内に自動圧縮されます。", "이미지를 드래그해 위치를 조정하세요. 적용 후 400KB 이하로 자동 압축됩니다.")}</div>
-            <div style={{display:"flex",gap:8,marginTop:8}}>
-              <button className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#b0bec5,#90a4ae)"}} onClick={() => setAvatarCrop(null)}>{tr("取消", "Cancel", "キャンセル", "취소")}</button>
-              <button className="mp-save" style={{flex:1}} onClick={applyAvatarCrop}>{tr("套用", "Apply", "適用", "적용")}</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function BarClock({ ft, hideTime = false }) {
-  const [now, setNow] = useState(new Date());
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(t);
-  }, []);
-  return (
-    <div className={`mp-bar ${hideTime ? "mp-lock-bar" : ""}`}>
-      {!hideTime && <span>{ft(now)}</span>}
-      <div className="mp-bar-r"><span>📶</span><span>100%</span><span>🔋</span></div>
-    </div>
-  );
-}
-
-function LockClock({ ft, fd }) {
-  const [now, setNow] = useState(new Date());
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(t);
-  }, []);
-  const dateInfo = fd(now);
-  return (
-    <>
-      <div className="mp-lock-time">{ft(now)}</div>
-      <div className="mp-lock-date">{dateInfo.day} · {dateInfo.month} {dateInfo.date}</div>
-    </>
-  );
-}
-
-function DeskClock({ ft, fd }) {
-  const [now, setNow] = useState(new Date());
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(t);
-  }, []);
-  const dateInfo = fd(now);
-  return (
-    <div className="mp-clock">
-      <div className="mp-clock-big">{ft(now)}</div>
-      <div className="mp-clock-meta"><span className="mp-clock-day">{dateInfo.day}</span><span className="mp-clock-ds">{dateInfo.month} · {dateInfo.date}</span></div>
-    </div>
-  );
-}
-
+// 立繪位移：object-position 滑動 cover 的溢出裁切窗口（到邊自動停），
+// translate 只用縮放產生的溢出空間（上限 (zoom-1)*50%），兩者相加永遠不會露出背景缺口
 export default function MaliPhone() {
   const defaultAppState = {
     characters: [],
@@ -394,12 +96,6 @@ export default function MaliPhone() {
     themeName: "莓果蘇打",
     uiLanguage: "zh-TW",
     screenLockTimeout: 5,
-  };
-  const UI_TEXT = {
-    "zh-TW": { settings: "設定", appearance: "外觀", api: "API / LLM", data: "資料", about: "關於", language: "介面語言", theme: "主題", screenLock: "螢幕鎖定", autoLock: "待機後自動鎖定", neverLock: "永不鎖定", save: "儲存設定", cancel: "取消", ok: "知道了", characters: "聯絡人", wallet: "錢包", gameCenter: "遊戲中心", answerBook: "解答之書", notebook: "筆記", gallery: "相簿", phone: "手機", social: "社群", status: "狀態", chat: "聊天", lorebook: "世界觀", player: "玩家", english: "英文", japanese: "日文", korean: "韓文", traditionalChinese: "繁體中文", comingSoon: "即將推出", stayTuned: "敬請期待", contactsHint: "點擊進入手機桌面", noMessages: "目前沒有可顯示的訊息", backToDesktop: "返回桌面", backToList: "返回列表", startChat: "開始聊天", openSettings: "設定", refresh: "刷新", refreshOtherChats: "刷新其他聊天", refreshWallet: "刷新錢包", generate: "生成", generating: "生成中...", updating: "更新中...", loading: "載入中...", clearData: "清空全部資料", clearCache: "清除快取", confirmTransfer: "確認轉帳", transfering: "轉帳中...", close: "關閉", edit: "編輯", enable: "啟用", disable: "停用", title: "標題", content: "內容", keywords: "關鍵字", name: "名稱", description: "描述", import: "匯入", export: "匯出", add: "新增", manualCreate: "手動建立", importCard: "匯入角色卡", chooseCard: "點擊選擇 SillyTavern 角色卡", avatar: "角色頭像", clickChange: "點擊更換", roleConfig: "角色設定", saveChange: "儲存變更", createRole: "建立角色", editRole: "編輯角色", open: "展開", collapse: "收合", noRoleConfig: "尚無角色設定", startChatting: "開始聊天", viewMore: "展開", rolePhone: "角色手機", pickRolePhone: "選擇要查看的角色手機", tapPhoneDesktop: "點擊進入手機桌面", noRolePhone: "尚無角色可預覽手機", switchRole: "換角色", setAsMainCharacter: "設為主要角色", playerProfile: "個人資料", personalSettings: "個人設定", changeAvatar: "更換", remove: "移除", clearAll: "清空全部資料", clearDataConfirm: "確定要清空所有資料嗎？", resetData: "重置資料", fullTerms: "查看完整條款", versionInfo: "版本資訊", versionUpdate: "更新", clearNotice: "清除快取", reloadNow: "重新載入", defaultTheme: "目前預設主題：莓果蘇打", autoLockStatus: "目前設定", imported: "已匯入", exporting: "匯出中...", notReady: "尚未建立", noMessagesShort: "目前沒有可顯示的訊息", loadingFiles: "等待選擇檔案...", waitingFiles: "等待選擇檔案...", chatroom: "聊天室", chatroomSettings: "聊天室設定", worldbookBind: "世界書綁定", manageChatroom: "聊天室管理", dataBackup: "全域資料備份", importPreview: "匯入預覽", chatroomImportPreview: "聊天室匯入預覽", termsDisclaimer: "服務條款與免責聲明", clearCacheAgain: "再次確認清除快取", reopen: "重新開啟", openContact: "聯絡人", languageLabel: "介面語言", roleDescription: "角色設定", roleDescriptionPlaceholder: "描述角色背景、行為、語氣與互動方式", systemPrompt: "系統提示詞", systemPromptPlaceholder: "定義角色語氣、人格、回覆方式", relationship: "與玩家關係", relationshipPlaceholder: "例如：青梅竹馬、同事、戀人、陌生人", importSuccess: "匯入成功", lorebookTitle: "世界書", addLorebook: "新增世界書", noLorebooks: "目前沒有世界書", lorebookEntries: "條目", untitledLorebook: "未命名世界書", lorebookEntry: "條目", noLorebookEntries: "這本世界書尚無條目", delete: "刪除" },
-    en: { settings: "Settings", appearance: "Appearance", api: "API / LLM", data: "Data", about: "About", language: "UI Language", theme: "Theme", screenLock: "Screen Lock", autoLock: "Auto-lock after idle", neverLock: "Never lock", save: "Save Settings", cancel: "Cancel", ok: "OK", characters: "Contacts", wallet: "Wallet", gameCenter: "Game Center", answerBook: "Answer Book", notebook: "Notebook", gallery: "Gallery", phone: "Phone", social: "Social", status: "Status", chat: "Chat", lorebook: "Lorebook", player: "Player", english: "English", japanese: "Japanese", korean: "Korean", traditionalChinese: "繁體中文", comingSoon: "Coming soon", stayTuned: "Stay tuned", contactsHint: "Tap to open the phone desktop", noMessages: "No messages to display", backToDesktop: "Back to desktop", backToList: "Back to list", startChat: "Start chat", openSettings: "Settings", refresh: "Refresh", refreshOtherChats: "Refresh other chats", refreshWallet: "Refresh wallet", generate: "Generate", generating: "Generating...", updating: "Updating...", loading: "Loading...", clearData: "Clear all data", clearCache: "Clear cache", confirmTransfer: "Confirm transfer", transfering: "Transferring...", close: "Close", edit: "Edit", enable: "Enable", disable: "Disable", title: "Title", content: "Content", keywords: "Keywords", name: "Name", description: "Description", import: "Import", export: "Export", add: "Add", manualCreate: "Manual create", importCard: "Import character card", chooseCard: "Tap to choose a SillyTavern character card", avatar: "Avatar", clickChange: "Tap to change", roleConfig: "Character description", saveChange: "Save changes", createRole: "Create character", editRole: "Edit character", open: "Expand", collapse: "Collapse", noRoleConfig: "No character settings yet", startChatting: "Start chatting", viewMore: "Expand", rolePhone: "Character phone", pickRolePhone: "Choose a character phone to view", tapPhoneDesktop: "Tap to open the phone desktop", noRolePhone: "No character available to preview", switchRole: "Switch character", setAsMainCharacter: "Set as main character", playerProfile: "Profile", personalSettings: "Personal settings", changeAvatar: "Change", remove: "Remove", clearAll: "Clear all data", clearDataConfirm: "Are you sure you want to clear all data?", resetData: "Reset data", fullTerms: "View full terms", versionInfo: "Version info", versionUpdate: "Update", clearNotice: "Clear cache", reloadNow: "Reload now", defaultTheme: "Default theme: Berry Soda", autoLockStatus: "Current setting", imported: "Imported", exporting: "Exporting...", notReady: "Not created yet", noMessagesShort: "No messages to display", loadingFiles: "Waiting for file selection...", waitingFiles: "Waiting for file selection...", chatroom: "Chatroom", chatroomSettings: "Chatroom settings", worldbookBind: "Worldbook binding", manageChatroom: "Chatroom management", dataBackup: "Global data backup", importPreview: "Import preview", chatroomImportPreview: "Chatroom import preview", termsDisclaimer: "Terms and disclaimer", clearCacheAgain: "Confirm cache clear again", reopen: "Reopen", openContact: "Contacts", languageLabel: "UI Language", roleDescription: "Character description", roleDescriptionPlaceholder: "Describe the character's background, behavior, tone, and interaction style", systemPrompt: "System prompt", systemPromptPlaceholder: "Define tone, personality, and reply style", relationship: "Relationship to player", relationshipPlaceholder: "e.g. childhood friend, coworker, lover, stranger", importSuccess: "Import successful" },
-    ja: { settings: "設定", appearance: "外観", api: "API / LLM", data: "データ", about: "情報", language: "UI 言語", theme: "テーマ", screenLock: "画面ロック", autoLock: "待機後に自動ロック", neverLock: "ロックしない", save: "設定を保存", cancel: "キャンセル", ok: "OK", characters: "連絡先", wallet: "財布", gameCenter: "ゲームセンター", answerBook: "答えの書", notebook: "ノート", gallery: "アルバム", phone: "スマホ", social: "SNS", status: "ステータス", chat: "チャット", lorebook: "世界観", player: "プレイヤー", english: "英語", japanese: "日本語", korean: "韓国語", traditionalChinese: "繁體中文", comingSoon: "近日公開", stayTuned: "お楽しみに", contactsHint: "タップしてスマホを開く", noMessages: "表示できるメッセージがありません", backToDesktop: "デスクトップへ", backToList: "一覧へ戻る", startChat: "チャット開始", openSettings: "設定", refresh: "更新", refreshOtherChats: "他のチャットを更新", refreshWallet: "財布を更新", generate: "生成", generating: "生成中...", updating: "更新中...", loading: "読み込み中...", clearData: "すべてのデータを消去", clearCache: "キャッシュを消去", confirmTransfer: "振込を確定", transfering: "振込中...", close: "閉じる", edit: "編集", enable: "有効", disable: "無効", title: "タイトル", content: "内容", keywords: "キーワード", name: "名前", description: "説明", import: "インポート", export: "エクスポート", add: "追加", manualCreate: "手動作成", importCard: "キャラカードを取り込む", chooseCard: "SillyTavern キャラカードを選択", avatar: "アバター", clickChange: "変更する", roleConfig: "キャラ設定", saveChange: "変更を保存", createRole: "キャラを作成", editRole: "キャラを編集", open: "展開", collapse: "折りたたむ", noRoleConfig: "まだキャラ設定はありません", startChatting: "チャットを始める", viewMore: "展開", rolePhone: "キャラスマホ", pickRolePhone: "表示するキャラスマホを選択", tapPhoneDesktop: "タップしてスマホデスクトップを開く", noRolePhone: "プレビューできるキャラがいません", switchRole: "キャラ切替", playerProfile: "プロフィール", personalSettings: "個人設定", changeAvatar: "変更", remove: "削除", clearAll: "すべてのデータを消去", clearDataConfirm: "本当にすべてのデータを消去しますか？", resetData: "データをリセット", fullTerms: "利用規約を表示", versionInfo: "バージョン情報", versionUpdate: "更新", clearNotice: "キャッシュを消去", reloadNow: "再読み込み", defaultTheme: "デフォルトテーマ：Berry Soda", autoLockStatus: "現在の設定", imported: "取り込み完了", exporting: "書き出し中...", notReady: "まだ未作成", noMessagesShort: "表示できるメッセージがありません", loadingFiles: "ファイル選択待ち...", waitingFiles: "ファイル選択待ち...", chatroom: "チャットルーム", chatroomSettings: "チャットルーム設定", worldbookBind: "ワールドブック連携", manageChatroom: "チャットルーム管理", dataBackup: "全体データバックアップ", importPreview: "インポートプレビュー", chatroomImportPreview: "チャットルームインポートプレビュー", termsDisclaimer: "利用規約と免責事項", clearCacheAgain: "キャッシュ削除を再確認", reopen: "開く", openContact: "連絡先", languageLabel: "UI 言語", roleDescription: "キャラ説明", roleDescriptionPlaceholder: "背景、行動、口調、やり取りの雰囲気を説明", systemPrompt: "システムプロンプト", systemPromptPlaceholder: "口調、人柄、返答方針を定義", relationship: "プレイヤーとの関係", relationshipPlaceholder: "例: 幼なじみ、同僚、恋人、見知らぬ人", importSuccess: "インポート成功" },
-    ko: { settings: "설정", appearance: "외관", api: "API / LLM", data: "데이터", about: "정보", language: "UI 언어", theme: "테마", screenLock: "화면 잠금", autoLock: "대기 후 자동 잠금", neverLock: "잠금 안 함", save: "설정 저장", cancel: "취소", ok: "확인", characters: "연락처", wallet: "지갑", gameCenter: "게임 센터", answerBook: "정답의 책", notebook: "노트", gallery: "앨범", phone: "폰", social: "소셜", status: "상태", chat: "채팅", lorebook: "세계관", player: "플레이어", english: "영어", japanese: "일본어", korean: "한국어", traditionalChinese: "繁體中文", comingSoon: "곧 출시", stayTuned: "기대해 주세요", contactsHint: "탭하여 휴대폰 화면 열기", noMessages: "표시할 메시지가 없습니다", backToDesktop: "데스크톱으로", backToList: "목록으로", startChat: "채팅 시작", openSettings: "설정", refresh: "새로고침", refreshOtherChats: "다른 채팅 새로고침", refreshWallet: "지갑 새로고침", generate: "생성", generating: "생성 중...", updating: "업데이트 중...", loading: "불러오는 중...", clearData: "모든 데이터 삭제", clearCache: "캐시 삭제", confirmTransfer: "송금 확인", transfering: "송금 중...", close: "닫기", edit: "편집", enable: "활성화", disable: "비활성화", title: "제목", content: "내용", keywords: "키워드", name: "이름", description: "설명", import: "가져오기", export: "내보내기", add: "추가", manualCreate: "수동 생성", importCard: "캐릭터 카드 가져오기", chooseCard: "SillyTavern 캐릭터 카드를 선택", avatar: "아바타", clickChange: "눌러 변경", roleConfig: "캐릭터 설명", saveChange: "변경 저장", createRole: "캐릭터 생성", editRole: "캐릭터 편집", open: "펼치기", collapse: "접기", noRoleConfig: "아직 캐릭터 설정이 없습니다", startChatting: "채팅 시작", viewMore: "펼치기", rolePhone: "캐릭터 폰", pickRolePhone: "볼 캐릭터 폰 선택", tapPhoneDesktop: "탭하여 폰 데스크톱 열기", noRolePhone: "미리 볼 캐릭터가 없습니다", switchRole: "캐릭터 전환", playerProfile: "프로필", personalSettings: "개인 설정", changeAvatar: "변경", remove: "삭제", clearAll: "모든 데이터 삭제", clearDataConfirm: "정말 모든 데이터를 삭제할까요?", resetData: "데이터 초기화", fullTerms: "전체 약관 보기", versionInfo: "버전 정보", versionUpdate: "업데이트", clearNotice: "캐시 삭제", reloadNow: "다시 불러오기", defaultTheme: "기본 테마: Berry Soda", autoLockStatus: "현재 설정", imported: "가져오기 완료", exporting: "내보내는 중...", notReady: "아직 생성되지 않음", noMessagesShort: "표시할 메시지가 없습니다", loadingFiles: "파일 선택 대기 중...", waitingFiles: "파일 선택 대기 중...", chatroom: "채팅방", chatroomSettings: "채팅방 설정", worldbookBind: "월드북 연결", manageChatroom: "채팅방 관리", dataBackup: "전체 데이터 백업", importPreview: "가져오기 미리보기", chatroomImportPreview: "채팅방 가져오기 미리보기", termsDisclaimer: "이용약관 및 면책", clearCacheAgain: "캐시 삭제 재확인", reopen: "열기", openContact: "연락처", languageLabel: "UI 언어", roleDescription: "캐릭터 설명", roleDescriptionPlaceholder: "배경, 행동, 말투, 상호작용 분위기를 설명", systemPrompt: "시스템 프롬프트", systemPromptPlaceholder: "말투, 성격, 응답 방식을 정의", relationship: "플레이어와의 관계", relationshipPlaceholder: "예: 소꿉친구, 동료, 연인, 낯선 사람", importSuccess: "가져오기 성공" },
   };
   const [locked, setLocked] = useState(true);
   const [unlocking, setUnlocking] = useState(false);
@@ -484,6 +180,29 @@ export default function MaliPhone() {
   const [apiPresets, setApiPresets] = useState(defaultAppState.apiPresets);
   const [playerProfile, setPlayerProfile] = useState(defaultAppState.playerProfile);
   const [themeName, setThemeName] = useState(defaultAppState.themeName);
+  const [themeEffectsEnabled, setThemeEffectsEnabled] = useState(() => {
+    try { return localStorage.getItem("mali_theme_effects") !== "0"; } catch { return true; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("mali_theme_effects", themeEffectsEnabled ? "1" : "0"); } catch {}
+  }, [themeEffectsEnabled]);
+  const [customCssEnabled, setCustomCssEnabled] = useState(() => {
+    try { return localStorage.getItem("mali_custom_css_enabled") === "1"; } catch { return false; }
+  });
+  const [customCss, setCustomCss] = useState(() => {
+    try { return localStorage.getItem("mali_custom_css") || ""; } catch { return ""; }
+  });
+  const [customCssDraft, setCustomCssDraft] = useState(() => {
+    try { return localStorage.getItem("mali_custom_css") || ""; } catch { return ""; }
+  });
+  const [customCssNotice, setCustomCssNotice] = useState("");
+  const [customCssGuideOpen, setCustomCssGuideOpen] = useState(false);
+  useEffect(() => {
+    try { localStorage.setItem("mali_custom_css_enabled", customCssEnabled ? "1" : "0"); } catch {}
+  }, [customCssEnabled]);
+  const scopedCustomCss = customCssEnabled && customCss.trim()
+    ? `@scope (.mp-phone) { ${sanitizeCustomCss(customCss)} }`
+    : "";
   const [uiLanguage, setUiLanguage] = useState(defaultAppState.uiLanguage);
   const [playerAvatarCrop, setPlayerAvatarCrop] = useState(null);
   const [screenLockTimeout, setScreenLockTimeout] = useState(defaultAppState.screenLockTimeout);
@@ -516,8 +235,19 @@ export default function MaliPhone() {
   const [settingsResetOpen, setSettingsResetOpen] = useState(false);
   const [settingsVersionOpen, setSettingsVersionOpen] = useState(false);
   const [settingsDisclaimerOpen, setSettingsDisclaimerOpen] = useState(false);
+  const [settingsAiConnOpen, setSettingsAiConnOpen] = useState(false);
+  const [settingsVoiceOpen, setSettingsVoiceOpen] = useState(false);
   const [settingsResetDataOpen, setSettingsResetDataOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState("appearance");
+  const [settingsAppearanceOpen, setSettingsAppearanceOpen] = useState(() => {
+    try { return localStorage.getItem("mali_settings_appearance_open") !== "0"; } catch { return true; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("mali_settings_appearance_open", settingsAppearanceOpen ? "1" : "0"); } catch {}
+  }, [settingsAppearanceOpen]);
+  const [heroDraft, setHeroDraft] = useState(null);
+  const heroFileRef = useRef(null);
+  const heroDragRef = useRef(null);
   const [dataImporting, setDataImporting] = useState(false);
   const [dataImportPreview, setDataImportPreview] = useState(null);
   const [editingLorebookEntry, setEditingLorebookEntry] = useState(null);
@@ -1033,6 +763,11 @@ export default function MaliPhone() {
     );
   };
   const CHANGELOG_TEXT = {
+    "1.2.1": {
+      en: ["07/06 Update", "Redesigned Wallet with character filters, monthly income and expense totals, weekly charts, and monthly recaps", "Improved chat layout and message display; Enter now creates a new line on mobile and messages are sent only with the Send button", "Unified layouts across themes, added Peach Mousse and a theme-effects toggle, and refined visual effects", "Improved Settings, Custom CSS, and overall app interface stability"],
+      ja: ["07/06 更新", "キャラクター別フィルター、月間収支、週別グラフ、月次まとめを備えたウォレット画面に刷新", "チャットのレイアウトとメッセージ表示を改善し、モバイルでは Enter で改行、送信ボタンでのみ送信するよう変更", "各テーマのレイアウトを統一し、ピーチムースとテーマ演出スイッチを追加、エフェクト表示を改善", "設定、カスタム CSS、各アプリ画面の構成と安定性を改善"],
+      ko: ["07/06 업데이트", "캐릭터별 필터, 월간 수입·지출, 주간 차트와 월간 결산을 포함하도록 지갑 화면 개편", "채팅 레이아웃과 메시지 표시를 개선하고 모바일에서 Enter는 줄바꿈, 전송 버튼을 눌러야만 메시지가 전송되도록 변경", "모든 테마의 레이아웃을 통일하고 피치 무스와 테마 효과 스위치를 추가했으며 효과 표현 개선", "설정, 사용자 CSS 및 여러 앱 화면의 구조와 안정성 개선"],
+    },
     "1.2.0": {
       en: ["07/04 Update", "Added Pet Home with pet care, free roaming, map interactions, desktop pets, and data backup", "Added Matcha Lemon and Sea Salt Soda themes with unified primary-action colors", "Added automatic social posts so characters can share updates on their own", "Added proactive character messages with per-character controls and frequency settings"],
       ja: ["07/04 更新", "ペットのお世話、自由移動、マップ交流、デスクトップペット、データバックアップに対応したペットハウスを追加", "抹茶レモンとシーソルトソーダのテーマを追加し、主要操作ボタンの配色を統一", "キャラクターが自動で近況を投稿するSNS自動投稿機能を追加", "キャラクターごとにオン・オフと頻度を設定できる主動メッセージ機能を追加"],
@@ -1084,7 +819,12 @@ export default function MaliPhone() {
     setUpdateNoticeOpen(false);
   };
   const playerAvatarRef = useRef(null);
-  const estimateTokens = (s) => Math.ceil(String(s || "").length / 3.5);
+  // 中日韓字元 ≈ 1 token，其餘（英文、標點）≈ 0.25 token
+  const estimateTokens = (s) => {
+    const str = String(s || "");
+    const cjk = (str.match(/[぀-ヿ一-鿿가-힯]/g) || []).length;
+    return Math.ceil(cjk + (str.length - cjk) / 4);
+  };
   const getUserDisplayName = () => sanitizeText(playerProfile?.name || t("player"), 40) || t("player");
   const applyUserPlaceholder = (text) => String(text || "").replace(/\{\{user\}\}/g, getUserDisplayName());
   const replaceUserPlaceholderForWallet = (text) => String(text || "")
@@ -1416,6 +1156,9 @@ ${targetReply || target.content || "（無文字）"}`;
         } : m),
       }));
       setExpandedInnerThoughts((prev) => ({ ...prev, [messageId]: source !== "auto" }));
+      if (source === "auto") {
+        showToast(`${char.name || tr("角色", "The character", "キャラ", "캐릭터")}${tr(" 好像在想些什麼…", " seems to be thinking about something...", " は何か考えているみたい…", "이(가) 뭔가 생각하는 것 같아…")}`);
+      }
     } catch (err) {
       showToast(`${tr("心聲生成失敗", "Failed to generate inner thought", "心の声の生成に失敗しました", "속마음 생성 실패")}：${sanitizeText(err?.message || "", 120)}`);
     } finally {
@@ -1458,7 +1201,13 @@ ${targetReply || target.content || "（無文字）"}`;
             <span className={unseenAutoThought ? "mp-thought-unseen-icon" : ""} aria-hidden="true">
               <Eye size={12} strokeWidth={2.1} />
             </span>
-            <span>{loading ? tr("讀取中...", "Reading...", "読込中...", "읽는 중...") : tr("心聲", "Inner thought", "心の声", "속마음")}</span>
+            <span>{loading
+              ? tr("讀取中...", "Reading...", "読込中...", "읽는 중...")
+              : !thought
+                ? tr("窺探心聲", "Peek at inner thought", "心の声をのぞく", "속마음 엿보기")
+                : unseenAutoThought
+                  ? tr("心聲（未讀）", "Inner thought (new)", "心の声（未読）", "속마음 (새로움)")
+                  : tr("心聲", "Inner thought", "心の声", "속마음")}</span>
           </button>
           {thought && (
             <button
@@ -2165,28 +1914,38 @@ ${memoryText || "（無）"}`;
       const autoLore = loreHits.filter((x) => x.mode !== "PIN");
       const pinnedLoreContext = pinnedLore.map((x, i) => `${i + 1}. [${x.bookName}] ${x.entry.title || "條目"}：${x.entry.content || ""}`).join("\n");
       const autoLoreContext = autoLore.map((x, i) => `- ${i + 1}. [${x.bookName}] ${x.entry.title || "條目"}：${x.entry.content || ""}`).join("\n");
+      // 現實模式不提供轉帳功能：不注入轉帳規則、不解析轉帳指令（轉帳屬於線上聊天的手機世界觀）
+      const allowTransfer = selectedMode !== "reality";
       const cw = characterWallets[cid];
-      const walletContext = cw ? [
-        `[角色錢包]`,
-        `目前餘額：${formatMoney(cw.balance || 0)}`,
-        cw.summary ? `摘要：${cw.summary}` : "",
-        (cw.transactions || []).slice(0, 5).map((t) => `- ${t.type === "income" ? "收入" : "支出"} ${formatMoney(t.amount)}：${t.note}`).join("\n"),
-        `規則：錢包資料只能作為角色生活背景；只有在真的發生轉帳時，才可以透過 [[TRANSFER:amount=金額;note=備註]] 指令更新餘額與流水。不要把錢包資料當成每輪都要提及的內容。`,
-        `收到轉帳時，角色會依照自身性格與原本設定，自然決定如何回應，不脫離原本角色設定，也不刻意為了回應而改變平常的聊天語氣。`,
-        `角色可以直接看到自己目前餘額，回覆前請自行判斷是否足夠轉帳。`,
-      ].filter(Boolean).join("\n") : "";
-      const transferRuleContext = [
-        `[轉帳規則 - 最高優先]`,
-        `1. 玩家可以轉帳給角色；角色也可以主動轉帳給玩家。`,
-        `2. 轉帳可以附備註，也可以不附。`,
-        `3. 玩家轉帳給角色時，角色要依照自身性格與原本設定自然回應，不脫離人設，也不刻意改變平常的聊天語氣。`,
-        `4. 若情境自然、關係合理且符合角色性格，角色可以主動轉帳給 {{user}}。這是允許的正常行為，不是例外。只有在角色確實會這麼做時，才在回覆最後附上一個轉帳指令：[[TRANSFER:amount=金額;note=備註]]。若要轉帳但沒有備註，可省略 note。`,
-        `5. 轉帳金額需合理，理由需符合當前情境與角色設定，轉帳本身不應脫離角色個性。`,
-        `6. 若角色主動轉帳後，下一句可自然補充用途、情緒或關係互動，但仍要符合角色性格，不能硬講。`,
-        `7. 只要角色真的有意願轉帳，就直接輸出轉帳指令，不要因為沒有被使用者要求就猶豫或拒絕。`,
-        `8. 只有在角色錢包餘額足夠時，才可以宣告轉帳成功；若餘額不足，就不要輸出已轉帳的口氣，也不要假裝交易成立。`,
-        `9. 回覆前先查看「角色錢包」的目前餘額；如果不足，請改成自然拒絕、延期、改轉較小金額，或直接不輸出轉帳指令。`,
-      ].join("\n");
+      // 兩層注入：常駐迷你版確保角色隨時能出轉帳卡片；聊到錢才追加完整禮儀規則與交易紀錄
+      const moneyTalkRe = /轉帳|轉錢|匯款|還錢|借錢|借我|付錢|買單|請客|紅包|零用錢|薪水|欠|[$＄]|\d\s*元|\d\s*塊/;
+      const recentMoneyTalk = allowTransfer && [...safeHist.slice(-6).map((m) => m.content || ""), text || ""].some((s) => moneyTalkRe.test(String(s)));
+      let walletContext = "";
+      let transferRuleContext = "";
+      if (!allowTransfer) {
+        walletContext = cw ? [
+          `[角色錢包]`,
+          `目前餘額：${formatMoney(cw.balance || 0)}`,
+          cw.summary ? `摘要：${cw.summary}` : "",
+          `規則：錢包資料只能作為角色生活背景，不要把錢包資料當成每輪都要提及的內容。目前不提供轉帳功能，不要輸出任何轉帳指令。`,
+        ].filter(Boolean).join("\n") : "";
+      } else {
+        walletContext = [
+          `[角色錢包] 目前餘額：${formatMoney(Math.max(0, Number(cw?.balance || 0)))}`,
+          `若情境自然、符合角色性格且你（{{char}}）真的決定轉帳給 {{user}}，就在回覆最後附上一個轉帳指令：[[TRANSFER:amount=金額;note=備註]]（note 可省略）。`,
+          `餘額不足時不得宣稱轉帳成功，改為自然拒絕、延期或改轉較小金額。錢包資料只作為生活背景，不要每輪主動提及。`,
+        ].join("\n");
+        if (recentMoneyTalk) {
+          transferRuleContext = [
+            `[轉帳規則]`,
+            `1. 玩家可以轉帳給角色，角色也可以主動轉帳給玩家；雙方轉帳與回應都要符合角色性格與當前情境，金額需合理，不因迎合而破壞人設。`,
+            `2. 收到玩家轉帳時，依角色個性自然回應，不刻意改變平常的聊天語氣。`,
+            `3. 只要角色真的有意願且餘額足夠，就直接輸出轉帳指令，不必等玩家要求；轉帳後可自然補充用途或情緒，但不能硬講。`,
+            cw?.summary ? `錢包摘要：${cw.summary}` : "",
+            (cw?.transactions || []).length ? `最近交易：\n${(cw.transactions || []).slice(0, 5).map((t) => `- ${t.type === "income" ? "收入" : "支出"} ${formatMoney(t.amount)}：${t.note}`).join("\n")}` : "",
+          ].filter(Boolean).join("\n");
+        }
+      }
       const mergedContext = [
         getPlayerContextBlock(),
         nowContext,
@@ -2203,11 +1962,15 @@ ${memoryText || "（無）"}`;
         estimateTokens(boundedContext) +
         boundedHist.reduce((sum, m) => sum + estimateTokens(m?.content || ""), 0)
       );
-      while (boundedHist.length > 6 && countAllTokens() > TOTAL_CONTEXT_TOKEN_LIMIT) {
+      const contextTokenLimit = Math.min(
+        TOTAL_CONTEXT_TOKEN_LIMIT,
+        Math.max(10000, Number(apiConfig.contextTokens) || TOTAL_CONTEXT_TOKEN_LIMIT)
+      );
+      while (boundedHist.length > 6 && countAllTokens() > contextTokenLimit) {
         boundedHist.shift();
       }
-      if (countAllTokens() > TOTAL_CONTEXT_TOKEN_LIMIT) {
-        const overflow = countAllTokens() - TOTAL_CONTEXT_TOKEN_LIMIT;
+      if (countAllTokens() > contextTokenLimit) {
+        const overflow = countAllTokens() - contextTokenLimit;
         const trimChars = Math.max(0, Math.ceil(overflow * 3.5));
         if (trimChars > 0 && boundedContext.length > trimChars) {
           boundedContext = boundedContext.slice(0, boundedContext.length - trimChars);
@@ -2219,7 +1982,7 @@ ${memoryText || "（無）"}`;
       const cleanReplyRaw = selectedMode === "reality" ? sanitizeText(normalizeRealityReply(reply), REALITY_CHAT_TEXT_LIMIT) : normalizeAssistantReply(reply);
       const extracted = extractTransferDirective(cleanReplyRaw);
       const cleanReply = stripModeLabel(stripInternalBlocks(extracted.text));
-      const pendingTransfer = extracted.transfer;
+      const pendingTransfer = allowTransfer ? extracted.transfer : null;
       const currentCharWalletBalance = Math.max(0, Number(characterWallets[cid]?.balance || 0));
       const canApplyPendingTransfer = pendingTransfer?.amount > 0 && currentCharWalletBalance >= pendingTransfer.amount;
       const transferFailureNotice = pendingTransfer?.amount > 0 && !canApplyPendingTransfer
@@ -3365,9 +3128,12 @@ ${recent}`,
     };
   }, [hydrated, socialSettings, characters, posts, apiConfig]);
 
-  const normalizedThemeName = themeName === "湖水藍" ? "海鹽汽水" : themeName;
+  const normalizedThemeName = themeName === "湖水藍" ? "海鹽汽水" : themeName === "蜜桃手帳" ? "蜜桃慕斯" : themeName;
   const activeTheme = THEME_PRESETS[normalizedThemeName] || THEME_PRESETS["莓果蘇打"];
   const isNightTheme = themeName === "夜色絨幕";
+  const hasPeachEffects = normalizedThemeName === "蜜桃慕斯";
+  const isPeachTheme = true;
+  const showThemeEffects = !currentApp;
   const themeCss = `
     :root{
       ${Object.entries(activeTheme?.vars || {}).map(([k, v]) => `${k}:${v};`).join("")}
@@ -3438,6 +3204,100 @@ ${recent}`,
       .mp-page-dot.active{background:#f48fb1;}
       .mp-scroll-bottom{color:#f0e6f5;filter:drop-shadow(0 1px 3px rgba(7,4,12,.78));}
     ` : ``}
+    ${isPeachTheme ? `
+      .mp-chat-row,.mp-ci{border-bottom-color:var(--mp-line);}
+      .mp-thought-history-divider{background:var(--mp-line);}
+      .mp-thought-history,.mp-thought-record{border-color:var(--mp-line);}
+      .mp-thought-history-pages button,.mp-transfer-row,.mp-transfer-note{border-color:var(--mp-line);}
+      .mp-msg{border-radius:18px;}
+      .mp-msg-ai{background:var(--mp-surface);border:none;border-radius:18px 18px 18px 6px;box-shadow:0 4px 12px color-mix(in srgb,var(--mp-pink) 12%,transparent);}
+      .mp-msg-user{border-radius:18px 18px 6px 18px;}
+      .mp-chat-row-badge{background:linear-gradient(135deg,var(--mp-bubble),var(--mp-bubble-2));box-shadow:0 2px 6px color-mix(in srgb,var(--mp-bubble-2) 40%,transparent);}
+      .mp-chat-row-time,.mp-msg-t,.mp-reality-t,.mp-post-tm{font-family:var(--mp-hand);font-size:10px;}
+      .mp-cr::before{content:'';position:absolute;inset:0;pointer-events:none;z-index:0;background-image:radial-gradient(color-mix(in srgb,var(--mp-pink-dk) 8%,transparent) 1px,transparent 1px),radial-gradient(circle at 15% 10%,color-mix(in srgb,var(--mp-pink-lt) 45%,transparent),transparent 38%);background-size:9px 9px,100% 100%;}
+      .mp-msgs{position:relative;z-index:1;}
+      .mp-phone::before,.mp-phone::after{position:absolute;top:-26px;z-index:95;pointer-events:none;font-size:12px;opacity:0;animation:mpPetal 12s linear infinite;}
+      .mp-phone::before{content:'🌸';left:12%;text-shadow:98px 76px 0 rgba(244,169,176,.8);}
+      .mp-phone::after{content:'🌸';left:64%;text-shadow:74px 128px 0 rgba(224,122,139,.72);animation-delay:3s;animation-duration:14s;}
+      .mp-desk-scroll>.mp-cw{position:relative;height:155px;margin:6px 0 12px;padding:0;display:block;overflow:hidden;border:0;border-radius:20px;background:repeating-linear-gradient(45deg,color-mix(in srgb,var(--mp-surface) 78%,transparent) 0 12px,color-mix(in srgb,var(--mp-pink) 12%,transparent) 12px 24px);box-shadow:0 8px 24px color-mix(in srgb,var(--mp-pink-dk) 10%,transparent);touch-action:pan-x pan-y;}
+      .mp-desk-scroll>.mp-cw::before{content:'角色立繪 ／ 自訂桌布';position:absolute;left:50%;top:50%;z-index:0;transform:translate(-50%,-50%);padding:7px 13px;border-radius:12px;background:color-mix(in srgb,var(--mp-surface) 86%,transparent);color:var(--mp-txt-l);font-size:10px;white-space:nowrap;}
+      .mp-desk-scroll>.mp-cw>.mp-av{position:absolute;inset:0;z-index:1;width:100%;height:100%;border-radius:0;background:transparent;box-shadow:none;font-size:0;}
+      .mp-desk-scroll>.mp-cw>.mp-av img{position:absolute;inset:0;z-index:1;width:100%;height:100%;object-fit:cover;object-position:center;transform-origin:center;will-change:transform;user-select:none;-webkit-user-drag:none;}
+      .mp-desk-scroll>.mp-cw>.mp-av img.mp-hero-blur-bg{z-index:0;object-fit:cover;transform:scale(1.12);filter:blur(16px) saturate(1.08) brightness(1.02);opacity:.85;}
+      .mp-desk-scroll>.mp-cw>.mp-cw-info{position:absolute;left:12px;bottom:12px;z-index:2;width:max-content;max-width:calc(100% - 24px);padding:7px 14px 8px 10px;border-radius:18px;background:color-mix(in srgb,var(--mp-surface) 88%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);box-shadow:0 4px 14px color-mix(in srgb,var(--mp-pink-dk) 18%,transparent);}
+      .mp-desk-scroll>.mp-cw .mp-cw-name{font-size:11px;font-weight:800;gap:5px;}
+      .mp-desk-scroll>.mp-cw .mp-active-badge{width:7px;height:7px;min-width:7px;padding:0;border-radius:50%;font-size:0;background:#9CCC65;box-shadow:0 0 6px rgba(156,204,101,.8);}
+      .mp-desk-scroll>.mp-cw .mp-cw-desc{max-width:270px;margin-top:2px;font-family:var(--mp-font);font-size:11px;line-height:1.35;color:var(--mp-pink-dk);white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;}
+      .peach-hero{cursor:default;}
+      .peach-hero:active{transform:none;}
+      .peach-hero>.mp-cw-info{cursor:pointer;transition:max-width .18s ease,padding .18s ease,border-radius .18s ease;}
+      .peach-hero>.mp-cw-info.is-collapsed{width:auto;max-width:calc(100% - 24px);padding:7px 12px;border-radius:999px;}
+      .peach-status-time{font-family:var(--mp-font);font-size:9px;font-weight:500;color:var(--mp-txt-l);white-space:nowrap;}
+      .peach-status-new{width:7px;height:7px;border-radius:50%;background:#ef6f83;box-shadow:0 0 0 3px rgba(239,111,131,.16),0 0 7px rgba(239,111,131,.7);animation:mpThoughtPulse 1.15s ease-in-out infinite;}
+      .peach-hero-adjust{position:absolute;right:9px;top:9px;z-index:4;padding:5px 9px;border:0;border-radius:999px;background:rgba(255,252,248,.88);color:var(--mp-pink-dk);font-size:10px;font-weight:800;box-shadow:0 3px 10px rgba(107,87,80,.14);cursor:pointer;}
+      .peach-hero.is-adjusting{cursor:grab;touch-action:none;box-shadow:inset 0 0 0 2px var(--mp-pink-dk),0 8px 24px rgba(224,122,139,.18);}
+      .peach-hero.is-adjusting:active{transform:none;cursor:grabbing;}
+      .peach-hero-tools{position:absolute;left:8px;right:8px;bottom:8px;z-index:5;display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:14px;background:rgba(255,252,248,.92);box-shadow:0 4px 14px rgba(107,87,80,.18);}
+      .peach-hero-tools input{min-width:0;flex:1;accent-color:var(--mp-pink-dk);}
+      .peach-hero-tools button{border:0;border-radius:10px;padding:5px 8px;background:var(--mp-pink-lt);color:var(--mp-txt);font-size:10px;font-weight:800;cursor:pointer;}
+      .peach-hero-tools button:last-child{background:linear-gradient(135deg,var(--mp-save-1),var(--mp-save-2));color:#fff;}
+      .peach-hero.is-adjusting>.mp-cw-info{display:none;}
+      .mp-home-mid{min-height:240px;}
+      .mp-grid{gap:14px 8px;}
+      .mp-chat-list{width:100%;min-width:0;max-width:100%;overflow-x:hidden;}
+      .mp-chat-list-line{width:100%;min-width:0;max-width:100%;padding:8px 14px 16px;gap:10px;box-sizing:border-box;overflow-x:hidden;}
+      .mp-chat-list-line .mp-chat-row{position:relative;width:100%;min-width:0;max-width:100%;min-height:84px;padding:12px 14px 12px 12px;gap:12px;box-sizing:border-box;border:1px solid color-mix(in srgb,var(--mp-pink) 20%,var(--mp-surface));border-radius:22px;background:color-mix(in srgb,var(--mp-surface) 86%,transparent);box-shadow:0 7px 20px color-mix(in srgb,var(--mp-pink-dk) 8%,transparent);overflow:hidden;}
+      .mp-chat-list-line .mp-chat-row:hover{background:var(--mp-surface);box-shadow:0 9px 24px color-mix(in srgb,var(--mp-pink-dk) 12%,transparent);}
+      .mp-chat-list-line .mp-chat-row:active{transform:scale(.985);background:var(--mp-surface);}
+      .mp-chat-list-line .mp-chat-row.pinned{border-color:color-mix(in srgb,var(--mp-pink) 72%,transparent);box-shadow:0 0 0 3px color-mix(in srgb,var(--mp-pink) 17%,transparent),0 8px 22px color-mix(in srgb,var(--mp-pink-dk) 11%,transparent);}
+      .mp-chat-list-line .mp-chat-row-avatar{width:56px;height:56px;border-radius:50%;border:2px solid var(--mp-surface);box-shadow:0 0 0 2px color-mix(in srgb,var(--mp-pink) 48%,transparent);font-size:22px;}
+      .mp-chat-list-line .mp-chat-row.pinned .mp-chat-row-avatar{box-shadow:0 0 0 3px color-mix(in srgb,var(--mp-pink) 62%,transparent),0 0 0 6px var(--mp-surface);}
+      .mp-chat-list-line .mp-chat-row-body{align-self:stretch;display:flex;flex-direction:column;justify-content:center;}
+      .mp-chat-list-line .mp-chat-row-top{align-items:center;}
+      .mp-chat-list-line .mp-chat-row-name{font-size:14px;color:var(--mp-txt);}
+      .mp-chat-list-line .mp-chat-row-name>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+      .mp-chat-list-line .mp-chat-row-pin{order:2;color:var(--mp-pink-dk);font-size:11px;}
+      .mp-chat-list-line .mp-chat-row-time{font-family:var(--mp-hand);font-size:9px;color:var(--mp-txt-l);padding:0;}
+      .mp-chat-list-line .mp-chat-row-preview{min-width:0;max-width:100%;margin-top:4px;font-size:12px;color:var(--mp-txt-l);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+      .mp-chat-list-line .mp-chat-row-bottom{align-items:center;}
+      .mp-chat-list-line .mp-chat-row-badge{min-width:30px;height:24px;padding:0 9px;border-radius:999px;background:linear-gradient(135deg,var(--mp-bubble),var(--mp-bubble-2));box-shadow:0 3px 9px color-mix(in srgb,var(--mp-bubble-2) 24%,transparent);font-family:var(--mp-hand);font-size:11px;}
+      @media (prefers-reduced-motion:reduce){.mp-phone::before,.mp-phone::after{display:none;}}
+    ` : ``}
+    ${!hasPeachEffects ? `.mp-cr::before{display:none!important}` : ``}
+    ${!themeEffectsEnabled ? `.mp-phone::before,.mp-phone::after{display:none!important;animation:none!important}` : ``}
+    ${false && showThemeEffects && normalizedThemeName === "莓果蘇打" ? `
+      .mp-phone::before,.mp-phone::after{display:block;content:'○';top:auto;bottom:-30px;color:rgba(255,255,255,.72);font-size:25px;text-shadow:72px -130px 0 rgba(144,202,249,.38),188px -48px 0 rgba(206,147,216,.32),278px -210px 0 rgba(244,143,177,.36);animation:mpBubbleRise 13s ease-in infinite;}
+      .mp-phone::after{left:46%;font-size:17px;animation-delay:5s;animation-duration:16s;}
+    ` : ``}
+    ${false && showThemeEffects && normalizedThemeName === "夜色絨幕" ? `
+      .mp-phone::before,.mp-phone::after{display:block;content:'✦';top:12%;left:12%;color:#f4dfff;font-size:9px;text-shadow:62px 88px 0 #a5c9e8,176px 22px 0 #f48fb1,248px 154px 0 #c8a8e0,94px 310px 0 #fff;animation:mpStarTwinkle 4.8s ease-in-out infinite;}
+      .mp-phone::after{content:'·';top:24%;left:28%;font-size:17px;animation-delay:1.8s;animation-duration:6.2s;}
+    ` : ``}
+    ${false && showThemeEffects && normalizedThemeName === "抹茶檸檬" ? `
+      .mp-phone::before,.mp-phone::after{display:block;content:'🍃';top:-30px;left:13%;font-size:13px;text-shadow:104px 120px 0 rgba(124,179,66,.55),232px 30px 0 rgba(230,168,23,.38);animation:mpLeafFall 15s linear infinite;}
+      .mp-phone::after{left:58%;font-size:10px;animation-delay:6s;animation-duration:18s;}
+    ` : ``}
+    ${false && showThemeEffects && normalizedThemeName === "海鹽汽水" ? `
+      .mp-phone::before,.mp-phone::after{display:block;content:'';inset:0;top:0;left:0;font-size:0;background-image:radial-gradient(ellipse at 20% 30%,rgba(255,255,255,.22) 0 2px,transparent 3px),radial-gradient(ellipse at 70% 65%,rgba(77,182,172,.16) 0 3px,transparent 4px);background-size:54px 38px,76px 52px;animation:mpWaterShimmer 12s ease-in-out infinite;}
+      .mp-phone::after{animation-delay:3s;animation-duration:16s;filter:blur(1px);}
+    ` : ``}
+    ${normalizedThemeName === "莓果蘇打" ? `
+      .mp-phone::before,.mp-phone::after{content:'🫧';top:auto;bottom:-28px;color:rgba(255,255,255,.82);font-family:var(--mp-font);font-size:22px;text-shadow:none;filter:none;animation:mpBubbleRise 13s ease-in infinite;}
+      .mp-phone::after{content:'🫧';left:58%;font-size:20px;text-shadow:none;filter:none;animation-name:mpBubbleRiseAlt;animation-delay:3.7s;animation-duration:16.8s;animation-timing-function:ease-in-out;}
+    ` : ``}
+    ${normalizedThemeName === "夜色絨幕" ? `
+      .mp-phone::before,.mp-phone::after{content:'✦';color:#f4dfff;font-size:11px;text-shadow:98px 76px 0 rgba(165,201,232,.78);}
+      .mp-phone::after{content:'⋆';font-size:15px;color:#c8a8e0;text-shadow:74px 128px 0 rgba(244,143,177,.72);}
+    ` : ``}
+    ${normalizedThemeName === "抹茶檸檬" ? `
+      .mp-phone::before,.mp-phone::after{content:'🍃';font-size:13px;text-shadow:98px 76px 0 rgba(124,179,66,.48);}
+      .mp-phone::after{content:'•';font-size:18px;color:#e6a817;text-shadow:74px 128px 0 rgba(230,168,23,.42);}
+    ` : ``}
+    ${normalizedThemeName === "海鹽汽水" ? `
+      .mp-phone::before,.mp-phone::after{content:'❄️';top:22%;left:-25px;font-size:14px;text-shadow:78px 34px 0 rgba(79,195,247,.22);animation:mpSaltCrystalDrift 15s ease-in-out infinite;}
+      .mp-phone::after{content:'❄️';top:62%;left:auto;right:-25px;font-size:10px;color:rgba(255,255,255,.82);text-shadow:64px -32px 0 rgba(77,182,172,.2);animation:mpSaltCrystalDriftAlt 18s ease-in-out 4s infinite;}
+    ` : ``}
+    ${scopedCustomCss}
   `;
 
   const lockNotifications = Object.keys(proactiveUnread || {})
@@ -3668,111 +3528,14 @@ ${recent}`,
   };
 
     // ---- Status (RPG) ----
-  const renderStatus = () => (
-      <div className="mp-page">
-        <div className="mp-hdr"><div className="mp-back" onClick={closeApp}>←</div><div className="mp-htitle">{t("status")}</div></div>
-        <div className="mp-cm">
-          {characters.length === 0 ? <div className="mp-empty"><div className="mp-empty-i">🧩</div><div className="mp-empty-t">{tr("目前尚未建立角色", "No characters yet", "まだキャラがありません", "아직 캐릭터가 없습니다")}</div></div>
-          : characters.map(c => {
-            const msgs = chatHistory[c.id] || [];
-            const dialogueMsgs = msgs.filter((m) => m.role === "user" || m.role === "assistant");
-            const mems = memories[c.id] || [];
-            const uMsgs = dialogueMsgs.filter(m => m.role === "user").length;
-            const assistantReplyKeys = new Set(
-              dialogueMsgs
-                .filter((m) => m.role === "assistant")
-                .map((m) => m.replyGroupId || m.id)
-            );
-            const aMsgs = assistantReplyKeys.size;
-            const conversationCount = uMsgs + aMsgs;
-            const firstD = dialogueMsgs.length > 0 ? new Date(dialogueMsgs[0].time).toLocaleDateString("zh-TW") : "--";
-            const lastD = dialogueMsgs.length > 0 ? new Date(dialogueMsgs[dialogueMsgs.length-1].time).toLocaleDateString("zh-TW") : "--";
-            const days = msgs.length > 0 ? Math.max(1, Math.ceil((Date.now() - msgs[0].time) / 86400000)) : 0;
-            const exp = statusExpandedCharId === c.id;
-            const memoryExpanded = statusMemoryExpandedCharId === c.id;
-            return (
-              <div key={c.id} className="mp-sc">
-                <div className="mp-sc-ban" />
-                <div className="mp-sc-avl">{sanitizeUserImageUrl(c.avatar) ? <img src={sanitizeUserImageUrl(c.avatar)} alt="" /> : "🦊"}</div>
-                <div className="mp-sc-body">
-                  <div className="mp-sc-nm">{c.name}</div>
-                  <div style={{fontSize:12,color:"var(--mp-txt-l)",marginTop:4,lineHeight:1.5}}>{(c.statusText || tr("尚無狀態", "No status yet", "まだステータスがありません", "아직 상태가 없습니다")).slice(0,80)}</div>
-                  {c.statusUpdatedAt ? <div style={{fontSize:10,color:"var(--mp-txt-l)",opacity:.8,marginTop:2}}>{tr("更新時間", "Updated", "更新時刻", "업데이트 시간")}：{new Date(c.statusUpdatedAt).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"})}</div> : null}
-                  <div style={{marginTop:6}}>
-                    <button className="mp-ibtn" onClick={()=>refreshCharacterStatus(c.id, true)}>{tr("刷新狀態", "Refresh status", "ステータスを更新", "상태 새로고침")}</button>
-                  </div>
-                  {c.tags?.length > 0 && <div className="mp-sc-tags">{c.tags.map((t,i) => <span key={i} className="mp-tag">{t}</span>)}</div>}
-                  {c.creator && <div style={{fontSize:10,color:"var(--mp-txt-l)",marginTop:4}}>by {c.creator}</div>}
-                  <div className="mp-sc-stats">
-                    <div className="mp-stat"><div className="mp-stat-v">{conversationCount}</div><div className="mp-stat-lb">{tr("訊息", "Messages", "メッセージ", "메시지")}</div></div>
-                    <div className="mp-stat"><div className="mp-stat-v">{days}</div><div className="mp-stat-lb">{tr("互動天數", "Days", "日数", "일수")}</div></div>
-                    <div className="mp-stat"><div className="mp-stat-v">{mems.length}</div><div className="mp-stat-lb">{tr("記憶", "Memories", "記憶", "기억")}</div></div>
-                    <div className="mp-stat"><div className="mp-stat-v">{posts.filter(p=>p.charId===c.id).length}</div><div className="mp-stat-lb">{tr("貼文", "Posts", "投稿", "게시물")}</div></div>
-                  </div>
-                  <div className="mp-sec">
-                    <div className="mp-sec-t">{tr("對話摘要", "Conversation summary", "会話要約", "대화 요약")}</div>
-                    <div className="mp-sec-ct">
-                      <div className="mp-sec-row"><span>{tr("使用者訊息", "User messages", "ユーザーメッセージ", "사용자 메시지")}</span><span style={{color:"var(--mp-pink-dk)"}}>{uMsgs}</span></div>
-                      <div className="mp-sec-row"><span>{c.name} {tr("回覆", "replies", "の返信", "응답")}</span><span style={{color:"var(--mp-purple)"}}>{aMsgs}</span></div>
-                      <div className="mp-sec-row"><span>{tr("首次對話", "First chat", "最初の会話", "첫 대화")}</span><span>{firstD}</span></div>
-                      <div className="mp-sec-row"><span>{tr("最近對話", "Latest chat", "最近の会話", "최근 대화")}</span><span>{lastD}</span></div>
-                    </div>
-                  </div>
-                  <div className="mp-sec">
-                    <div
-                      className="mp-sec-t mp-sec-t-toggle"
-                      onClick={() => setStatusMemoryExpandedCharId(memoryExpanded ? null : c.id)}
-                    >
-                      <span>{tr("記憶片段", "Memory snippets", "記憶スニペット", "기억 조각")}</span>
-                      <span className="mp-sec-toggle-tag">{memoryExpanded ? tr("收起", "Collapse", "折りたたむ", "접기") : tr("展開", "Expand", "展開", "펼치기")}</span>
-                    </div>
-                    {memoryExpanded && (
-                      <>
-                        {mems.length === 0 ? <div style={{fontSize:11,color:"var(--mp-txt-l)",textAlign:"center",padding:6}}>{tr("目前尚無記憶，點擊下方按鈕可生成", "No memories yet. Tap the button below to generate one.", "まだ記憶がありません。下のボタンで生成できます。", "아직 기억이 없습니다. 아래 버튼을 눌러 생성할 수 있습니다.")}</div>
-                    : <div className="mp-tl">{[...mems].sort((a, b) => {
-                      if (!!b.pinned !== !!a.pinned) return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0);
-                      return (b.date || 0) - (a.date || 0);
-                    }).slice(0, 5).map((m,i) => (
-                      <div key={m.id || i} className="mp-tl-item">
-                        <div className="mp-tl-dot" style={{top:6}} />
-                        <div className="mp-mem" onClick={() => setActiveMemoryId((p) => (p === m.id ? null : m.id))}>{m.text}</div>
-                        <div className="mp-mem-d" style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:6}}>
-                          <span>{new Date(m.date).toLocaleDateString("zh-TW")}{m.pinned ? ` · ${tr("已釘選", "Pinned", "固定済み", "고정됨")}` : ""}</span>
-                          <span style={{display:"flex",gap:6}}>
-                            <button className={`mp-ibtn ${activeMemoryId===m.id?"":"mp-ibtn-hidden"}`} onClick={() => setMemoryEditor({ charId: c.id, memoryId: m.id, text: m.text || "" })}>✎</button>
-                            <button className={`mp-ibtn ${activeMemoryId===m.id?"":"mp-ibtn-hidden"}`} onClick={() => togglePinMemory(c.id, m.id)}>{m.pinned ? "📌" : "📍"}</button>
-                            <button className={`mp-ibtn-r ${activeMemoryId===m.id?"":"mp-ibtn-hidden"}`} onClick={() => deleteMemory(c.id, m.id)}>🗑</button>
-                          </span>
-                        </div>
-                      </div>
-                    ))}</div>}
-                        <button className="mp-gbtn" onClick={() => generateMemory(c)} disabled={genLoading}>{genLoading ? tr("生成中...", "Generating...", "生成中...", "생성 중...") : tr("生成記憶", "Generate memory", "記憶を生成", "기억 생성")}</button>
-                      </>
-                    )}
-                  </div>
-                  <div className="mp-sec">
-                    <div className="mp-sec-t" style={{cursor:"pointer"}} onClick={() => setStatusExpandedCharId(exp ? null : c.id)}>
-                      {tr("角色設定", "Character settings", "キャラ設定", "캐릭터 설정")} {exp ? tr("收起", "Collapse", "折りたたむ", "접기") : tr("展開", "Expand", "展開", "펼치기")}
-                    </div>
-                    {exp && (
-                      <div className="mp-persona">
-                        {c.description && <><strong>{tr("角色設定", "Description", "説明", "설명")}：</strong>{c.description}{"\n\n"}</>}
-                        {c.systemPrompt && <><strong>{tr("System Prompt", "System prompt", "システムプロンプト", "시스템 프롬프트")}：</strong>{c.systemPrompt}{"\n\n"}</>}
-                        {c.personality && <><strong>{tr("個性", "Personality", "個性", "개성")}：</strong>{c.personality}{"\n\n"}</>}
-                        {c.scenario && <><strong>{tr("情境", "Scenario", "シナリオ", "상황")}：</strong>{c.scenario}</>}
-                        {!c.description && !c.systemPrompt && !c.personality && !c.scenario && (
-                          <div style={{color:"var(--mp-txt-l)"}}>{tr("目前沒有可顯示的角色設定。", "No character settings to display yet.", "表示できるキャラ設定はまだありません。", "표시할 캐릭터 설정이 없습니다.")}</div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-  );
+  const renderStatus = () => <StatusApp
+    closeApp={closeApp} t={t} tr={tr} characters={characters} chatHistory={chatHistory} memories={memories} posts={posts}
+    sanitizeUserImageUrl={sanitizeUserImageUrl} statusExpandedCharId={statusExpandedCharId} setStatusExpandedCharId={setStatusExpandedCharId}
+    statusMemoryExpandedCharId={statusMemoryExpandedCharId} setStatusMemoryExpandedCharId={setStatusMemoryExpandedCharId}
+    refreshCharacterStatus={refreshCharacterStatus} activeMemoryId={activeMemoryId} setActiveMemoryId={setActiveMemoryId}
+    setMemoryEditor={setMemoryEditor} togglePinMemory={togglePinMemory} deleteMemory={deleteMemory}
+    generateMemory={generateMemory} genLoading={genLoading}
+  />;
 
   // ---- Chat ----
   const renderRealityInline = (text) => {
@@ -4647,7 +4410,6 @@ ${recent || "（目前無內容）"}`;
                   data-lpignore="true"
                   value={chatInput}
                   onChange={e=>setChatInput(e.target.value.slice(0, 4000))}
-                  onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendGroupMessage();}}}
                 />
                 <div className="mp-char-counter">{chatInput.length}/4000</div>
               </div>
@@ -5517,10 +5279,12 @@ ${recent || "（目前無內容）"}`;
                   <span className="mp-chat-action-i">🖼</span>
                   <span>{tr("相片", "Photo", "写真", "사진")}</span>
                 </button>
-                <button className="mp-chat-action" onClick={() => { setChatActionPanelOpen(false); setTransferModalOpen(true); }}>
-                  <span className="mp-chat-action-i">💸</span>
-                  <span>{tr("轉帳", "Transfer", "送金", "송금")}</span>
-                </button>
+                {selectedMode !== "reality" && (
+                  <button className="mp-chat-action" onClick={() => { setChatActionPanelOpen(false); setTransferModalOpen(true); }}>
+                    <span className="mp-chat-action-i">💸</span>
+                    <span>{tr("轉帳", "Transfer", "送金", "송금")}</span>
+                  </button>
+                )}
                 <button className="mp-chat-action" disabled>
                   <span className="mp-chat-action-i">📅</span>
                   <span>{tr("日程", "Schedule", "予定", "일정")}</span>
@@ -5549,7 +5313,6 @@ ${recent || "（目前無內容）"}`;
                     data-lpignore="true"
                     value={chatInput}
                     onChange={e=>setChatInput(e.target.value.slice(0, inputTextLimit))}
-                    onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage();}}}
                   />
                   <div className="mp-char-counter">{chatInput.length}/{inputTextLimit}</div>
                 </div>
@@ -5576,534 +5339,148 @@ ${recent || "（目前無內容）"}`;
     );
   };
 
-  const renderSocial = () => (
-    socialSettingsOpen ? (
-      <div className="mp-page">
-        <div className="mp-hdr">
-          <div className="mp-back" onClick={() => setSocialSettingsOpen(false)}>←</div>
-          <div className="mp-htitle">{t("settings")}</div>
-        </div>
-        <div className="mp-set">
-          <div className="mp-sg">
-            <div className="mp-sg-t">{tr("動態", "Feed", "フィード", "피드")}</div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 700 }}>{tr("自動貼文", "Auto posts", "自動投稿", "자동 게시")}</div>
-                <div style={{ fontSize: 10, color: "var(--mp-txt-l)", marginTop: 3, lineHeight: 1.5 }}>
-                  {tr("開啟後，角色會不定時自己發佈新貼文。", "When on, characters will occasionally publish new posts on their own.", "オンにすると、キャラが時々自分から新しい投稿をします。", "켜면 캐릭터가 가끔 스스로 새 게시물을 올립니다.")}
-                </div>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={!!socialSettings?.autoPost}
-                className={`mp-switch ${socialSettings?.autoPost ? "active" : ""}`}
-                onClick={() => setSocialSettings((prev) => ({ ...(prev || {}), autoPost: !prev?.autoPost }))}
-              >
-                <span />
-              </button>
-            </div>
-          </div>
-          <div className="mp-sg">
-            <div className="mp-sg-t">{tr("珍藏的貼文", "Saved posts", "保存した投稿", "저장한 게시물")}</div>
-            {(posts || []).filter((p) => p.bookmarked).length === 0 ? (
-              <div style={{ fontSize: 11, color: "var(--mp-txt-l)", lineHeight: 1.6 }}>
-                {tr("還沒有珍藏任何貼文。在貼文右上角的「⋯」選單即可珍藏。", "No saved posts yet. Use the ⋯ menu at the top right of a post to save it.", "まだ保存した投稿はありません。投稿右上の「⋯」メニューから保存できます。", "저장한 게시물이 없습니다. 게시물 오른쪽 위 ⋯ 메뉴에서 저장할 수 있어요.")}
-              </div>
-            ) : (
-              (posts || []).filter((p) => p.bookmarked).map((p) => (
-                <div
-                  key={p.id}
-                  style={{ padding: "8px 0", borderBottom: "1px solid rgba(128,128,128,.14)", cursor: "pointer" }}
-                  onClick={() => {
-                    setSocialSettingsOpen(false);
-                    setPendingPostScrollId(p.id);
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                    <div style={{ fontSize: 12, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getPostAuthorName(p)}</div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                      <span style={{ fontSize: 10, color: "var(--mp-txt-l)" }}>{formatPostTime(p.time)}</span>
-                      <button
-                        className="mp-ibtn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (!window.confirm(tr("確定要取消珍藏這則貼文嗎？", "Remove this post from saved?", "この投稿の保存を解除しますか？", "이 게시물의 저장을 해제할까요?"))) return;
-                          setPosts((ps) => ps.map((x) => (x.id === p.id ? { ...x, bookmarked: false } : x)));
-                          showToast(tr("已取消珍藏", "Removed from saved", "保存を解除しました", "저장을 해제했습니다"));
-                        }}
-                      >
-                        {tr("取消珍藏", "Unsave", "保存解除", "저장 해제")}
-                      </button>
-                    </div>
-                  </div>
-                  <div style={{ fontSize: 12, lineHeight: 1.5, marginTop: 4, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{p.content}</div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      </div>
-    ) : (
-    <div className="mp-page">
-      <div className="mp-hdr">
-        <div className="mp-back" onClick={closeApp}>←</div>
-            <div className="mp-htitle">{t("social")}</div>
-        <div className="mp-social-head-actions">
-          <button className="mp-pill-btn mp-pill-btn-ghost" onClick={() => setPlayerPostModalOpen(true)}>{tr("發文", "Post", "投稿", "게시")}</button>
-          {characters.length > 0 && (
-            <button className="mp-pill-btn" onClick={handleRandomSocialPost}>{t("refresh")}</button>
-          )}
-          <button className="mp-pill-btn mp-pill-btn-ghost" onClick={() => setSocialSettingsOpen(true)}>{t("settings")}</button>
-        </div>
-      </div>
-      <div className="mp-feed" ref={socialFeedRef}>
-        {posts.length === 0 ? (
-          <div className="mp-empty">
-            <div className="mp-empty-i">📰</div>
-            <div className="mp-empty-t">{tr("目前還沒有貼文", "No posts yet", "まだ投稿はありません", "아직 게시물이 없습니다")}<br/>{tr("發一則動態試試吧", "Try posting an update", "投稿してみましょう", "게시물을 올려보세요")}</div>
-          </div>
-        ) : posts.map((p) => {
-          const authorName = getPostAuthorName(p);
-          const authorAvatar = sanitizeUserImageUrl(getPostAuthorAvatar(p));
-          const isPlayerPost = getPostAuthorType(p) === "player";
-          const likeListText = isPlayerPost ? getLikedByListText(p) : "";
-          const comments = p.comments || [];
-          const commentsOpen = activeCommentPostId === p.id;
-          const replyTarget = socialReplyTarget?.postId === p.id ? socialReplyTarget : null;
-          const likesOpen = activeLikePostId === p.id;
-          const postExpanded = !!expandedSocialPosts[p.id];
-          const canExpandPost = shouldClampSocialPost(p.content);
-          const scrollComments = shouldScrollComments(comments);
-          return (
-            <div key={p.id} data-post-id={p.id} className={`mp-post ${highlightedPostId === p.id ? "mp-thought-jump-highlight" : ""}`}>
-              <div className="mp-post-hd">
-                <div className={`mp-post-av ${isPlayerPost ? "player" : ""}`}>
-                  {authorAvatar ? <img src={authorAvatar} alt="" /> : (isPlayerPost ? "👤" : "🦊")}
-                </div>
-                <div>
-                  <div className="mp-post-au">{authorName}</div>
-                  <div className="mp-post-tm">{formatPostTime(p.time)}{p.bookmarked ? " · 🔖" : ""}</div>
-                </div>
-                <button
-                  type="button"
-                  className="mp-post-menu-btn"
-                  aria-label={tr("更多選項", "More options", "その他のオプション", "더 보기")}
-                  onClick={() => setActivePostMenuId((id) => (id === p.id ? null : p.id))}
-                >⋯</button>
-                {activePostMenuId === p.id && (
-                  <div className="mp-post-menu">
-                    <button
-                      className="mp-post-menu-item"
-                      onClick={() => {
-                        setPosts((ps) => ps.map((x) => (x.id === p.id ? { ...x, bookmarked: !x.bookmarked } : x)));
-                        setActivePostMenuId(null);
-                        showToast(p.bookmarked
-                          ? tr("已取消珍藏", "Removed from saved", "保存を解除しました", "저장을 해제했습니다")
-                          : tr("已珍藏貼文", "Post saved", "投稿を保存しました", "게시물을 저장했습니다"));
-                      }}
-                    >
-                      {p.bookmarked ? tr("取消珍藏", "Unsave", "保存解除", "저장 해제") : tr("珍藏", "Save", "保存", "저장")}
-                    </button>
-                    <button
-                      className="mp-post-menu-item danger"
-                      onClick={() => {
-                        if (!window.confirm(tr("確定要刪除這則貼文嗎？", "Delete this post?", "この投稿を削除しますか？", "이 게시물을 삭제할까요?"))) return;
-                        setPosts((ps) => ps.filter((x) => x.id !== p.id));
-                        setActivePostMenuId(null);
-                        showToast(tr("貼文已刪除", "Post deleted", "投稿を削除しました", "게시물을 삭제했습니다"));
-                      }}
-                    >
-                      {tr("刪除", "Delete", "削除", "삭제")}
-                    </button>
-                  </div>
-                )}
-              </div>
-              <div className={`mp-post-ct ${canExpandPost && !postExpanded ? "clamped" : ""}`}>{p.content}</div>
-              {canExpandPost && (
-                <button
-                  className="mp-post-more"
-                  onClick={() => setExpandedSocialPosts((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
-                >
-                  {postExpanded ? tr("收合", "Collapse", "折りたたむ", "접기") : tr("顯示更多", "Show more", "もっと見る", "더 보기")}
-                </button>
-              )}
-              <div className="mp-post-acts">
-                <button
-                  className={`mp-post-act ${p.liked ? "liked" : ""}`}
-                  onClick={() => setPosts((ps) => ps.map((x) => (
-                    x.id === p.id ? { ...x, liked: !x.liked, likes: x.liked ? x.likes - 1 : x.likes + 1 } : x
-                  )))}
-                >
-                  {p.liked ? "❤️" : "🤍"}
-                </button>
-                <button className="mp-post-act mp-post-like-count" onClick={() => setActiveLikePostId((id) => id === p.id ? null : p.id)}>
-                  {formatSocialCount(getPostLikeCount(p))}
-                </button>
-                <button className="mp-post-act" onClick={() => { setSocialReplyTarget(null); setActiveCommentPostId((id) => id === p.id ? null : p.id); }}>
-                  {tr("留言", "Comments", "コメント", "댓글")} {comments.length}
-                </button>
-                {!isPlayerPost && <button className="mp-post-act" onClick={() => sharePostToChat(p)}>{tr("分享", "Share", "共有", "공유")}</button>}
-              </div>
-              {isPlayerPost && likesOpen && (
-                <div className="mp-liked-by">{likeListText || tr("還沒有人按讚", "No likes yet", "まだいいねはありません", "아직 좋아요가 없습니다")}</div>
-              )}
-              {commentsOpen && (
-                <div className={`mp-comments ${scrollComments ? "scroll" : ""}`}>
-                  {comments.length === 0 && <div className="mp-comment empty">{tr("目前沒有留言", "No comments yet", "まだコメントはありません", "아직 댓글이 없습니다")}</div>}
-                  {comments.map((c) => {
-                    const depth = getCommentDepth(c);
-                    const author = getCommentAuthorName(c, p.charName || authorName);
-                    const canReply = c.role === "assistant" && depth < 2 && c.charId;
-                    const targetForThis = canReply ? {
-                      postId: p.id,
-                      commentId: c.id,
-                      charId: c.charId,
-                      authorName: author,
-                      content: c.content,
-                      depth,
-                    } : null;
-                    const isReplyOpen = replyTarget?.commentId === c.id;
-                    const replyInputKey = `${p.id}:${c.id}`;
-                    return (
-                    <div key={c.id} className={`mp-comment ${depth > 1 ? "reply" : ""} ${canReply ? "clickable" : ""}`}>
-                      <div
-                        onClick={() => {
-                          if (!targetForThis) return;
-                          setSocialReplyTarget((prev) => prev?.postId === p.id && prev?.commentId === c.id ? null : targetForThis);
-                        }}
-                      >
-                        <span>{author}：</span>
-                        {c.replyToName && <em>{tr(`回覆 ${c.replyToName} `, `Replying to ${c.replyToName} `, `${c.replyToName} に返信 `, `${c.replyToName}에게 답글 `)}</em>}
-                        {c.content}
-                      </div>
-                      {isReplyOpen && (
-                        <div className="mp-comment-input mp-comment-inline-input">
-                          <input
-                            className="mp-sinp"
-                            placeholder={tr(`回覆 ${author}...`, `Reply to ${author}...`, `${author} に返信...`, `${author}에게 답글...`)}
-                            value={postCommentInputs[replyInputKey] || ""}
-                            maxLength={240}
-                            onChange={(e) => setPostCommentInputs((prev) => ({ ...prev, [replyInputKey]: e.target.value }))}
-                            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addPostComment(p.id, targetForThis); } }}
-                            autoFocus
-                          />
-                          <button className="mp-ibtn" onClick={() => setSocialReplyTarget(null)}>{t("cancel")}</button>
-                          <button className="mp-ibtn" onClick={() => addPostComment(p.id, targetForThis)}>{tr("送出", "Send", "送信", "보내기")}</button>
-                        </div>
-                      )}
-                    </div>
-                  );})}
-                  <div className="mp-comment-input">
-                    <input
-                      className="mp-sinp"
-                      placeholder={tr("寫下留言...", "Write a comment...", "コメントを書く...", "댓글을 입력...")}
-                      value={postCommentInputs[p.id] || ""}
-                      maxLength={240}
-                      onChange={(e) => setPostCommentInputs((prev) => ({ ...prev, [p.id]: e.target.value }))}
-                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addPostComment(p.id); } }}
-                    />
-                    <button className="mp-ibtn" onClick={() => addPostComment(p.id)}>{tr("送出", "Send", "送信", "보내기")}</button>
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-    )
-  );
-
-  const renderLorebook = () => {
-    const activeBook = lorebooks.find((b) => b.id === activeLorebookId) || null;
-    const entries = activeBook?.entries || [];
-    const sortedEntries = [...entries].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-    const sortedBooks = [...lorebooks].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-    const exportLorebook = (book) => {
-      if (!book) return;
-      const safeName = sanitizeText(book.name || "lorebook", 80)
-        .replace(/[\\/:*?"<>|]+/g, "-")
-        .trim() || "lorebook";
-      downloadJsonFile({
-        format: "maliphone-lorebook",
-        version: 1,
-        exportedAt: new Date().toISOString(),
-        lorebook: {
-          name: book.name || "",
-          description: book.description || "",
-          enabled: book.enabled !== false,
-          entries: (book.entries || []).map((entry) => ({
-            title: entry.title || "",
-            keywords: Array.isArray(entry.keywords) ? entry.keywords : [],
-            content: entry.content || "",
-            enabled: entry.enabled !== false,
-          })),
-        },
-      }, `${safeName}.malilorebook.json`);
-      showToast(tr("世界書已匯出", "Lorebook exported", "世界観を書き出しました", "월드북을 내보냈습니다"));
-    };
-    const normalizeImportedLorebook = (rawBook, fallbackName) => {
-      if (!rawBook || typeof rawBook !== "object") return null;
-      const rawEntries = Array.isArray(rawBook.entries)
-        ? rawBook.entries
-        : rawBook.entries && typeof rawBook.entries === "object"
-          ? Object.values(rawBook.entries)
-          : [];
-      const now = Date.now();
-      const normalizedEntries = rawEntries.map((entry, index) => {
-        if (!entry || typeof entry !== "object") return null;
-        const rawKeywords = entry.keywords ?? entry.keys ?? entry.key ?? [];
-        const keywords = (Array.isArray(rawKeywords) ? rawKeywords : String(rawKeywords || "").split(","))
-          .map((keyword) => sanitizeText(String(keyword).trim(), 32))
-          .filter(Boolean)
-          .slice(0, 20);
-        const title = sanitizeText(
-          entry.title || entry.comment || entry.name || keywords[0] || `${tr("條目", "Entry", "項目", "항목")} ${index + 1}`,
-          120
-        );
-        return {
-          id: gid(),
-          title,
-          keywords,
-          content: sanitizeText(entry.content || entry.text || "", 3000),
-          enabled: typeof entry.enabled === "boolean" ? entry.enabled : !entry.disable,
-          updatedAt: now + index,
-        };
-      }).filter(Boolean);
-      return {
-        id: gid(),
-        name: sanitizeText(rawBook.name || rawBook.title || fallbackName || tr("匯入的世界書", "Imported lorebook", "インポートした世界観", "가져온 월드북"), 80),
-        description: sanitizeText(rawBook.description || "", 400),
-        enabled: rawBook.enabled !== false,
-        updatedAt: now,
-        entries: normalizedEntries,
-      };
-    };
-    const importLorebookFile = async (event) => {
-      const file = event.target.files?.[0];
-      event.target.value = "";
-      if (!file) return;
-      try {
-        const parsed = JSON.parse(await file.text());
-        const fallbackName = file.name.replace(/(?:\.malilorebook)?\.json$/i, "");
-        const candidates = Array.isArray(parsed?.lorebooks)
-          ? parsed.lorebooks
-          : Array.isArray(parsed?.state?.lorebooks)
-            ? parsed.state.lorebooks
-            : [parsed?.lorebook || parsed];
-        const importedBooks = candidates
-          .map((book, index) => normalizeImportedLorebook(book, candidates.length > 1 ? `${fallbackName} ${index + 1}` : fallbackName))
-          .filter(Boolean);
-        if (importedBooks.length === 0) throw new Error(tr("找不到可匯入的世界書", "No importable lorebook found", "インポートできる世界観が見つかりません", "가져올 수 있는 월드북을 찾을 수 없습니다"));
-        setLorebooks((prev) => [...importedBooks, ...prev]);
-        setActiveLorebookId(importedBooks[0].id);
-        showToast(tr(`已匯入 ${importedBooks.length} 本世界書`, `Imported ${importedBooks.length} lorebook(s)`, `${importedBooks.length}件の世界観をインポートしました`, `월드북 ${importedBooks.length}개를 가져왔습니다`));
-      } catch (err) {
-        showToast(`${tr("世界書匯入失敗", "Lorebook import failed", "世界観のインポートに失敗しました", "월드북 가져오기에 실패했습니다")}：${sanitizeText(err?.message || tr("檔案格式錯誤", "Invalid file format", "ファイル形式が正しくありません", "파일 형식이 올바르지 않습니다"), 120)}`);
-      }
-    };
-    const saveBook = () => {
-      if (!editingLorebookBook?.name?.trim()) return showToast(tr("請輸入世界書名稱", "Please enter a lorebook name", "ワールドブック名を入力してください", "월드북 이름을 입력해주세요"));
-        const payload = {
-          id: editingLorebookBook.id || gid(),
-          name: sanitizeText(editingLorebookBook.name, 80),
-          description: sanitizeText(editingLorebookBook.description, 400),
-          enabled: true,
-          updatedAt: Date.now(),
-          entries: editingLorebookBook.id ? (lorebooks.find((b) => b.id === editingLorebookBook.id)?.entries || []) : [],
-        };
-      setLorebooks((prev) => {
-        const idx = prev.findIndex((x) => x.id === payload.id);
-        if (idx < 0) return [payload, ...prev];
-        const next = [...prev];
-        next[idx] = payload;
-        return next;
-      });
-      setActiveLorebookId(payload.id);
-      setEditingLorebookBook(null);
-      notify(tr("世界書已儲存", "Lorebook saved", "ワールドブックを保存しました", "월드북이 저장되었습니다"), "Lorebook saved");
-    };
-    const saveEntry = () => {
-      if (!activeBook) return;
-      if (!editingLorebookEntry?.title?.trim()) return showToast(tr("請輸入條目標題", "Please enter an entry title", "項目タイトルを入力してください", "항목 제목을 입력해주세요"));
-      const keywords = editingLorebookEntry.keywords.split(",").map((k) => sanitizeText(k.trim(), 32)).filter(Boolean).slice(0, 20);
-      const payload = {
-        id: editingLorebookEntry.id || gid(),
-        title: sanitizeText(editingLorebookEntry.title, 120),
-        keywords,
-        content: sanitizeText(editingLorebookEntry.content, 3000),
-        enabled: !!editingLorebookEntry.enabled,
-        updatedAt: Date.now(),
-      };
-      setLorebooks((prev) => prev.map((b) => {
-        if (b.id !== activeBook.id) return b;
-        const entriesNext = [...(b.entries || [])];
-        const idx = entriesNext.findIndex((x) => x.id === payload.id);
-        if (idx < 0) entriesNext.unshift(payload);
-        else entriesNext[idx] = payload;
-        return { ...b, entries: entriesNext, updatedAt: Date.now() };
-      }));
-      setEditingLorebookEntry(null);
-      notify(tr("條目已儲存", "Entry saved", "エントリを保存しました", "항목이 저장되었습니다"), "Entry saved");
-    };
-    const deleteBook = (id) => {
-      if (!ask("確定要刪除這本世界書嗎？", "Delete this lorebook?")) return;
-      setLorebooks((prev) => prev.filter((x) => x.id !== id));
-      if (activeLorebookId === id) setActiveLorebookId(null);
-      notify(tr("世界書已刪除", "Lorebook deleted", "ワールドブックを削除しました", "월드북이 삭제되었습니다"), "Lorebook deleted");
-    };
-    const deleteEntry = (id) => {
-      if (!activeBook) return;
-      if (!ask("確定要刪除這個條目嗎？", "Delete this entry?")) return;
-      setLorebooks((prev) => prev.map((b) => b.id === activeBook.id ? { ...b, entries: (b.entries || []).filter((x) => x.id !== id), updatedAt: Date.now() } : b));
-      notify(tr("條目已刪除", "Entry deleted", "項目を削除しました", "항목이 삭제되었습니다"), "Entry deleted");
-    };
-    return (
-      <div className="mp-page">
-          <div className="mp-hdr"><div className="mp-back" onClick={() => { if (activeBook) setActiveLorebookId(null); else closeApp(); }}>←</div><div className="mp-htitle">{tr("世界書", "Lorebook", "世界観", "월드북")}</div></div>
-        <div className="mp-cm">
-          {!activeBook ? <>
-              <div style={{display:"flex",gap:8}}>
-                <button className="mp-add" style={{flex:1}} onClick={() => setEditingLorebookBook({ id: null, name: "", description: "", enabled: true })}>{tr("新增世界書", "Add lorebook", "世界観を追加", "월드북 추가")}</button>
-                <button className="mp-add" style={{flex:1}} onClick={() => lorebookImportInputRef.current?.click()}>{t("import")}</button>
-                <input ref={lorebookImportInputRef} type="file" accept="application/json,.json" hidden onChange={importLorebookFile} />
-              </div>
-            <div style={{height:8}} />
-            {sortedBooks.length === 0 ? <div className="mp-empty"><div className="mp-empty-i">📚</div><div className="mp-empty-t">{tr("目前沒有世界書", "No lorebooks yet", "まだ世界観がありません", "아직 월드북이 없습니다")}</div></div> : sortedBooks.map((b) => (
-              <div key={b.id} className="mp-cc">
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
-                    <div style={{fontWeight:700,fontSize:13}}>{b.name}</div>
-                  </div>
-                <div style={{fontSize:11,color:"var(--mp-txt-l)",marginTop:4}}>{tr("條目", "Entries", "項目", "항목")}：{(b.entries || []).length}</div>
-                {b.description && <div className="mp-lorebook-description" style={{fontSize:12,lineHeight:1.55,marginTop:8}}>{b.description}</div>}
-                <div style={{display:"flex",gap:6,marginTop:10}}>
-                  <button className="mp-ibtn-chat" onClick={() => setActiveLorebookId(b.id)}>{tr("展開", "Open", "開く", "열기")}</button>
-                    <button className="mp-ibtn" onClick={() => setEditingLorebookBook({ id: b.id, name: b.name || "", description: b.description || "", enabled: true })}>{tr("編輯", "Edit", "編集", "편집")}</button>
-                    <button className="mp-ibtn-r" onClick={() => deleteBook(b.id)}>{tr("刪除", "Delete", "削除", "삭제")}</button>
-                  </div>
-                </div>
-            ))}
-          </> : <>
-            <div className="mp-cc" style={{marginBottom:8}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
-                <div style={{fontWeight:700,fontSize:14}}>{activeBook.name}</div>
-                <div style={{display:"flex",gap:6}}>
-                  <button className="mp-ibtn" onClick={() => setPendingLorebookExport(activeBook)}>{t("export")}</button>
-                  <button className="mp-ibtn" onClick={() => setActiveLorebookId(null)}>{t("backToList")}</button>
-                </div>
-              </div>
-              {activeBook.description && <div className="mp-lorebook-description" style={{fontSize:12,color:"var(--mp-txt-l)",marginTop:6}}>{activeBook.description}</div>}
-            </div>
-            <button className="mp-add" onClick={() => setEditingLorebookEntry({ id: null, title: "", keywords: "", content: "", enabled: true })}>{tr("新增條目", "Add entry", "項目を追加", "항목 추가")}</button>
-            <div style={{height:8}} />
-            {sortedEntries.length === 0 ? <div className="mp-empty"><div className="mp-empty-i">📖</div><div className="mp-empty-t">{tr("這本世界書尚無條目", "This lorebook has no entries yet", "この世界観にはまだ項目がありません", "이 월드북에는 아직 항목이 없습니다")}</div></div> : sortedEntries.map((e) => (
-              <div key={e.id} className="mp-cc">
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
-                  <div style={{fontWeight:700,fontSize:13}}>{e.title}</div>
-                  <span className={`mp-active-badge ${e.enabled ? "mp-badge-enabled" : "mp-badge-disabled"}`}>{e.enabled ? tr("啟用", "Enabled", "有効", "활성") : tr("停用", "Disabled", "無効", "비활성")}</span>
-                </div>
-                <div style={{fontSize:11,color:"var(--mp-txt-l)",marginTop:4}}>{tr("關鍵字", "Keywords", "キーワード", "키워드")}：{(e.keywords||[]).join("、") || tr("無", "None", "なし", "없음")}</div>
-                <div style={{fontSize:12,lineHeight:1.55,marginTop:8,display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical",overflow:"hidden",whiteSpace:"pre-wrap"}}>{e.content || ""}</div>
-                <div style={{display:"flex",gap:6,marginTop:10}}>
-                  <button className="mp-ibtn mp-ibtn-view" onClick={() => setViewingLorebookEntry(e)}>{tr("展開", "Open", "開く", "열기")}</button>
-                  <button className="mp-ibtn" onClick={() => setLorebooks((prev) => prev.map((b) => b.id === activeBook.id ? { ...b, entries: (b.entries || []).map((x) => x.id === e.id ? { ...x, enabled: !x.enabled, updatedAt: Date.now() } : x), updatedAt: Date.now() } : b))}>{e.enabled ? tr("停用", "Disable", "無効", "비활성") : tr("啟用", "Enable", "有効", "활성")}</button>
-                  <div style={{marginLeft:"auto"}} />
-                  <button className="mp-ibtn-r" onClick={() => deleteEntry(e.id)}>{tr("刪除", "Delete", "削除", "삭제")}</button>
-                </div>
-              </div>
-            ))}
-          </>}
-        </div>
-        {pendingLorebookExport && (
-          <div className="mp-overlay" onClick={() => setPendingLorebookExport(null)}>
-            <div className="mp-modal" onClick={(ev) => ev.stopPropagation()}>
-              <div className="mp-modal-t">{tr("確認匯出世界書", "Confirm lorebook export", "世界観の書き出し確認", "월드북 내보내기 확인")}</div>
-              <div style={{fontSize:13,lineHeight:1.65,color:"var(--mp-txt)",marginTop:8}}>
-                {tr("即將匯出", "You are about to export", "書き出す世界観", "내보낼 월드북")}：<strong>{pendingLorebookExport.name || tr("未命名世界書", "Untitled lorebook", "無題の世界観", "이름 없는 월드북")}</strong>
-              </div>
-              <div style={{fontSize:11,color:"var(--mp-txt-l)",marginTop:4}}>
-                {tr("條目", "Entries", "項目", "항목")}：{(pendingLorebookExport.entries || []).length}
-              </div>
-              <div style={{display:"flex",gap:8,marginTop:16}}>
-                <button className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#b0bec5,#90a4ae)"}} onClick={() => setPendingLorebookExport(null)}>{t("cancel")}</button>
-                <button className="mp-save" style={{flex:1}} onClick={() => { exportLorebook(pendingLorebookExport); setPendingLorebookExport(null); }}>{tr("確認匯出", "Confirm export", "書き出す", "내보내기 확인")}</button>
-              </div>
-            </div>
-          </div>
-        )}
-        {viewingLorebookEntry && (
-          <div className="mp-overlay" onClick={() => setViewingLorebookEntry(null)}>
-            <div className="mp-modal" onClick={(ev) => ev.stopPropagation()}>
-              <div className="mp-modal-t" style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
-                <span>{viewingLorebookEntry.title || t("title")}</span>
-                <span className={`mp-active-badge ${viewingLorebookEntry.enabled ? "mp-badge-enabled" : "mp-badge-disabled"}`}>{viewingLorebookEntry.enabled?t("enable"):t("disable")}</span>
-              </div>
-              <div className="mp-row"><div className="mp-lbl">{t("keywords")}</div><div style={{fontSize:12,color:"var(--mp-txt-l)"}}>{(viewingLorebookEntry.keywords || []).join("、") || "無"}</div></div>
-              <div className="mp-row"><div className="mp-lbl">{t("content")}</div><div className="mp-lorebook-content">{viewingLorebookEntry.content || ""}</div></div>
-              <div style={{display:"flex",gap:8,marginTop:8}}>
-                <button className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#b0bec5,#90a4ae)"}} onClick={() => setViewingLorebookEntry(null)}>{t("close")}</button>
-                <button className="mp-save" style={{flex:1}} onClick={() => { setViewingLorebookEntry(null); setEditingLorebookEntry({ id: viewingLorebookEntry.id, title: viewingLorebookEntry.title || "", keywords: (viewingLorebookEntry.keywords || []).join(", "), content: viewingLorebookEntry.content || "", enabled: !!viewingLorebookEntry.enabled }); }}>{t("edit")}</button>
-              </div>
-            </div>
-          </div>
-        )}
-        {editingLorebookBook && (
-          <div className="mp-overlay" onClick={() => setEditingLorebookBook(null)}>
-            <div className="mp-modal" onClick={(ev) => ev.stopPropagation()}>
-              <div className="mp-modal-t">{editingLorebookBook.id ? tr("編輯世界書", "Edit lorebook", "世界観を編集", "월드북 편집") : tr("新增世界書", "Add lorebook", "世界観を追加", "월드북 추가")}</div>
-              <div className="mp-row"><div className="mp-lbl">{tr("名稱", "Name", "名前", "이름")} *</div><input className="mp-sinp" value={editingLorebookBook.name} onChange={(ev)=>setEditingLorebookBook((s)=>({ ...s, name: ev.target.value }))} placeholder={tr("例如：學園設定、組織規範", "e.g. school rules, organization rules", "例: 学園設定、組織規範", "예: 학교 설정, 조직 규정")} /></div>
-              <div className="mp-row"><div className="mp-lbl">{tr("描述", "Description", "説明", "설명")}</div><textarea className="mp-ta" value={editingLorebookBook.description} onChange={(ev)=>setEditingLorebookBook((s)=>({ ...s, description: ev.target.value }))} style={{minHeight:100,resize:"vertical"}} /></div>
-                <div style={{display:"flex",gap:8,marginTop:8}}>
-                <button className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#b0bec5,#90a4ae)"}} onClick={() => setEditingLorebookBook(null)}>{tr("取消", "Cancel", "キャンセル", "취소")}</button>
-                <button className="mp-save" style={{flex:1}} onClick={saveBook}>{tr("儲存", "Save", "保存", "저장")}</button>
-              </div>
-            </div>
-          </div>
-        )}
-        {editingLorebookEntry && (
-          <div className="mp-overlay" onClick={() => setEditingLorebookEntry(null)}>
-            <div className="mp-modal" onClick={(ev) => ev.stopPropagation()}>
-              <div className="mp-modal-t">{editingLorebookEntry.id ? tr("編輯條目", "Edit entry", "項目を編集", "항목 편집") : tr("新增條目", "Add entry", "項目を追加", "항목 추가")}</div>
-              <div className="mp-row"><div className="mp-lbl">{tr("標題", "Title", "タイトル", "제목")} *</div><input className="mp-sinp" value={editingLorebookEntry.title} onChange={(ev)=>setEditingLorebookEntry((s)=>({ ...s, title: ev.target.value }))} placeholder={tr("例如：學校、地區、組織", "e.g. school, district, organization", "例: 学校、地域、組織", "예: 학교, 지역, 조직")} /></div>
-              <div className="mp-row"><div className="mp-lbl">{tr("關鍵字", "Keywords", "キーワード", "키워드")} ({tr("逗號分隔", "Comma-separated", "カンマ区切り", "쉼표로 구분")})</div><input className="mp-sinp" value={editingLorebookEntry.keywords} onChange={(ev)=>setEditingLorebookEntry((s)=>({ ...s, keywords: ev.target.value }))} placeholder={tr("例如：十支局, 受訓, 規範", "e.g. ten squads, training, rules", "例: 十支局、訓練、規範", "예: 10부서, 훈련, 규정")} /></div>
-              <div className="mp-row"><div className="mp-lbl">{tr("內容", "Content", "内容", "내용")}</div><textarea className="mp-ta" value={editingLorebookEntry.content} onChange={(ev)=>setEditingLorebookEntry((s)=>({ ...s, content: ev.target.value }))} style={{minHeight:160,resize:"vertical"}} /></div>
-              <div className="mp-row" style={{display:"flex",alignItems:"center",gap:8}}><input id="lb_enabled" type="checkbox" checked={!!editingLorebookEntry.enabled} onChange={(ev)=>setEditingLorebookEntry((s)=>({ ...s, enabled: ev.target.checked }))} /><label htmlFor="lb_enabled" className="mp-lbl" style={{margin:0}}>{tr("啟用", "Enable", "有効", "활성")} {tr("此條目", "this entry", "この項目", "이 항목")}</label></div>
-              <div style={{display:"flex",gap:8,marginTop:8}}>
-                <button className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#b0bec5,#90a4ae)"}} onClick={() => setEditingLorebookEntry(null)}>{tr("取消", "Cancel", "キャンセル", "취소")}</button>
-                <button className="mp-save" style={{flex:1}} onClick={saveEntry}>{tr("儲存", "Save", "保存", "저장")}</button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
+  const renderSocial = () => <SocialApp
+    socialSettingsOpen={socialSettingsOpen} setSocialSettingsOpen={setSocialSettingsOpen}
+    socialSettings={socialSettings} setSocialSettings={setSocialSettings} posts={posts} setPosts={setPosts}
+    closeApp={closeApp} t={t} tr={tr} characters={characters} setPlayerPostModalOpen={setPlayerPostModalOpen}
+    handleRandomSocialPost={handleRandomSocialPost} socialFeedRef={socialFeedRef}
+    setPendingPostScrollId={setPendingPostScrollId} getPostAuthorName={getPostAuthorName}
+    getPostAuthorAvatar={getPostAuthorAvatar} getPostAuthorType={getPostAuthorType} formatPostTime={formatPostTime}
+    sanitizeUserImageUrl={sanitizeUserImageUrl} getLikedByListText={getLikedByListText}
+    activeCommentPostId={activeCommentPostId} setActiveCommentPostId={setActiveCommentPostId}
+    socialReplyTarget={socialReplyTarget} setSocialReplyTarget={setSocialReplyTarget}
+    activeLikePostId={activeLikePostId} setActiveLikePostId={setActiveLikePostId}
+    expandedSocialPosts={expandedSocialPosts} setExpandedSocialPosts={setExpandedSocialPosts}
+    shouldClampSocialPost={shouldClampSocialPost} shouldScrollComments={shouldScrollComments}
+    highlightedPostId={highlightedPostId} activePostMenuId={activePostMenuId} setActivePostMenuId={setActivePostMenuId}
+    showToast={showToast} sharePostToChat={sharePostToChat} formatSocialCount={formatSocialCount}
+    getPostLikeCount={getPostLikeCount} getCommentDepth={getCommentDepth} getCommentAuthorName={getCommentAuthorName}
+    postCommentInputs={postCommentInputs} setPostCommentInputs={setPostCommentInputs} addPostComment={addPostComment}
+  />;
+  const renderLorebook = () => <LorebookApp
+    lorebooks={lorebooks} setLorebooks={setLorebooks} activeLorebookId={activeLorebookId} setActiveLorebookId={setActiveLorebookId}
+    editingLorebookBook={editingLorebookBook} setEditingLorebookBook={setEditingLorebookBook}
+    editingLorebookEntry={editingLorebookEntry} setEditingLorebookEntry={setEditingLorebookEntry}
+    pendingLorebookExport={pendingLorebookExport} setPendingLorebookExport={setPendingLorebookExport}
+    viewingLorebookEntry={viewingLorebookEntry} setViewingLorebookEntry={setViewingLorebookEntry}
+    lorebookImportInputRef={lorebookImportInputRef} closeApp={closeApp} t={t} tr={tr}
+    sanitizeText={sanitizeText} downloadJsonFile={downloadJsonFile} showToast={showToast} gid={gid} notify={notify} ask={ask}
+  />;
+  const renderCharacters = () => <ContactsApp
+    t={t} closeApp={closeApp} characters={characters} activeCharId={activeCharId} sanitizeImage={sanitizeUserImageUrl}
+    onAdd={() => { setEditingCharacter(null); setModal("addChar"); }}
+    onSetActive={(character) => { setActiveCharId(character.id); showToast(`${character.name} ${t("setAsMainCharacter")}`); }}
+    onChat={(character) => { setCurrentChatChar(character); openApp("chat"); }}
+    onView={(character) => { setEditingCharacter(character); setModal("addChar"); }}
+  />;
+  const beginHeroEdit = (src = sanitizeUserImageUrl(activeChar?.heroImage || activeChar?.avatarOriginal || activeChar?.avatar), sourceType = activeChar?.heroImage ? "hero" : "avatar") => {
+    if (!activeChar) return;
+    const saved = activeChar.heroView || {};
+    setHeroDraft({ src: src || "", sourceType, x: Number(saved.x) || 0, y: Number(saved.y) || 0, zoom: Number(saved.zoom) || 1 });
   };
-
-  const renderCharacters = () => (
-    <div className="mp-page">
-      <div className="mp-hdr"><div className="mp-back" onClick={closeApp}>←</div><div className="mp-htitle">{t("characters")}</div></div>
-      <div className="mp-cm">
-        <button className="mp-add" onClick={()=>{setEditingCharacter(null);setModal("addChar");}}>{t("add")} / {t("import")} {t("characters")}</button><div style={{height:8}} />
-        {characters.map(c=>(
-            <div key={c.id} className="mp-cc">
-              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-                <div className="mp-av">{sanitizeUserImageUrl(c.avatar)?<img src={sanitizeUserImageUrl(c.avatar)} alt=""/>:"🦊"}</div>
-                <div style={{flex:1}}>
-                  <div style={{fontWeight:700,fontSize:13}}>{c.name}</div>
-                  <div style={{fontSize:11,color:"var(--mp-txt-l)"}}>{(c.description || c.personality || t("noRoleConfig")).slice(0,52)}</div>
-                </div>
-                {activeCharId===c.id?<span className="mp-active-badge">ACTIVE</span>:<button className="mp-ibtn" onClick={()=>{setActiveCharId(c.id);showToast(`${c.name} ${t("setAsMainCharacter")}`);}}>{t("setAsMainCharacter")}</button>}
-              </div>
-              <div style={{display:"flex",gap:6}}>
-                <button className="mp-ibtn-chat" onClick={()=>{setCurrentChatChar(c);openApp("chat");}}>{t("startChatting")}</button>
-                <button className="mp-ibtn-chat" onClick={()=>{setEditingCharacter(c);setModal("addChar");}}>{t("viewMore")}</button>
-              </div>
-            </div>
-        ))}
-      </div>
-    </div>
-  );
+  const onHeroFile = (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !activeChar) return;
+    if (!file.type.startsWith("image/")) return showToast(tr("請選擇圖片檔案", "Choose an image file", "画像ファイルを選択してください", "이미지 파일을 선택하세요"));
+    if (file.size > 5 * 1024 * 1024) return showToast(tr("立繪圖片請小於 5MB", "Hero image must be under 5MB", "立ち絵は5MB未満にしてください", "이미지는 5MB 이하여야 합니다"));
+    const reader = new FileReader();
+    reader.onload = () => { const safe = sanitizeUserImageUrl(String(reader.result || "")); if (safe) setHeroDraft({ src: safe, sourceType: "hero", x: 0, y: 0, zoom: 1 }); };
+    reader.readAsDataURL(file);
+  };
+  const startHeroSettingDrag = (event) => {
+    if (!heroDraft?.src) return;
+    event.preventDefault();
+    heroDragRef.current = { px: event.clientX, py: event.clientY, x: heroDraft.x, y: heroDraft.y };
+    try { event.currentTarget.setPointerCapture?.(event.pointerId); } catch (_) {}
+  };
+  const moveHeroSettingDrag = (event) => {
+    const drag = heroDragRef.current;
+    if (!drag) return;
+    event.preventDefault();
+    setHeroDraft((old) => {
+      if (!old) return old;
+      // 放大時位移對畫面的影響變大，靈敏度除以縮放倍率讓拖曳速度保持一致
+      const z = Math.max(1, Number(old.zoom) || 1);
+      return { ...old, x: Math.max(-50, Math.min(50, drag.x + (event.clientX - drag.px) / (2 * z))), y: Math.max(-50, Math.min(50, drag.y + (event.clientY - drag.py) / (1.5 * z))) };
+    });
+  };
+  const endHeroSettingDrag = (event) => {
+    heroDragRef.current = null;
+    try { event.currentTarget.releasePointerCapture?.(event.pointerId); } catch (_) {}
+  };
+  const saveHeroDraft = () => {
+    if (!activeChar || !heroDraft?.src) return;
+    setCharacters((list) => list.map((item) => item.id === activeChar.id ? { ...item, ...(heroDraft.sourceType === "hero" ? { heroImage: heroDraft.src } : {}), heroView: { x: heroDraft.x, y: heroDraft.y, zoom: heroDraft.zoom } } : item));
+    setHeroDraft(null); showToast(tr("桌面立繪已儲存", "Hero image saved", "立ち絵を保存しました", "이미지를 저장했습니다"));
+  };
+  const clearAllData = () => {
+    if(!confirm(tr("確定要清空所有資料嗎？", "Are you sure you want to clear all data?", "本当にすべてのデータを消去しますか？", "정말 모든 데이터를 삭제할까요?"))) return;
+    setCharacters([]);
+    setActiveCharId(null);
+    setCurrentChatChar(null);
+    setCurrentChatGroup(null);
+    setChatHistory({});
+    setChatModes({});
+    setChatBackgrounds({});
+    setGroupChats([]);
+    setInnerThoughtSettings({});
+    setProactiveSettings({});
+    setProactiveUnread({});
+    setExpandedInnerThoughts({});
+    setInnerThoughtLoading({});
+    setChatScenes({});
+    setGroupScenes({});
+    setChatLorebookBindings({});
+    setPosts([]);
+    setMemories({});
+    setLorebooks([]);
+    setActiveLorebookId(null);
+    setPhoneInboxCache({});
+    setWallet(defaultAppState.wallet);
+    setCharacterWallets({});
+    setApiPresets(defaultAppState.apiPresets);
+    setPlayerProfile(defaultAppState.playerProfile);
+    setApiConfig(defaultAppState.apiConfig);
+    setTtsConfig(defaultAppState.ttsConfig);
+    stopCurrentVoiceAudio();
+    voiceAudioCacheRef.current.clear();
+    setVoicePlayback({ key: null, status: "idle" });
+    setScreenLockTimeout(defaultAppState.screenLockTimeout);
+    setHomeSlots(Array.from({ length: HOME_SLOT_COUNT }, () => null));
+    setDockOrder(DOCK_APPS);
+    setPhonePage("picker");
+    setPhoneViewCharId(null);
+    setPhoneActiveThreadId("player");
+    armAppClickSuppression();
+    setCurrentApp(null);
+    setModal(null);
+    setUpdateNoticeOpen(false);
+    setChatSettingsOpen(false);
+    setChatSettingsBackgroundOpen(false);
+    setChatSettingsLorebookOpen(false);
+    setChatroomManageOpen(false);
+    setChatSettingsExpandedBooks({});
+    setChatBgEditor(null);
+    setChatVisibleCounts({});
+    setActiveMessageId(null);
+    setMessageEditor(null);
+    setIsTyping(false);
+    setChatInput("");
+    setChatImage(null);
+    setPlayerPostModalOpen(false);
+    setPlayerPostText("");
+    setTransferModalOpen(false);
+    setTransferAmount("");
+    setTransferNote("");
+    setSocialReplyTarget(null);
+    setExpandedSocialPosts({});
+    setChatroomImportPreview(null);
+    setChatroomImportTarget(null);
+    setDataImportPreview(null);
+    try { localStorage.removeItem("mali_seen_version"); } catch {}
+    showToast(tr("資料已清空", "Data cleared", "データを消去しました", "데이터를 삭제했습니다"));
+  };
 
   const renderSettings = () => {
     const tc = tempConfig || apiConfig;
@@ -6155,6 +5532,19 @@ ${recent || "（目前無內容）"}`;
         return list;
       });
       notify(tr("已儲存到預設", `Saved to preset ${idx + 1}`, `プリセット ${idx + 1} に保存しました`, `프리셋 ${idx + 1}에 저장되었습니다`), `Saved to preset ${idx + 1}`);
+    };
+    const fetchLatestModels = async () => {
+      try {
+        setFetchingModels(true);
+        const models = sortModelsByProvider(tc.provider, await fetchAvailableModels(tc));
+        if (!models.length) throw new Error(tr("找不到可用模型", "No models found", "利用可能なモデルが見つかりません", "사용 가능한 모델을 찾을 수 없습니다"));
+        setProviderModelOptions((previous) => ({ ...previous, [tc.provider]: models }));
+        setTempConfig((current) => ({ ...current, model: models.includes(current.model) ? current.model : models[0] }));
+        showToast(tr(`已抓取 ${models.length} 個模型`, `Fetched ${models.length} models`, `${models.length}件のモデルを取得しました`, `모델 ${models.length}개를 가져왔습니다`));
+      } catch (error) {
+        const message = tc.provider === "vertex" ? tr("抓取失敗，可手動輸入模型名稱", "Fetch failed; you can type the model name manually", "取得に失敗しました。モデル名を手動入力できます", "가져오기에 실패했습니다. 모델 이름을 직접 입력할 수 있습니다") : tr("抓取失敗", "Fetch failed", "取得に失敗しました", "가져오기 실패");
+        showToast(`${message}：${error.message}`);
+      } finally { setFetchingModels(false); }
     };
     const testApiConnection = async () => {
       if (testingConnection) return;
@@ -6226,362 +5616,91 @@ ${recent || "（目前無內容）"}`;
             ))}
           </div>
           {settingsTab === "appearance" && (
+            <>
             <div className="mp-sg">
-              <div className="mp-sg-t">{t("theme")}</div>
-              <div className="mp-row">
-                <div className="mp-lbl">{t("theme")}</div>
-                <select className="mp-ssel" value={themeName === "湖水藍" ? "海鹽汽水" : themeName} onChange={(e) => setThemeName(e.target.value)}>
-                  <option value="莓果蘇打">{tr("莓果蘇打", "Berry Soda", "ベリーソーダ", "베리 소다")}</option>
-                  <option value="夜色絨幕">{tr("夜色絨幕", "Velvet Night", "夜色ベルベット", "밤빛 벨벳")}</option>
-                  <option value="抹茶檸檬">{tr("抹茶檸檬", "Matcha Lemon", "抹茶レモン", "말차 레몬")}</option>
-                  <option value="海鹽汽水">{tr("海鹽汽水", "Sea Salt Soda", "シーソルトソーダ", "솔트 소다")}</option>
-                </select>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,cursor:"pointer"}} onClick={() => setSettingsAppearanceOpen((value) => !value)}>
+                <div><div className="mp-sg-t" style={{marginBottom:2}}>{tr("主題與外觀", "Theme & appearance", "テーマと外観", "테마 및 외관")}</div><div style={{fontSize:10,color:"var(--mp-txt-l)"}}>{tr("主題、桌面立繪與自訂 CSS", "Theme, desktop image, and custom CSS", "テーマ、立ち絵、カスタム CSS", "테마, 데스크톱 이미지, 사용자 CSS")}</div></div>
+                <span style={{fontSize:11,fontWeight:800,color:"var(--mp-pink-dk)"}}>{settingsAppearanceOpen ? tr("收合", "Collapse", "折りたたむ", "접기") : tr("展開", "Expand", "展開", "펼치기")}</span>
               </div>
-              <div style={{fontSize:10,color:"var(--mp-txt-l)",lineHeight:1.6,marginBottom:10}}>{tr("目前主題：", "Current theme: ", "現在のテーマ：", "현재 테마: ")}{themeName === "莓果蘇打" ? tr("莓果蘇打", "Berry Soda", "ベリーソーダ", "베리 소다") : themeName === "夜色絨幕" ? tr("夜色絨幕", "Velvet Night", "夜色ベルベット", "밤빛 벨벳") : themeName === "抹茶檸檬" ? tr("抹茶檸檬", "Matcha Lemon", "抹茶レモン", "말차 레몬") : tr("海鹽汽水", "Sea Salt Soda", "シーソルトソーダ", "솔트 소다")}</div>
-              <div className="mp-row">
-                <div className="mp-lbl">{t("language")}</div>
-                <select className="mp-ssel" value={uiLanguage} onChange={(e) => setUiLanguage(e.target.value)}>
-                  <option value="zh-TW">繁體中文</option>
-                  <option value="en">English</option>
-                  <option value="ja">日本語</option>
-                  <option value="ko">한국어</option>
-                </select>
-              </div>
-              <div className="mp-sg-t">{t("screenLock")}</div>
-              <div className="mp-row">
-                <div className="mp-lbl">{t("autoLock")}</div>
-                <select className="mp-ssel" value={String(screenLockTimeout)} onChange={(e) => setScreenLockTimeout(Number(e.target.value))}>
-                  <option value="1">{tr("1 分鐘", "1 minute", "1分", "1분")}</option>
-                  <option value="3">{tr("3 分鐘", "3 minutes", "3分", "3분")}</option>
-                  <option value="5">{tr("5 分鐘", "5 minutes", "5分", "5분")}</option>
-                  <option value="10">{tr("10 分鐘", "10 minutes", "10分", "10분")}</option>
-                  <option value="0">{t("neverLock")}</option>
-                </select>
-              </div>
-              <div style={{fontSize:10,color:"var(--mp-txt-l)",lineHeight:1.6}}>
-                {t("autoLockStatus")}：{screenLockTimeout === 0 ? t("neverLock") : `${screenLockTimeout} 分鐘後自動鎖定`}
-              </div>
+              {settingsAppearanceOpen && <div style={{display:"flex",flexDirection:"column",marginTop:12}}>
+              <ThemeSettings t={t} tr={tr} themeName={themeName} setThemeName={setThemeName} effectsEnabled={themeEffectsEnabled} setEffectsEnabled={setThemeEffectsEnabled} />
+              <CustomCssSettings
+                tr={tr}
+                enabled={customCssEnabled}
+                setEnabled={setCustomCssEnabled}
+                draft={customCssDraft}
+                setDraft={setCustomCssDraft}
+                notice={customCssNotice}
+                setNotice={setCustomCssNotice}
+                sanitize={sanitizeCustomCss}
+                onOpenGuide={() => setCustomCssGuideOpen(true)}
+                onReset={() => { setCustomCssDraft(""); setCustomCss(""); setCustomCssEnabled(false); setCustomCssNotice(tr("已重設", "Reset", "リセットしました", "초기화됨")); try { localStorage.removeItem("mali_custom_css"); } catch {} }}
+                onApply={(safe) => { setCustomCssDraft(safe); setCustomCss(safe); setCustomCssEnabled(true); setCustomCssNotice(tr("已儲存並套用", "Saved and applied", "保存して適用しました", "저장 및 적용됨")); try { localStorage.setItem("mali_custom_css", safe); } catch {} }}
+              />
+              <HeroImageSettings
+                tr={tr} activeChar={activeChar} heroFileRef={heroFileRef} onHeroFile={onHeroFile}
+                heroDraft={heroDraft} setHeroDraft={setHeroDraft} beginHeroEdit={beginHeroEdit}
+                removeHero={() => setCharacters((list) => list.map((item) => item.id === activeChar.id ? { ...item, heroImage:"", heroView:null } : item))}
+                startDrag={startHeroSettingDrag} moveDrag={moveHeroSettingDrag} endDrag={endHeroSettingDrag}
+                heroImgStyle={heroImgStyle} saveDraft={saveHeroDraft}
+              />
+              </div>}
             </div>
+            <InterfaceSettings t={t} tr={tr} uiLanguage={uiLanguage} setUiLanguage={setUiLanguage} screenLockTimeout={screenLockTimeout} setScreenLockTimeout={setScreenLockTimeout} />
+            </>
           )}
           {settingsTab === "api" && (
             <>
-              <div className="mp-sg">
-                <div className="mp-sg-t">{tr("API 預設", "API presets", "API プリセット", "API 프리셋")}</div>
-                <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
-                  {[0,1,2].map((idx) => (
-                    <button key={idx} className="mp-ibtn" style={{minWidth:44,padding:"4px 8px"}} onClick={() => applyApiPreset(idx)}>{`P${idx + 1}`}</button>
-                  ))}
-                </div>
-                <div style={{fontSize:10,color:"var(--mp-txt-l)",marginTop:6}}>
-                  {activePresetIndex >= 0
-                    ? `${tr("目前預設", "Current preset", "現在のプリセット", "현재 프리셋")}：P${activePresetIndex + 1} · ${tc.provider || "-"} · ${tc.model || "-"}`
-                  : `${tr("目前預設", "Current preset", "現在のプリセット", "현재 프리셋")}：${tr("自訂", "Custom", "カスタム", "사용자 지정")} · ${tc.provider || "-"} · ${tc.model || "-"}`}
-                </div>
-              </div>
-              <div className="mp-sg">
-                <div className="mp-sg-t">{tr("AI 連線", "AI connection", "AI 接続", "AI 연결")}</div>
-                <div className="mp-row"><div className="mp-lbl">{tr("API 供應商", "API provider", "API プロバイダー", "API 제공업체")}</div><select className="mp-ssel" value={tc.provider} onChange={e=>{const p=API_PROVIDERS.find(x=>x.id===e.target.value);setTempConfig(c=>({...c,provider:p.id,baseUrl:getProviderBaseUrl(p.id,c?.baseUrl || ""),model:p.models[0]||""}));}}>{API_PROVIDERS.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
-                {tc.provider === "custom" && <div className="mp-row"><div className="mp-lbl">Base URL</div><input className="mp-sinp" value={tc.baseUrl} onChange={e=>setTempConfig(c=>({...c,baseUrl:e.target.value}))} placeholder="https://..." /></div>}
-                {tc.provider === "vertex" && <div className="mp-row"><div className="mp-lbl">{tr("區域", "Region", "リージョン", "리전")}</div><input className="mp-sinp" value={tc.location || "global"} onChange={e=>setTempConfig(c=>({...c,location:e.target.value}))} placeholder="global" /></div>}
-                <div className="mp-row"><div className="mp-lbl">{tr("API 金鑰", "API key", "API キー", "API 키")}</div><input className="mp-sinp" type="password" value={tc.apiKey} onChange={e=>setTempConfig(c=>({...c,apiKey:e.target.value}))} placeholder={tc.provider === "vertex" ? "AIza..." : "sk-..."} /></div>
-                <div className="mp-row">
-                  <div className="mp-lbl" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
-                    <span>{tr("模型", "Model", "モデル", "모델")}</span>
-                    <button
-                      type="button"
-                      className="mp-ibtn"
-                      disabled={fetchingModels}
-                      onClick={async ()=>{
-                        try {
-                          setFetchingModels(true);
-                          const models = sortModelsByProvider(tc.provider, await fetchAvailableModels(tc));
-                          if (!models.length) throw new Error(tr("找不到可用模型", "No models found", "利用可能なモデルが見つかりません", "사용 가능한 모델을 찾을 수 없습니다"));
-                          setProviderModelOptions(prev => ({ ...prev, [tc.provider]: models }));
-                          setTempConfig(c => ({ ...c, model: models.includes(c.model) ? c.model : models[0] }));
-                          showToast(tr(`已抓取 ${models.length} 個模型`, `Fetched ${models.length} models`, `${models.length}件のモデルを取得しました`, `모델 ${models.length}개를 가져왔습니다`));
-                        } catch (err) {
-                          if (tc.provider === "vertex") {
-                            showToast(`${tr("抓取失敗，可手動輸入模型名稱", "Fetch failed; you can type the model name manually", "取得に失敗しました。モデル名を手動入力できます", "가져오기에 실패했습니다. 모델 이름을 직접 입력할 수 있습니다")}：${err.message}`);
-                            return;
-                          }
-                          showToast(`${tr("抓取失敗", "Fetch failed", "取得に失敗しました", "가져오기 실패")}：${err.message}`);
-                        } finally {
-                          setFetchingModels(false);
-                        }
-                      }}
-                    >
-                      {fetchingModels ? t("loading") : tr("取得最新模型", "Fetch latest models", "最新モデルを取得", "최신 모델 가져오기")}
-                    </button>
-                  </div>
-                  {modelOptions?.length>0
-                    ? <select className="mp-ssel" value={tc.model} onChange={e=>setTempConfig(c=>({...c,model:e.target.value}))}>{modelOptions.map(m=><option key={m} value={m}>{m}</option>)}<option value="__custom">{tr("自訂...", "Custom...", "カスタム...", "사용자 지정...")}</option></select>
-                    : <input className="mp-sinp" value={tc.model} onChange={e=>setTempConfig(c=>({...c,model:e.target.value}))} placeholder="model-name" />}
-                </div>
-                {tc.model==="__custom"&&<div className="mp-row"><div className="mp-lbl">{tr("自訂模型名稱", "Custom model name", "カスタムモデル名", "사용자 지정 모델 이름")}</div><input className="mp-sinp" onChange={e=>setTempConfig(c=>({...c,model:e.target.value}))} placeholder="model-name" /></div>}
-                <div style={{display:"flex",gap:8}}>
-                  <button type="button" className="mp-save" disabled={testingConnection} style={{flex:1,background:"linear-gradient(135deg,#80cbc4,#26a69a)"}} onClick={testApiConnection}>{testingConnection ? tr("測試中...", "Testing...", "テスト中...", "테스트 중...") : tr("測試連線", "Test connection", "接続テスト", "연결 테스트")}</button>
-                  <button className="mp-save" style={{flex:1}} onClick={()=>{setApiConfig(tc);notify(tr("設定已儲存", "Settings saved", "設定を保存しました", "설정이 저장되었습니다"), "Settings saved");}}>{tr("儲存設定", "Save settings", "設定を保存", "설정 저장")}</button>
-                  <button type="button" className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#90caf9,#42a5f5)"}} onClick={()=>setPresetSavePickerOpen(true)}>{tr("儲存預設", "Save preset", "プリセット保存", "프리셋 저장")}</button>
-                </div>
-              </div>
-              <div className="mp-sg">
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
-                  <div className="mp-sg-t" style={{marginBottom:0}}>{tr("語音 API", "Voice API", "音声 API", "음성 API")}</div>
-                  <button type="button" className={ttsConfig.enabled ? "mp-ibtn-chat" : "mp-ibtn"} style={{flex:"0 0 auto",padding:"5px 12px"}} onClick={() => setTtsConfig((current) => ({ ...current, enabled: !current.enabled }))}>{ttsConfig.enabled ? tr("啟用", "Enabled", "有効", "활성") : tr("關閉", "Off", "オフ", "꺼짐")}</button>
-                </div>
-                {!ttsConfig.enabled && <div style={{fontSize:10,color:"var(--mp-txt-l)",lineHeight:1.6,marginTop:8}}>{tr("語音功能目前關閉，設定已保留。", "Voice is off; your settings are retained.", "音声機能はオフです。設定は保持されます。", "음성 기능이 꺼져 있으며 설정은 유지됩니다.")}</div>}
-                {ttsConfig.enabled && <div style={{marginTop:12}}>
-                  <div className="mp-row"><div className="mp-lbl">{tr("全域語音供應商", "Global voice provider", "共通音声プロバイダー", "전역 음성 제공업체")}</div><select className="mp-ssel" value="elevenlabs" onChange={(e) => { setTtsVoices([]); setTtsConnectionState("idle"); setTtsConfig((current) => ({ ...current, provider: e.target.value })); }}><option value="elevenlabs">ElevenLabs</option></select></div>
-                  <div className="mp-row"><div className="mp-lbl">API Key</div><input className="mp-sinp" type="password" value={activeTtsConfig.apiKey || ""} onChange={(e) => { setTtsConnectionState("idle"); if (ttsConfig.provider === "elevenlabs") setTtsVoices([]); updateActiveTtsConfig(ttsConfig.provider === "elevenlabs" ? { apiKey: e.target.value, availableVoices: [] } : { apiKey: e.target.value }); }} placeholder={ttsConfig.provider === "elevenlabs" ? "xi-api-key" : "MiniMax API key"} /></div>
-                  <div className="mp-row"><div className="mp-lbl">{tr("語音模型", "Voice model", "音声モデル", "음성 모델")}</div>{ttsConfig.provider === "elevenlabs" ? <select className="mp-ssel" value={activeTtsConfig.model || "eleven_flash_v2_5"} onChange={(e) => updateActiveTtsConfig({ model: e.target.value })}><option value="eleven_flash_v2_5">eleven_flash_v2_5</option><option value="eleven_multilingual_v2">eleven_multilingual_v2</option><option value="eleven_v3">eleven_v3</option></select> : <select className="mp-ssel" value={activeTtsConfig.model || "speech-2.8-turbo"} onChange={(e) => updateActiveTtsConfig({ model: e.target.value })}><option value="speech-2.8-turbo">speech-2.8-turbo</option><option value="speech-2.8-hd">speech-2.8-hd</option><option value="speech-2.6-turbo">speech-2.6-turbo</option><option value="speech-2.6-hd">speech-2.6-hd</option></select>}</div>
-                  {ttsConfig.provider === "minimax" && <div className="mp-row"><div className="mp-lbl">Base URL</div><input className="mp-sinp" value={activeTtsConfig.baseUrl || "https://api.minimax.io"} onChange={(e) => updateActiveTtsConfig({ baseUrl: e.target.value })} /></div>}
-                  {ttsConfig.provider === "elevenlabs" ? <>
-                    <div className="mp-row"><div className="mp-lbl">{tr("ElevenLabs 可用聲音", "ElevenLabs available voices", "ElevenLabs 利用可能な音声", "ElevenLabs 사용 가능 음성")}</div><select className="mp-ssel" value={activeTtsConfig.defaultVoiceId || "JBFqnCBsd6RMkjVDRZzb"} onChange={(e) => updateActiveTtsConfig({ defaultVoiceId: e.target.value })}>{availableTtsVoices.length ? availableTtsVoices.map((voice) => <option key={voice.id} value={voice.id}>{voice.name}{voice.category ? ` · ${voice.category}` : ""}</option>) : <option value={activeTtsConfig.defaultVoiceId || "JBFqnCBsd6RMkjVDRZzb"}>{tr("George（文件範例）", "George (documentation example)", "George（ドキュメント例）", "George (문서 예시)")}</option>}</select></div>
-                    <button type="button" className="mp-save" disabled={ttsConnectionState === "loading" || !activeTtsConfig.apiKey} style={{background:"linear-gradient(135deg,#80cbc4,#26a69a)",marginBottom:8}} onClick={() => void loadElevenLabsDefaultVoices()}>{ttsConnectionState === "loading" ? tr("連線中...", "Connecting...", "接続中...", "연결 중...") : tr("測試連線並載入可用聲音", "Test connection and load voices", "接続テストと音声の読み込み", "연결 테스트 및 음성 불러오기")}</button>
-                  </> : <div className="mp-row"><div className="mp-lbl">{tr("測試 Voice ID", "Test Voice ID", "テスト Voice ID", "테스트 Voice ID")}</div><input className="mp-sinp" value={activeTtsConfig.defaultVoiceId || ""} onChange={(e) => updateActiveTtsConfig({ defaultVoiceId: e.target.value })} /></div>}
-                  <button type="button" className="mp-save" disabled={ttsConnectionState === "previewing" || !activeTtsConfig.apiKey || !activeTtsConfig.defaultVoiceId} style={{background:"linear-gradient(135deg,#90caf9,#42a5f5)"}} onClick={() => void previewDefaultTtsVoice()}>{ttsConnectionState === "previewing" ? tr("生成測試語音中...", "Generating test voice...", "テスト音声を生成中...", "테스트 음성 생성 중...") : tr("試聽預設聲音", "Preview default voice", "デフォルト音声を試聴", "기본 음성 미리듣기")}</button>
-                  {ttsConnectionState === "success" && <div style={{fontSize:10,color:"#43a047",marginTop:7}}>{tr("API 連線成功", "API connected", "API 接続成功", "API 연결 성공")}</div>}
-                  {ttsConnectionState === "error" && <div style={{fontSize:10,color:"#e57373",marginTop:7}}>{tr("連線或測試失敗，請檢查 Key 與權限。", "Connection or test failed. Check the key and permissions.", "接続またはテストに失敗しました。Key と権限を確認してください。", "연결 또는 테스트에 실패했습니다. Key와 권한을 확인해주세요.")}</div>}
-                </div>}
-              </div>
+              <ApiPresetSettings tr={tr} activePresetIndex={activePresetIndex} config={tc} onApplyPreset={applyApiPreset} />
+              <AiConnectionSettings
+                t={t} tr={tr} open={settingsAiConnOpen} setOpen={setSettingsAiConnOpen}
+                config={tc} setConfig={setTempConfig} providers={API_PROVIDERS} modelOptions={modelOptions}
+                fetchingModels={fetchingModels} onFetchModels={fetchLatestModels}
+                testingConnection={testingConnection} onTest={testApiConnection}
+                onProviderChange={(providerId) => { const provider = API_PROVIDERS.find((item) => item.id === providerId); setTempConfig((current) => ({ ...current, provider: provider.id, baseUrl: getProviderBaseUrl(provider.id, current?.baseUrl || ""), model: provider.models[0] || "" })); }}
+                onSave={() => { setApiConfig(tc); notify(tr("設定已儲存", "Settings saved", "設定を保存しました", "설정이 저장되었습니다"), "Settings saved"); }}
+                onSavePreset={() => setPresetSavePickerOpen(true)}
+              />
+              <VoiceApiSettings
+                tr={tr} open={settingsVoiceOpen} setOpen={setSettingsVoiceOpen}
+                config={ttsConfig} setConfig={setTtsConfig} activeConfig={activeTtsConfig}
+                updateConfig={(patch) => { setTtsConnectionState("idle"); setTtsVoices([]); updateActiveTtsConfig(patch); }}
+                voices={availableTtsVoices} connectionState={ttsConnectionState}
+                onLoadVoices={() => void loadElevenLabsDefaultVoices()}
+                onPreview={() => void previewDefaultTtsVoice()}
+              />
             </>
           )}
-          {presetSavePickerOpen && (
-            <div className="mp-overlay" style={{zIndex:120}} onClick={() => setPresetSavePickerOpen(false)}>
-              <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
-                <div className="mp-modal-t">{tr("儲存 API 預設", "Save API preset", "API プリセットを保存", "API 프리셋 저장")}</div>
-                <div style={{display:"grid",gap:8}}>
-                  {[0,1,2].map((idx) => (
-                    <button
-                      type="button"
-                      key={idx}
-                      className="mp-ibtn-chat"
-                      onClick={() => {
-                        const ok = window.confirm(tr(`確定要覆寫 P${idx + 1} 嗎？`, `Overwrite P${idx + 1}?`, `P${idx + 1} を上書きしますか？`, `P${idx + 1}을(를) 덮어쓸까요?`));
-                        if (!ok) return;
-                        saveApiPreset(idx);
-                        setPresetSavePickerOpen(false);
-                      }}
-                    >
-                      {tr(`儲存至 P${idx + 1}`, `Save to P${idx + 1}`, `P${idx + 1} に保存`, `P${idx + 1}에 저장`)}
-                    </button>
-                  ))}
-                </div>
-                <div style={{marginTop:10}}>
-                  <button type="button" className="mp-save" style={{background:"linear-gradient(135deg,#b0bec5,#90a4ae)"}} onClick={() => setPresetSavePickerOpen(false)}>{t("cancel")}</button>
-                </div>
-              </div>
-            </div>
-          )}
+          {presetSavePickerOpen && <ApiPresetModal
+            tr={tr} t={t} onClose={() => setPresetSavePickerOpen(false)}
+            onSave={(index) => { saveApiPreset(index); setPresetSavePickerOpen(false); }}
+          />}
           {settingsTab === "data" && (
             <>
-              <div className="mp-sg">
-                <div className="mp-sg-t">{tr("全域資料備份", "Global data backup", "全体データバックアップ", "전체 데이터 백업")}</div>
-                <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.7,marginBottom:8}}>
-                  {tr("這裡可以把整個 App 的主要進度打包下載，或從備份檔匯入後直接接續。", "You can export the app's main progress as a package, or import a backup file and continue from there.", "この場所では、アプリ全体の進行状況をまとめて書き出したり、バックアップファイルを取り込んで続きから再開できます。", "여기에서는 앱의 주요 진행 상황을 묶어서 내보내거나, 백업 파일을 가져와 이어서 사용할 수 있습니다.")}
-                </div>
-                <div style={{display:"grid",gap:8}}>
-                  <button className="mp-save" style={{background:"linear-gradient(135deg,#90caf9,#42a5f5)"}} onClick={exportAllData}>{tr("匯出全域資料", "Export global data", "全体データを書き出す", "전체 데이터 내보내기")}</button>
-                  <button type="button" className="mp-save" style={{background:"linear-gradient(135deg,#b0bec5,#78909c)"}} onClick={() => dataImportRef.current?.click()}>
-                    {dataImporting ? tr("等待選擇檔案...", "Waiting for file selection...", "ファイル選択待ち...", "파일 선택 대기 중...") : tr("匯入全域資料", "Import global data", "全体データを取り込む", "전체 데이터 가져오기")}
-                  </button>
-                  <input ref={dataImportRef} type="file" accept=".json,application/json" style={{display:"none"}} onChange={importAllData} />
-                </div>
-              </div>
-              <div className="mp-sg">
-                <div className="mp-sg-t">{tr("使用提醒", "Usage notes", "使用上の注意", "사용 안내")}</div>
-                <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.8}}>
-                  <div>• {tr("匯入會覆蓋目前裝置上的全域資料。", "Importing will overwrite the current device's global data.", "取り込むと現在の端末の全体データが上書きされます。", "가져오기를 하면 현재 기기의 전체 데이터가 덮어써집니다.")}</div>
-                  <div>• {tr("最適合拿來做手機和電腦之間的無痛銜接。", "Best for seamless handoff between phone and desktop.", "スマホとPCの間をスムーズに引き継ぐのに最適です。", "휴대폰과 PC 사이를 자연스럽게 이어 쓰기에 가장 좋습니다.")}</div>
-                  <div>• {tr("建議先保留一份原始備份，避免覆蓋到不想改動的內容。", "Keep an original backup first to avoid overwriting anything you didn't mean to change.", "元のバックアップを残しておくと、変更したくない内容を上書きせずに済みます。", "원본 백업을 먼저 보관해 두면 원치 않는 덮어쓰기를 피할 수 있습니다.")}</div>
-                </div>
-              </div>
+              <DataBackupSettings tr={tr} dataImporting={dataImporting} dataImportRef={dataImportRef} onExport={exportAllData} onImport={importAllData} />
             </>
           )}
-          {dataImportPreview && (
-            <div className="mp-overlay" style={{zIndex:125}} onClick={() => { setDataImportPreview(null); setDataImporting(false); }}>
-              <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
-                <div className="mp-modal-t">{tr("匯入預覽", "Import preview", "インポートプレビュー", "가져오기 미리보기")}</div>
-                <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.8}}>
-                  <div>{tr("檔名", "File name", "ファイル名", "파일 이름")}：{dataImportPreview.fileName}</div>
-                  <div>{tr("大小", "Size", "サイズ", "크기")}：{Math.max(1, Math.round((dataImportPreview.fileSize || 0) / 1024))} KB</div>
-                  <div>{tr("格式", "Format", "形式", "형식")}：{dataImportPreview.summary.format === "maliphone-app-state" ? tr("MaliPhone 全域備份", "MaliPhone global backup", "MaliPhone 全体バックアップ", "MaliPhone 전체 백업") : tr("舊版或通用 JSON", "Legacy or generic JSON", "旧版または汎用 JSON", "구버전 또는 일반 JSON")}</div>
-                  {dataImportPreview.summary.exportedAt && <div>{tr("匯出時間", "Export time", "書き出し時刻", "내보낸 시간")}：{dataImportPreview.summary.exportedAt}</div>}
-                </div>
-                <div style={{marginTop:10,padding:10,borderRadius:12,background:"rgba(255,255,255,.7)",border:"1px solid rgba(160,176,186,.2)",fontSize:12,lineHeight:1.8,color:"var(--mp-txt)"}}>
-                  <div>{tr("角色", "Characters", "キャラ", "캐릭터")}：{dataImportPreview.summary.characters}</div>
-                  <div>{tr("聊天串", "Chat threads", "チャットスレッド", "채팅 스레드")}：{dataImportPreview.summary.chatThreads}</div>
-                  <div>{tr("聊天室背景", "Chat backgrounds", "チャット背景", "채팅 배경")}：{dataImportPreview.summary.chatBackgrounds}</div>
-                  <div>{tr("群組聊天室", "Group chats", "グループチャット", "그룹 채팅")}：{dataImportPreview.summary.groupChats}</div>
-                  <div>{tr("場景", "Scenes", "シーン", "장면")}：{dataImportPreview.summary.scenes}</div>
-                  <div>{tr("貼文", "Posts", "投稿", "게시물")}：{dataImportPreview.summary.posts}</div>
-                  <div>{tr("世界書", "Lorebooks", "世界観", "월드북")}：{dataImportPreview.summary.lorebooks}</div>
-                  <div>{tr("玩家資料", "Player profile", "プレイヤー情報", "플레이어 정보")}：{dataImportPreview.summary.playerProfile ? tr("有", "Yes", "あり", "있음") : tr("無", "No", "なし", "없음")}</div>
-                </div>
-                <div style={{marginTop:10,fontSize:11,color:"var(--mp-txt-l)",lineHeight:1.6}}>
-                  {tr("先確認這份備份內容是不是你要的，再按下面的確認匯入。", "Please confirm this backup is the one you want, then tap confirm import below.", "このバックアップ内容が目的のものか確認してから、下のインポート確認を押してください。", "이 백업 내용이 맞는지 확인한 뒤 아래의 가져오기 확인을 눌러주세요.")}
-                </div>
-                <div style={{display:"flex",gap:8,marginTop:12}}>
-                  <button type="button" className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#b0bec5,#90a4ae)"}} onClick={() => { setDataImportPreview(null); setDataImporting(false); }}>{tr("取消", "Cancel", "キャンセル", "취소")}</button>
-                  <button type="button" className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#ffb74d,#f57c00)"}} onClick={confirmImportPreview}>{tr("確認匯入", "Confirm import", "インポートを確認", "가져오기 확인")}</button>
-                </div>
-              </div>
-            </div>
-          )}
-          {chatroomImportPreview && (
-            <div className="mp-overlay" style={{zIndex:125}} onClick={() => { setChatroomImportPreview(null); setChatroomImportTarget(null); setChatroomImporting(false); }}>
-              <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
-                <div className="mp-modal-t">{tr("聊天室匯入預覽", "Chatroom import preview", "チャットルームのインポート確認", "채팅방 가져오기 미리보기")}</div>
-                <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.8}}>
-                  <div>{tr("檔名", "File name", "ファイル名", "파일 이름")}：{chatroomImportPreview.fileName}</div>
-                  <div>{tr("大小", "Size", "サイズ", "크기")}：{Math.max(1, Math.round((chatroomImportPreview.fileSize || 0) / 1024))} KB</div>
-                  <div>{tr("格式", "Format", "形式", "형식")}：{chatroomImportPreview.summary.format === "maliphone-chatroom" ? tr("MaliPhone 聊天室備份", "MaliPhone chatroom backup", "MaliPhone チャットルームバックアップ", "MaliPhone 채팅방 백업") : tr("舊版或通用 JSON", "Legacy or generic JSON", "旧版または汎用 JSON", "구버전 또는 일반 JSON")}</div>
-                  {chatroomImportPreview.summary.exportedAt && <div>{tr("匯出時間", "Export time", "書き出し時刻", "내보낸 시간")}：{chatroomImportPreview.summary.exportedAt}</div>}
-                </div>
-                <div style={{marginTop:10,padding:10,borderRadius:12,background:"rgba(255,255,255,.7)",border:"1px solid rgba(160,176,186,.2)",fontSize:12,lineHeight:1.8,color:"var(--mp-txt)"}}>
-                  <div>{tr("訊息數", "Message count", "メッセージ数", "메시지 수")}：{chatroomImportPreview.summary.messages}</div>
-                  <div>{tr("互動模式", "Interaction mode", "インタラクションモード", "상호작용 모드")}: {chatroomImportPreview.summary.hasMode ? tr("有", "Yes", "あり", "있음") : tr("無", "No", "なし", "없음")}</div>
-                  <div>{tr("聊天室背景", "Chat background", "チャット背景", "채팅 배경")}: {chatroomImportPreview.summary.hasBackground ? tr("有", "Yes", "あり", "있음") : tr("無", "No", "なし", "없음")}</div>
-                  <div>{tr("世界書綁定", "Lorebook binding", "ワールドブック連携", "월드북 연결")}: {chatroomImportPreview.summary.hasBinding ? tr("有", "Yes", "あり", "있음") : tr("無", "No", "なし", "없음")}</div>
-                </div>
-                <div style={{marginTop:10,fontSize:11,color:"var(--mp-txt-l)",lineHeight:1.6}}>
-                  {tr("先確認這是不是你要接續的聊天室內容，再按下面的確認匯入。", "Please confirm this is the chatroom you want to continue, then tap confirm import below.", "続けたいチャットルームか確認してから、下のインポート確認を押してください。", "계속할 채팅방이 맞는지 확인한 뒤 아래의 가져오기 확인을 눌러주세요.")}
-                </div>
-                <div style={{display:"flex",gap:8,marginTop:12}}>
-                  <button type="button" className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#b0bec5,#90a4ae)"}} onClick={() => { setChatroomImportPreview(null); setChatroomImportTarget(null); setChatroomImporting(false); }}>{tr("取消", "Cancel", "キャンセル", "취소")}</button>
-                  <button type="button" className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#ffb74d,#f57c00)"}} onClick={confirmChatroomImportPreview}>{tr("確認匯入", "Confirm import", "インポートを確認", "가져오기 확인")}</button>
-                </div>
-              </div>
-            </div>
-          )}
+          {dataImportPreview && <DataImportPreviewModal
+            tr={tr} preview={dataImportPreview}
+            onCancel={() => { setDataImportPreview(null); setDataImporting(false); }}
+            onConfirm={confirmImportPreview}
+          />}
+          {chatroomImportPreview && <ChatroomImportPreviewModal
+            tr={tr} preview={chatroomImportPreview}
+            onCancel={() => { setChatroomImportPreview(null); setChatroomImportTarget(null); setChatroomImporting(false); }}
+            onConfirm={confirmChatroomImportPreview}
+          />}
           {settingsTab === "about" && (
             <>
-              <div className="mp-sg">
-                <div className="mp-sg-t">{tr("版本資訊", "Version info", "バージョン情報", "버전 정보")}</div>
-                <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.7,marginBottom:8}}>
-                  <strong>MaliPhone</strong> v{VERSION}<br/>AI 角色互動小手機介面
-                </div>
-                <div className="mp-version-row" onClick={() => setSettingsVersionOpen((v) => !v)}>
-                  <span>{currentChangelogTitle}　{tr("版本", "Version", "バージョン", "버전")}：{VERSION}</span>
-                  <span>{settingsVersionOpen ? tr("收合", "Collapse", "折りたたむ", "접기") : tr("展開", "Expand", "展開", "펼치기")}</span>
-                </div>
-                {settingsVersionOpen && (
-                  <ol className="mp-version-list">
-                    {(currentChangelog.length ? currentChangelog : [tr("這個版本沒有填寫更新內容。", "No update notes were added for this version.", "このバージョンの更新内容は未記入です。", "이 버전의 업데이트 내용이 없습니다.")]).map((item, idx) => (
-                      <li key={idx}>{item}</li>
-                    ))}
-                  </ol>
-                )}
-              </div>
-              <div className="mp-sg">
-                <div className="mp-sg-t">{tr("服務條款與免責聲明", "Terms and disclaimer", "利用規約と免責事項", "이용약관 및 면책")}</div>
-                <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.7,marginBottom:8}}>
-                  {tr("最後更新：2026年6月2日", "Last updated: June 2, 2026", "最終更新: 2026年6月2日", "마지막 업데이트: 2026년 6월 2일")}
-                </div>
-                <div className="mp-version-row" onClick={() => setSettingsDisclaimerOpen((v) => !v)}>
-                  <span>{tr("查看完整條款", "View full terms", "利用規約を表示", "전체 약관 보기")}</span>
-                  <span>{settingsDisclaimerOpen ? tr("收合", "Collapse", "折りたたむ", "접기") : tr("展開", "Expand", "展開", "펼치기")}</span>
-                </div>
-                {settingsDisclaimerOpen && (
-                  <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.8,padding:"10px 4px 2px"}}>
-                    <div style={{fontWeight:700,color:"var(--mp-txt)"}}>{tr("歡迎使用 MaliPhone", "Welcome to MaliPhone", "MaliPhoneへようこそ", "MaliPhone에 오신 것을 환영합니다")}</div>
-                    <div style={{marginTop:8}}>{tr("本應用是一個提供給玩家自由遊玩的 AI 角色互動平台。玩家可以依照自己的方式建立、設定與使用內容，所有玩法都由玩家自行決定，開發者不會介入、限制或替玩家做出遊玩選擇。", "This app is an AI character interaction platform for free-form play. Players create, configure, and use content in their own way; all play choices are made by the player, and the developer does not intervene, restrict, or decide how users play.", "本アプリは、プレイヤーが自由に遊べるAIキャラクター交流プラットフォームです。コンテンツの作成、設定、利用方法はプレイヤー自身が決めるもので、開発者が遊び方に介入、制限、または選択を代行することはありません。", "이 앱은 플레이어가 자유롭게 즐길 수 있는 AI 캐릭터 상호작용 플랫폼입니다. 콘텐츠의 생성, 설정, 사용 방식은 플레이어가 직접 결정하며 개발자는 플레이 방식에 개입하거나 제한하거나 대신 선택하지 않습니다.")}</div>
-                    <div style={{marginTop:8}}>{tr("本應用不會主動取得玩家的個人設定、遊玩偏好或私人操作內容，也無法控制玩家如何使用本服務。所有角色、對話、情節、觀點與回應皆可能為演算法生成內容，僅供娛樂、創作與測試用途，不代表真實人物、事件或事實。", "This app does not proactively collect personal settings, play preferences, or private actions, and cannot control how players use the service. Characters, conversations, plots, opinions, and replies may be algorithmically generated and are for entertainment, creative, and testing purposes only; they do not represent real people, events, or facts.", "本アプリは、個人設定、遊び方の好み、私的な操作内容を能動的に取得せず、プレイヤーによる本サービスの利用方法を制御することもできません。キャラクター、会話、展開、意見、返答はアルゴリズム生成である場合があり、娯楽、創作、テスト目的に限られ、実在の人物、出来事、事実を表すものではありません。", "이 앱은 개인 설정, 플레이 선호도, 사적인 조작 내용을 능동적으로 수집하지 않으며, 플레이어가 서비스를 어떻게 사용하는지 통제할 수 없습니다. 모든 캐릭터, 대화, 전개, 관점, 응답은 알고리즘으로 생성될 수 있으며 오락, 창작, 테스트 목적일 뿐 실제 인물, 사건 또는 사실을 의미하지 않습니다.")}</div>
-                    <div style={{marginTop:8}}>{tr("請勿將本應用產出的內容視為專業建議。若涉及醫療、法律、財務、心理健康或其他重大決策，請自行判斷並諮詢合格專業人士。", "Do not treat content generated by this app as professional advice. For medical, legal, financial, mental health, or other major decisions, use your own judgment and consult qualified professionals.", "本アプリが生成した内容を専門的助言として扱わないでください。医療、法律、財務、メンタルヘルス、その他重大な判断に関わる場合は、ご自身で判断し、資格を持つ専門家に相談してください。", "이 앱에서 생성된 내용을 전문적인 조언으로 간주하지 마세요. 의료, 법률, 재정, 정신건강 또는 기타 중대한 결정과 관련된 경우 스스로 판단하고 자격을 갖춘 전문가와 상담하세요.")}</div>
-                    <div style={{marginTop:8}}>{tr("使用者應對自己在本應用中的操作、輸入與產出內容負責，並遵守所在地法律、平台規範與公共秩序。請勿利用本服務製作、散播或引導任何非法、侵害他人權益、仇恨、騷擾、暴力、自殘或其他高風險內容。", "Users are responsible for their actions, inputs, and outputs in this app and must follow local laws, platform rules, and public order. Do not use this service to create, distribute, or encourage illegal content, rights violations, hate, harassment, violence, self-harm, or other high-risk content.", "ユーザーは、本アプリでの操作、入力、出力内容について責任を負い、所在地の法律、プラットフォーム規約、公序良俗を遵守する必要があります。違法行為、他者の権利侵害、憎悪、嫌がらせ、暴力、自傷、その他高リスクな内容の作成、拡散、誘導に本サービスを利用しないでください。", "사용자는 이 앱에서의 조작, 입력, 출력 내용에 책임을 지며, 거주 지역의 법률, 플랫폼 규정, 공공질서를 준수해야 합니다. 불법, 타인 권리 침해, 혐오, 괴롭힘, 폭력, 자해 또는 기타 고위험 콘텐츠를 제작, 유포, 유도하는 데 이 서비스를 사용하지 마세요.")}</div>
-                    <div style={{marginTop:8}}>{tr("本應用不保證服務永遠可用、完全正確、完全安全或完全無誤。AI 生成內容可能出現不準確、過時、偏差、重複或不完整的情況，開發者不對因此造成的任何直接或間接損失負責。", "This app does not guarantee that the service will always be available, fully accurate, fully secure, or error-free. AI-generated content may be inaccurate, outdated, biased, repetitive, or incomplete, and the developer is not responsible for any direct or indirect losses caused by it.", "本アプリは、サービスが常に利用可能であること、完全に正確、安全、または無誤であることを保証しません。AI生成内容には不正確、古い情報、偏り、重複、不完全さが含まれる場合があり、それにより生じたいかなる直接的または間接的損失についても開発者は責任を負いません。", "이 앱은 서비스가 항상 이용 가능하거나 완전히 정확하거나 완전히 안전하거나 오류가 없음을 보장하지 않습니다. AI 생성 콘텐츠는 부정확하거나 오래되었거나 편향되었거나 반복적이거나 불완전할 수 있으며, 이로 인한 직접 또는 간접 손실에 대해 개발자는 책임지지 않습니다.")}</div>
-                    <div style={{marginTop:8}}>{tr("若您不同意上述內容，請停止使用本應用。開發者保留在必要時調整、暫停或終止服務的權利，並可依實際情況更新本條款，更新後於應用程式內公告時即生效。", "If you do not agree with the above, stop using this app. The developer reserves the right to adjust, suspend, or terminate the service when necessary and may update these terms as circumstances require. Updates take effect when announced in the app.", "上記に同意しない場合は、本アプリの利用を停止してください。開発者は必要に応じてサービスを調整、一時停止、または終了する権利を有し、状況に応じて本規約を更新できます。更新内容はアプリ内で告知された時点で有効になります。", "위 내용에 동의하지 않는 경우 이 앱 사용을 중단하세요. 개발자는 필요한 경우 서비스를 조정, 일시 중단 또는 종료할 권리를 가지며, 실제 상황에 따라 본 약관을 업데이트할 수 있습니다. 업데이트는 앱 내 공지 시점부터 효력이 발생합니다.")}</div>
-                  </div>
-                )}
-              </div>
-              <div className="mp-sg">
-                <div
-                  className="mp-sg-t"
-                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
-                  onClick={() => setSettingsResetDataOpen((v) => !v)}
-                >
-                  <span>{tr("重置資料", "Reset data", "データをリセット", "데이터 초기화")}</span>
-                  <span style={{ fontSize: 11, color: "var(--mp-txt-l)", fontWeight: 600 }}>{settingsResetDataOpen ? tr("收合", "Collapse", "折りたたむ", "접기") : tr("展開", "Expand", "展開", "펼치기")}</span>
-                </div>
-                {settingsResetDataOpen && (
-                  <>
-                    <div style={{fontSize:11,color:"var(--mp-txt-l)",lineHeight:1.8,marginBottom:8}}>
-                      <div><strong>{tr("全域資料", "Global data", "全体データ", "전체 데이터")}</strong>：{tr("清空所有遊玩內容，包含角色與玩家資料，把小手機回歸初始狀態。", "Clear all play data, including characters and player data, and return the phone to its initial state.", "すべてのプレイデータを消去し、キャラやプレイヤー情報も含めて初期状態に戻します。", "플레이 내용을 모두 지우고 캐릭터와 플레이어 데이터를 포함해 초기 상태로 되돌립니다.")}</div>
-                      <div><strong>{tr("清除快取", "Clear cache", "キャッシュを消去", "캐시 삭제")}</strong>：{tr("清除網站暫存與更新殘留，讓 App 重新載入最新版本。", "Clear cached site data and leftover update files so the app reloads the latest version.", "サイトの一時データと更新の残留ファイルを消去し、アプリを最新状態で再読み込みします。", "사이트 임시 데이터와 업데이트 잔여 파일을 지워 앱이 최신 버전으로 다시 불러오게 합니다.")}</div>
-                    </div>
-                    <div style={{display:"grid",gap:8}}>
-                      <button className="mp-save" style={{background:"linear-gradient(135deg,#ef9a9a,#e53935)"}} onClick={()=>{
-                        if(!confirm(tr("確定要清空所有資料嗎？", "Are you sure you want to clear all data?", "本当にすべてのデータを消去しますか？", "정말 모든 데이터를 삭제할까요?"))) return;
-                        setCharacters([]);
-                        setActiveCharId(null);
-                        setCurrentChatChar(null);
-                        setCurrentChatGroup(null);
-                        setChatHistory({});
-                        setChatModes({});
-                        setChatBackgrounds({});
-                        setGroupChats([]);
-                        setInnerThoughtSettings({});
-                        setProactiveSettings({});
-                        setProactiveUnread({});
-                        setExpandedInnerThoughts({});
-                        setInnerThoughtLoading({});
-                        setChatScenes({});
-                        setGroupScenes({});
-                        setChatLorebookBindings({});
-                        setPosts([]);
-                        setMemories({});
-                        setLorebooks([]);
-                        setActiveLorebookId(null);
-                        setPhoneInboxCache({});
-                        setWallet(defaultAppState.wallet);
-                        setCharacterWallets({});
-                        setApiPresets(defaultAppState.apiPresets);
-                        setPlayerProfile(defaultAppState.playerProfile);
-                        setApiConfig(defaultAppState.apiConfig);
-                        setTtsConfig(defaultAppState.ttsConfig);
-                        stopCurrentVoiceAudio();
-                        voiceAudioCacheRef.current.clear();
-                        setVoicePlayback({ key: null, status: "idle" });
-                        setScreenLockTimeout(defaultAppState.screenLockTimeout);
-                        setHomeSlots(Array.from({ length: HOME_SLOT_COUNT }, () => null));
-                        setDockOrder(DOCK_APPS);
-                        setPhonePage("picker");
-                        setPhoneViewCharId(null);
-                        setPhoneActiveThreadId("player");
-                        armAppClickSuppression();
-                        setCurrentApp(null);
-                        setModal(null);
-                        setUpdateNoticeOpen(false);
-                        setChatSettingsOpen(false);
-                        setChatSettingsBackgroundOpen(false);
-                        setChatSettingsLorebookOpen(false);
-                        setChatroomManageOpen(false);
-                        setChatSettingsExpandedBooks({});
-                        setChatBgEditor(null);
-                        setChatVisibleCounts({});
-                        setActiveMessageId(null);
-                        setMessageEditor(null);
-                        setIsTyping(false);
-                        setChatInput("");
-                        setChatImage(null);
-                        setPlayerPostModalOpen(false);
-                        setPlayerPostText("");
-                        setTransferModalOpen(false);
-                        setTransferAmount("");
-                        setTransferNote("");
-                        setSocialReplyTarget(null);
-                        setExpandedSocialPosts({});
-                        setChatroomImportPreview(null);
-                        setChatroomImportTarget(null);
-                        setDataImportPreview(null);
-                        try { localStorage.removeItem("mali_seen_version"); } catch {}
-                        showToast(tr("資料已清空", "Data cleared", "データを消去しました", "데이터를 삭제했습니다"));
-                      }}>{tr("清空全部資料", "Clear all data", "すべてのデータを消去", "모든 데이터 삭제")}</button>
-                      <button type="button" className="mp-save" style={{background:clearCacheArmed?"linear-gradient(135deg,#ffb74d,#f57c00)":"linear-gradient(135deg,#b0bec5,#78909c)"}} onClick={clearSiteCache}>{clearCacheArmed ? tr("再次確認清除快取", "Confirm cache clear again", "キャッシュ削除を再確認", "캐시 삭제 재확인") : tr("清除快取", "Clear cache", "キャッシュを消去", "캐시 삭제")}</button>
-                    </div>
-                  </>
-                )}
-              </div>
+              <AboutInfoSettings
+                tr={tr} version={VERSION} currentChangelogTitle={currentChangelogTitle} currentChangelog={currentChangelog}
+                versionOpen={settingsVersionOpen} setVersionOpen={setSettingsVersionOpen}
+                disclaimerOpen={settingsDisclaimerOpen} setDisclaimerOpen={setSettingsDisclaimerOpen}
+              />
+              <ResetDataSettings
+                tr={tr} open={settingsResetDataOpen} setOpen={setSettingsResetDataOpen}
+                clearCacheArmed={clearCacheArmed} onClearAll={clearAllData} onClearCache={clearSiteCache}
+              />
             </>
           )}
           </div>
@@ -6589,72 +5708,13 @@ ${recent || "（目前無內容）"}`;
       );
     };
 
-  const renderPlayer = () => (
-    <div className="mp-page">
-      <div className="mp-hdr"><div className="mp-back" onClick={closeApp}>←</div><div className="mp-htitle">{t("playerProfile")}</div></div>
-      <div className="mp-cm">
-          <div className="mp-cc">
-            <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 10 }}>{t("personalSettings")}</div>
-            <div className="mp-row">
-              <div className="mp-lbl">{t("avatar")}</div>
-              <div style={{display:"flex",alignItems:"center",gap:10}}>
-                <div className="mp-av" style={{cursor:"pointer",width:84,height:84,borderRadius:22}} onClick={() => playerAvatarRef.current?.click()}>
-                  {sanitizeUserImageUrl(playerProfile?.avatar) ? <img src={sanitizeUserImageUrl(playerProfile?.avatar)} alt="" /> : "🐱"}
-                </div>
-                <input type="file" ref={playerAvatarRef} accept="image/*" style={{display:"none"}} onChange={handlePlayerAvatarUpload} />
-                <button className="mp-ibtn" onClick={() => playerAvatarRef.current?.click()}>{t("changeAvatar")}</button>
-                <button className="mp-ibtn-r" onClick={() => setPlayerProfile(p => ({ ...(p||{}), avatar: "" }))}>{t("remove")}</button>
-              </div>
-            </div>
-            <div className="mp-row"><div className="mp-lbl">{t("name")}</div><input className="mp-sinp" value={playerProfile?.name || ""} onChange={e=>setPlayerProfile(p=>({ ...(p||{}), name:e.target.value }))} placeholder={tr("例如：小明", "e.g. Alex", "例: アレックス", "예: 알렉스")} /></div>
-            <div className="mp-row"><div className="mp-lbl">{tr("暱稱", "Nickname", "ニックネーム", "닉네임")}</div><input className="mp-sinp" value={playerProfile?.nickname || ""} onChange={e=>setPlayerProfile(p=>({ ...(p||{}), nickname:e.target.value }))} placeholder={tr("例如：小雨、阿喵", "e.g. Sunny, Miao", "例: しずく、ニャン", "예: 비, 냥이")} /></div>
-            <div className="mp-row"><div className="mp-lbl">{t("description")}</div><textarea className="mp-ta" value={playerProfile?.bio || ""} onChange={e=>setPlayerProfile(p=>({ ...(p||{}), bio:e.target.value }))} placeholder={tr("例如：喜歡貓、講話直接、晚上常上線", "e.g. likes cats, speaks directly, often online at night", "例: 猫が好き、話し方は率直、夜にオンラインが多い", "예: 고양이를 좋아함, 말투가 직설적, 밤에 자주 접속")} style={{minHeight:100,resize:"vertical"}} /></div>
-          </div>
-          <div className="mp-cc">
-            <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 10 }}>{tr("紙娃娃（三層）", "Paper doll (3 layers)", "紙人形（3層）", "종이 인형(3단)")}</div>
-            <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.7}}>{t("comingSoon")}</div>
-          </div>
-      </div>
-      {playerAvatarCrop && (
-        <div className="mp-overlay" onClick={() => setPlayerAvatarCrop(null)}>
-          <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="mp-modal-t">{tr("裁切大頭貼", "Crop avatar", "アバターをトリミング", "프로필 사진 자르기")}</div>
-            <div style={{display:"grid",placeItems:"center",marginBottom:10}}>
-              <div
-                style={{width:220,height:220,borderRadius:18,overflow:"hidden",border:"1px solid rgba(244,143,177,.35)",background:"#fff",touchAction:"none",cursor: playerAvatarCrop.dragging ? "grabbing" : "grab",position:"relative"}}
-                onPointerDown={onPlayerAvatarPointerDown}
-                onPointerMove={onPlayerAvatarPointerMove}
-                onPointerUp={onPlayerAvatarPointerUp}
-                onPointerCancel={onPlayerAvatarPointerUp}
-              >
-                <img
-                  src={playerAvatarCrop.src}
-                  alt=""
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                    transform: `translate(${playerAvatarCrop.panX || 0}%, ${playerAvatarCrop.panY || 0}%) scale(${playerAvatarCrop.zoom})`,
-                    transformOrigin: "center center",
-                    userSelect: "none",
-                    WebkitUserDrag: "none",
-                    pointerEvents: "none",
-                  }}
-                />
-              </div>
-            </div>
-            <div className="mp-row"><div className="mp-lbl">{tr("縮放", "Zoom", "ズーム", "확대")}</div><input type="range" min="1" max="3" step="0.01" value={playerAvatarCrop.zoom} onChange={e=>setPlayerAvatarCrop(s=>({...(s||{}),zoom:Number(e.target.value)}))} /></div>
-            <div style={{fontSize:11,color:"var(--mp-txt-l)",marginTop:4}}>{tr("拖曳圖片調整位置，裁切框固定為方形", "Drag the image to adjust its position. The crop frame stays square.", "画像をドラッグして位置を調整できます。トリミング枠は正方形固定です。", "이미지를 드래그해 위치를 조정하세요. 자르기 프레임은 정사각형으로 고정됩니다.")}</div>
-            <div style={{display:"flex",gap:8,marginTop:8}}>
-              <button className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#b0bec5,#90a4ae)"}} onClick={() => setPlayerAvatarCrop(null)}>{tr("取消", "Cancel", "キャンセル", "취소")}</button>
-              <button className="mp-save" style={{flex:1}} onClick={applyPlayerAvatarCrop}>{tr("套用", "Apply", "適用", "적용")}</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-
+  const renderPlayer = () => <PlayerProfileApp
+    t={t} tr={tr} closeApp={closeApp} profile={playerProfile} setProfile={setPlayerProfile}
+    avatarRef={playerAvatarRef} sanitizeImage={sanitizeUserImageUrl} onAvatarUpload={handlePlayerAvatarUpload}
+    crop={playerAvatarCrop} setCrop={setPlayerAvatarCrop}
+    onCropPointerDown={onPlayerAvatarPointerDown} onCropPointerMove={onPlayerAvatarPointerMove} onCropPointerUp={onPlayerAvatarPointerUp}
+    onApplyCrop={applyPlayerAvatarCrop}
+  />;
   const addWalletTransaction = (type, amount, note) => {
     const safeAmount = Math.max(0, Number(amount) || 0);
     if (!safeAmount) return;
@@ -6668,8 +5728,9 @@ ${recent || "（目前無內容）"}`;
         amount: safeAmount,
         note: sanitizeText(note || "", 80) || (type === "income" ? "入帳" : "消費"),
         time: Date.now(),
+        source: "manual",
       };
-      return { ...prev, balance: nextBalance, transactions: [tx, ...(prev.transactions || [])].slice(0, 120) };
+      return { ...prev, balance: nextBalance, transactions: [tx, ...(prev.transactions || [])].slice(0, 1000) };
     });
   };
   const addWalletAsset = (name, qty = 1) => {
@@ -6718,7 +5779,9 @@ ${recent || "（目前無內容）"}`;
           amount,
           note: note ? stripUserPlaceholder(`轉帳給${currentChatChar.name}｜${note}`) : `轉帳給${currentChatChar.name}`,
           time: now,
-        }, ...(w?.transactions || [])].slice(0, 120),
+          charId: cid,
+          source: "chat",
+        }, ...(w?.transactions || [])].slice(0, 1000),
       }));
       setCharacterWallets((prev) => {
         const cw = prev[cid] || { balance: 0, transactions: [], summary: "", generatedAt: Date.now() };
@@ -6773,7 +5836,9 @@ ${recent || "（目前無內容）"}`;
         amount: safeAmount,
         note: safeNote ? stripUserPlaceholder(`收到${char.name || "角色"}轉帳｜${safeNote}`) : `收到${char.name || "角色"}轉帳`,
         time: now,
-      }, ...(w?.transactions || [])].slice(0, 120),
+        charId: cid,
+        source: "chat",
+      }, ...(w?.transactions || [])].slice(0, 1000),
     }));
     setCharacterWallets((prev) => {
       const cw = prev[cid] || { balance: 0, transactions: [], summary: "", generatedAt: Date.now() };
@@ -6947,336 +6012,28 @@ ${roleProfile || "（無）"}`;
     setCharacterWallets((prev) => ({ ...prev, [char.id]: { balance: 0, transactions: [], summary: "", generatedAt: Date.now() } }));
     await generateCharacterWallet(char, { mode: "initial" });
   };
-  const renderWallet = () => {
-    if (walletSettingsOpen && walletSettingsPage === "settings") {
-      return (
-        <div className="mp-page">
-          <div className="mp-hdr">
-            <div className="mp-back" onClick={() => setWalletSettingsPage("main")}>←</div>
-            <div className="mp-htitle">{tr("錢包設定", "Wallet settings", "ウォレット設定", "지갑 설정")}</div>
-          </div>
-          <div className="mp-cm">
-            <div className="mp-cc">
-              <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>{tr("錢包管理", "Wallet management", "ウォレット管理", "지갑 관리")}</div>
-              <div style={{fontSize:11,color:"var(--mp-txt-l)",lineHeight:1.8,marginBottom:8}}>
-                {tr("這個頁面只會管理錢包相關內容，不會影響當前角色聊天室或其他全域資料。", "This page only manages wallet-related content and won't affect the current character chatroom or other global data.", "このページはウォレット関連のみを管理し、現在のキャラのチャットルームや他の全体データには影響しません。", "이 페이지는 지갑 관련 내용만 관리하며 현재 캐릭터 채팅방이나 다른 전역 데이터에는 영향을 주지 않습니다.")}
-              </div>
-              <button
-                type="button"
-                className="mp-save"
-                style={{ background: "linear-gradient(135deg,#ef9a9a,#e53935)" }}
-                onClick={() => {
-                  if (!window.confirm(tr("確定要清除錢包頁面的資料嗎？", "Clear the wallet page data?", "ウォレットページのデータを消去しますか？", "지갑 페이지 데이터를 지울까요?"))) return;
-                  if (!window.confirm(tr("請再次確認：這只會清除錢包頁面內容，不會影響聊天室，確定要繼續嗎？", "Please confirm again: this only clears the wallet page content and won't affect chats. Continue?", "再確認してください。これはウォレットページの内容のみを消去し、チャットには影響しません。続けますか？", "다시 확인해주세요. 이것은 지갑 페이지만 지우며 채팅에는 영향을 주지 않습니다. 계속할까요?"))) return;
-                  setWallet(defaultAppState.wallet);
-                  setCharacterWallets({});
-                  setWalletSettingsPage("main");
-                  setWalletSettingsOpen(false);
-                  showToast(tr("錢包資料已清除", "Wallet data cleared", "ウォレットデータを消去しました", "지갑 데이터를 지웠습니다"));
-                }}
-              >
-                {tr("清除資料", "Clear data", "データを消去", "데이터 지우기")}
-              </button>
-            </div>
-          </div>
-        </div>
-      );
-    }
-    return (
-      <div className="mp-page">
-        <div className="mp-hdr">
-          <div className="mp-back" onClick={closeApp}>←</div>
-          <div className="mp-htitle">{tr("錢包", "Wallet", "ウォレット", "지갑")}</div>
-          <button className="mp-ibtn" style={{ marginLeft: "auto" }} onClick={() => { setWalletSettingsPage("settings"); setWalletSettingsOpen(true); }}>{tr("設定", "Settings", "設定", "설정")}</button>
-        </div>
-        <div className="mp-cm">
-          <div className="mp-cc">
-            <div style={{ fontSize: 12, color: "var(--mp-txt-l)" }}>{tr("餘額", "Balance", "残高", "잔액")}</div>
-            <div style={{ fontSize: 28, fontWeight: 800, marginTop: 2 }}>${formatMoney(wallet?.balance || 0)}</div>
-            <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-              <button className="mp-ibtn-chat" onClick={() => {
-                const v = prompt(tr("設定玩家錢包餘額", "Set player wallet balance", "プレイヤーのウォレット残高を設定", "플레이어 지갑 잔액 설정"), String(wallet?.balance || 0));
-                if (v === null) return;
-                setWallet((w) => ({ ...(w || { transactions: [], assets: [] }), balance: Math.max(0, Math.round(Number(v) || 0)) }));
-              }}>{tr("設定餘額", "Set balance", "残高を設定", "잔액 설정")}</button>
-            </div>
-          </div>
-          <div className="mp-cc" style={{ marginTop: 10 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8 }}>{tr("近期流水", "Recent transactions", "最近の取引", "최근 거래")}</div>
-            {(wallet?.transactions || []).length === 0 ? (
-              <div style={{ fontSize: 12, color: "var(--mp-txt-l)", lineHeight: 1.7 }}>{tr("目前沒有交易紀錄。", "No transactions yet.", "まだ取引がありません。", "아직 거래 내역이 없습니다.")}</div>
-            ) : (
-              <div style={{ display: "grid", gap: 8, maxHeight: 360, overflowY: "auto" }}>
-                {(wallet?.transactions || []).slice(0, 12).map((t) => (
-                  <div key={t.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12, padding: "7px 9px", borderRadius: 10, background: "rgba(255,255,255,.62)" }}>
-                    <div>
-                      <div>{displayWalletText(t.note)}</div>
-                      <div style={{ fontSize: 10, color: "var(--mp-txt-l)" }}>{new Date(t.time).toLocaleString("zh-TW")}</div>
-                    </div>
-                    <div style={{ fontWeight: 800, color: t.type === "expense" ? "#e53935" : "#2e7d32" }}>{t.type === "expense" ? "-" : "+"}{formatMoney(t.amount)}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
+  const clearWalletData = () => {
+    if (!window.confirm(tr("確定要清除錢包頁面的資料嗎？", "Clear the wallet page data?", "ウォレットページのデータを消去しますか？", "지갑 페이지 데이터를 지울까요?"))) return;
+    if (!window.confirm(tr("請再次確認：這只會清除錢包頁面內容，不會影響聊天室，確定要繼續嗎？", "Please confirm again: this only clears the wallet page content and won't affect chats. Continue?", "再確認してください。これはウォレットページの内容のみを消去し、チャットには影響しません。続けますか？", "다시 확인해주세요. 이것은 지갑 페이지만 지우며 채팅에는 영향을 주지 않습니다. 계속할까요?"))) return;
+    setWallet(defaultAppState.wallet); setCharacterWallets({}); setWalletSettingsPage("main"); setWalletSettingsOpen(false);
+    showToast(tr("錢包資料已清除", "Wallet data cleared", "ウォレットデータを消去しました", "지갑 데이터를 지웠습니다"));
   };
-
-  const renderPhone = () => {
-    const selectedCharId = phoneViewCharId || null;
-    const selectedChar = characters.find((c) => c.id === selectedCharId) || null;
-    const playerMsgs = selectedChar ? (chatHistory[selectedChar.id] || []).slice(-20) : [];
-    const npcThreads = selectedChar ? (phoneInboxCache[selectedChar.id]?.threads || []) : [];
-    const now = new Date();
-    const phoneTime = now.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false });
-    const phoneDate = now.toLocaleDateString("zh-TW", { month: "2-digit", day: "2-digit" });
-    const allThreads = [
-      {
-        id: "player",
-        name: "你",
-        relation: "玩家",
-        messages: playerMsgs.map((m, i) => ({
-          id: `p-${i}-${m.id || gid()}`,
-          from: m.role === "assistant" ? "char" : "other",
-          text: m.content || "[圖片]",
-          time: m.time || Date.now(),
-        })),
-      },
-      ...npcThreads,
-    ];
-    const activeThread = allThreads.find((t) => t.id === phoneActiveThreadId) || allThreads[0] || null;
-    const openDesktop = (charId) => {
-    setPhoneViewCharId(charId);
-    setPhoneActiveThreadId("player");
-    armAppClickSuppression();
-    setPhonePage("desktop");
-  };
-    const phoneWallet = selectedChar ? characterWallets[selectedChar.id] : null;
-    const inImmersivePhone = phonePage === "desktop" || phonePage === "chatlist" || phonePage === "thread" || phonePage === "wallet";
-    return (
-      <div className="mp-page" style={inImmersivePhone ? { padding: 0 } : undefined}>
-        {!inImmersivePhone && (
-          <div className="mp-hdr">
-            <div className="mp-back" onClick={closeApp}>←</div>
-            <div className="mp-htitle">{t("phone")}</div>
-          </div>
-        )}
-        <div className="mp-cm" style={inImmersivePhone ? { padding: 0 } : undefined}>
-          {characters.length === 0 && <div className="mp-empty"><div className="mp-empty-i">📱</div><div className="mp-empty-t">{t("characters")} {t("phone")}</div></div>}
-          {characters.length > 0 && phonePage !== "desktop" && phonePage !== "chatlist" && phonePage !== "thread" && phonePage !== "wallet" && (
-            <div className="mp-sc" style={{padding:12}}>
-              <div style={{fontWeight:700,fontSize:14,marginBottom:8}}>{t("contactsHint")}</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr",gap:8}}>
-                {characters.map((c) => (
-                  <button key={c.id} className="mp-cc" style={{textAlign:"left",background:"#fff"}} onClick={(e) => { e.stopPropagation(); armAppClickSuppression(); openDesktop(c.id); }}>
-                    <div style={{display:"flex",alignItems:"center",gap:10}}>
-                      <div className="mp-av">{sanitizeUserImageUrl(c.avatar)?<img src={sanitizeUserImageUrl(c.avatar)} alt=""/>:"🦊"}</div>
-                      <div style={{flex:1}}>
-                        <div style={{fontWeight:700,fontSize:13}}>{c.name}</div>
-                        <div style={{fontSize:11,color:"var(--mp-txt-l)"}}>{t("contactsHint")}</div>
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          {characters.length > 0 && selectedChar && phonePage === "desktop" && (
-            <div style={{position:"relative",height:"100%",minHeight:640,background:"linear-gradient(180deg,#ffd2e6 0%,#d1ecff 100%)",padding:"14px 14px 24px"}}>
-              <button className="mp-back" style={{position:"absolute",left:12,top:12,zIndex:5}} onClick={closeApp}>←</button>
-              <div style={{display:"flex",justifyContent:"space-between",fontWeight:700,color:"#29485d",fontSize:13,padding:"2px 8px 0 56px"}}>
-                <span>{phoneTime}</span>
-                <span>{phoneDate}</span>
-              </div>
-              <div style={{marginTop:14,background:"rgba(255,255,255,.45)",borderRadius:14,padding:"10px 12px"}}>
-            <div style={{fontSize:12,color:"#39596e"}}>{selectedChar.name} {t("phone")}</div>
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:12,marginTop:16}}>
-                <button className="mp-icon" style={{background:"rgba(255,255,255,.62)"}} onClick={(e) => { e.stopPropagation(); armAppClickSuppression(); setPhonePage("chatlist"); }}>
-                  <div className="mp-icon-c mp-icon-c-img">{renderAppIcon({ id: "chat", name: "聊天", icon: "💬", iconUrl: "./app-icons/chat.png?v=1.1.5" }, 56)}</div>
-                  <span className="mp-icon-l">{t("chat")}</span>
-                </button>
-                <button className="mp-icon" style={{background:"rgba(255,255,255,.62)"}} onClick={(e) => { e.stopPropagation(); armAppClickSuppression(); setPhonePage("wallet"); }}>
-                  <div className="mp-icon-c mp-icon-c-img">{renderAppIcon({ id: "wallet", name: "錢包", icon: "💳", iconUrl: "./app-icons/wallet.png?v=1.1.5" }, 56)}</div>
-                  <span className="mp-icon-l">{t("wallet")}</span>
-                </button>
-                {[
-                  { icon: "📷", label: tr("相機", "Camera", "カメラ", "카메라") },
-                  { icon: "⚙️", label: t("settings") },
-                ].map((item, idx) => (
-                  <div key={idx} className="mp-icon" style={{opacity:.45,background:"rgba(255,255,255,.45)"}}>
-                    <div className="mp-icon-c">{renderAppIcon({ name: item.label, icon: item.icon })}</div>
-                    <span className="mp-icon-l">🔒</span>
-                  </div>
-                ))}
-              </div>
-              <div style={{marginTop:18,display:"flex",gap:6}}>
-                <button className="mp-ibtn" onClick={(e) => { e.stopPropagation(); armAppClickSuppression(); setPhonePage("picker"); }}>{tr("換角色", "Switch character", "キャラを切り替え", "캐릭터 전환")}</button>
-                <button className="mp-ibtn" disabled={phoneGenLoading} onClick={() => generatePhoneNpcChats(selectedChar)}>
-                  {phoneGenLoading ? t("loading") : t("refreshOtherChats")}
-                </button>
-                <span style={{fontSize:10,color:"#5f7f93",marginLeft:"auto",alignSelf:"center"}}>
-                  {tr("快取：", "Cache: ", "キャッシュ: ", "캐시: ")}{phoneInboxCache[selectedChar.id]?.updatedAt ? new Date(phoneInboxCache[selectedChar.id].updatedAt).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"}) : "--:--"}
-                </span>
-              </div>
-              <div style={{position:"absolute",left:"50%",bottom:10,transform:"translateX(-50%)",width:120,height:5,borderRadius:999,background:"rgba(28,44,55,.3)"}} />
-            </div>
-          )}
-          {characters.length > 0 && selectedChar && phonePage === "wallet" && (
-            <div style={{position:"relative",height:"100%",minHeight:640,background:"linear-gradient(180deg,#ffd2e6 0%,#d1ecff 100%)",padding:"14px 10px 24px"}}>
-              <button className="mp-back" style={{position:"absolute",left:12,top:12,zIndex:5}} onClick={closeApp}>←</button>
-              <div style={{padding:"2px 8px 0 56px",display:"flex",justifyContent:"space-between",fontWeight:700,color:"#29485d",fontSize:13}}>
-                <span>{phoneTime}</span><span>{phoneDate}</span>
-              </div>
-              <div className="mp-sc" style={{padding:10,marginTop:12,background:"rgba(255,255,255,.5)"}}>
-                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                <button className="mp-ibtn" onClick={(e) => { e.stopPropagation(); armAppClickSuppression(); setPhonePage("desktop"); }}>{t("backToDesktop")}</button>
-                <div style={{fontWeight:700,fontSize:13}}>{selectedChar.name} {t("wallet")}</div>
-                </div>
-                {!phoneWallet ? (
-                  <div>
-                    <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.7}}>{tr("尚未生成角色錢包。", "This character wallet hasn't been generated yet.", "まだキャラクターのウォレットが生成されていません。", "아직 캐릭터 지갑이 생성되지 않았습니다.")}</div>
-                    <button className="mp-save" style={{marginTop:10}} disabled={walletGenLoading} onClick={() => generateCharacterWallet(selectedChar)}>{walletGenLoading ? t("generating") : t("generate")}</button>
-                  </div>
-                ) : (
-                  <>
-                    <div style={{fontSize:12,color:"var(--mp-txt-l)"}}>{tr("可用餘額", "Available balance", "利用可能残高", "사용 가능 잔액")}</div>
-                    <div style={{fontSize:30,fontWeight:900,margin:"2px 0 6px"}}>${formatMoney(phoneWallet.balance || 0)}</div>
-                    {phoneWallet.summary && <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.6,marginBottom:10}}>{displayWalletText(phoneWallet.summary)}</div>}
-                    <div style={{display:"flex",gap:8,marginBottom:10}}>
-                      <button className="mp-ibtn" style={{flex:1}} disabled={walletGenLoading} onClick={() => generateCharacterWallet(selectedChar, { mode: "refresh" })}>{walletGenLoading ? t("loading") : t("refreshWallet")}</button>
-                      <button className="mp-ibtn" style={{flex:1}} disabled={walletGenLoading} onClick={() => regenerateCharacterWallet(selectedChar)}>{walletGenLoading ? t("updating") : t("generate")}</button>
-                    </div>
-                    <div style={{fontSize:13,fontWeight:800,marginBottom:6}}>{tr("近期流水", "Recent transactions", "最近の取引", "최근 거래")}</div>
-                    <div style={{display:"grid",gap:8,maxHeight:360,overflowY:"auto"}}>
-                      {(phoneWallet.transactions || []).slice(0, 12).map((t) => (
-                        <div key={t.id} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:12,padding:"7px 9px",borderRadius:10,background:"rgba(255,255,255,.62)"}}>
-                          <div>
-                            <div>{displayWalletText(t.note)}</div>
-                            <div style={{fontSize:10,color:"var(--mp-txt-l)"}}>{new Date(t.time).toLocaleString("zh-TW")}</div>
-                          </div>
-                          <div style={{fontWeight:800,color:t.type==="expense"?"#e53935":"#2e7d32"}}>{t.type==="expense"?"-":"+"}{formatMoney(t.amount)}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-          {characters.length > 0 && selectedChar && phonePage === "chatlist" && (
-            <div style={{position:"relative",height:"100%",minHeight:640,background:"linear-gradient(180deg,#ffd2e6 0%,#d1ecff 100%)",padding:"14px 10px 24px"}}>
-              <button className="mp-back" style={{position:"absolute",left:12,top:12,zIndex:5}} onClick={closeApp}>←</button>
-              <div style={{padding:"2px 8px 0 56px",display:"flex",justifyContent:"space-between",fontWeight:700,color:"#29485d",fontSize:13}}>
-                <span>{phoneTime}</span><span>{phoneDate}</span>
-              </div>
-              <div className="mp-sc" style={{padding:10,marginTop:12,background:"rgba(255,255,255,.5)"}}>
-              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                <button className="mp-ibtn" onClick={(e) => { e.stopPropagation(); armAppClickSuppression(); setPhonePage("desktop"); }}>{t("backToDesktop")}</button>
-                <div style={{fontSize:12,color:"var(--mp-txt-l)"}}>{tr("只讀聊天列表", "Read-only chat list", "閲覧専用チャット一覧", "읽기 전용 채팅 목록")}</div>
-              </div>
-              <div style={{display:"grid",gap:8}}>
-                {allThreads.map((t) => {
-                  const last = (t.messages || [])[t.messages.length - 1];
-                  return (
-                    <button key={t.id} className="mp-cc" style={{textAlign:"left",background:"#fff"}} onClick={() => { if (Date.now() > suppressAppClickUntilRef.current) { setPhoneActiveThreadId(t.id); setPhonePage("thread"); } }}>
-                      <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
-                        <div style={{fontWeight:700,fontSize:13}}>{t.name}</div>
-                        <div style={{fontSize:10,color:"var(--mp-txt-l)"}}>{last?.time ? new Date(last.time).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"}) : ""}</div>
-                      </div>
-                      <div style={{fontSize:11,color:"var(--mp-txt-l)",marginTop:2}}>{t.relation || ""}</div>
-                      <div style={{fontSize:11,color:"var(--mp-txt)",marginTop:5,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{last?.text || tr("目前無訊息", "No messages yet", "まだメッセージがありません", "아직 메시지가 없습니다")}</div>
-                    </button>
-                  );
-                })}
-              </div>
-              </div>
-            </div>
-          )}
-          {characters.length > 0 && selectedChar && phonePage === "thread" && (
-            <div style={{position:"relative",height:"100%",minHeight:640,background:"linear-gradient(180deg,#ffd2e6 0%,#d1ecff 100%)",padding:"14px 10px 24px"}}>
-              <button className="mp-back" style={{position:"absolute",left:12,top:12,zIndex:5}} onClick={closeApp}>←</button>
-              <div style={{padding:"2px 8px 0 56px",display:"flex",justifyContent:"space-between",fontWeight:700,color:"#29485d",fontSize:13}}>
-                <span>{phoneTime}</span><span>{phoneDate}</span>
-              </div>
-              <div className="mp-sc" style={{padding:10,marginTop:12,background:"rgba(255,255,255,.5)"}}>
-              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                <button className="mp-ibtn" onClick={(e) => { e.stopPropagation(); armAppClickSuppression(); setPhonePage("chatlist"); }}>{t("backToList")}</button>
-                <div style={{fontWeight:700,fontSize:13}}>{activeThread?.name || t("chatroom")}</div>
-                <span style={{fontSize:10,color:"var(--mp-txt-l)"}}>{tr("唯讀", "Read only", "閲覧専用", "읽기 전용")}</span>
-              </div>
-              <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:430,overflowY:"auto",border:"1px solid var(--mp-border)",borderRadius:12,padding:8,background:"rgba(255,255,255,.45)"}}>
-                {(activeThread?.messages || []).map((m) => (
-                  <div key={m.id} style={{display:"flex",justifyContent:m.from==="char"?"flex-end":"flex-start"}}>
-                    <div style={{maxWidth:"82%",fontSize:12,lineHeight:1.45,padding:"7px 10px",borderRadius:10,background:m.from==="char"?"linear-gradient(135deg,#f48fb1,#ec407a)":"#fff",color:m.from==="char"?"#fff":"var(--mp-txt)",border:m.from==="char"?"none":"1px solid var(--mp-border)"}}>
-                      {m.text}
-                    </div>
-                  </div>
-                ))}
-                {(!activeThread || (activeThread.messages || []).length === 0) && <div style={{fontSize:11,color:"var(--mp-txt-l)",textAlign:"center"}}>{t("noMessages")}</div>}
-              </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
+  const renderWallet = () => walletSettingsOpen && walletSettingsPage === "settings"
+    ? <WalletSettingsApp tr={tr} onBack={() => setWalletSettingsPage("main")} onClear={clearWalletData} />
+    : <WalletLedgerView wallet={wallet} setWallet={setWallet} characters={characters} closeApp={closeApp} openSettings={() => { setWalletSettingsPage("settings"); setWalletSettingsOpen(true); }} tr={tr} formatMoney={formatMoney} displayWalletText={displayWalletText} sanitizeUserImageUrl={sanitizeUserImageUrl} />;
+  const renderPhone = () => <PhoneApp
+    phoneViewCharId={phoneViewCharId} setPhoneViewCharId={setPhoneViewCharId} phonePage={phonePage} setPhonePage={setPhonePage}
+    phoneActiveThreadId={phoneActiveThreadId} setPhoneActiveThreadId={setPhoneActiveThreadId}
+    characters={characters} chatHistory={chatHistory} phoneInboxCache={phoneInboxCache} characterWallets={characterWallets}
+    closeApp={closeApp} t={t} tr={tr} sanitizeUserImageUrl={sanitizeUserImageUrl} renderAppIcon={renderAppIcon}
+    phoneGenLoading={phoneGenLoading} generatePhoneNpcChats={generatePhoneNpcChats}
+    walletGenLoading={walletGenLoading} generateCharacterWallet={generateCharacterWallet} regenerateCharacterWallet={regenerateCharacterWallet}
+    formatMoney={formatMoney} displayWalletText={displayWalletText} armAppClickSuppression={armAppClickSuppression}
+    suppressAppClickUntilRef={suppressAppClickUntilRef} gid={gid}
+  />;
   const renderPlaceholder = (i, n) => (<div className="mp-page"><div className="mp-hdr"><div className="mp-back" onClick={closeApp}>←</div><div className="mp-htitle">{i} {n}</div></div><div className="mp-empty" style={{flex:1}}><div className="mp-empty-i">{i}</div><div className="mp-empty-t">{t("comingSoon")}<br/>{t("stayTuned")}</div></div></div>);
-  const renderGame = () => {
-    if (gamePage === "football") {
-      return (
-        <div className="mp-page" style={{ background: "#071b16" }}>
-          <div className="mp-hdr">
-            <div className="mp-back" onClick={() => setGamePage("hub")}>←</div>
-          <div className="mp-htitle">{tr("世足Kick", "World Cup Kick", "ワールドカップKick", "월드컵 Kick")}</div>
-          </div>
-          <iframe
-            title={tr("世界盃射門小遊戲", "World Cup shooting mini-game", "ワールドカップシュートミニゲーム", "월드컵 슈팅 미니게임")}
-            src="./game.html"
-            style={{ flex: 1, width: "100%", border: 0, background: "#071b16" }}
-          />
-        </div>
-      );
-    }
-    return (
-      <div className="mp-page">
-        <div className="mp-hdr">
-          <div className="mp-back" onClick={closeApp}>←</div>
-          <div className="mp-htitle">{t("gameCenter")}</div>
-        </div>
-        <div style={{ padding: 16, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
-          <button
-            className="mp-cw"
-            onClick={() => setGamePage("football")}
-            style={{ width: "100%", border: "1px solid rgba(231,197,214,.6)", background: "rgba(255,255,255,.88)", textAlign: "center", padding: 14, flexDirection: "column", alignItems: "center", gap: 10, borderRadius: 22 }}
-          >
-            <div className="mp-av" style={{ width: 72, height: 72, borderRadius: 20, overflow: "hidden", flex: "0 0 auto" }}>
-              <img src="./app-icons/game-football.png?v=1.1.6" alt={tr("世足射門", "World Cup shooting", "ワールドカップシュート", "월드컵 슈팅")} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-            </div>
-            <div className="mp-cw-name" style={{ fontSize: 16, marginTop: 2 }}>{tr("世足Kick", "World Cup Kick", "ワールドカップKick", "월드컵 Kick")}</div>
-          </button>
-        </div>
-      </div>
-    );
-  };
-  const renderBook = () => (
-    <div className="mp-page" style={{ background: "#f7eef6" }}>
-      <div className="mp-hdr">
-        <div className="mp-back" onClick={closeApp}>←</div>
-        <div className="mp-htitle">{t("answerBook")}</div>
-      </div>
-      <iframe
-        title={t("answerBook")}
-        src="./book.html"
-        style={{ flex: 1, width: "100%", border: 0, background: "#f7eef6" }}
-      />
-    </div>
-  );
-
+  const renderGame = () => <GameCenter page={gamePage} setPage={setGamePage} closeApp={closeApp} t={t} tr={tr} />;
+  const renderBook = () => <AnswerBookApp closeApp={closeApp} title={t("answerBook")} />;
   const renderApp = () => {
     switch(currentApp) {
       case "chat": return renderChat();
@@ -7372,7 +6129,7 @@ ${roleProfile || "（無）"}`;
   return (<><style>{css}</style><style>{themeCss}</style><div className="mp-wrap" onClickCapture={blockRecentAppClicks}><div className="mp-phone">
     <div className="mp-desk" onTouchStart={onHomeTouchStart} onTouchEnd={onHomeTouchEnd} onMouseDown={onHomeMouseDown} onMouseUp={onHomeMouseUp} onPointerDown={onHomePointerDown} onPointerUp={onHomePointerUp} onPointerMove={onHomePointerMove} onPointerCancel={cancelPointerDrag} onDragOver={onHomeDragOverPageEdge}><BarClock ft={ft} /><div className="mp-desk-scroll">
       <DeskClock ft={ft} fd={fd} />
-      {activeChar && <div className="mp-cw" onClick={(e)=>{e.stopPropagation(); openApp("status");}} onPointerUp={(e)=>openAppFromTouch("status", e)}><div className="mp-av">{sanitizeUserImageUrl(activeChar.avatar)?<img src={sanitizeUserImageUrl(activeChar.avatar)} alt=""/>:"??"}</div><div className="mp-cw-info"><div className="mp-cw-name">{activeChar.name}<span className="mp-active-badge">ACTIVE</span></div><div className="mp-cw-desc">{(activeChar.statusText || activeChar.description || tr("在線中", "Online", "オンライン中", "온라인 중")).slice(0,34)}</div><div style={{fontSize:10,color:"var(--mp-txt-l)",marginTop:2}}>{tr("更新：", "Updated: ", "更新: ", "업데이트: ")}{activeChar.statusUpdatedAt ? new Date(activeChar.statusUpdatedAt).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"}) : "--:--"}</div></div></div>}
+      {activeChar && (isPeachTheme ? <PeachHero character={activeChar} imageUrl={sanitizeUserImageUrl(activeChar.heroImage)} statusText={(activeChar.statusText || activeChar.description || tr("在線中", "Online", "オンライン中", "온라인 중")).slice(0,34)} onOpen={() => openApp("status")} /> : <div className="mp-cw" onClick={(e)=>{e.stopPropagation(); openApp("status");}} onPointerUp={(e)=>openAppFromTouch("status", e)}><div className="mp-av">{sanitizeUserImageUrl(activeChar.avatar)?<img src={sanitizeUserImageUrl(activeChar.avatar)} alt=""/>:"??"}</div><div className="mp-cw-info"><div className="mp-cw-name">{activeChar.name}<span className="mp-active-badge">ACTIVE</span></div><div className="mp-cw-desc">{(activeChar.statusText || activeChar.description || tr("在線中", "Online", "オンライン中", "온라인 중")).slice(0,34)}</div><div style={{fontSize:10,color:"var(--mp-txt-l)",marginTop:2}}>{tr("更新：", "Updated: ", "更新: ", "업데이트: ")}{activeChar.statusUpdatedAt ? new Date(activeChar.statusUpdatedAt).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"}) : "--:--"}</div></div></div>)}
       <div className="mp-home-mid">
         <div className="mp-pages">
           <div className="mp-pages-track" style={{ transform: `translateX(-${homePage * 100}%)` }}>
@@ -7385,6 +6142,7 @@ ${roleProfile || "（無）"}`;
                     <div
                       key={`slot-${absoluteIdx}`}
                       className={`mp-icon ${app ? "" : "mp-icon-empty"}`}
+                      data-app-id={app?.id || undefined}
                       onDragOver={(e)=>e.preventDefault()}
                       onDrop={(e)=>onDropToHome(e, absoluteIdx)}
                       data-drop-slot={absoluteIdx}
@@ -7403,14 +6161,15 @@ ${roleProfile || "（無）"}`;
           </div>
         </div>
       </div>
-    </div><div className="mp-page-dots">
+    </div>{!currentApp && <div className="mp-page-dots">
       {homePages.map((_, idx) => <span key={idx} className={`mp-page-dot ${homePage===idx ? "active" : ""}`} />)}
-    </div><div className="mp-dock" data-drop-dock-wrap="1" onDragOver={(e)=>e.preventDefault()} onDrop={onDropToDockContainer} style={{justifyContent: "center", gap: dockApps.length <= 2 ? 22 : 14}}>
+    </div>}<div className="mp-dock" data-drop-dock-wrap="1" onDragOver={(e)=>e.preventDefault()} onDrop={onDropToDockContainer} style={{justifyContent: "center", gap: dockApps.length <= 2 ? 22 : 14}}>
       {dockApps.map((app, idx) => {
         return (
           <div
             key={`dock-${idx}`}
             className="mp-dock-i"
+            data-app-id={app.id}
             onDragOver={(e)=>e.preventDefault()}
             onDrop={(e)=>onDropToDock(e, idx)}
             data-drop-dock={idx}
@@ -7430,8 +6189,9 @@ ${roleProfile || "（無）"}`;
       </div>
     )}
     {currentApp && renderApp()}
+    {customCssGuideOpen && <CustomCssGuide onClose={() => setCustomCssGuideOpen(false)} />}
     <DesktopPet currentApp={currentApp} />
-    {modal === "addChar" && <AddCharModal setModal={setModal} setEditingCharacter={setEditingCharacter} addCharacter={addCharacter} updateCharacter={updateCharacter} exportCharacter={exportCharacter} deleteCharacter={deleteCharacter} editingCharacter={editingCharacter} sanitizeUserImageUrl={sanitizeUserImageUrl} uiLanguage={uiLanguage} ttsConfig={ttsConfig} ttsVoices={ttsVoices.length ? ttsVoices : (ttsConfig.elevenlabs?.availableVoices || [])} onVoicePreview={previewCharacterVoice} />}
+    {modal === "addChar" && <AddCharacterModal setModal={setModal} setEditingCharacter={setEditingCharacter} addCharacter={addCharacter} updateCharacter={updateCharacter} exportCharacter={exportCharacter} deleteCharacter={deleteCharacter} editingCharacter={editingCharacter} sanitizeUserImageUrl={sanitizeUserImageUrl} uiLanguage={uiLanguage} ttsConfig={ttsConfig} ttsVoices={ttsVoices.length ? ttsVoices : (ttsConfig.elevenlabs?.availableVoices || [])} onVoicePreview={previewCharacterVoice} />}
     {memoryEditor && (
       <div className="mp-overlay" onClick={() => setMemoryEditor(null)}>
         <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
