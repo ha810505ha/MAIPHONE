@@ -1,4 +1,5 @@
 import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
 
 function resolveBase() {
   const repo = process.env.GITHUB_REPOSITORY?.split("/")[1];
@@ -10,4 +11,5 @@ function resolveBase() {
 
 export default defineConfig({
   base: resolveBase(),
+  plugins: [react()],
 });

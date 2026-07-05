@@ -6,6 +6,7 @@ async function callAI(messages, apiConfig, sysPrompt) {
   if (providerNeedsApiKey && !apiKey) throw new Error("請先設定 API Key");
 
   const sys = sysPrompt || "你是一位自然、友善、穩定的 AI 角色助理。";
+  const maxTokens = Number(apiConfig.maxTokens) > 0 ? Number(apiConfig.maxTokens) : 4000;
   const hasImageInput = messages.some((m) => !!m.image);
 
   if (hasImageInput && provider === "openrouter" && String(model || "").toLowerCase() === "auto") {
@@ -22,7 +23,7 @@ async function callAI(messages, apiConfig, sysPrompt) {
       },
       body: JSON.stringify({
         model,
-        max_tokens: 1024,
+        max_tokens: maxTokens,
         system: sys,
         messages: messages
           .filter((m) => m.role !== "system")
@@ -42,22 +43,40 @@ async function callAI(messages, apiConfig, sysPrompt) {
     return data.content?.[0]?.text || "";
   }
 
+  // Gemini/Vertex 共用：轉成原生多輪 contents 格式（user/model 交錯，圖片走 inlineData）
+  const buildGeminiBody = () => {
+    const contents = [];
+    for (const m of messages) {
+      if (m.role !== "user" && m.role !== "assistant" && m.role !== "system") continue;
+      const role = m.role === "assistant" ? "model" : "user";
+      const parts = [];
+      if (m.image) parts.push({ inlineData: { mimeType: "image/png", data: m.image } });
+      parts.push({ text: m.content || (m.image ? "請描述這張圖" : "") });
+      // Gemini 要求 user/model 交錯，連續同角色訊息合併成同一輪的多個 parts
+      const last = contents[contents.length - 1];
+      if (last && last.role === role) last.parts.push(...parts);
+      else contents.push({ role, parts });
+    }
+    if (!contents.length || contents[0].role !== "user") {
+      contents.unshift({ role: "user", parts: [{ text: "（對話開始）" }] });
+    }
+    return {
+      systemInstruction: { parts: [{ text: sys }] },
+      contents,
+      generationConfig: { maxOutputTokens: maxTokens },
+    };
+  };
+
   if (provider === "gemini") {
     const res = await fetch(`${baseUrl}/models/${model}:generateContent?key=${apiKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: "user",
-            parts: [{ text: `${sys}\n\n${messages.map((m) => `${m.role}: ${m.content || ""}`).join("\n")}` }],
-          },
-        ],
-      }),
+      body: JSON.stringify(buildGeminiBody()),
     });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error.message);
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const data = await res.json().catch(() => null);
+    if (!res.ok || data?.error) throw new Error(data?.error?.message || `HTTP ${res.status}`);
+    const out = (data?.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("");
+    return out || "";
   }
 
   if (provider === "vertex") {
@@ -67,14 +86,7 @@ async function callAI(messages, apiConfig, sysPrompt) {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: "user",
-            parts: [{ text: `${sys}\n\n${messages.map((m) => `${m.role}: ${m.content || ""}`).join("\n")}` }],
-          },
-        ],
-      }),
+      body: JSON.stringify(buildGeminiBody()),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => null);
@@ -142,8 +154,8 @@ async function callAI(messages, apiConfig, sysPrompt) {
     /^o\d/i.test(String(model || "")) ||
     /^gpt-5/i.test(String(model || ""));
   const completionLimit = usesMaxCompletionTokens
-    ? { max_completion_tokens: 1024 }
-    : { max_tokens: 1024 };
+    ? { max_completion_tokens: maxTokens }
+    : { max_tokens: maxTokens };
 
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",

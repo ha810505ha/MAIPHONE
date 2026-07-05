@@ -3,6 +3,12 @@ const DB_VERSION = 1;
 const STORE_NAME = "app_kv";
 const APP_STATE_KEY = "app_state";
 
+// 大資料各自獨立成分區，其餘小資料統一放 core 分區。
+// 儲存時只重寫「參照有變動」的分區，避免打一個字就整包重寫。
+const PARTITION_FIELDS = ["chatHistory", "chatBackgrounds", "posts", "phoneInboxCache"];
+const CORE_KEY = "part_core";
+const partitionKey = (field) => `part_${field}`;
+
 const LEGACY_LOCAL_KEYS = [
   "mali_characters",
   "mali_activeCharId",
@@ -38,10 +44,15 @@ function readKv(key) {
   }));
 }
 
-function writeKv(key, value) {
+function writeEntries(entries) {
+  if (!entries.length) return Promise.resolve();
   return openDb().then((db) => new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, "readwrite");
-    tx.objectStore(STORE_NAME).put(value, key);
+    const store = tx.objectStore(STORE_NAME);
+    for (const [key, value] of entries) {
+      if (value === undefined) store.delete(key);
+      else store.put(value, key);
+    }
     tx.oncomplete = () => {
       db.close();
       resolve();
@@ -85,14 +96,70 @@ function clearLegacyLocalStorage() {
   } catch {}
 }
 
+function splitState(state) {
+  const core = { ...state };
+  const parts = {};
+  for (const field of PARTITION_FIELDS) {
+    parts[field] = core[field];
+    delete core[field];
+  }
+  return { core, parts };
+}
+
+// 記住每個分區上次寫入的參照，儲存時比對決定要不要重寫該分區
+const lastSaved = { core: null, parts: {} };
+
+async function writeStatePartitioned(state, force = false) {
+  const { core, parts } = splitState(state);
+  const entries = [];
+  const coreChanged = force || lastSaved.core === null ||
+    Object.keys(core).length !== Object.keys(lastSaved.core).length ||
+    Object.keys(core).some((k) => core[k] !== lastSaved.core[k]);
+  if (coreChanged) entries.push([CORE_KEY, core]);
+  for (const field of PARTITION_FIELDS) {
+    if (force || parts[field] !== lastSaved.parts[field]) {
+      entries.push([partitionKey(field), parts[field]]);
+    }
+  }
+  await writeEntries(entries);
+  lastSaved.core = core;
+  lastSaved.parts = { ...parts };
+}
+
+async function readStatePartitioned() {
+  const core = await readKv(CORE_KEY);
+  if (!core) return null;
+  const state = { ...core };
+  for (const field of PARTITION_FIELDS) {
+    const value = await readKv(partitionKey(field));
+    if (value !== null && value !== undefined) state[field] = value;
+  }
+  return state;
+}
+
 async function loadAppState(defaultState) {
-  const saved = await readKv(APP_STATE_KEY);
-  if (saved) return { ...defaultState, ...saved };
+  const partitioned = await readStatePartitioned();
+  if (partitioned) {
+    const state = { ...defaultState, ...partitioned };
+    const { core, parts } = splitState(state);
+    lastSaved.core = core;
+    lastSaved.parts = { ...parts };
+    return state;
+  }
+
+  // 舊版單一 key 格式 → 遷移成分區格式後刪除舊 key
+  const savedLegacyKv = await readKv(APP_STATE_KEY);
+  if (savedLegacyKv) {
+    const migrated = { ...defaultState, ...savedLegacyKv };
+    await writeStatePartitioned(migrated, true);
+    await writeEntries([[APP_STATE_KEY, undefined]]);
+    return migrated;
+  }
 
   const legacy = readLegacyLocalStorage();
   if (legacy) {
     const migrated = { ...defaultState, ...legacy };
-    await writeKv(APP_STATE_KEY, migrated);
+    await writeStatePartitioned(migrated, true);
     clearLegacyLocalStorage();
     return migrated;
   }
@@ -100,7 +167,7 @@ async function loadAppState(defaultState) {
 }
 
 function saveAppState(state) {
-  return writeKv(APP_STATE_KEY, state);
+  return writeStatePartitioned(state);
 }
 
 export { loadAppState, saveAppState };
