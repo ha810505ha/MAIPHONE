@@ -7,9 +7,10 @@ import { parseSillyTavernJSON, parseSillyTavernPNG, buildSystemPrompt } from "./
 import { callAI, fetchAvailableModels } from "./services/aiService";
 import { fetchElevenLabsDefaultVoices, synthesizeSpeech } from "./services/ttsService";
 import { loadAppState, saveAppState } from "./utils/indexedDbStorage";
+import { PHONE_APP_META, sanitizePhoneTheme, buildPhonePromptContext, buildPhoneAppPrompt, sanitizePhoneAppData } from "./utils/phoneAppGen";
 import { createDefaultVoiceSettings, normalizeCharacterVoiceSettings } from "./utils/voiceSettings";
 import { sanitizeCustomCss } from "./utils/customCss";
-import css, { THEME_PRESETS } from "./styles/maliPhoneCss";
+import css, { THEME_PRESETS, FONT_PRESETS } from "./styles/maliPhoneCss";
 import PetHome from "./PetHome";
 import DesktopPet from "./DesktopPet";
 import CustomCssGuide from "./CustomCssGuide";
@@ -61,6 +62,7 @@ export default function MaliPhone() {
     lorebooks: [],
     chatLorebookBindings: {},
     phoneInboxCache: {},
+    phoneAppCache: {},
     wallet: {
       balance: 500,
       transactions: [],
@@ -94,6 +96,7 @@ export default function MaliPhone() {
       minimax: { apiKey: "", model: "speech-2.8-turbo", baseUrl: "https://api.minimax.io", defaultVoiceId: "English_expressive_narrator" },
     },
     themeName: "莓果蘇打",
+    fontName: "圓體",
     uiLanguage: "zh-TW",
     screenLockTimeout: 5,
   };
@@ -174,12 +177,17 @@ export default function MaliPhone() {
   const lorebookImportInputRef = useRef(null);
   const [chatLorebookBindings, setChatLorebookBindings] = useState(defaultAppState.chatLorebookBindings);
   const [phoneInboxCache, setPhoneInboxCache] = useState(defaultAppState.phoneInboxCache);
+  const [phonePlayerContactLoading, setPhonePlayerContactLoading] = useState(false);
+  const [phoneAppCache, setPhoneAppCache] = useState(defaultAppState.phoneAppCache);
+  const [phoneAppGenLoading, setPhoneAppGenLoading] = useState(null); // 正在生成的 appId 或 null
+  const [diaryPage, setDiaryPage] = useState(0); // 日記目前頁碼；換角色或離開日記時 reset 0
   const [wallet, setWallet] = useState(defaultAppState.wallet);
   const [characterWallets, setCharacterWallets] = useState(defaultAppState.characterWallets);
   const [walletGenLoading, setWalletGenLoading] = useState(false);
   const [apiPresets, setApiPresets] = useState(defaultAppState.apiPresets);
   const [playerProfile, setPlayerProfile] = useState(defaultAppState.playerProfile);
   const [themeName, setThemeName] = useState(defaultAppState.themeName);
+  const [fontName, setFontName] = useState(defaultAppState.fontName);
   const [themeEffectsEnabled, setThemeEffectsEnabled] = useState(() => {
     try { return localStorage.getItem("mali_theme_effects") !== "0"; } catch { return true; }
   });
@@ -346,6 +354,7 @@ export default function MaliPhone() {
       setSocialSettings(data.socialSettings && typeof data.socialSettings === "object" ? data.socialSettings : defaultAppState.socialSettings);
       setMemories(data.memories || {});
       setPhoneInboxCache(data.phoneInboxCache || {});
+      setPhoneAppCache(data.phoneAppCache || {});
       setWallet(data.wallet || defaultAppState.wallet);
       setCharacterWallets(data.characterWallets || {});
       setScreenLockTimeout(Number.isFinite(Number(data.screenLockTimeout)) ? Number(data.screenLockTimeout) : defaultAppState.screenLockTimeout);
@@ -379,6 +388,7 @@ export default function MaliPhone() {
         minimax: { ...defaultAppState.ttsConfig.minimax, ...(data.ttsConfig.minimax || {}) },
       } : defaultAppState.ttsConfig);
       setThemeName(data.themeName || defaultAppState.themeName);
+      setFontName(FONT_PRESETS[data.fontName] ? data.fontName : defaultAppState.fontName);
       setUiLanguage(data.uiLanguage || defaultAppState.uiLanguage);
       const initialDock = (data.dockOrder && Array.isArray(data.dockOrder)) ? data.dockOrder : DOCK_APPS;
       setDockOrder(initialDock);
@@ -404,10 +414,10 @@ export default function MaliPhone() {
   useEffect(() => {
     if (!hydrated) return;
     const timer = setTimeout(() => {
-      saveAppState({ characters, activeCharId, chatHistory, chatModes, chatBackgrounds, groupChats, chatScenes, groupScenes, innerThoughtSettings, proactiveSettings, proactiveUnread, posts, socialSettings, memories, lorebooks, chatLorebookBindings, phoneInboxCache, wallet, characterWallets, screenLockTimeout, apiPresets, playerProfile, apiConfig, ttsConfig, themeName, uiLanguage, homeSlots, dockOrder }).catch(() => {});
+      saveAppState({ characters, activeCharId, chatHistory, chatModes, chatBackgrounds, groupChats, chatScenes, groupScenes, innerThoughtSettings, proactiveSettings, proactiveUnread, posts, socialSettings, memories, lorebooks, chatLorebookBindings, phoneInboxCache, phoneAppCache, wallet, characterWallets, screenLockTimeout, apiPresets, playerProfile, apiConfig, ttsConfig, themeName, fontName, uiLanguage, homeSlots, dockOrder }).catch(() => {});
     }, 180);
     return () => clearTimeout(timer);
-  }, [hydrated, characters, activeCharId, chatHistory, chatModes, chatBackgrounds, groupChats, chatScenes, groupScenes, innerThoughtSettings, proactiveSettings, proactiveUnread, posts, socialSettings, memories, lorebooks, chatLorebookBindings, phoneInboxCache, wallet, characterWallets, screenLockTimeout, apiPresets, playerProfile, apiConfig, ttsConfig, themeName, uiLanguage, homeSlots, dockOrder]);
+  }, [hydrated, characters, activeCharId, chatHistory, chatModes, chatBackgrounds, groupChats, chatScenes, groupScenes, innerThoughtSettings, proactiveSettings, proactiveUnread, posts, socialSettings, memories, lorebooks, chatLorebookBindings, phoneInboxCache, phoneAppCache, wallet, characterWallets, screenLockTimeout, apiPresets, playerProfile, apiConfig, ttsConfig, themeName, fontName, uiLanguage, homeSlots, dockOrder]);
   useEffect(() => {
     if (!hydrated || ttsConfig.provider !== "minimax") return;
     setTtsConfig((current) => ({ ...current, provider: "elevenlabs" }));
@@ -764,9 +774,9 @@ export default function MaliPhone() {
   };
   const CHANGELOG_TEXT = {
     "1.2.1": {
-      en: ["07/06 Update", "Redesigned Wallet with character filters, monthly income and expense totals, weekly charts, and monthly recaps", "Improved chat layout and message display; Enter now creates a new line on mobile and messages are sent only with the Send button", "Unified layouts across themes, added Peach Mousse and a theme-effects toggle, and refined visual effects", "Improved Settings, Custom CSS, and overall app interface stability"],
-      ja: ["07/06 更新", "キャラクター別フィルター、月間収支、週別グラフ、月次まとめを備えたウォレット画面に刷新", "チャットのレイアウトとメッセージ表示を改善し、モバイルでは Enter で改行、送信ボタンでのみ送信するよう変更", "各テーマのレイアウトを統一し、ピーチムースとテーマ演出スイッチを追加、エフェクト表示を改善", "設定、カスタム CSS、各アプリ画面の構成と安定性を改善"],
-      ko: ["07/06 업데이트", "캐릭터별 필터, 월간 수입·지출, 주간 차트와 월간 결산을 포함하도록 지갑 화면 개편", "채팅 레이아웃과 메시지 표시를 개선하고 모바일에서 Enter는 줄바꿈, 전송 버튼을 눌러야만 메시지가 전송되도록 변경", "모든 테마의 레이아웃을 통일하고 피치 무스와 테마 효과 스위치를 추가했으며 효과 표현 개선", "설정, 사용자 CSS 및 여러 앱 화면의 구조와 안정성 개선"],
+      en: ["07/06 Update", "Redesigned Wallet with character filters, monthly income and expense totals, weekly charts, and monthly recaps", "Improved chat layout and message display; Enter now creates a new line on mobile and messages are sent only with the Send button", "Unified layouts across themes, added Peach Mousse and a theme-effects toggle, and refined visual effects", "Improved Settings, Custom CSS, and overall app interface stability", "Expanded the character phone with themed apps and improved chat refresh and player contact notes", "Added a global interface font selector"],
+      ja: ["07/06 更新", "キャラクター別フィルター、月間収支、週別グラフ、月次まとめを備えたウォレット画面に刷新", "チャットのレイアウトとメッセージ表示を改善し、モバイルでは Enter で改行、送信ボタンでのみ送信するよう変更", "各テーマのレイアウトを統一し、ピーチムースとテーマ演出スイッチを追加、エフェクト表示を改善", "設定、カスタム CSS、各アプリ画面の構成と安定性を改善", "テーマ対応アプリを備えたキャラクタースマホを拡張し、チャット更新とプレイヤー連絡先メモを改善", "全体のインターフェースフォント選択機能を追加"],
+      ko: ["07/06 업데이트", "캐릭터별 필터, 월간 수입·지출, 주간 차트와 월간 결산을 포함하도록 지갑 화면 개편", "채팅 레이아웃과 메시지 표시를 개선하고 모바일에서 Enter는 줄바꿈, 전송 버튼을 눌러야만 메시지가 전송되도록 변경", "모든 테마의 레이아웃을 통일하고 피치 무스와 테마 효과 스위치를 추가했으며 효과 표현 개선", "설정, 사용자 CSS 및 여러 앱 화면의 구조와 안정성 개선", "테마형 앱을 갖춘 캐릭터 휴대폰을 확장하고 채팅 새로고침과 플레이어 연락처 메모 개선", "전체 인터페이스 글꼴 선택 기능 추가"],
     },
     "1.2.0": {
       en: ["07/04 Update", "Added Pet Home with pet care, free roaming, map interactions, desktop pets, and data backup", "Added Matcha Lemon and Sea Salt Soda themes with unified primary-action colors", "Added automatic social posts so characters can share updates on their own", "Added proactive character messages with per-character controls and frequency settings"],
@@ -1114,10 +1124,23 @@ export default function MaliPhone() {
           return group;
         })();
     const targetReply = replyMessages.map((m) => m.content || "").filter(Boolean).join("\n");
-    const contextMessages = fullHistory
+    const targetMode = getMessageMode(target);
+    const roundLimit = targetMode === "reality" ? 3 : 6;
+    const eligibleMessages = fullHistory
       .slice(0, targetIndex + 1)
       .filter((m) => m.role === "user" || m.role === "assistant")
-      .slice(-14)
+      .filter((m) => getMessageMode(m) === targetMode);
+    const recentRoundMessages = [];
+    let includedRounds = 0;
+    for (let index = eligibleMessages.length - 1; index >= 0; index -= 1) {
+      const message = eligibleMessages[index];
+      if (message.role === "user") {
+        includedRounds += 1;
+        if (includedRounds > roundLimit) break;
+      }
+      recentRoundMessages.unshift(message);
+    }
+    let contextMessages = recentRoundMessages
       .map((m) => ({
         role: m.role,
         content: sanitizeText(m.content || (m.image ? "[圖片]" : ""), 1200),
@@ -1143,16 +1166,22 @@ export default function MaliPhone() {
 ${sceneContext ? `[當時場景]\n${sceneContext}\n` : ""}${memoryContext ? `[相關記憶]\n${memoryContext}\n` : ""}
 目標回覆（前端可能拆成多個氣泡，但屬於同一次回覆）：
 ${targetReply || target.content || "（無文字）"}`;
+    const thoughtInstruction = "請根據以上對話與系統規則，生成角色在目標回覆當下沒有說出口的心聲。只輸出心聲本身。";
+    const inputTokenLimit = 3000;
+    const countThoughtInputTokens = () => estimateTokens(prompt) + estimateTokens(thoughtInstruction) + contextMessages.reduce((sum, message) => sum + estimateTokens(message.content || ""), 0);
+    while (contextMessages.length > 1 && countThoughtInputTokens() > inputTokenLimit) {
+      contextMessages = contextMessages.slice(1);
+    }
     setInnerThoughtLoading((prev) => ({ ...prev, [messageId]: true }));
     try {
       const thoughtMessages = [
         ...contextMessages,
         {
           role: "user",
-          content: "請根據以上對話與系統規則，生成角色在目標回覆當下沒有說出口的心聲。只輸出心聲本身。",
+          content: thoughtInstruction,
         },
       ];
-      const raw = await callAI(thoughtMessages, apiConfig, applyUserPlaceholder(prompt));
+      const raw = await callAI(thoughtMessages, { ...apiConfig, maxTokens: 500 }, applyUserPlaceholder(prompt));
       const content = normalizeInnerThought(raw);
       if (!content) throw new Error(tr("模型沒有產生心聲", "No inner thought was generated", "心の声が生成されませんでした", "속마음이 생성되지 않았습니다"));
       setChatHistory((prev) => ({
@@ -2329,6 +2358,7 @@ ${memoryText || "（無）"}`;
       lorebooks,
       chatLorebookBindings,
       phoneInboxCache,
+      phoneAppCache,
       wallet,
       characterWallets,
       screenLockTimeout,
@@ -2337,6 +2367,7 @@ ${memoryText || "（無）"}`;
       apiConfig,
       ttsConfig,
       themeName,
+      fontName,
       uiLanguage,
       homeSlots,
       dockOrder,
@@ -2532,6 +2563,7 @@ ${memoryText || "（無）"}`;
       lorebooks: Array.isArray(src.lorebooks) ? src.lorebooks : [],
       chatLorebookBindings: src.chatLorebookBindings && typeof src.chatLorebookBindings === "object" ? src.chatLorebookBindings : {},
       phoneInboxCache: src.phoneInboxCache && typeof src.phoneInboxCache === "object" ? src.phoneInboxCache : {},
+      phoneAppCache: src.phoneAppCache && typeof src.phoneAppCache === "object" ? src.phoneAppCache : {},
       wallet: src.wallet && typeof src.wallet === "object" ? src.wallet : defaultAppState.wallet,
       characterWallets: src.characterWallets && typeof src.characterWallets === "object" ? src.characterWallets : {},
       screenLockTimeout: Number.isFinite(Number(src.screenLockTimeout)) ? Number(src.screenLockTimeout) : defaultAppState.screenLockTimeout,
@@ -2545,6 +2577,7 @@ ${memoryText || "（無）"}`;
         minimax: { ...defaultAppState.ttsConfig.minimax, ...(src.ttsConfig.minimax || {}) },
       } : defaultAppState.ttsConfig,
       themeName: src.themeName || defaultAppState.themeName,
+      fontName: FONT_PRESETS[src.fontName] ? src.fontName : defaultAppState.fontName,
       uiLanguage: src.uiLanguage || defaultAppState.uiLanguage,
       homeSlots: Array.isArray(src.homeSlots) && src.homeSlots.length === HOME_SLOT_COUNT ? src.homeSlots : Array.from({ length: HOME_SLOT_COUNT }, () => null),
       dockOrder: Array.isArray(src.dockOrder) && src.dockOrder.length ? src.dockOrder : DOCK_APPS,
@@ -2566,6 +2599,7 @@ ${memoryText || "（無）"}`;
     setLorebooks(nextState.lorebooks);
     setChatLorebookBindings(nextState.chatLorebookBindings);
     setPhoneInboxCache(nextState.phoneInboxCache);
+    setPhoneAppCache(nextState.phoneAppCache);
     setWallet(nextState.wallet);
     setCharacterWallets(nextState.characterWallets);
     setScreenLockTimeout(nextState.screenLockTimeout);
@@ -2574,6 +2608,7 @@ ${memoryText || "（無）"}`;
     setApiConfig(nextState.apiConfig);
     setTtsConfig(nextState.ttsConfig);
     setThemeName(nextState.themeName);
+    setFontName(nextState.fontName);
     setUiLanguage(nextState.uiLanguage);
     setHomeSlots(nextState.homeSlots);
     setDockOrder(nextState.dockOrder);
@@ -2710,10 +2745,13 @@ ${memoryText || "（無）"}`;
 
   const generatePhoneNpcChats = async (char) => {
     if (!char) return;
+    if (!window.confirm("刷新其他聊天只會重新生成其他聯絡人的聊天內容，不包含與玩家的聊天，也不會修改玩家暱稱或備註。確定要繼續嗎？")) return;
     if (!canUseCurrentProvider()) { showToast(tr("請先完成 AI 連線設定（API Key）", "Please finish AI connection setup (API key) first", "先にAI接続設定（APIキー）を完了してください", "먼저 AI 연결 설정(API 키)을 완료해주세요")); return; }
     setPhoneGenLoading(true);
     try {
-      const recent = (chatHistory[char.id] || []).slice(-10).map((m) => `${m.role === "user" ? "{{user}}" : char.name}: ${m.content || "[圖片]"}`).join("\n");
+      const playerFormalName = sanitizeText(playerProfile?.name || "玩家", 40);
+      const playerNickname = sanitizeText(playerProfile?.nickname || "", 40);
+      const recent = (chatHistory[char.id] || []).slice(-10).map((m) => `${m.role === "user" ? playerFormalName : char.name}: ${m.content || "[圖片]"}`).join("\n");
       const roleProfile = [char.description, char.personality, char.scenario].filter(Boolean).join("\n");
       const prompt = [{
         role: "user",
@@ -2736,6 +2774,8 @@ ${memoryText || "（無）"}`;
 2) 每個 thread 產生 4~8 則短訊息，語氣像通訊軟體。
 3) from 只能是 "char" 或 "other"。
 4) 不要時間戳、不要 markdown、不要多餘欄位。
+5) 玩家正式名稱是「${playerFormalName}」${playerNickname ? `，暱稱是「${playerNickname}」` : "，未設定暱稱"}。暱稱屬於較私密的稱呼，其他 NPC 預設不要使用；只有能從設定合理判斷該 NPC 與玩家很親近、而且知道這個暱稱時，才可以偶爾使用。一般情況請使用正式名稱、代稱或自然省略稱呼。
+6) 不要讓所有 NPC 都認識玩家，也不要讓所有 NPC 都用相同方式稱呼玩家；依每個 NPC 與角色、玩家的關係自然判斷。
 
 角色設定：
 ${roleProfile || "（無）"}
@@ -2747,8 +2787,12 @@ ${recent || "（尚無）"}
       const raw = await callAI(prompt, apiConfig, "你是手機聊天資料生成器，只能輸出有效 JSON。");
       const parsed = parseJsonObjectFromText(raw);
       const threadsRaw = Array.isArray(parsed?.threads) ? parsed.threads : [];
+      const generatedAt = Date.now();
       const threads = threadsRaw.slice(0, 5).map((t, idx) => {
         const msgs = Array.isArray(t?.messages) ? t.messages : [];
+        const lastMessageOffsetMinutes = 3 + idx * 19 + Math.floor(Math.random() * 12);
+        const lastMessageTime = generatedAt - lastMessageOffsetMinutes * 60000;
+        const messageGapMinutes = 2 + (idx % 4);
         return {
           id: `npc-${idx}-${gid()}`,
           name: sanitizeText(t?.name || `聯絡人${idx + 1}`, 24),
@@ -2757,20 +2801,145 @@ ${recent || "（尚無）"}
             id: `m-${idx}-${mi}-${gid()}`,
             from: m?.from === "char" ? "char" : "other",
             text: sanitizeText(m?.text || "", 120),
-            time: Date.now() - (8 - mi) * 60000,
+            time: lastMessageTime - Math.max(0, msgs.length - 1 - mi) * messageGapMinutes * 60000,
           })).filter((m) => !!m.text),
         };
       }).filter((t) => t.messages.length > 0);
       if (!threads.length) throw new Error("模型未回傳可用的聊天資料");
       setPhoneInboxCache((prev) => ({
         ...prev,
-        [char.id]: { updatedAt: Date.now(), threads },
+        [char.id]: { ...(prev[char.id] || {}), updatedAt: Date.now(), threads },
       }));
       showToast(`已更新其他聊天（${threads.length} 人）`);
     } catch (err) {
       showToast(`${tr("生成失敗", "Generation failed", "生成に失敗しました", "생성 실패")}：${sanitizeText(err?.message || tr("未知錯誤", "Unknown error", "不明なエラー", "알 수 없는 오류"), 120)}`);
     }
     setPhoneGenLoading(false);
+  };
+
+  const refreshPhonePlayerContact = async (char) => {
+    if (!char) return;
+    if (!window.confirm("確定刷新玩家聊天室？\n\n只會更新玩家名稱、括號稱呼與關係備註；與玩家的對話內容、其他聯絡人聊天都不會改變。")) return;
+    if (!canUseCurrentProvider()) { showToast(tr("請先完成 AI 連線設定（API Key）", "Please finish AI connection setup (API key) first", "先にAI接続設定（APIキー）を完了してください", "먼저 AI 연결 설정(API 키)을 완료해주세요")); return; }
+    setPhonePlayerContactLoading(true);
+    try {
+      const currentPlayerContact = phoneInboxCache[char.id]?.playerContact || {};
+      const recentPlayerChat = (chatHistory[char.id] || []).slice(-6)
+        .map((message) => `${message.role === "user" ? "玩家" : char.name}：${sanitizeText(message.content || "[圖片]", 300)}`)
+        .join("\n");
+      const prompt = [{
+        role: "user",
+        content: `${getOutputLanguageDirective()}
+
+請從 ${char.name} 的視角，生成玩家在角色手機通訊錄中的資料，只能輸出 JSON：
+{"suffix":"放在玩家名稱括號內的關係稱呼，可空白","note":"角色替玩家設定的短備註名"}
+
+規則：
+1) suffix 放在玩家名稱後方括號內，通常留空；只有角色個性或關係非常適合時才填寫，最多 8 字。
+2) suffix 以雙方關係為主，例如「老婆」「男友」「室友」「青梅竹馬」，最多 8 字；不要填 thought、note、玩家等系統詞。
+3) note 是 ${char.name} 替玩家設定的短備註名，例如「我家那位」「最重要的人」「總忘記帶傘」，2~16 字，不要寫成完整句子，但詞語與語意必須完整，禁止輸出「值得信任的後」這類未完成片段。
+4) suffix 與 note 都必須使用目前介面語言，不要中英混搭，不要輸出 thought、note、memo、remark、角色設定等標籤。
+5) 如果「與玩家關係」未設定，請從角色描述、System prompt、性格、情境與近期互動推斷最自然的稱呼與備註。
+6) 目前備註是「${sanitizeText(currentPlayerContact.note || "尚無", 16)}」。這次刷新請生成不同的新備註，不要原樣重複。
+
+角色設定：${sanitizeText([char.description, char.systemPrompt, char.personality, char.scenario].filter(Boolean).join("\n") || "未設定", 3200)}
+與玩家關係：${sanitizeText(char.relationshipToUser || "未設定", 120)}
+玩家名稱：${sanitizeText(playerProfile?.name || "玩家", 40)}
+玩家暱稱：${sanitizeText(playerProfile?.nickname || "未設定", 40)}
+近期互動：\n${recentPlayerChat || "尚無對話"}`,
+      }];
+      const raw = await callAI(prompt, { ...apiConfig, maxTokens: 300 }, "你是角色手機聯絡人資料生成器，只能輸出有效 JSON。");
+      const parsed = parseJsonObjectFromText(raw) || {};
+      const parsedContact = parsed.playerContact && typeof parsed.playerContact === "object"
+        ? parsed.playerContact
+        : parsed.contact && typeof parsed.contact === "object"
+          ? parsed.contact
+          : parsed;
+      let nextNote = sanitizeText(
+        parsedContact.note || parsedContact.remark || parsedContact.memo || parsedContact.contactNote || parsedContact["備註"] || "",
+        16,
+      ).replace(/^\s*(?:thought|note|memo|remark|備註)\s*[:：-]?\s*/i, "").trim();
+      if (!nextNote) {
+        const noteMatch = String(raw || "").match(/["']?(?:note|remark|memo|contactNote|備註)["']?\s*[:：]\s*["']([^"'\n}]{1,40})/i);
+        nextNote = sanitizeText(noteMatch?.[1] || "", 16).replace(/^\s*(?:thought|note|memo|remark|備註)\s*[:：-]?\s*/i, "").trim();
+      }
+      const isIncompleteContactNote = (value) => /(?:的後|的前|的這|的那|[的與和或但而把被在向從為])$/.test(String(value || "").trim());
+      if (!nextNote || /[a-z]{3,}/i.test(nextNote) || isIncompleteContactNote(nextNote)) {
+        const retryRaw = await callAI([{
+          role: "user",
+          content: `${getOutputLanguageDirective()}\n請以 ${char.name} 的視角，只輸出一則 2~16 字、詞語完整的玩家聯絡人短備註名，例如「我家那位」或「最重要的人」。不要輸出未完成片段，不要 JSON、英文、標籤、引號或說明。玩家關係：${sanitizeText(char.relationshipToUser || "未設定", 120)}`,
+        }], { ...apiConfig, maxTokens: 100 }, "你只輸出聯絡人備註文字。");
+        nextNote = sanitizeText(String(retryRaw || "").replace(/^[「『"']+|[」』"']+$/g, "").trim(), 16)
+          .replace(/^\s*(?:thought|note|memo|remark|備註)\s*[:：-]?\s*/i, "").trim();
+      }
+      if (!nextNote || isIncompleteContactNote(nextNote)) throw new Error("模型沒有產生完整的玩家聯絡人備註");
+      const generatedSuffix = sanitizeText(parsedContact.suffix || "", 8)
+        .replace(/^\s*(?:thought|note|memo|remark|稱呼)\s*[:：-]?\s*/i, "").trim();
+      const playerContact = {
+        suffix: Math.random() < 0.5 && !/[a-z]{3,}/i.test(generatedSuffix) ? generatedSuffix : "",
+        note: nextNote,
+      };
+      setPhoneInboxCache((prev) => ({
+        ...prev,
+        [char.id]: { ...(prev[char.id] || {}), playerContact, playerContactUpdatedAt: Date.now() },
+      }));
+      showToast("玩家暱稱與備註已刷新");
+    } catch (err) {
+      showToast(`${tr("生成失敗", "Generation failed", "生成に失敗しました", "생성 실패")}：${sanitizeText(err?.message || "", 120)}`);
+    } finally {
+      setPhonePlayerContactLoading(false);
+    }
+  };
+
+  // 商店 → 錢包同步：先清舊 shop 流水（餘額加回），再寫新流水（餘額扣掉）。刷新不會重複扣款。
+  const syncShopOrdersToWallet = (charId, orders) => {
+    setCharacterWallets((prev) => {
+      const w = prev[charId];
+      if (!w) return prev; // 錢包尚未生成就不寫，等錢包生成後玩家再刷新商店即可
+      const oldTx = Array.isArray(w.transactions) ? w.transactions : [];
+      const oldShopTotal = oldTx.filter((t) => t.source === "shop").reduce((s, t) => s + (+t.amount || 0), 0);
+      const kept = oldTx.filter((t) => t.source !== "shop");
+      const newTx = orders.map((o, i) => ({
+        id: gid(), type: "expense", source: "shop",
+        amount: o.price, note: `${o.emoji} ${o.item}`,
+        time: Date.now() - i * 3600000,
+      }));
+      const newTotal = newTx.reduce((s, t) => s + t.amount, 0);
+      return { ...prev, [charId]: {
+        ...w,
+        balance: Math.max(0, (+w.balance || 0) + oldShopTotal - newTotal),
+        transactions: [...newTx, ...kept],
+      } };
+    });
+  };
+
+  const generatePhoneApp = async (char, appId) => {
+    if (!char || !PHONE_APP_META[appId]) return;
+    if (!canUseCurrentProvider()) { showToast(tr("請先完成 AI 連線設定（API Key）", "Please finish AI connection setup first", "先にAI接続設定を完了してください", "먼저 AI 연결 설정을 완료해주세요")); return; }
+    setPhoneAppGenLoading(appId);
+    try {
+      const theme = sanitizePhoneTheme(phoneAppCache[char.id]?.theme?.data);
+      const extra = appId === "shop"
+        ? { balance: characterWallets[char.id]?.balance }
+        : appId === "diary"
+          ? { prevTitles: (phoneAppCache[char.id]?.diary?.data?.entries || []).map((e) => e.title) }
+          : { mode: theme.mode };
+      const ctx = buildPhonePromptContext(char, chatHistory);
+      const prompt = [{ role: "user", content: buildPhoneAppPrompt(appId, getOutputLanguageDirective(), ctx, extra) }];
+      const raw = await callAI(prompt, apiConfig, "你是手機 App 資料生成器，只能輸出有效 JSON。");
+      const data = sanitizePhoneAppData(appId, parseJsonObjectFromText(raw), phoneAppCache[char.id]?.[appId]?.data);
+      if (!data) throw new Error(tr("模型未回傳可用資料", "Model returned no usable data", "モデルが有効なデータを返しませんでした", "모델이 사용 가능한 데이터를 반환하지 않았습니다"));
+      setPhoneAppCache((prev) => ({
+        ...prev,
+        [char.id]: { ...(prev[char.id] || {}), [appId]: { updatedAt: Date.now(), data } },
+      }));
+      if (appId === "shop") syncShopOrdersToWallet(char.id, data.orders);
+      if (appId === "diary") setDiaryPage(0);
+      showToast(`已更新${PHONE_APP_META[appId].name}`);
+    } catch (err) {
+      showToast(`${tr("生成失敗", "Generation failed", "生成に失敗しました", "생성 실패")}：${sanitizeText(err?.message || "", 120)}`);
+    }
+    setPhoneAppGenLoading(null);
   };
 
   const generateMemory = async (char) => {
@@ -3141,9 +3310,11 @@ ${recent}`,
   const hasPeachEffects = normalizedThemeName === "蜜桃慕斯";
   const isPeachTheme = true;
   const showThemeEffects = !currentApp;
+  const activeFontStack = (FONT_PRESETS[fontName] || FONT_PRESETS["圓體"]).stack;
   const themeCss = `
     :root{
       ${Object.entries(activeTheme?.vars || {}).map(([k, v]) => `${k}:${v};`).join("")}
+      --mp-font:${activeFontStack};
     }
     .mp-wrap{background:${activeTheme?.surfaces?.wrapBg || "linear-gradient(135deg,#fce4ec 0%,#e8eaf6 50%,#e1f5fe 100%)"};}
     .mp-phone{background:${activeTheme?.surfaces?.phoneBg || "linear-gradient(160deg,#fce4ec 0%,#f8bbd0 25%,#e1f5fe 50%,#b3e5fc 75%,#f3e5f5 100%)"};}
@@ -5444,6 +5615,7 @@ ${recent || "（目前無內容）"}`;
     setLorebooks([]);
     setActiveLorebookId(null);
     setPhoneInboxCache({});
+    setPhoneAppCache({});
     setWallet(defaultAppState.wallet);
     setCharacterWallets({});
     setApiPresets(defaultAppState.apiPresets);
@@ -5630,7 +5802,7 @@ ${recent || "（目前無內容）"}`;
                 <span style={{fontSize:11,fontWeight:800,color:"var(--mp-pink-dk)"}}>{settingsAppearanceOpen ? tr("收合", "Collapse", "折りたたむ", "접기") : tr("展開", "Expand", "展開", "펼치기")}</span>
               </div>
               {settingsAppearanceOpen && <div style={{display:"flex",flexDirection:"column",marginTop:12}}>
-              <ThemeSettings t={t} tr={tr} themeName={themeName} setThemeName={setThemeName} effectsEnabled={themeEffectsEnabled} setEffectsEnabled={setThemeEffectsEnabled} />
+              <ThemeSettings t={t} tr={tr} themeName={themeName} setThemeName={setThemeName} fontName={fontName} setFontName={setFontName} effectsEnabled={themeEffectsEnabled} setEffectsEnabled={setThemeEffectsEnabled} />
               <CustomCssSettings
                 tr={tr}
                 enabled={customCssEnabled}
@@ -6031,9 +6203,11 @@ ${roleProfile || "（無）"}`;
   const renderPhone = () => <PhoneApp
     phoneViewCharId={phoneViewCharId} setPhoneViewCharId={setPhoneViewCharId} phonePage={phonePage} setPhonePage={setPhonePage}
     phoneActiveThreadId={phoneActiveThreadId} setPhoneActiveThreadId={setPhoneActiveThreadId}
-    characters={characters} chatHistory={chatHistory} phoneInboxCache={phoneInboxCache} characterWallets={characterWallets}
+    characters={characters} chatHistory={chatHistory} phoneInboxCache={phoneInboxCache} characterWallets={characterWallets} playerProfile={playerProfile}
     closeApp={closeApp} t={t} tr={tr} sanitizeUserImageUrl={sanitizeUserImageUrl} renderAppIcon={renderAppIcon}
-    phoneGenLoading={phoneGenLoading} generatePhoneNpcChats={generatePhoneNpcChats}
+    phoneGenLoading={phoneGenLoading} generatePhoneNpcChats={generatePhoneNpcChats} phonePlayerContactLoading={phonePlayerContactLoading} refreshPhonePlayerContact={refreshPhonePlayerContact}
+    phoneAppCache={phoneAppCache} phoneAppGenLoading={phoneAppGenLoading} generatePhoneApp={generatePhoneApp}
+    diaryPage={diaryPage} setDiaryPage={setDiaryPage}
     walletGenLoading={walletGenLoading} generateCharacterWallet={generateCharacterWallet} regenerateCharacterWallet={regenerateCharacterWallet}
     formatMoney={formatMoney} displayWalletText={displayWalletText} armAppClickSuppression={armAppClickSuppression}
     suppressAppClickUntilRef={suppressAppClickUntilRef} gid={gid}
