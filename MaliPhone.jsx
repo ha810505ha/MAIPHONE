@@ -77,6 +77,7 @@ export default function MaliPhone() {
     playerProfile: {
       name: "玩家",
       nickname: "",
+      gender: "",
       bio: "",
       avatar: "",
       doll: {
@@ -289,6 +290,8 @@ export default function MaliPhone() {
   const socialAutoPostingRef = useRef(false);
   const socialAutoPostGapRef = useRef(0);
   const walletAutoRefreshBusyRef = useRef(false);
+  const statusRefreshBusyRef = useRef(new Set());
+  const statusAutoRefreshAttemptRef = useRef(new Map());
   const proactiveSweepingRef = useRef(false);
   const currentChatCharIdRef = useRef(null);
   const SOCIAL_GLOBAL_COOLDOWN_MS = 60 * 1000;
@@ -325,10 +328,14 @@ export default function MaliPhone() {
   }[uiLanguage] || uiLanguage);
   const getOutputLanguageDirective = () => {
     const languageLabel = getUiLanguageLabel();
+    const playerGender = sanitizeText(playerProfile?.gender || "", 80).trim();
     const taiwaneseChineseDirective = uiLanguage === "zh-TW"
       ? "\n若輸出語言為繁體中文，必須使用臺灣繁體中文與臺灣慣用詞彙。"
       : "";
-    return `UI language: ${languageLabel}\n請使用${languageLabel}回覆。${taiwaneseChineseDirective}`;
+    const playerGenderDirective = playerGender
+      ? `\n玩家填寫的性別／組成：${playerGender}。稱謂與單複數必須依此判斷。`
+      : "\n玩家未填寫性別／組成；不得自行推測性別，且 {{user}} 預設為單一人物。";
+    return `UI language: ${languageLabel}\n請使用${languageLabel}回覆。${taiwaneseChineseDirective}${playerGenderDirective}`;
   };
   const notify = (keyOrText, fallback) => {
     const message = UI_TEXT[uiLanguage]?.[keyOrText] || fallback || keyOrText;
@@ -851,12 +858,13 @@ export default function MaliPhone() {
   const getPlayerContextBlock = () => {
     const n = sanitizeText(playerProfile?.name || "玩家", 40);
     const nn = sanitizeText(playerProfile?.nickname || "", 40);
+    const g = sanitizeText(playerProfile?.gender || "", 80);
     const b = sanitizeText(playerProfile?.bio || "", 400);
     const nameLine = nn ? `名稱：${n}\n暱稱：${nn}` : `名稱：${n}`;
     const nicknameRule = nn
       ? `暱稱使用規則：僅在語氣自然、關係熟悉時偶爾使用暱稱「${nn}」，不要每句都使用。`
       : "";
-    return [ `[玩家設定]\n${nameLine}${b ? `\n設定：${b}` : ""}`, nicknameRule ].filter(Boolean).join("\n");
+    return [ `[玩家設定]\n${nameLine}${g ? `\n性別／組成：${g}` : "\n性別／組成：未填寫，不得自行推測"}${b ? `\n設定：${b}` : ""}`, nicknameRule ].filter(Boolean).join("\n");
   };
   const handlePlayerAvatarUpload = (e) => {
     const f = e.target.files?.[0];
@@ -2679,16 +2687,21 @@ ${memoryText || "（無）"}`;
     return !providerNeedsApiKey || !!apiConfig.apiKey;
   };
   const refreshCharacterStatus = async (charId, force = false) => {
+    if (statusRefreshBusyRef.current.has(charId)) return;
     const char = characters.find((x) => x.id === charId);
     if (!char) { showToast("找不到角色"); return; }
     const nowTs = Date.now();
+    const autoRetryCooldown = 3 * 60 * 1000;
     const fourHours = 4 * 60 * 60 * 1000;
+    if (!force && nowTs - (statusAutoRefreshAttemptRef.current.get(charId) || 0) < autoRetryCooldown) return;
     if (!force && char.statusUpdatedAt && nowTs - char.statusUpdatedAt < fourHours) return;
     const msgs = (chatHistory[charId] || [])
       .filter((m) => m.role === "user" || m.role === "assistant")
       .slice(-12);
     if (!force && msgs.length === 0) return;
     if (!canUseCurrentProvider()) { showToast(tr("請先完成 AI 連線設定（API Key）", "Please finish AI connection setup (API key) first", "先にAI接続設定（APIキー）を完了してください", "먼저 AI 연결 설정(API 키)을 완료해주세요")); return; }
+    if (!force) statusAutoRefreshAttemptRef.current.set(charId, nowTs);
+    statusRefreshBusyRef.current.add(charId);
     try {
       const roleProfile = [
         char.description ? `角色設定：${sanitizeText(char.description, 400)}` : "",
@@ -2707,6 +2720,8 @@ ${memoryText || "（無）"}`;
       showToast("狀態已更新");
     } catch (err) {
       showToast(`${tr("刷新失敗", "Refresh failed", "更新に失敗しました", "새로고침 실패")}：${sanitizeText(err?.message || tr("未知錯誤", "Unknown error", "不明なエラー", "알 수 없는 오류"), 120)}`);
+    } finally {
+      statusRefreshBusyRef.current.delete(charId);
     }
   };
   const togglePinMemory = (charId, memoryId) => {
