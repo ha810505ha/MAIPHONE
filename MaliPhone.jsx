@@ -323,7 +323,13 @@ export default function MaliPhone() {
     ja: "日本語",
     ko: "한국어",
   }[uiLanguage] || uiLanguage);
-  const getOutputLanguageDirective = () => `UI language: ${getUiLanguageLabel()}\n請使用${getUiLanguageLabel()}回覆。`;
+  const getOutputLanguageDirective = () => {
+    const languageLabel = getUiLanguageLabel();
+    const taiwaneseChineseDirective = uiLanguage === "zh-TW"
+      ? "\n若輸出語言為繁體中文，必須使用臺灣繁體中文與臺灣慣用詞彙。"
+      : "";
+    return `UI language: ${languageLabel}\n請使用${languageLabel}回覆。${taiwaneseChineseDirective}`;
+  };
   const notify = (keyOrText, fallback) => {
     const message = UI_TEXT[uiLanguage]?.[keyOrText] || fallback || keyOrText;
     setToast(message);
@@ -1110,6 +1116,10 @@ export default function MaliPhone() {
       .trim();
     return sanitizeText(clean, 240);
   };
+  const isIncompleteInnerThought = (text) => {
+    const clean = String(text || "").trim();
+    return !clean || /[，,、：:；;（(「『【\[]$/.test(clean);
+  };
   const generateInnerThought = async ({ char, messageId, source = "manual", historySnapshot = null }) => {
     if (!char?.id || !messageId || innerThoughtLoading[messageId]) return;
     const fullHistory = Array.isArray(historySnapshot) ? historySnapshot : (chatHistory[char.id] || []);
@@ -1157,7 +1167,7 @@ export default function MaliPhone() {
 規則：
 1. 必須使用角色第一人稱，並與目標訊息及當時劇情直接相關。
 2. 只輸出心聲本身，不要角色名、標籤、引號、旁白、Markdown 或「我心想」。
-3. 只寫 1 到 2 句，簡短自然，最多 80 字。
+3. 只寫 1 到 2 句，簡短自然，最多 80 字；每句都必須完整，不得在逗號、冒號或未完成語意處中斷。
 4. 可以呈現嘴硬、猶豫、期待、隱瞞或話語與真心的反差，但不要為了反差硬加感情。
 5. 不要替玩家描述內心、感受或未說出口的意圖。
 6. 不要使用角色在當時不可能知道的資訊，也不要參考目標訊息之後的劇情。
@@ -1181,7 +1191,15 @@ ${targetReply || target.content || "（無文字）"}`;
           content: thoughtInstruction,
         },
       ];
-      const raw = await callAI(thoughtMessages, { ...apiConfig, maxTokens: 500 }, applyUserPlaceholder(prompt));
+      let raw = await callAI(thoughtMessages, { ...apiConfig, maxTokens: 500 }, applyUserPlaceholder(prompt));
+      if (isIncompleteInnerThought(raw)) {
+        raw = await callAI([
+          ...thoughtMessages,
+          { role: "assistant", content: raw },
+          { role: "user", content: "上一版心聲在語意未完成處中斷。請重新輸出一版完整的心聲，維持 1 到 2 句、最多 80 字，只輸出心聲本身。" },
+        ], { ...apiConfig, maxTokens: 500 }, applyUserPlaceholder(prompt));
+      }
+      if (isIncompleteInnerThought(raw)) throw new Error(tr("模型回傳的心聲不完整，請再試一次", "The generated thought was incomplete. Please try again.", "生成された心の声が不完全です。もう一度お試しください", "생성된 속마음이 완전하지 않습니다. 다시 시도해주세요"));
       const content = normalizeInnerThought(raw);
       if (!content) throw new Error(tr("模型沒有產生心聲", "No inner thought was generated", "心の声が生成されませんでした", "속마음이 생성되지 않았습니다"));
       setChatHistory((prev) => ({

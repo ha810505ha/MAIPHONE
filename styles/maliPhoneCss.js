@@ -334,7 +334,7 @@ body{position:fixed;inset:0;}
 .mp-msg-note-wrap .mp-msg-editbtn{margin-left:8px;}
 .mp-retry-btn{margin-top:7px;padding:4px 10px;border-radius:999px;border:1px solid color-mix(in srgb,var(--mp-pink) 24%,transparent);background:color-mix(in srgb,var(--mp-pink) 12%,transparent);color:var(--mp-pink-dk);font-size:11px;font-weight:800;font-family:var(--mp-font);cursor:pointer;}
 .mp-retry-btn:disabled{opacity:.5;cursor:default;}
-.mp-msg{max-width:78%;padding:9px 13px;border-radius:16px;font-size:13px;line-height:1.5;word-break:break-word;}
+.mp-msg{max-width:78%;padding:9px 13px;border-radius:16px;font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word;}
 .mp-msg-ai{
   align-self:flex-start;
   background:var(--mp-surface);
@@ -441,7 +441,7 @@ body{position:fixed;inset:0;}
 .mp-reality-footer .mp-reality-t{margin:0;}
 .mp-reality-user{justify-content:flex-end;}
 .mp-reality-ai{justify-content:flex-start;padding-left:10px;padding-right:10px;}
-.mp-reality-msg{width:100%;max-width:100%;padding:8px 2px 10px;font-size:14px;line-height:1.9;color:var(--mp-txt);word-break:break-word;white-space:normal;}
+.mp-reality-msg{width:100%;max-width:100%;padding:8px 2px 10px;font-size:14px;line-height:1.9;color:var(--mp-txt);word-break:break-word;white-space:pre-wrap;}
 .mp-reality-ai .mp-reality-msg{font-family:'Noto Serif TC','PMingLiU','Songti TC',serif;text-align:justify;text-justify:inter-ideograph;background:transparent;border-color:transparent;box-shadow:none;}
 .mp-reality-user .mp-reality-msg{
   padding:10px 12px;
