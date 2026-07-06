@@ -5,7 +5,7 @@ const APP_STATE_KEY = "app_state";
 
 // 大資料各自獨立成分區，其餘小資料統一放 core 分區。
 // 儲存時只重寫「參照有變動」的分區，避免打一個字就整包重寫。
-const PARTITION_FIELDS = ["chatHistory", "chatBackgrounds", "posts", "phoneInboxCache"];
+const PARTITION_FIELDS = ["chatHistory", "chatBackgrounds", "posts", "phoneInboxCache", "phoneAppCache"];
 const CORE_KEY = "part_core";
 const partitionKey = (field) => `part_${field}`;
 

@@ -621,5 +621,13 @@ body{position:fixed;inset:0;}
 // Main Component
 // ============================================================
 
-export { THEME_PRESETS };
+// 介面字體選項：全部使用已載入的 Google Fonts 或系統字體，不增加載入成本
+const FONT_PRESETS = {
+  "圓體": { stack: "'Zen Maru Gothic','Quicksand',sans-serif" },
+  "明體": { stack: "'Noto Serif TC','Zen Maru Gothic',serif" },
+  "手寫體": { stack: "'Yomogi','Zen Maru Gothic',sans-serif" },
+  "系統黑體": { stack: "'Microsoft JhengHei','PingFang TC',system-ui,sans-serif" },
+};
+
+export { THEME_PRESETS, FONT_PRESETS };
 export default css;
