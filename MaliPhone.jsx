@@ -3,7 +3,7 @@ import { VERSION, CHANGELOG, API_PROVIDERS, DEFAULT_APPS, DOCK_APPS } from "./co
 import { ArrowDown, ChevronLeft, ChevronRight, Eye, LoaderCircle, Pause, RefreshCw, Volume2 } from "lucide-react";
 import { gid, ft, fd, sanitizeText, sanitizeUserImageUrl } from "./utils/coreUtils";
 import { UI_TEXT } from "./constants/uiText";
-import { parseSillyTavernJSON, parseSillyTavernPNG, buildSystemPrompt } from "./utils/characterParser";
+import { buildSystemPrompt } from "./utils/characterParser";
 import { callAI, fetchAvailableModels } from "./services/aiService";
 import { fetchElevenLabsDefaultVoices, synthesizeSpeech } from "./services/ttsService";
 import { loadAppState, saveAppState } from "./utils/indexedDbStorage";
