@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { gid } from "../../utils/coreUtils";
 
 export default function WalletLedgerView({ wallet, setWallet, characters, closeApp, openSettings, tr, formatMoney, displayWalletText, sanitizeUserImageUrl }) {
   const [tab, setTab] = useState("ledger");
@@ -17,7 +18,7 @@ export default function WalletLedgerView({ wallet, setWallet, characters, closeA
   const monthTx=txs.filter((t)=>{const d=new Date(t.time);return d.getFullYear()===mDate.getFullYear()&&d.getMonth()===mDate.getMonth()&&t.source!=="manual";});
   const income=monthTx.filter(t=>t.type!=="expense").reduce((s,t)=>s+(Number(t.amount)||0),0), expense=monthTx.filter(t=>t.type==="expense").reduce((s,t)=>s+(Number(t.amount)||0),0);
   const weeks=[0,0,0,0,0]; monthTx.forEach(t=>weeks[Math.min(4,Math.floor((new Date(t.time).getDate()-1)/7))]+=Number(t.amount)||0); const maxWeek=Math.max(1,...weeks);
-  const setBalance=()=>{const raw=prompt(tr("設定玩家錢包餘額","Set wallet balance","残高を設定","잔액 설정"),String(wallet?.balance||0));if(raw===null)return;const next=Math.max(0,Math.round(Number(raw)||0)),diff=next-(wallet?.balance||0);setWallet(w=>({...w,balance:next,transactions:diff?[{id:gid(),type:diff<0?"expense":"income",amount:Math.abs(diff),note:tr("調整餘額","Balance adjusted","残高調整","잔액 조정"),time:Date.now(),source:"manual"},...(w?.transactions||[])].slice(0,1000):(w?.transactions||[])}));};
+  const setBalance=()=>{const raw=window.prompt(tr("設定玩家錢包餘額","Set wallet balance","残高を設定","잔액 설정"),String(wallet?.balance||0));if(raw===null)return;const parsed=Number(raw);if(!Number.isFinite(parsed))return;const next=Math.max(0,Math.round(parsed));setWallet(w=>{const current=Math.max(0,Number(w?.balance)||0),diff=next-current;return {...w,balance:next,transactions:diff?[{id:gid(),type:diff<0?"expense":"income",amount:Math.abs(diff),note:tr("調整餘額","Balance adjusted","残高調整","잔액 조정"),time:Date.now(),source:"manual"},...(w?.transactions||[])].slice(0,1000):(w?.transactions||[])};});};
   const toggleMemorial=(tx)=>{const label=tx.memorial?null:prompt(tr("珍藏標籤","Saved label","保存ラベル","소장 라벨"),tr("珍藏","Saved","保存","소장"));if(label===null&&!tx.memorial)return;setWallet(w=>({...w,transactions:(w.transactions||[]).map(x=>x.id===tx.id?(tx.memorial?(({memorial,...rest})=>rest)(x):{...x,memorial:{label:label||tr("珍藏","Saved","保存","소장")}}):x)}));};
   const biggest=monthTx.reduce((m,t)=>!m||Number(t.amount)>Number(m.amount)?t:m,null);
   const weekOut=[0,0,0,0,0], weekIn=[0,0,0,0,0]; monthTx.forEach(t=>{const i=Math.min(4,Math.floor((new Date(t.time).getDate()-1)/7));(t.type==="expense"?weekOut:weekIn)[i]+=Number(t.amount)||0;});
