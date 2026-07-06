@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { parseSillyTavernJSON, parseSillyTavernPNG } from "../../utils/characterParser";
 import { createDefaultVoiceSettings, normalizeCharacterVoiceSettings } from "../../utils/voiceSettings";
 
 export default function AddCharacterModal({ setModal, setEditingCharacter, addCharacter, updateCharacter, exportCharacter, deleteCharacter, editingCharacter, sanitizeUserImageUrl, uiLanguage, ttsConfig, ttsVoices, onVoicePreview }) {
