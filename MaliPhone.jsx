@@ -1145,7 +1145,14 @@ ${sceneContext ? `[當時場景]\n${sceneContext}\n` : ""}${memoryContext ? `[�
 ${targetReply || target.content || "（無文字）"}`;
     setInnerThoughtLoading((prev) => ({ ...prev, [messageId]: true }));
     try {
-      const raw = await callAI(contextMessages, apiConfig, applyUserPlaceholder(prompt));
+      const thoughtMessages = [
+        ...contextMessages,
+        {
+          role: "user",
+          content: "請根據以上對話與系統規則，生成角色在目標回覆當下沒有說出口的心聲。只輸出心聲本身。",
+        },
+      ];
+      const raw = await callAI(thoughtMessages, apiConfig, applyUserPlaceholder(prompt));
       const content = normalizeInnerThought(raw);
       if (!content) throw new Error(tr("模型沒有產生心聲", "No inner thought was generated", "心の声が生成されませんでした", "속마음이 생성되지 않았습니다"));
       setChatHistory((prev) => ({
