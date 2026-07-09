@@ -1,34 +1,37 @@
 ﻿import React, { useState, useEffect, useRef } from "react";
-import { VERSION, CHANGELOG, API_PROVIDERS, DEFAULT_APPS, DOCK_APPS } from "./constants/appConstants";
-import { ArrowDown, ChevronLeft, ChevronRight, Eye, LoaderCircle, Pause, RefreshCw, Volume2 } from "lucide-react";
+import { VERSION, API_PROVIDERS, DEFAULT_APPS, DOCK_APPS } from "./constants/appConstants";
+import { getChangelog } from "./constants/changelog";
+import { createSocialFeedHelpers } from "./services/social/socialFeedHelpers";
+import useSocialFeed from "./hooks/social/useSocialFeed";
+import useWalletController from "./hooks/wallet/useWalletController";
 import { gid, ft, fd, sanitizeText, sanitizeUserImageUrl } from "./utils/coreUtils";
 import { UI_TEXT } from "./constants/uiText";
 import { buildSystemPrompt } from "./utils/characterParser";
 import { callAI, fetchAvailableModels } from "./services/aiService";
 import { fetchElevenLabsDefaultVoices, synthesizeSpeech } from "./services/ttsService";
 import { loadAppState, saveAppState } from "./utils/indexedDbStorage";
+import { syncOnBoot, schedulePush } from "./services/syncService";
 import { PHONE_APP_META, sanitizePhoneTheme, buildPhonePromptContext, buildPhoneAppPrompt, sanitizePhoneAppData } from "./utils/phoneAppGen";
 import { createDefaultVoiceSettings, normalizeCharacterVoiceSettings } from "./utils/voiceSettings";
 import { sanitizeCustomCss } from "./utils/customCss";
 import css, { THEME_PRESETS, FONT_PRESETS } from "./styles/maliPhoneCss";
-import PetHome from "./PetHome";
 import DesktopPet from "./DesktopPet";
 import CustomCssGuide from "./CustomCssGuide";
-import CustomCssSettings from "./components/settings/CustomCssSettings";
-import HeroImageSettings from "./components/settings/HeroImageSettings";
-import ThemeSettings from "./components/settings/ThemeSettings";
-import InterfaceSettings from "./components/settings/InterfaceSettings";
-import ApiPresetSettings from "./components/settings/ApiPresetSettings";
-import DataBackupSettings from "./components/settings/DataBackupSettings";
-import AiConnectionSettings from "./components/settings/AiConnectionSettings";
-import VoiceApiSettings from "./components/settings/VoiceApiSettings";
-import ApiPresetModal from "./components/settings/ApiPresetModal";
-import DataImportPreviewModal from "./components/settings/DataImportPreviewModal";
-import ChatroomImportPreviewModal from "./components/settings/ChatroomImportPreviewModal";
-import AboutInfoSettings from "./components/settings/AboutInfoSettings";
-import ResetDataSettings from "./components/settings/ResetDataSettings";
-import GameCenter from "./components/apps/GameCenter";
-import AnswerBookApp from "./components/apps/AnswerBookApp";
+import SettingsApp from "./components/settings/SettingsApp";
+import AppRouter from "./components/apps/AppRouter";
+import useAppearanceSettings from "./hooks/settings/useAppearanceSettings";
+import useDirectChatAI from "./hooks/chat/useDirectChatAI";
+import useGroupChatAI from "./hooks/chat/useGroupChatAI";
+import useGroupChatController from "./hooks/chat/useGroupChatController";
+import useChatBackground from "./hooks/chat/useChatBackground";
+import useHomeDragAndDrop from "./hooks/home/useHomeDragAndDrop";
+import { getGroupMemberProfileText, buildGroupChatSystemPrompt, parseGroupReplies } from "./services/chat/groupChatHelpers";
+import { generateGroupReplies } from "./services/chat/groupChatGenerator";
+import { generateDirectAssistant } from "./services/chat/directChatGenerator";
+import useAppPersistence from "./hooks/data/useAppPersistence";
+import useDataImportExport from "./hooks/data/useDataImportExport";
+import useChatroomImportExport from "./hooks/data/useChatroomImportExport";
+import useVoicePlayback from "./hooks/audio/useVoicePlayback";
 import PlayerProfileApp from "./components/apps/PlayerProfileApp";
 import ContactsApp from "./components/apps/ContactsApp";
 import WalletSettingsApp from "./components/apps/WalletSettingsApp";
@@ -37,70 +40,25 @@ import SocialApp from "./components/apps/SocialApp";
 import LorebookApp from "./components/apps/LorebookApp";
 import StatusApp from "./components/apps/StatusApp";
 import AddCharacterModal from "./components/characters/AddCharacterModal";
-import PeachHero, { heroImgStyle } from "./components/home/PeachHero";
+import { heroImgStyle } from "./components/home/PeachHero";
 import WalletLedgerView from "./components/wallet/WalletLedgerView";
-import { BarClock, LockClock, DeskClock } from "./components/common/PhoneClocks";
+import GroupMemberPicker from "./components/chat/GroupMemberPicker";
+import ChatListView from "./components/chat/ChatListView";
+import ChatHeader from "./components/chat/ChatHeader";
+import ChatSettingsPanel from "./components/chat/settings/ChatSettingsPanel";
+import GroupChatContent from "./components/chat/GroupChatContent";
+import { OnlineChatMessage, RealityChatMessage, SystemNoticeMessage, TransferMessage } from "./components/chat/DirectMessageTypes";
+import DirectMessageList from "./components/chat/DirectMessageList";
+import DirectChatComposer from "./components/chat/DirectChatComposer";
+import { CharacterVoiceAction, InnerThoughtPanel, RealityMessageText, SceneBar } from "./components/chat/ChatMessageParts";
+import LockScreen from "./components/shell/LockScreen";
+import HomeScreen from "./components/shell/HomeScreen";
+import { DEFAULT_APP_STATE } from "./constants/defaultAppState";
 
 // 立繪位移：object-position 滑動 cover 的溢出裁切窗口（到邊自動停），
 // translate 只用縮放產生的溢出空間（上限 (zoom-1)*50%），兩者相加永遠不會露出背景缺口
 export default function MaliPhone() {
-  const defaultAppState = {
-    characters: [],
-    activeCharId: null,
-    chatHistory: {},
-    chatModes: {},
-    chatBackgrounds: {},
-    groupChats: [],
-    chatScenes: {},
-    groupScenes: {},
-    innerThoughtSettings: {},
-    proactiveSettings: {},
-    proactiveUnread: {},
-    posts: [],
-    socialSettings: { autoPost: false },
-    memories: {},
-    lorebooks: [],
-    chatLorebookBindings: {},
-    phoneInboxCache: {},
-    phoneAppCache: {},
-    wallet: {
-      balance: 500,
-      transactions: [],
-      assets: [],
-    },
-    characterWallets: {},
-    apiPresets: [
-      { id: "preset-1", name: "預設 1", provider: "openai", baseUrl: "https://api.openai.com/v1", apiKey: "", model: "gpt-4o-mini" },
-      { id: "preset-2", name: "預設 2", provider: "grok", baseUrl: "https://api.x.ai/v1", apiKey: "", model: "grok-3-mini" },
-      { id: "preset-3", name: "預設 3", provider: "openrouter", baseUrl: "https://openrouter.ai/api/v1", apiKey: "", model: "auto" },
-    ],
-    playerProfile: {
-      name: "玩家",
-      nickname: "",
-      gender: "",
-      bio: "",
-      avatar: "",
-      doll: {
-        hairStyle: "長髮",
-        topStyle: "連帽上衣",
-        accessoryStyle: "髮夾",
-        hairColor: "#5d4037",
-        topColor: "#f48fb1",
-        accessoryColor: "#90caf9",
-      },
-    },
-    apiConfig: { provider: "openai", baseUrl: "https://api.openai.com/v1", apiKey: "", model: "gpt-4o-mini", location: "global" },
-    ttsConfig: {
-      enabled: false,
-      provider: "elevenlabs",
-      elevenlabs: { apiKey: "", model: "eleven_flash_v2_5", defaultVoiceId: "JBFqnCBsd6RMkjVDRZzb" },
-      minimax: { apiKey: "", model: "speech-2.8-turbo", baseUrl: "https://api.minimax.io", defaultVoiceId: "English_expressive_narrator" },
-    },
-    themeName: "莓果蘇打",
-    fontName: "圓體",
-    uiLanguage: "zh-TW",
-    screenLockTimeout: 5,
-  };
+  const defaultAppState = DEFAULT_APP_STATE;
   const [locked, setLocked] = useState(true);
   const [unlocking, setUnlocking] = useState(false);
   const [currentApp, setCurrentApp] = useState(null);
@@ -187,32 +145,7 @@ export default function MaliPhone() {
   const [walletGenLoading, setWalletGenLoading] = useState(false);
   const [apiPresets, setApiPresets] = useState(defaultAppState.apiPresets);
   const [playerProfile, setPlayerProfile] = useState(defaultAppState.playerProfile);
-  const [themeName, setThemeName] = useState(defaultAppState.themeName);
-  const [fontName, setFontName] = useState(defaultAppState.fontName);
-  const [themeEffectsEnabled, setThemeEffectsEnabled] = useState(() => {
-    try { return localStorage.getItem("mali_theme_effects") !== "0"; } catch { return true; }
-  });
-  useEffect(() => {
-    try { localStorage.setItem("mali_theme_effects", themeEffectsEnabled ? "1" : "0"); } catch {}
-  }, [themeEffectsEnabled]);
-  const [customCssEnabled, setCustomCssEnabled] = useState(() => {
-    try { return localStorage.getItem("mali_custom_css_enabled") === "1"; } catch { return false; }
-  });
-  const [customCss, setCustomCss] = useState(() => {
-    try { return localStorage.getItem("mali_custom_css") || ""; } catch { return ""; }
-  });
-  const [customCssDraft, setCustomCssDraft] = useState(() => {
-    try { return localStorage.getItem("mali_custom_css") || ""; } catch { return ""; }
-  });
-  const [customCssNotice, setCustomCssNotice] = useState("");
-  const [customCssGuideOpen, setCustomCssGuideOpen] = useState(false);
-  useEffect(() => {
-    try { localStorage.setItem("mali_custom_css_enabled", customCssEnabled ? "1" : "0"); } catch {}
-  }, [customCssEnabled]);
-  const scopedCustomCss = customCssEnabled && customCss.trim()
-    ? `@scope (.mp-phone) { ${sanitizeCustomCss(customCss)} }`
-    : "";
-  const [uiLanguage, setUiLanguage] = useState(defaultAppState.uiLanguage);
+  const { themeName, setThemeName, fontName, setFontName, uiLanguage, setUiLanguage, themeEffectsEnabled, setThemeEffectsEnabled, customCssEnabled, setCustomCssEnabled, customCss, setCustomCss, customCssDraft, setCustomCssDraft, customCssNotice, setCustomCssNotice, customCssGuideOpen, setCustomCssGuideOpen, settingsAppearanceOpen, setSettingsAppearanceOpen, scopedCustomCss } = useAppearanceSettings(defaultAppState);
   const [playerAvatarCrop, setPlayerAvatarCrop] = useState(null);
   const [screenLockTimeout, setScreenLockTimeout] = useState(defaultAppState.screenLockTimeout);
   const [phoneViewCharId, setPhoneViewCharId] = useState(null);
@@ -223,11 +156,6 @@ export default function MaliPhone() {
   const [activeMemoryId, setActiveMemoryId] = useState(null);
   const [apiConfig, setApiConfig] = useState(defaultAppState.apiConfig);
   const [ttsConfig, setTtsConfig] = useState(defaultAppState.ttsConfig);
-  const [ttsVoices, setTtsVoices] = useState([]);
-  const [ttsConnectionState, setTtsConnectionState] = useState("idle");
-  const [voicePlayback, setVoicePlayback] = useState({ key: null, status: "idle" });
-  const voiceAudioRef = useRef(null);
-  const voiceAudioCacheRef = useRef(new Map());
   const [modelBadgeOpen, setModelBadgeOpen] = useState(false);
   const [modal, setModal] = useState(null);
   const [updateNoticeOpen, setUpdateNoticeOpen] = useState(false);
@@ -240,6 +168,7 @@ export default function MaliPhone() {
   const [clearCacheArmed, setClearCacheArmed] = useState(false);
   const [statusExpandedCharId, setStatusExpandedCharId] = useState(null);
   const [statusMemoryExpandedCharId, setStatusMemoryExpandedCharId] = useState(null);
+  const [statusRefreshingIds, setStatusRefreshingIds] = useState({});
   const [settingsApiOpen, setSettingsApiOpen] = useState(true);
   const [settingsResetOpen, setSettingsResetOpen] = useState(false);
   const [settingsVersionOpen, setSettingsVersionOpen] = useState(false);
@@ -248,17 +177,9 @@ export default function MaliPhone() {
   const [settingsVoiceOpen, setSettingsVoiceOpen] = useState(false);
   const [settingsResetDataOpen, setSettingsResetDataOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState("appearance");
-  const [settingsAppearanceOpen, setSettingsAppearanceOpen] = useState(() => {
-    try { return localStorage.getItem("mali_settings_appearance_open") !== "0"; } catch { return true; }
-  });
-  useEffect(() => {
-    try { localStorage.setItem("mali_settings_appearance_open", settingsAppearanceOpen ? "1" : "0"); } catch {}
-  }, [settingsAppearanceOpen]);
   const [heroDraft, setHeroDraft] = useState(null);
   const heroFileRef = useRef(null);
   const heroDragRef = useRef(null);
-  const [dataImporting, setDataImporting] = useState(false);
-  const [dataImportPreview, setDataImportPreview] = useState(null);
   const [editingLorebookEntry, setEditingLorebookEntry] = useState(null);
   const [editingLorebookBook, setEditingLorebookBook] = useState(null);
   const [pendingLorebookExport, setPendingLorebookExport] = useState(null);
@@ -284,7 +205,6 @@ export default function MaliPhone() {
   const [dockOrder, setDockOrder] = useState(DOCK_APPS);
   const [isDraggingApp, setIsDraggingApp] = useState(false);
   const [pointerDrag, setPointerDrag] = useState(null);
-  const [hydrated, setHydrated] = useState(false);
   const socialLastGlobalPostAtRef = useRef(0);
   const socialLastPostByCharRef = useRef({});
   const socialAutoPostingRef = useRef(false);
@@ -308,11 +228,6 @@ export default function MaliPhone() {
   const suppressAppClickUntilRef = useRef(0);
   const serviceWorkerReloadingRef = useRef(false);
   const serviceWorkerHadControllerRef = useRef(false);
-  const dataImportRef = useRef(null);
-  const chatroomImportRef = useRef(null);
-  const [chatroomImportTarget, setChatroomImportTarget] = useState(null);
-  const [chatroomImportPreview, setChatroomImportPreview] = useState(null);
-  const [chatroomImporting, setChatroomImporting] = useState(false);
   const chatMsgsRef = useRef(null);
   const chatLoadAdjustRef = useRef(null);
   const thoughtJumpInProgressRef = useRef(false);
@@ -348,89 +263,85 @@ export default function MaliPhone() {
   const ask = (keyOrText, fallback) => window.confirm(UI_TEXT[uiLanguage]?.[keyOrText] || fallback || keyOrText);
   const askInput = (keyOrText, defaultValue = "", fallback) => prompt(UI_TEXT[uiLanguage]?.[keyOrText] || fallback || keyOrText, defaultValue);
 
-  useEffect(() => {
-    let mounted = true;
-    loadAppState(defaultAppState).then((data) => {
-      if (!mounted) return;
-      setCharacters(data.characters || []);
-      setActiveCharId(data.activeCharId ?? null);
-      setChatHistory(data.chatHistory || {});
-      setChatModes(data.chatModes || {});
-      setChatBackgrounds(data.chatBackgrounds && typeof data.chatBackgrounds === "object" ? data.chatBackgrounds : defaultAppState.chatBackgrounds);
-      setGroupChats(Array.isArray(data.groupChats) ? data.groupChats : []);
-      setChatScenes(data.chatScenes && typeof data.chatScenes === "object" ? data.chatScenes : defaultAppState.chatScenes);
-      setGroupScenes(data.groupScenes && typeof data.groupScenes === "object" ? data.groupScenes : defaultAppState.groupScenes);
-      setInnerThoughtSettings(data.innerThoughtSettings && typeof data.innerThoughtSettings === "object" ? data.innerThoughtSettings : defaultAppState.innerThoughtSettings);
-      setProactiveSettings(data.proactiveSettings && typeof data.proactiveSettings === "object" ? data.proactiveSettings : defaultAppState.proactiveSettings);
-      setProactiveUnread(data.proactiveUnread && typeof data.proactiveUnread === "object" ? data.proactiveUnread : defaultAppState.proactiveUnread);
-      setPosts(data.posts || []);
-      setSocialSettings(data.socialSettings && typeof data.socialSettings === "object" ? data.socialSettings : defaultAppState.socialSettings);
-      setMemories(data.memories || {});
-      setPhoneInboxCache(data.phoneInboxCache || {});
-      setPhoneAppCache(data.phoneAppCache || {});
-      setWallet(data.wallet || defaultAppState.wallet);
-      setCharacterWallets(data.characterWallets || {});
-      setScreenLockTimeout(Number.isFinite(Number(data.screenLockTimeout)) ? Number(data.screenLockTimeout) : defaultAppState.screenLockTimeout);
-      setApiPresets(Array.isArray(data.apiPresets) && data.apiPresets.length ? data.apiPresets : defaultAppState.apiPresets);
-      setPlayerProfile(data.playerProfile || defaultAppState.playerProfile);
-      setChatLorebookBindings(data.chatLorebookBindings || {});
-      const loadedLorebooks = Array.isArray(data.lorebooks) ? data.lorebooks : [];
-      if (loadedLorebooks.length) {
-        setLorebooks(loadedLorebooks);
-        setActiveLorebookId(loadedLorebooks[0]?.id || null);
-      } else if (Array.isArray(data.lorebookEntries) && data.lorebookEntries.length) {
-        const migrated = [{
-          id: gid(),
-          name: "預設世界書",
-          description: "",
-          enabled: true,
-          updatedAt: Date.now(),
-          entries: data.lorebookEntries,
-        }];
-        setLorebooks(migrated);
-        setActiveLorebookId(migrated[0].id);
-      } else {
-        setLorebooks([]);
-        setActiveLorebookId(null);
-      }
-      setApiConfig(data.apiConfig || defaultAppState.apiConfig);
-      setTtsConfig(data.ttsConfig && typeof data.ttsConfig === "object" ? {
-        ...defaultAppState.ttsConfig,
-        ...data.ttsConfig,
-        elevenlabs: { ...defaultAppState.ttsConfig.elevenlabs, ...(data.ttsConfig.elevenlabs || {}) },
-        minimax: { ...defaultAppState.ttsConfig.minimax, ...(data.ttsConfig.minimax || {}) },
-      } : defaultAppState.ttsConfig);
-      setThemeName(data.themeName || defaultAppState.themeName);
-      setFontName(FONT_PRESETS[data.fontName] ? data.fontName : defaultAppState.fontName);
-      setUiLanguage(data.uiLanguage || defaultAppState.uiLanguage);
-      const initialDock = (data.dockOrder && Array.isArray(data.dockOrder)) ? data.dockOrder : DOCK_APPS;
-      setDockOrder(initialDock);
-      if (data.homeSlots && Array.isArray(data.homeSlots) && data.homeSlots.length === HOME_SLOT_COUNT) {
-        setHomeSlots(data.homeSlots);
-      } else {
-        const fallbackOrder = (data.homeOrder && Array.isArray(data.homeOrder))
-          ? data.homeOrder
-          : DEFAULT_APPS.filter(a => !DOCK_APPS.includes(a.id)).map(a => a.id);
-        const nextSlots = Array.from({ length: HOME_SLOT_COUNT }, () => null);
-        fallbackOrder
-          .filter((id) => !initialDock.includes(id))
-          .slice(0, PAGE_SIZE)
-          .forEach((id, i) => { nextSlots[PAGE_SIZE + i] = id; });
-        setHomeSlots(nextSlots);
-      }
-      setHydrated(true);
-    }).catch(() => {
-      if (mounted) setHydrated(true);
-    });
-    return () => { mounted = false; };
-  }, []);
-  useEffect(() => {
-    if (!hydrated) return;
-    const timer = setTimeout(() => {
-      saveAppState({ characters, activeCharId, chatHistory, chatModes, chatBackgrounds, groupChats, chatScenes, groupScenes, innerThoughtSettings, proactiveSettings, proactiveUnread, posts, socialSettings, memories, lorebooks, chatLorebookBindings, phoneInboxCache, phoneAppCache, wallet, characterWallets, screenLockTimeout, apiPresets, playerProfile, apiConfig, ttsConfig, themeName, fontName, uiLanguage, homeSlots, dockOrder }).catch(() => {});
-    }, 180);
-    return () => clearTimeout(timer);
-  }, [hydrated, characters, activeCharId, chatHistory, chatModes, chatBackgrounds, groupChats, chatScenes, groupScenes, innerThoughtSettings, proactiveSettings, proactiveUnread, posts, socialSettings, memories, lorebooks, chatLorebookBindings, phoneInboxCache, phoneAppCache, wallet, characterWallets, screenLockTimeout, apiPresets, playerProfile, apiConfig, ttsConfig, themeName, fontName, uiLanguage, homeSlots, dockOrder]);
+  const applyLoadedAppState = (data) => {
+  setCharacters(data.characters || []);
+  setActiveCharId(data.activeCharId ?? null);
+  setChatHistory(data.chatHistory || {});
+  setChatModes(data.chatModes || {});
+  setChatBackgrounds(data.chatBackgrounds && typeof data.chatBackgrounds === "object" ? data.chatBackgrounds : defaultAppState.chatBackgrounds);
+  setGroupChats(Array.isArray(data.groupChats) ? data.groupChats : []);
+  setChatScenes(data.chatScenes && typeof data.chatScenes === "object" ? data.chatScenes : defaultAppState.chatScenes);
+  setGroupScenes(data.groupScenes && typeof data.groupScenes === "object" ? data.groupScenes : defaultAppState.groupScenes);
+  setInnerThoughtSettings(data.innerThoughtSettings && typeof data.innerThoughtSettings === "object" ? data.innerThoughtSettings : defaultAppState.innerThoughtSettings);
+  setProactiveSettings(data.proactiveSettings && typeof data.proactiveSettings === "object" ? data.proactiveSettings : defaultAppState.proactiveSettings);
+  setProactiveUnread(data.proactiveUnread && typeof data.proactiveUnread === "object" ? data.proactiveUnread : defaultAppState.proactiveUnread);
+  setPosts(data.posts || []);
+  setSocialSettings(data.socialSettings && typeof data.socialSettings === "object" ? data.socialSettings : defaultAppState.socialSettings);
+  setMemories(data.memories || {});
+  setPhoneInboxCache(data.phoneInboxCache || {});
+  setPhoneAppCache(data.phoneAppCache || {});
+  setWallet(data.wallet || defaultAppState.wallet);
+  setCharacterWallets(data.characterWallets || {});
+  setScreenLockTimeout(Number.isFinite(Number(data.screenLockTimeout)) ? Number(data.screenLockTimeout) : defaultAppState.screenLockTimeout);
+  setApiPresets(Array.isArray(data.apiPresets) && data.apiPresets.length ? data.apiPresets : defaultAppState.apiPresets);
+  setPlayerProfile(data.playerProfile || defaultAppState.playerProfile);
+  setChatLorebookBindings(data.chatLorebookBindings || {});
+  const loadedLorebooks = Array.isArray(data.lorebooks) ? data.lorebooks : [];
+  if (loadedLorebooks.length) {
+    setLorebooks(loadedLorebooks);
+    setActiveLorebookId(loadedLorebooks[0]?.id || null);
+  } else if (Array.isArray(data.lorebookEntries) && data.lorebookEntries.length) {
+    const migrated = [{
+      id: gid(),
+      name: "預設世界書",
+      description: "",
+      enabled: true,
+      updatedAt: Date.now(),
+      entries: data.lorebookEntries,
+    }];
+    setLorebooks(migrated);
+    setActiveLorebookId(migrated[0].id);
+  } else {
+    setLorebooks([]);
+    setActiveLorebookId(null);
+  }
+  setApiConfig(data.apiConfig || defaultAppState.apiConfig);
+  setTtsConfig(data.ttsConfig && typeof data.ttsConfig === "object" ? {
+    ...defaultAppState.ttsConfig,
+    ...data.ttsConfig,
+    elevenlabs: { ...defaultAppState.ttsConfig.elevenlabs, ...(data.ttsConfig.elevenlabs || {}) },
+    minimax: { ...defaultAppState.ttsConfig.minimax, ...(data.ttsConfig.minimax || {}) },
+  } : defaultAppState.ttsConfig);
+  setThemeName(data.themeName || defaultAppState.themeName);
+  setFontName(FONT_PRESETS[data.fontName] ? data.fontName : defaultAppState.fontName);
+  setUiLanguage(data.uiLanguage || defaultAppState.uiLanguage);
+  const initialDock = (data.dockOrder && Array.isArray(data.dockOrder)) ? data.dockOrder : DOCK_APPS;
+  setDockOrder(initialDock);
+  if (data.homeSlots && Array.isArray(data.homeSlots) && data.homeSlots.length === HOME_SLOT_COUNT) {
+    setHomeSlots(data.homeSlots);
+  } else {
+    const fallbackOrder = (data.homeOrder && Array.isArray(data.homeOrder))
+      ? data.homeOrder
+      : DEFAULT_APPS.filter(a => !DOCK_APPS.includes(a.id)).map(a => a.id);
+    const nextSlots = Array.from({ length: HOME_SLOT_COUNT }, () => null);
+    fallbackOrder
+      .filter((id) => !initialDock.includes(id))
+      .slice(0, PAGE_SIZE)
+      .forEach((id, i) => { nextSlots[PAGE_SIZE + i] = id; });
+    setHomeSlots(nextSlots);
+  }
+
+  };
+  const persistenceSnapshot = { characters, activeCharId, chatHistory, chatModes, chatBackgrounds, groupChats, chatScenes, groupScenes, innerThoughtSettings, proactiveSettings, proactiveUnread, posts, socialSettings, memories, lorebooks, chatLorebookBindings, phoneInboxCache, phoneAppCache, wallet, characterWallets, screenLockTimeout, apiPresets, playerProfile, apiConfig, ttsConfig, themeName, fontName, uiLanguage, homeSlots, dockOrder };
+  const { hydrated } = useAppPersistence({
+    defaults: defaultAppState,
+    snapshot: persistenceSnapshot,
+    loadState: loadAppState,
+    saveState: saveAppState,
+    syncOnBoot,
+    schedulePush,
+    onLoad: applyLoadedAppState,
+  });
   useEffect(() => {
     if (!hydrated || ttsConfig.provider !== "minimax") return;
     setTtsConfig((current) => ({ ...current, provider: "elevenlabs" }));
@@ -639,83 +550,6 @@ export default function MaliPhone() {
   }, []);
 
   const showToast = (m) => { setToast(m); setTimeout(() => setToast(null), 2200); };
-  const stopCurrentVoiceAudio = () => {
-    const current = voiceAudioRef.current;
-    if (!current) return;
-    current.audio.pause();
-    URL.revokeObjectURL(current.url);
-    voiceAudioRef.current = null;
-  };
-  const playVoiceBlob = async (blob, key) => {
-    stopCurrentVoiceAudio();
-    const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-    voiceAudioRef.current = { audio, url, key };
-    audio.onended = () => {
-      if (voiceAudioRef.current?.audio === audio) voiceAudioRef.current = null;
-      URL.revokeObjectURL(url);
-      setVoicePlayback({ key: null, status: "idle" });
-    };
-    audio.onerror = () => {
-      if (voiceAudioRef.current?.audio === audio) voiceAudioRef.current = null;
-      URL.revokeObjectURL(url);
-      setVoicePlayback({ key: null, status: "idle" });
-      showToast(tr("語音播放失敗", "Voice playback failed", "音声の再生に失敗しました", "음성 재생 실패"));
-    };
-    await audio.play();
-    setVoicePlayback({ key, status: "playing" });
-  };
-  const previewCharacterVoice = async (voiceSettings, text) => {
-    try {
-      const blob = await synthesizeSpeech({ text, config: ttsConfig, voiceSettings });
-      await playVoiceBlob(blob, "voice-preview");
-    } catch (err) {
-      showToast(`${tr("語音試聽失敗", "Voice preview failed", "音声試聴に失敗しました", "음성 미리듣기 실패")}：${sanitizeText(err?.message || "", 120)}`);
-    }
-  };
-  const loadElevenLabsDefaultVoices = async () => {
-    const apiKey = ttsConfig.elevenlabs?.apiKey || "";
-    try {
-      setTtsConnectionState("loading");
-      const voices = await fetchElevenLabsDefaultVoices(apiKey);
-      if (!voices.length) throw new Error(tr("找不到可用聲音", "No available voices found", "利用可能な音声が見つかりません", "사용 가능한 음성을 찾을 수 없습니다"));
-      setTtsVoices(voices);
-      setTtsConfig((current) => ({
-        ...current,
-        elevenlabs: {
-          ...current.elevenlabs,
-          availableVoices: voices,
-          defaultVoiceId: voices.some((voice) => voice.id === current.elevenlabs?.defaultVoiceId) ? current.elevenlabs.defaultVoiceId : voices[0].id,
-        },
-      }));
-      setTtsConnectionState("success");
-      showToast(tr(`連線成功，已載入 ${voices.length} 個可用聲音`, `Connected; loaded ${voices.length} available voices`, `接続成功：${voices.length}件の音声を読み込みました`, `연결 성공: 사용 가능한 음성 ${voices.length}개를 불러왔습니다`));
-    } catch (err) {
-      setTtsVoices([]);
-      setTtsConnectionState("error");
-      showToast(`${tr("ElevenLabs 連線失敗", "ElevenLabs connection failed", "ElevenLabs 接続失敗", "ElevenLabs 연결 실패")}：${sanitizeText(err?.message || "", 120)}`);
-    }
-  };
-  const previewDefaultTtsVoice = async () => {
-    const provider = ttsConfig.provider || "elevenlabs";
-    const voiceId = ttsConfig[provider]?.defaultVoiceId || "";
-    try {
-      setTtsConnectionState("previewing");
-      const voiceSettings = createDefaultVoiceSettings();
-      voiceSettings.enabled = true;
-      voiceSettings[provider].voiceId = voiceId;
-      const blob = await synthesizeSpeech({
-        text: tr("你好，語音 API 已連線成功。", "Hello, the voice API is connected.", "こんにちは、音声 API の接続に成功しました。", "안녕하세요, 음성 API 연결에 성공했습니다."),
-        config: ttsConfig,
-        voiceSettings,
-      });
-      await playVoiceBlob(blob, "tts-default-preview");
-      setTtsConnectionState("success");
-    } catch (err) {
-      setTtsConnectionState("error");
-      showToast(`${tr("語音測試失敗", "Voice test failed", "音声テストに失敗しました", "음성 테스트 실패")}：${sanitizeText(err?.message || "", 120)}`);
-    }
-  };
   const extractRealitySpeech = (text) => {
     const parts = [];
     const source = String(text || "");
@@ -733,108 +567,19 @@ export default function MaliPhone() {
     const speech = getMessageMode(message) === "reality" ? extractRealitySpeech(combined) : combined;
     return speech.replace(/\*\*|__|[*_`#]/g, "").trim();
   };
-  const toggleCharacterVoice = async (char, message) => {
-    const voiceSettings = char?.voiceSettings;
-    if (!ttsConfig.enabled || !voiceSettings?.enabled) return;
-    const provider = ttsConfig.provider || "elevenlabs";
-    const voiceId = voiceSettings?.[provider]?.voiceId?.trim();
-    if (!ttsConfig?.[provider]?.apiKey) return showToast(tr("請先到設定填寫語音 API Key", "Set the voice API key in Settings first", "設定で音声 API Key を入力してください", "설정에서 음성 API Key를 입력해주세요"));
-    if (!voiceId) return showToast(tr("請先在角色設定填寫 Voice ID", "Set a Voice ID in character settings first", "キャラ設定で Voice ID を入力してください", "캐릭터 설정에서 Voice ID를 입력해주세요"));
-    const key = `${provider}:${char.id}:${message.replyGroupId || message.id}`;
-    if (voicePlayback.key === key && voicePlayback.status === "playing" && voiceAudioRef.current?.audio) {
-      voiceAudioRef.current.audio.pause();
-      setVoicePlayback({ key, status: "paused" });
-      return;
-    }
-    if (voicePlayback.key === key && voicePlayback.status === "paused" && voiceAudioRef.current?.audio) {
-      await voiceAudioRef.current.audio.play();
-      setVoicePlayback({ key, status: "playing" });
-      return;
-    }
-    const text = getReplySpeechText(char.id, message);
-    if (!text) return showToast(tr("這段回覆沒有可朗讀的角色台詞", "This reply has no character dialogue to read", "この返信には読み上げる台詞がありません", "이 답변에는 읽을 캐릭터 대사가 없습니다"));
-    const cacheKey = `${key}:${ttsConfig[provider]?.model || ""}:${voiceId}:${text}`;
-    try {
-      setVoicePlayback({ key, status: "loading" });
-      let blob = voiceAudioCacheRef.current.get(cacheKey);
-      if (!blob) {
-        blob = await synthesizeSpeech({ text, config: ttsConfig, voiceSettings });
-        voiceAudioCacheRef.current.set(cacheKey, blob);
-      }
-      await playVoiceBlob(blob, key);
-    } catch (err) {
-      setVoicePlayback({ key: null, status: "idle" });
-      showToast(`${tr("語音生成失敗", "Voice generation failed", "音声生成に失敗しました", "음성 생성 실패")}：${sanitizeText(err?.message || "", 120)}`);
-    }
-  };
+  const { voices: ttsVoices, setVoices: setTtsVoices, connectionState: ttsConnectionState, setConnectionState: setTtsConnectionState, playback: voicePlayback, stop: stopCurrentVoiceAudio, clearCache: clearVoicePlaybackCache, previewCharacterVoice, loadDefaultVoices: loadElevenLabsDefaultVoices, previewDefaultVoice: previewDefaultTtsVoice, toggleCharacterVoice } = useVoicePlayback({
+    config: ttsConfig, setConfig: setTtsConfig, fetchVoices: fetchElevenLabsDefaultVoices,
+    synthesizeSpeech, getSpeechText: getReplySpeechText, showToast, sanitizeText, tr,
+  });
   const renderCharacterVoiceAction = (char, message, isActive, collapseWhenHidden = false) => {
     if (!ttsConfig.enabled || !char?.voiceSettings?.enabled) return null;
     const key = `${ttsConfig.provider || "elevenlabs"}:${char.id}:${message.replyGroupId || message.id}`;
     const status = voicePlayback.key === key ? voicePlayback.status : "idle";
-    const isVisible = isActive || status !== "idle";
     return (
-      <button
-        type="button"
-        className={`mp-voice-action ${isVisible ? "" : (collapseWhenHidden ? "mp-voice-action-collapsed" : "mp-voice-action-hidden")} ${status === "playing" ? "mp-voice-action-playing" : ""}`}
-        disabled={status === "loading"}
-        title={status === "playing" ? tr("暫停語音", "Pause voice", "音声を一時停止", "음성 일시정지") : tr("播放角色語音", "Play character voice", "キャラクター音声を再生", "캐릭터 음성 재생")}
-        aria-label={status === "playing" ? tr("暫停語音", "Pause voice", "音声を一時停止", "음성 일시정지") : tr("播放角色語音", "Play character voice", "キャラクター音声を再生", "캐릭터 음성 재생")}
-        onClick={(event) => { event.stopPropagation(); void toggleCharacterVoice(char, message); }}
-      >
-        {status === "loading" ? <LoaderCircle size={14} className="mp-voice-spinner" aria-hidden="true" /> : status === "playing" ? <Pause size={14} aria-hidden="true" /> : <Volume2 size={14} aria-hidden="true" />}
-      </button>
+      <CharacterVoiceAction visible={isActive || status !== "idle"} collapseWhenHidden={collapseWhenHidden} status={status} onToggle={() => void toggleCharacterVoice(char, message)} tr={tr} />
     );
   };
-  const CHANGELOG_TEXT = {
-    "1.2.1": {
-      en: ["07/06 Update", "Redesigned Wallet with character filters, monthly income and expense totals, weekly charts, and monthly recaps", "Improved chat layout and message display; Enter now creates a new line on mobile and messages are sent only with the Send button", "Unified layouts across themes, added Peach Mousse and a theme-effects toggle, and refined visual effects", "Improved Settings, Custom CSS, and overall app interface stability", "Expanded the character phone with themed apps and improved chat refresh and player contact notes", "Added a global interface font selector"],
-      ja: ["07/06 更新", "キャラクター別フィルター、月間収支、週別グラフ、月次まとめを備えたウォレット画面に刷新", "チャットのレイアウトとメッセージ表示を改善し、モバイルでは Enter で改行、送信ボタンでのみ送信するよう変更", "各テーマのレイアウトを統一し、ピーチムースとテーマ演出スイッチを追加、エフェクト表示を改善", "設定、カスタム CSS、各アプリ画面の構成と安定性を改善", "テーマ対応アプリを備えたキャラクタースマホを拡張し、チャット更新とプレイヤー連絡先メモを改善", "全体のインターフェースフォント選択機能を追加"],
-      ko: ["07/06 업데이트", "캐릭터별 필터, 월간 수입·지출, 주간 차트와 월간 결산을 포함하도록 지갑 화면 개편", "채팅 레이아웃과 메시지 표시를 개선하고 모바일에서 Enter는 줄바꿈, 전송 버튼을 눌러야만 메시지가 전송되도록 변경", "모든 테마의 레이아웃을 통일하고 피치 무스와 테마 효과 스위치를 추가했으며 효과 표현 개선", "설정, 사용자 CSS 및 여러 앱 화면의 구조와 안정성 개선", "테마형 앱을 갖춘 캐릭터 휴대폰을 확장하고 채팅 새로고침과 플레이어 연락처 메모 개선", "전체 인터페이스 글꼴 선택 기능 추가"],
-    },
-    "1.2.0": {
-      en: ["07/04 Update", "Added Pet Home with pet care, free roaming, map interactions, desktop pets, and data backup", "Added Matcha Lemon and Sea Salt Soda themes with unified primary-action colors", "Added automatic social posts so characters can share updates on their own", "Added proactive character messages with per-character controls and frequency settings"],
-      ja: ["07/04 更新", "ペットのお世話、自由移動、マップ交流、デスクトップペット、データバックアップに対応したペットハウスを追加", "抹茶レモンとシーソルトソーダのテーマを追加し、主要操作ボタンの配色を統一", "キャラクターが自動で近況を投稿するSNS自動投稿機能を追加", "キャラクターごとにオン・オフと頻度を設定できる主動メッセージ機能を追加"],
-      ko: ["07/04 업데이트", "펫 돌보기, 자유 이동, 지도 상호작용, 데스크톱 펫, 데이터 백업을 지원하는 펫 하우스 추가", "말차 레몬과 씨솔트 소다 테마를 추가하고 주요 동작 버튼 색상을 통일", "캐릭터가 스스로 근황을 공유하는 소셜 자동 게시 기능 추가", "캐릭터별 활성화와 빈도를 설정할 수 있는 선제 메시지 기능 추가"],
-    },
-    "1.1.9": {
-      en: ["06/29 Update", "Added character inner thoughts with automatic generation, manual viewing, and thought history", "Added character voice support (beta), including ElevenLabs voice settings, previews, and manual playback in chat"],
-      ja: ["06/29 更新", "キャラの心の声機能を追加し、自動生成・手動表示・履歴に対応", "キャラクター音声機能（テスト版）を追加し、ElevenLabs の音声設定・試聴・チャットでの手動再生に対応"],
-      ko: ["06/29 업데이트", "캐릭터 속마음 기능을 추가하고 자동 생성, 수동 확인, 속마음 기록을 지원", "캐릭터 음성 기능(테스트 버전)을 추가하고 ElevenLabs 음성 설정, 미리듣기, 채팅 수동 재생을 지원"],
-    },
-    "1.1.8": {
-      en: ["06/25 Update", "Added English, Japanese, and Korean UI languages; character replies now follow the selected UI language", "Added chatroom background image uploads", "Adjusted the player dialogue box in Reality mode"],
-      ja: ["06/25 更新", "英語・日本語・韓国語の UI 言語を追加し、キャラの返信が選択中の UI 言語に合わせるようになりました", "チャットルーム背景画像のアップロード機能を追加", "現実モードのプレイヤー会話ボックスを調整"],
-      ko: ["06/25 업데이트", "영어, 일본어, 한국어 UI 언어를 추가했으며 캐릭터 답변이 선택한 UI 언어를 따르도록 했습니다", "채팅방 배경 이미지 업로드 기능 추가", "현실 모드의 플레이어 대화 상자 조정"],
-    },
-    "1.1.6": {
-      en: ["06/19 Update", "Added DeepSeek API", "Added group chat in chatrooms", "Added chatroom scene settings", "Added chatroom pinning"],
-      ja: ["06/19 更新", "API に DeepSeek を追加", "チャットルームにグループチャットを追加", "チャットルームのシーン設定を追加", "チャットルームのピン留めを追加"],
-      ko: ["06/19 업데이트", "API에 DeepSeek 추가", "채팅방에 그룹 채팅 기능 추가", "채팅방 장면 설정 추가", "채팅방 고정 기능 추가"],
-    },
-    "1.1.5": {
-      en: ["06/13 Update", "Added Vertex AI API", "Fixed character settings and UI display"],
-      ja: ["06/13 更新", "API に Vertex AI を追加", "キャラ関連設定と UI 表示を修正"],
-      ko: ["06/13 업데이트", "API에 Vertex AI 추가", "캐릭터 관련 설정과 UI 표시 수정"],
-    },
-    "1.1.4": {
-      en: ["06/03 Update", "Fixed Gemma / character settings and UI display"],
-      ja: ["06/03 更新", "Gemma / キャラ関連設定と UI 表示を修正"],
-      ko: ["06/03 업데이트", "Gemma / 캐릭터 관련 설정과 UI 표시 수정"],
-    },
-    "1.1.3": {
-      en: ["06/02 Update", "Added character status / settings / import / export", "Fixed character and chat display", "Fixed player profile settings", "Improved settings stability"],
-      ja: ["06/02 更新", "キャラのステータス / 設定 / インポート / エクスポートを追加", "キャラとチャット表示を修正", "プロフィール設定を修正", "設定の安定性を改善"],
-      ko: ["06/02 업데이트", "캐릭터 상태 / 설정 / 가져오기 / 내보내기 추가", "캐릭터와 채팅 표시 수정", "프로필 설정 수정", "설정 안정성 개선"],
-    },
-    "1.1.2": {
-      en: ["05/28 Update", "Added AI / chat / memory / character cards", "Added AIRP and chat prompts", "Added character management", "Fixed several bugs"],
-      ja: ["05/28 更新", "AI / チャット / メモリ / キャラカードを追加", "AIRP とチャットプロンプトを追加", "キャラ管理を追加", "一部の不具合を修正"],
-      ko: ["05/28 업데이트", "AI / 대화 / 기억 / 캐릭터 카드 추가", "AIRP 및 채팅 프롬프트 추가", "캐릭터 관리 추가", "일부 오류 수정"],
-    },
-  };
-  const currentChangelogRaw = uiLanguage === "zh-TW"
-    ? (CHANGELOG[VERSION] || [])
-    : (CHANGELOG_TEXT[VERSION]?.[uiLanguage] || CHANGELOG[VERSION] || []);
+  const currentChangelogRaw = getChangelog(VERSION, uiLanguage);
   const currentChangelogTitle = currentChangelogRaw[0] || tr("版本更新", "Version update", "バージョン更新", "버전 업데이트");
   const currentChangelog = currentChangelogRaw.slice(1);
   const closeUpdateNotice = () => {
@@ -873,7 +618,37 @@ export default function MaliPhone() {
     r.onload = () => {
       const safe = sanitizeUserImageUrl(String(r.result || ""));
       if (!safe) return notify("頭像格式不支援", tr("頭像格式不支援", "Unsupported avatar format", "アバター形式に対応していません", "아바타 형식을 지원하지 않습니다"));
-      setPlayerAvatarCrop({ src: safe, zoom: 1, panX: 0, panY: 0, dragging: false, dragStartX: 0, dragStartY: 0, startPanX: 0, startPanY: 0 });
+      const img = new Image();
+      img.onload = () => {
+        const maxSide = 1024;
+        const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+        const width = Math.max(1, Math.round(img.width * scale));
+        const height = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.drawImage(img, 0, 0, width, height);
+        const output = canvas.toDataURL("image/jpeg", 0.86);
+        const processed = sanitizeUserImageUrl(output);
+        if (!processed) return notify("頭像處理失敗", tr("頭像處理失敗", "Avatar processing failed", "アバターの処理に失敗しました", "아바타 처리가 실패했습니다"));
+        setPlayerAvatarCrop({
+          src: processed,
+          width,
+          height,
+          zoom: 1,
+          panX: 0,
+          panY: 0,
+          dragging: false,
+          dragStartX: 0,
+          dragStartY: 0,
+          startPanX: 0,
+          startPanY: 0,
+        });
+      };
+      img.onerror = () => notify("圖片讀取失敗", tr("圖片讀取失敗", "Image load failed", "画像の読み込みに失敗しました", "이미지 읽기에 실패했습니다"));
+      img.src = safe;
     };
     r.readAsDataURL(f);
     e.target.value = "";
@@ -882,14 +657,14 @@ export default function MaliPhone() {
     if (!playerAvatarCrop?.src) return;
     const img = new Image();
     img.onload = () => {
+      const iw = img.width;
+      const ih = img.height;
       const size = 320;
       const canvas = document.createElement("canvas");
       canvas.width = size;
       canvas.height = size;
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
-      const iw = img.width;
-      const ih = img.height;
       const scale = Math.max(size / iw, size / ih) * Math.max(1, playerAvatarCrop.zoom || 1);
       const dw = iw * scale;
       const dh = ih * scale;
@@ -1122,11 +897,18 @@ export default function MaliPhone() {
       .replace(/\{\{user\}\}/gi, getUserDisplayName())
       .replace(/\n{2,}/g, "\n")
       .trim();
-    return sanitizeText(clean, 240);
+    clean = sanitizeText(clean, 240);
+    // 超長被裁切時，退回到最後一個句末標點，避免句中截斷
+    if (clean.length === 240) {
+      const lastEnd = Math.max(...["。", "！", "？", "…", "～", "!", "?", "."].map((p) => clean.lastIndexOf(p)));
+      if (lastEnd > 0) clean = clean.slice(0, lastEnd + 1);
+    }
+    return clean;
   };
   const isIncompleteInnerThought = (text) => {
     const clean = String(text || "").trim();
-    return !clean || /[，,、：:；;（(「『【\[]$/.test(clean);
+    // 被 MAX_TOKENS 硬切的句子結尾通常是一般文字，改成檢查是否以句末標點收尾
+    return !clean || !/[。！？…～!?.」』"'）)\]】]$/.test(clean);
   };
   const generateInnerThought = async ({ char, messageId, source = "manual", historySnapshot = null }) => {
     if (!char?.id || !messageId || innerThoughtLoading[messageId]) return;
@@ -1199,13 +981,14 @@ ${targetReply || target.content || "（無文字）"}`;
           content: thoughtInstruction,
         },
       ];
-      let raw = await callAI(thoughtMessages, { ...apiConfig, maxTokens: 500 }, applyUserPlaceholder(prompt));
+      // thinking 模型（如 Gemini 2.5）的內部思考會計入 maxOutputTokens，額度太低會讓正文被截斷
+      let raw = await callAI(thoughtMessages, { ...apiConfig, maxTokens: 3000 }, applyUserPlaceholder(prompt));
       if (isIncompleteInnerThought(raw)) {
         raw = await callAI([
           ...thoughtMessages,
           { role: "assistant", content: raw },
           { role: "user", content: "上一版心聲在語意未完成處中斷。請重新輸出一版完整的心聲，維持 1 到 2 句、最多 80 字，只輸出心聲本身。" },
-        ], { ...apiConfig, maxTokens: 500 }, applyUserPlaceholder(prompt));
+        ], { ...apiConfig, maxTokens: 3000 }, applyUserPlaceholder(prompt));
       }
       if (isIncompleteInnerThought(raw)) throw new Error(tr("模型回傳的心聲不完整，請再試一次", "The generated thought was incomplete. Please try again.", "生成された心の声が不完全です。もう一度お試しください", "생성된 속마음이 완전하지 않습니다. 다시 시도해주세요"));
       const content = normalizeInnerThought(raw);
@@ -1243,50 +1026,12 @@ ${targetReply || target.content || "（無文字）"}`;
         } : m),
       }));
     };
-    return (
-      <div className={`mp-thought ${expanded && thought ? "expanded" : ""}`} onClick={(e) => e.stopPropagation()}>
-        <div className="mp-thought-bar">
-          <button
-            type="button"
-            className="mp-thought-peek"
-            disabled={loading}
-            title={thought ? tr("顯示或收起心聲", "Show or hide inner thought", "心の声を表示・非表示", "속마음 표시 또는 숨기기") : tr("窺探心聲", "Peek at inner thought", "心の声をのぞく", "속마음 엿보기")}
-            onClick={() => {
-              if (thought) {
-                if (!expanded) markInnerThoughtSeen();
-                setExpandedInnerThoughts((prev) => ({ ...prev, [message.id]: !prev[message.id] }));
-              } else {
-                void generateInnerThought({ char, messageId: message.id, source: "manual" });
-              }
-            }}
-          >
-            <span className={unseenAutoThought ? "mp-thought-unseen-icon" : ""} aria-hidden="true">
-              <Eye size={12} strokeWidth={2.1} />
-            </span>
-            <span>{loading
-              ? tr("讀取中...", "Reading...", "読込中...", "읽는 중...")
-              : !thought
-                ? tr("窺探心聲", "Peek at inner thought", "心の声をのぞく", "속마음 엿보기")
-                : unseenAutoThought
-                  ? tr("心聲（未讀）", "Inner thought (new)", "心の声（未読）", "속마음 (새로움)")
-                  : tr("心聲", "Inner thought", "心の声", "속마음")}</span>
-          </button>
-          {thought && (
-            <button
-              type="button"
-              className="mp-thought-refresh"
-              disabled={loading}
-              title={tr("重新生成心聲", "Regenerate inner thought", "心の声を再生成", "속마음 다시 생성")}
-              aria-label={tr("重新生成心聲", "Regenerate inner thought", "心の声を再生成", "속마음 다시 생성")}
-              onClick={() => void generateInnerThought({ char, messageId: message.id, source: "manual" })}
-            >
-              <RefreshCw size={13} strokeWidth={2.1} aria-hidden="true" />
-            </button>
-          )}
-        </div>
-        {thought && expanded && <div className="mp-thought-content">{thought}</div>}
-      </div>
-    );
+    return <InnerThoughtPanel thought={thought} expanded={expanded} loading={loading} unseen={unseenAutoThought} tr={tr} onToggle={() => {
+      if (thought) {
+        if (!expanded) markInnerThoughtSeen();
+        setExpandedInnerThoughts((prev) => ({ ...prev, [message.id]: !prev[message.id] }));
+      } else void generateInnerThought({ char, messageId: message.id, source: "manual" });
+    }} onRegenerate={() => void generateInnerThought({ char, messageId: message.id, source: "manual" })} />;
   };
   const isChatMode = (mode) => mode === "reality" || mode === "online";
   const getMessageMode = (m) => (isChatMode(m?.mode) ? m.mode : "online");
@@ -1395,349 +1140,25 @@ ${targetReply || target.content || "（無文字）"}`;
 {{char}} 與 {{user}} 正透過手機即時通訊聊天。請維持短訊息感，不要加入旁白、內心獨白或動作描寫。
 重要：不要輸出任何模式標籤或狀態標記，例如「[線上聊天]」、「【線上聊天】」、「目前互動模式：線上聊天」；直接輸出角色要說的內容即可。`;
   };
-  const buildRecentChatForSocialPost = (char) => {
-    const list = (chatHistory[char.id] || [])
-      .filter((m) => m.role === "user" || m.role === "assistant")
-      .slice(-16)
-      .map((m) => {
-        const speaker = m.role === "user" ? "{{user}}" : char.name;
-        const mode = getModeLabel(getMessageMode(m));
-        const body = sanitizeText(m.content || (m.image ? "[圖片]" : ""), 180).replace(/\s+/g, " ").trim();
-        return body ? `[${mode}] ${speaker}：${body}` : "";
-      })
-      .filter(Boolean);
-    return list.join("\n");
-  };
-  const buildSocialPostPrompt = (char) => {
-    const recentChat = buildRecentChatForSocialPost(char);
-    const recentPosts = (posts || [])
-      .filter((p) => p.charId === char.id)
-      .slice(0, 3)
-      .map((p, i) => `${i + 1}. ${sanitizeText(p.content || "", 80)}`)
-      .filter(Boolean)
-      .join("\n");
-    return `${getOutputLanguageDirective()}
-
-請替角色「${char.name}」寫一則可發在社群上的近況貼文。
-
-社群定位：
-- 這是朋友或熟人可能看得到的動態，不是私訊。
-- 可以融合近期聊天的主題、情緒、事件後續或衍生想法，讓角色像有自己的生活延續。
-- 不可以直接複述私聊內容，不可以像在對 {{user}} 單獨說話。
-- 不要提到「剛剛跟你聊」「我們私訊」「{{user}}」或玩家姓名。
-- 不要公開私密、曖昧、敏感、只屬於兩人之間的細節；若要引用，只能轉成模糊的心情或日常感想。
-- 不要使用第二人稱「你」指向玩家。
-- 內容 20~50 字，自然像真人隨手發文，不要標題、不要引號、不要解釋。
-
-近期私聊脈絡（只能參考主題/情緒，不可外洩原文）：
-${recentChat || "（近期沒有可參考的聊天）"}
-
-近期貼文（避免重複語氣與主題）：
-${recentPosts || "（無）"}`;
-  };
-  const formatPostTime = (ts) => {
-    const time = Number(ts) || 0;
-    const diff = Date.now() - time;
-    if (diff < 60 * 1000) return tr("剛剛", "Just now", "たった今", "방금");
-    const mins = Math.floor(diff / 60000);
-    if (mins < 60) return tr(`${mins} 分鐘前`, `${mins}m ago`, `${mins}分前`, `${mins}분 전`);
-    const hours = Math.floor(mins / 60);
-    if (hours < 24) return tr(`${hours} 小時前`, `${hours}h ago`, `${hours}時間前`, `${hours}시간 전`);
-    const days = Math.floor(hours / 24);
-    if (days === 1) return tr("昨天", "Yesterday", "昨日", "어제");
-    if (days <= 3) return tr(`${days} 天前`, `${days}d ago`, `${days}日前`, `${days}일 전`);
-    const locale = { "zh-TW": "zh-TW", en: "en-US", ja: "ja-JP", ko: "ko-KR" }[uiLanguage] || "zh-TW";
-    return new Date(time).toLocaleDateString(locale, { year: "numeric", month: "short", day: "numeric" });
-  };
-  const getPostAuthorName = (post) => post?.authorName || post?.charName || tr("未知", "Unknown", "不明", "알 수 없음");
-  const getPostAuthorAvatar = (post) => post?.authorAvatar || post?.charAvatar || null;
-  const getPostAuthorType = (post) => post?.authorType || (post?.charId ? "character" : "player");
-  const getPlayerDisplayName = () => playerProfile?.nickname || playerProfile?.name || tr("你", "You", "あなた", "나");
-  const getPlayerAvatar = () => sanitizeUserImageUrl(playerProfile?.avatar) || null;
-  const getConnectionErrorPrefix = () => tr("連線錯誤：", "Connection error: ", "接続エラー: ", "연결 오류: ");
-  const isConnectionErrorNotice = (content) => {
-    const text = String(content || "");
-    return text.startsWith("連線錯誤：") || text.startsWith("Connection error: ") || text.startsWith("接続エラー: ") || text.startsWith("연결 오류: ");
-  };
   const getSceneState = (kind, id) => {
     if (kind === "group") return groupScenes?.[id] || { location: "", note: "" };
     return chatScenes?.[id] || { location: "", note: "" };
   };
-  const getSceneLabel = (kind, id) => {
-    const scene = getSceneState(kind, id);
-    const bits = [
-      scene.location ? sanitizeText(scene.location, 15) : "",
-      scene.note ? sanitizeText(scene.note, 50) : "",
-    ].filter(Boolean);
-    return bits.join(" · ");
-  };
   const renderSceneBar = (kind, id, title = tr("場景", "Scene", "シーン", "장면")) => {
     const scene = getSceneState(kind, id);
-    const label = getSceneLabel(kind, id);
     const editing = sceneEditor?.kind === kind && sceneEditor?.id === id;
-    const icon = "⌁";
     return (
-      <div
-        style={{
-          margin: "0 14px 6px",
-          padding: "0 2px",
+      <SceneBar title={title} scene={scene} editor={editing ? sceneEditor : null} tr={tr}
+        onStartEditing={() => setSceneEditor({ kind, id, location: scene.location || "", note: scene.note || "" })}
+        onChange={setSceneEditor}
+        onSave={() => {
+          const next = { location: sanitizeText(sceneEditor.location || "", 15), note: sanitizeText(sceneEditor.note || "", 50) };
+          if (kind === "group") setGroupScenes((prev) => ({ ...prev, [id]: next }));
+          else setChatScenes((prev) => ({ ...prev, [id]: next }));
+          setSceneEditor(null);
         }}
-      >
-        {!editing ? (
-          <div
-            style={{
-              fontSize: 11,
-              color: "var(--mp-txt-l)",
-              cursor: "pointer",
-              lineHeight: 1.35,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 5,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-            onClick={() => setSceneEditor({ kind, id, location: scene.location || "", note: scene.note || "" })}
-          >
-            <span style={{ flexShrink: 0 }}>{icon}</span>
-            <span style={{ fontWeight: 800, color: "var(--mp-txt)", flexShrink: 0 }}>{title}：</span>
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{label || tr("點擊設定", "Tap to set", "タップして設定", "탭하여 설정")}</span>
-          </div>
-        ) : (
-          <div style={{ display: "grid", gap: 8 }}>
-            <input
-              className="mp-sinp"
-              value={sceneEditor.location}
-              onChange={(e) => setSceneEditor((s) => ({ ...s, location: e.target.value.slice(0, 15) }))}
-              maxLength={15}
-              placeholder={tr("地點（15字內）", "Location (up to 15 chars)", "場所（15文字以内）", "장소(15자 이내)")}
-            />
-            <input
-              className="mp-sinp"
-              value={sceneEditor.note}
-              onChange={(e) => setSceneEditor((s) => ({ ...s, note: e.target.value.slice(0, 50) }))}
-              maxLength={50}
-              placeholder={tr("小備註（50字內）", "Note (up to 50 chars)", "メモ（50文字以内）", "메모(50자 이내)")}
-            />
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center" }}>
-              <button
-                className="mp-ibtn"
-                style={{ padding: "3px 9px", minHeight: 24, fontSize: 10 }}
-                onClick={() => {
-                  const next = {
-                    location: sanitizeText(sceneEditor.location || "", 15),
-                    note: sanitizeText(sceneEditor.note || "", 50),
-                  };
-                  if (kind === "group") {
-                    setGroupScenes((prev) => ({ ...prev, [id]: next }));
-                  } else {
-                    setChatScenes((prev) => ({ ...prev, [id]: next }));
-                  }
-                  setSceneEditor(null);
-                }}
-              >
-                {tr("完成", "Done", "完了", "완료")}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+      />
     );
-  };
-  const formatSocialCount = (value) => {
-    const n = Math.max(0, Math.round(Number(value) || 0));
-    if (n >= 10000) return `${(n / 10000).toFixed(n >= 100000 ? 0 : 1).replace(/\.0$/, "")}萬`;
-    if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/, "")}K`;
-    return String(n);
-  };
-  const getCharacterSocialReach = (char) => {
-    const text = normalizeForMatch([
-      char?.name,
-      char?.description,
-      char?.personality,
-      char?.scenario,
-      char?.systemPrompt,
-      char?.relationshipToUser,
-      char?.creatorNotes,
-      Array.isArray(char?.tags) ? char.tags.join(" ") : "",
-    ].filter(Boolean).join(" "));
-    const high = /(偶像|明星|藝人|歌手|演員|直播主|實況主|網紅|kol|influencer|model|模特|名人|人氣|粉絲|公眾人物|vtuber|youtuber)/i;
-    const publicJob = /(醫生|律師|老師|教授|店長|老闆|企業家|主播|記者|作家|漫畫家|攝影師|設計師|學生會|社長)/i;
-    const hidden = /(殺手|刺客|傭兵|特工|間諜|黑道|犯罪|通緝|逃亡|隱居|低調|孤僻|神秘|秘密|不擅社交|社恐|少朋友|無朋友|獨來獨往)/i;
-    if (high.test(text)) return "celebrity";
-    if (hidden.test(text)) return "private";
-    if (publicJob.test(text)) return "local";
-    return "normal";
-  };
-  const rollCharacterPostLikes = (char) => {
-    const reach = getCharacterSocialReach(char);
-    const rand = (min, max) => Math.floor(min + Math.random() * (max - min + 1));
-    if (reach === "celebrity") return rand(1200, 28000);
-    if (reach === "private") return rand(0, 18);
-    if (reach === "local") return rand(24, 360);
-    return rand(4, 95);
-  };
-  const shouldClampSocialPost = (content) => {
-    const text = String(content || "");
-    const manualLines = text.split(/\r?\n/).length;
-    return manualLines > 5 || text.length > 115;
-  };
-  const shouldScrollComments = (comments) => {
-    const list = comments || [];
-    const totalChars = list.reduce((sum, c) => sum + String(c?.content || "").length, 0);
-    const totalLines = list.reduce((sum, c) => sum + Math.ceil(String(c?.content || "").length / 26) + String(c?.content || "").split(/\r?\n/).length - 1, 0);
-    return list.length > 6 || totalChars > 420 || totalLines > 10;
-  };
-  const getCommentDepth = (comment) => Math.min(3, Math.max(1, Number(comment?.depth) || (comment?.parentId ? 2 : 1)));
-  const getCommentAuthorName = (comment, fallback = "") => (
-    comment?.role === "assistant" ? (comment.charName || fallback) : getPlayerDisplayName()
-  );
-  const insertCommentAfterThread = (comments, anchorId, nextComment) => {
-    const list = [...(comments || [])];
-    if (!anchorId) return [...list, nextComment];
-    const anchorIndex = list.findIndex((c) => c.id === anchorId);
-    if (anchorIndex < 0) return [...list, nextComment];
-    const anchorDepth = getCommentDepth(list[anchorIndex]);
-    let insertAt = anchorIndex + 1;
-    while (insertAt < list.length && getCommentDepth(list[insertAt]) > anchorDepth) insertAt += 1;
-    list.splice(insertAt, 0, nextComment);
-    return list;
-  };
-  const buildMemoryDigest = (memoriesList) => {
-    const seen = new Set();
-    return (memoriesList || [])
-      .slice()
-      .sort((a, b) => (b.date || 0) - (a.date || 0))
-      .map((mem) => sanitizeText(mem?.text || "", 60))
-      .filter(Boolean)
-      .filter((text) => {
-        const key = normalizeForMatch(text);
-        if (!key || seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .slice(0, 5)
-      .map((text, idx) => `- ${idx + 1}. ${text}`)
-      .join("\n");
-  };
-  const buildSocialCommentReplyPrompt = ({ char, post, targetComment, userText }) => `${getOutputLanguageDirective()}
-
-社群貼文：「${post.content}」
-${targetComment ? `你上一則留言：「${targetComment.content}」\n` : ""}{{user}} 回覆你：「${userText}」
-
-請用角色「${char.name}」的口吻回覆這則社群留言。
-規則：
-- 這是公開/半公開社群留言，不是私訊。
-- 回覆 1 句，最多 45 字。
-- 不要公開私聊原文或敏感細節，不要角色名標籤，不要引號，不要解釋。`;
-  const countTokenOverlap = (source, queryTokens) => {
-    if (!queryTokens?.size) return 0;
-    const sourceTokens = tokenizeForRecall(source);
-    let hit = 0;
-    queryTokens.forEach((t) => { if (sourceTokens.has(t)) hit += 1; });
-    return hit;
-  };
-  const scoreCharacterForPlayerPost = (char, text) => {
-    const qTokens = tokenizeForRecall(text);
-    const recentMsgs = (chatHistory[char.id] || []).slice(-24);
-    const recentChat = recentMsgs
-      .map((m) => `${m.role === "user" ? "{{user}}" : char.name}: ${m.content || ""}`)
-      .join("\n");
-    const memoryText = (memories[char.id] || []).map((m) => m.text || "").join("\n");
-    const profileText = [
-      char.name,
-      char.description,
-      char.personality,
-      char.scenario,
-      char.systemPrompt,
-      char.relationshipToUser,
-      char.creatorNotes,
-      memoryText,
-      recentChat,
-    ].filter(Boolean).join("\n");
-    const recentCount = recentMsgs.filter((m) => m.role === "user" || m.role === "assistant").length;
-    const latest = recentMsgs[recentMsgs.length - 1]?.time || 0;
-    const recencyScore = latest ? Math.max(0, 6 - Math.floor((Date.now() - latest) / (24 * 60 * 60 * 1000))) : 0;
-    const overlap = countTokenOverlap(profileText, qTokens);
-    return (
-      overlap * 3 +
-      Math.min(10, recentCount) +
-      recencyScore +
-      (char.id === activeCharId ? 4 : 0) +
-      Math.random() * 5
-    );
-  };
-  const pickPlayerPostReactors = (text) => {
-    const total = characters.length;
-    if (total <= 0) return [];
-    let target = total;
-    if (total > 3 && total <= 5) target = 2 + Math.floor(Math.random() * (total - 1));
-    if (total > 5 && total <= 10) target = Math.min(total, 3 + Math.floor(Math.random() * 6));
-    if (total > 10) target = Math.min(total, 5 + Math.floor(Math.random() * 8));
-    const nowMs = Date.now();
-    return [...characters]
-      .map((char) => ({ char, score: scoreCharacterForPlayerPost(char, text) + Math.random() * 4 }))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, target)
-      .map((x, idx, arr) => {
-        const progress = arr.length <= 1 ? 0.3 : idx / Math.max(1, arr.length - 1);
-        const delay = Math.min(5 * 60 * 1000, 20000 + Math.floor(progress * 250000) + Math.floor(Math.random() * 30000));
-        return {
-        charId: x.char.id,
-        charName: x.char.name,
-        charAvatar: x.char.avatar,
-        time: nowMs + delay,
-        };
-      });
-  };
-  const getVisibleLikedBy = (post) => (post?.likedBy || [])
-    .filter((x) => !x.time || x.time <= socialTick)
-    .sort((a, b) => (a.time || 0) - (b.time || 0));
-  const getPostLikeCount = (post) => Math.max(0, Math.round(Number(post?.likes) || 0)) + getVisibleLikedBy(post).length;
-  const getLikedByListText = (post) => {
-    const likedBy = getVisibleLikedBy(post);
-    if (!likedBy.length) return "";
-    const names = likedBy.map((x) => x.charName).filter(Boolean).join("、");
-    return names ? `${names} 喜歡這則貼文` : "";
-  };
-  const pickPlayerPostResponders = (text) => {
-    const total = characters.length;
-    if (total <= 0) return [];
-    if (total <= 3) return [...characters];
-    let target = 3;
-    if (total > 5 && total <= 10) target = 3 + Math.floor(Math.random() * 3);
-    if (total > 10) target = 3 + Math.floor(Math.random() * 5);
-    target = Math.min(target, total);
-    return [...characters]
-      .map((char) => ({ char, score: scoreCharacterForPlayerPost(char, text) }))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, target)
-      .map((x) => x.char);
-  };
-  const buildPlayerPostReplyPrompt = (char, post) => {
-    const recentChat = buildRecentChatForSocialPost(char);
-    const memoryText = (memories[char.id] || [])
-      .filter((m) => m?.text)
-      .slice(-5)
-      .map((m) => `- ${m.text}`)
-      .join("\n");
-    return `${getOutputLanguageDirective()}
-
-玩家在社群發了一則公開貼文：「${post.content}」
-
-請判斷角色「${char.name}」是否會留言，並直接輸出留言內容。
-規則：
-- 這是社群留言，不是私訊，不要像只對玩家一個人撒嬌或報備。
-- 可以根據角色設定、近期聊天主題、記憶做自然延伸，但不可公開私聊原文或敏感細節。
-- 若貼文和角色沒有強關聯，也可以用普通朋友會留下的短回應。
-- 請輸出 1 句，最多 45 字，不要角色名標籤、不要引號、不要解釋。
-
-近期聊天參考（只能參考情緒與主題）：
-${recentChat || "（沒有近期聊天）"}
-
-記憶參考：
-${memoryText || "（無）"}`;
   };
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const formatMoney = (value) => Math.round(Number(value) || 0).toLocaleString("en-US");
@@ -1769,6 +1190,19 @@ ${memoryText || "（無）"}`;
       .toLowerCase()
       .replace(/[，。！？、,.!?\s]+/g, " ")
       .trim();
+  const {
+    buildSocialPostPrompt, formatPostTime, getPostAuthorName, getPostAuthorAvatar,
+    getPostAuthorType, getPlayerDisplayName, getPlayerAvatar, getConnectionErrorPrefix,
+    isConnectionErrorNotice, formatSocialCount, rollCharacterPostLikes,
+    shouldClampSocialPost, shouldScrollComments, getCommentDepth, getCommentAuthorName,
+    insertCommentAfterThread, buildMemoryDigest, buildSocialCommentReplyPrompt,
+    pickPlayerPostReactors, getPostLikeCount, getLikedByListText,
+    pickPlayerPostResponders, buildPlayerPostReplyPrompt,
+  } = createSocialFeedHelpers({
+    chatHistory, getModeLabel, getMessageMode, sanitizeText, posts,
+    getOutputLanguageDirective, tr, uiLanguage, playerProfile, sanitizeUserImageUrl,
+    normalizeForMatch, tokenizeForRecall, memories, activeCharId, characters, socialTick,
+  });
   const normalizeMemoryText = (text) =>
     String(text || "")
       .toLowerCase()
@@ -1955,149 +1389,14 @@ ${memoryText || "（無）"}`;
       return null;
     })
     .filter(Boolean);
-  const generateAssistantForHistory = async ({ cid, char, nextForDisplay, selectedMode, um, text }) => {
-      const now = new Date();
-      const nowDate = new Intl.DateTimeFormat("zh-TW", { year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
-      const nowTime = new Intl.DateTimeFormat("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false }).format(now);
-      const nowTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Taipei";
-      const nowContext = `[系統時間] 目前時間：${nowDate} ${nowTime} (${nowTz})`;
-      const hist = formatMessagesForPrompt(nextForDisplay.slice(-30)).slice(-20);
-      const hasCurrentImage = !!um.image;
-      // 視覺 token 只花在本輪新圖：舊圖一律改用摘要文字，不再重送 image。
-      const safeHist = hist.map((m, idx) => {
-        const isLast = idx === hist.length - 1;
-        if (hasCurrentImage && isLast) return m; // 本輪新圖保留 image
-        return { ...m, image: null };
-      });
-      const picked = pickMemoriesForPrompt(cid, safeHist);
-      const memoryContext = picked.map((m, i) => `- ${i + 1}. ${m.text}`).join("\n");
-      const loreHits = pickLorebookEntriesForPrompt(cid, safeHist);
-      const pinnedLore = loreHits.filter((x) => x.mode === "PIN");
-      const autoLore = loreHits.filter((x) => x.mode !== "PIN");
-      const pinnedLoreContext = pinnedLore.map((x, i) => `${i + 1}. [${x.bookName}] ${x.entry.title || "條目"}：${x.entry.content || ""}`).join("\n");
-      const autoLoreContext = autoLore.map((x, i) => `- ${i + 1}. [${x.bookName}] ${x.entry.title || "條目"}：${x.entry.content || ""}`).join("\n");
-      // 現實模式不提供轉帳功能：不注入轉帳規則、不解析轉帳指令（轉帳屬於線上聊天的手機世界觀）
-      const allowTransfer = selectedMode !== "reality";
-      const cw = characterWallets[cid];
-      // 兩層注入：常駐迷你版確保角色隨時能出轉帳卡片；聊到錢才追加完整禮儀規則與交易紀錄
-      const moneyTalkRe = /轉帳|轉錢|匯款|還錢|借錢|借我|付錢|買單|請客|紅包|零用錢|薪水|欠|[$＄]|\d\s*元|\d\s*塊/;
-      const recentMoneyTalk = allowTransfer && [...safeHist.slice(-6).map((m) => m.content || ""), text || ""].some((s) => moneyTalkRe.test(String(s)));
-      let walletContext = "";
-      let transferRuleContext = "";
-      if (!allowTransfer) {
-        walletContext = cw ? [
-          `[角色錢包]`,
-          `目前餘額：${formatMoney(cw.balance || 0)}`,
-          cw.summary ? `摘要：${cw.summary}` : "",
-          `規則：錢包資料只能作為角色生活背景，不要把錢包資料當成每輪都要提及的內容。目前不提供轉帳功能，不要輸出任何轉帳指令。`,
-        ].filter(Boolean).join("\n") : "";
-      } else {
-        walletContext = [
-          `[角色錢包] 目前餘額：${formatMoney(Math.max(0, Number(cw?.balance || 0)))}`,
-          `若情境自然、符合角色性格且你（{{char}}）真的決定轉帳給 {{user}}，就在回覆最後附上一個轉帳指令：[[TRANSFER:amount=金額;note=備註]]（note 可省略）。`,
-          `餘額不足時不得宣稱轉帳成功，改為自然拒絕、延期或改轉較小金額。錢包資料只作為生活背景，不要每輪主動提及。`,
-        ].join("\n");
-        if (recentMoneyTalk) {
-          transferRuleContext = [
-            `[轉帳規則]`,
-            `1. 玩家可以轉帳給角色，角色也可以主動轉帳給玩家；雙方轉帳與回應都要符合角色性格與當前情境，金額需合理，不因迎合而破壞人設。`,
-            `2. 收到玩家轉帳時，依角色個性自然回應，不刻意改變平常的聊天語氣。`,
-            `3. 只要角色真的有意願且餘額足夠，就直接輸出轉帳指令，不必等玩家要求；轉帳後可自然補充用途或情緒，但不能硬講。`,
-            cw?.summary ? `錢包摘要：${cw.summary}` : "",
-            (cw?.transactions || []).length ? `最近交易：\n${(cw.transactions || []).slice(0, 5).map((t) => `- ${t.type === "income" ? "收入" : "支出"} ${formatMoney(t.amount)}：${t.note}`).join("\n")}` : "",
-          ].filter(Boolean).join("\n");
-        }
-      }
-      const mergedContext = [
-        getPlayerContextBlock(),
-        nowContext,
-        pinnedLoreContext ? `[強制條目 - 必須遵守]\n以下條目為當前對話的硬性規則，回覆時必須滿足：\n${pinnedLoreContext}` : "",
-        memoryContext,
-        walletContext,
-        transferRuleContext,
-        autoLoreContext ? `[世界書]\n${autoLoreContext}` : "",
-      ].filter(Boolean).join("\n\n");
-      // 全域 token 保險上限：先裁歷史，再裁 context，避免超過模型上下文。
-      let boundedHist = [...safeHist];
-      let boundedContext = mergedContext;
-      const countAllTokens = () => (
-        estimateTokens(boundedContext) +
-        boundedHist.reduce((sum, m) => sum + estimateTokens(m?.content || ""), 0)
-      );
-      const contextTokenLimit = Math.min(
-        TOTAL_CONTEXT_TOKEN_LIMIT,
-        Math.max(10000, Number(apiConfig.contextTokens) || TOTAL_CONTEXT_TOKEN_LIMIT)
-      );
-      while (boundedHist.length > 6 && countAllTokens() > contextTokenLimit) {
-        boundedHist.shift();
-      }
-      if (countAllTokens() > contextTokenLimit) {
-        const overflow = countAllTokens() - contextTokenLimit;
-        const trimChars = Math.max(0, Math.ceil(overflow * 3.5));
-        if (trimChars > 0 && boundedContext.length > trimChars) {
-          boundedContext = boundedContext.slice(0, boundedContext.length - trimChars);
-        }
-      }
-      const finalHist = boundedHist.map((m) => ({ ...m, content: applyUserPlaceholder(m.content) }));
-      const sysP = applyUserPlaceholder(buildChatSystemPrompt(char, boundedContext, apiConfig.model, selectedMode));
-      const reply = await callAI(finalHist, apiConfig, sysP);
-      const cleanReplyRaw = selectedMode === "reality" ? sanitizeText(normalizeRealityReply(reply), REALITY_CHAT_TEXT_LIMIT) : normalizeAssistantReply(reply);
-      const extracted = extractTransferDirective(cleanReplyRaw);
-      const cleanReply = stripModeLabel(stripInternalBlocks(extracted.text));
-      const pendingTransfer = allowTransfer ? extracted.transfer : null;
-      const currentCharWalletBalance = Math.max(0, Number(characterWallets[cid]?.balance || 0));
-      const canApplyPendingTransfer = pendingTransfer?.amount > 0 && currentCharWalletBalance >= pendingTransfer.amount;
-      const transferFailureNotice = pendingTransfer?.amount > 0 && !canApplyPendingTransfer
-        ? tr(
-            `轉帳失敗：${char.name || "角色"} 餘額不足，無法轉出 ${formatMoney(pendingTransfer.amount)}。請之後不要當作已成功轉帳。`,
-            `Transfer failed: ${char.name || "Character"} has insufficient balance and cannot transfer ${formatMoney(pendingTransfer.amount)}. Do not treat it as completed later.`,
-            `送金失敗: ${char.name || "キャラ"} の残高が不足しているため、${formatMoney(pendingTransfer.amount)} を送金できません。以後、成功したものとして扱わないでください。`,
-            `이체 실패: ${char.name || "캐릭터"}의 잔액이 부족해 ${formatMoney(pendingTransfer.amount)}를 보낼 수 없습니다. 이후 성공한 것으로 처리하지 마세요.`
-          )
-        : null;
-      let imageSummary = "";
-      if (hasCurrentImage) {
-        const base = text ? `{{user}} 訊息：${text}\n` : "";
-        imageSummary = sanitizeText(`${base}重點：${cleanReply}`.slice(0, 220), 220);
-      }
-      if (hasCurrentImage && imageSummary) {
-        setChatHistory((h) => ({
-          ...h,
-          [cid]: (h[cid] || []).map((m) => (m.id === um.id ? { ...m, imageSummary } : m)),
-        }));
-      }
-      const bubbles = cleanReply.trim() ? (selectedMode === "reality" ? [cleanReply] : splitAssistantBubbles(cleanReply)) : [];
-      const replyGroupId = gid();
-      const assistantMessages = bubbles.map((content, index) => ({
-        id: gid(),
-        replyGroupId,
-        replyGroupIndex: index,
-        replyGroupSize: bubbles.length,
-        role: "assistant",
-        content,
-        mode: selectedMode,
-        time: Date.now(),
-      }));
-      let lastAssistantMessage = null;
-      for (let i = 0; i < bubbles.length; i++) {
-        const delay = i === 0 ? 420 : Math.min(1200, 520 + bubbles[i].length * 18);
-        await wait(delay);
-        lastAssistantMessage = { ...assistantMessages[i], time: Date.now() };
-        assistantMessages[i] = lastAssistantMessage;
-        setChatHistory(h => ({ ...h, [cid]: [...(h[cid] || []), lastAssistantMessage] }));
-      }
-      if (pendingTransfer?.amount > 0 && canApplyPendingTransfer) {
-        await wait(220);
-        applyCharacterTransferToPlayer({ cid, char, amount: pendingTransfer.amount, note: pendingTransfer.note, time: Date.now() });
-      } else if (transferFailureNotice) {
-        await wait(220);
-        setChatHistory((h) => ({ ...h, [cid]: [...(h[cid] || []), { id: gid(), role: "system_notice", content: transferFailureNotice, time: Date.now() }] }));
-      }
-      if (lastAssistantMessage && isInnerThoughtAutoEnabled(cid) && Math.random() < 0.25) {
-        const snapshot = [...nextForDisplay, ...assistantMessages];
-        void generateInnerThought({ char, messageId: lastAssistantMessage.id, source: "auto", historySnapshot: snapshot });
-      }
-  };
+  const generateAssistantForHistory = (args) => generateDirectAssistant(args, {
+    formatMessagesForPrompt, pickMemoriesForPrompt, pickLorebookEntriesForPrompt, characterWallets,
+    formatMoney, tr, getPlayerContextBlock, estimateTokens, totalContextTokenLimit: TOTAL_CONTEXT_TOKEN_LIMIT,
+    apiConfig, applyUserPlaceholder, buildChatSystemPrompt, callAI, sanitizeText, normalizeRealityReply,
+    realityChatTextLimit: REALITY_CHAT_TEXT_LIMIT, normalizeAssistantReply, extractTransferDirective,
+    stripModeLabel, stripInternalBlocks, splitAssistantBubbles, createId: gid, wait, setChatHistory,
+    applyCharacterTransferToPlayer, isInnerThoughtAutoEnabled, generateInnerThought,
+  });
 
   const PROACTIVE_FREQUENCY_HOURS = { low: [8, 16], normal: [4, 8], high: [1, 3] };
   const getProactiveIdleThresholdMs = (frequency) => {
@@ -2180,57 +1479,13 @@ ${memoryText || "（無）"}`;
     setChatHistory(h => ({ ...h, [cid]: [...(h[cid] || []), { id: gid(), role: "system_notice", content: `${getConnectionErrorPrefix()}${detail}`, time: Date.now() }] }));
   };
 
-  const sendMessage = async () => {
-    if (!currentChatChar || isTyping) return;
-    const cid = currentChatChar.id;
-    const prev = chatHistory[cid] || [];
-    const committedMode = getLastCommittedChatMode(cid);
-    const selectedMode = getSelectedChatMode(cid);
-    const textLimit = getChatTextLimit(selectedMode);
-    const text = sanitizeText(chatInput.trim(), textLimit); const img = chatImage?.data || null;
-    if (!text && !img) return;
-    const modeChanged = committedMode !== selectedMode;
-    const nowMs = Date.now();
-    const transition = modeChanged
-      ? { id: gid(), role: "mode_transition", fromMode: committedMode, toMode: selectedMode, time: nowMs }
-      : null;
-    const um = { id: gid(), role: "user", content: text, image: img, imageSummary: "", mode: selectedMode, time: nowMs };
-    const nextForDisplay = transition ? [...prev, transition, um] : [...prev, um];
-    setChatHistory(h => ({ ...h, [cid]: nextForDisplay }));
-    setChatInput(""); setChatImage(null); setChatActionPanelOpen(false); setIsTyping(true);
-    try {
-      await generateAssistantForHistory({ cid, char: currentChatChar, nextForDisplay, selectedMode, um, text });
-    } catch (err) {
-      addChatErrorNotice(cid, err);
-    }
-    setIsTyping(false);
-  };
-  const retryChatFromNotice = async (noticeId) => {
-    if (!currentChatChar || isTyping) return;
-    const cid = currentChatChar.id;
-    const list = chatHistory[cid] || [];
-    const noticeIdx = list.findIndex((m) => m.id === noticeId);
-    if (noticeIdx < 0) return;
-    const userMsg = [...list.slice(0, noticeIdx)].reverse().find((m) => m.role === "user");
-    if (!userMsg) return;
-    const selectedMode = getMessageMode(userMsg);
-    const nextForDisplay = list.filter((m) => m.id !== noticeId);
-    setChatHistory((h) => ({ ...h, [cid]: nextForDisplay }));
-    setIsTyping(true);
-    try {
-      await generateAssistantForHistory({
-        cid,
-        char: currentChatChar,
-        nextForDisplay,
-        selectedMode,
-        um: userMsg,
-        text: userMsg.content || "",
-      });
-    } catch (err) {
-      addChatErrorNotice(cid, err);
-    }
-    setIsTyping(false);
-  };
+  const { sendMessage, retryMessage: retryChatFromNotice } = useDirectChatAI({
+    currentCharacter: currentChatChar, isTyping, chatHistory, chatInput, chatImage,
+    getCommittedMode: getLastCommittedChatMode, getSelectedMode: getSelectedChatMode, getMessageMode,
+    getTextLimit: getChatTextLimit, sanitizeText, createId: gid,
+    setChatHistory, setChatInput, setChatImage, setActionPanelOpen: setChatActionPanelOpen, setIsTyping,
+    generateAssistant: generateAssistantForHistory, addErrorNotice: addChatErrorNotice,
+  });
   const parseShareEventNotice = (text) => {
     const raw = String(text || "");
     if (!raw.startsWith("[APP_SHARE_EVENT]")) return null;
@@ -2410,148 +1665,6 @@ ${memoryText || "（無）"}`;
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 0);
   };
-  const exportAllData = () => {
-    const safeName = `maliphone-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    downloadJsonFile(getExportableAppState(), safeName);
-    showToast(tr("資料已匯出", "Data exported", "データを書き出しました", "데이터를 내보냈습니다"));
-  };
-  const deleteChatroomForCharacter = (charId, charName = "這個角色") => {
-    if (!charId) return;
-    const firstConfirm = window.confirm(`確定要刪除「${charName}」的聊天室嗎？這只會清掉對話，不會刪除角色本身。`);
-    if (!firstConfirm) return;
-    const secondConfirm = window.confirm(tr("請再次確認：刪除後將無法復原這個聊天室的對話紀錄，確定要繼續嗎？", "Please confirm again: this chat history cannot be restored after deletion. Continue?", "再確認してください。削除後はこのチャット履歴を復元できません。続けますか？", "다시 확인해주세요. 삭제 후에는 이 채팅 기록을 복구할 수 없습니다. 계속할까요?"));
-    if (!secondConfirm) return;
-    setChatHistory((prev) => {
-      const next = { ...prev };
-      delete next[charId];
-      return next;
-    });
-    setChatModes((prev) => {
-      const next = { ...prev };
-      delete next[charId];
-      return next;
-    });
-    setChatLorebookBindings((prev) => {
-      const next = { ...prev };
-      delete next[charId];
-      return next;
-    });
-    setChatBackgrounds((prev) => {
-      const next = { ...prev };
-      delete next[charId];
-      return next;
-    });
-    setChatScenes((prev) => {
-      const next = { ...prev };
-      delete next[charId];
-      return next;
-    });
-    setInnerThoughtSettings((prev) => {
-      const next = { ...prev };
-      delete next[charId];
-      return next;
-    });
-    if (currentChatChar?.id === charId) {
-      setChatActionPanelOpen(false);
-      setMessageEditor(null);
-      setActiveMessageId(null);
-      setIsTyping(false);
-      setChatInput("");
-    }
-    showToast(tr("聊天室已刪除", "Chatroom deleted", "チャットルームを削除しました", "채팅방을 삭제했습니다"));
-  };
-  const exportChatroomForCharacter = (charId, charName = "這個角色") => {
-    if (!charId) return;
-    const payload = {
-      format: "maliphone-chatroom",
-      formatVersion: 1,
-      exportedAt: new Date().toISOString(),
-      characterId: charId,
-      characterName: charName,
-      chatHistory: chatHistory?.[charId] || [],
-      chatMode: chatModes?.[charId] || "online",
-      chatBackground: chatBackgrounds?.[charId] || "",
-      chatLorebookBinding: chatLorebookBindings?.[charId] || null,
-      innerThoughtSetting: innerThoughtSettings?.[charId] || null,
-    };
-    const safeName = sanitizeText(charName || "chatroom", 40).replace(/[\\/:*?"<>|]+/g, "_").trim() || "chatroom";
-    const dateTag = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-    downloadJsonFile(payload, `chat_${safeName}_${dateTag}.json`);
-    showToast(tr("聊天室已匯出", "Chatroom exported", "チャットルームを書き出しました", "채팅방을 내보냈습니다"));
-  };
-  const summarizeImportedChatroom = (incoming) => {
-    const src = incoming?.format === "maliphone-chatroom" ? incoming : incoming?.chatHistory ? incoming : null;
-    return {
-      format: incoming?.format === "maliphone-chatroom" ? "maliphone-chatroom" : "legacy",
-      exportedAt: incoming?.exportedAt || null,
-      messages: Array.isArray(src?.chatHistory) ? src.chatHistory.length : 0,
-      hasMode: !!src?.chatMode,
-      hasBackground: !!src?.chatBackground,
-      hasBinding: !!src?.chatLorebookBinding,
-    };
-  };
-  const openChatroomImport = (charId) => {
-    setChatroomImportTarget(charId);
-    chatroomImportRef.current?.click();
-  };
-  const importChatroomFile = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setChatroomImporting(true);
-    try {
-      const raw = JSON.parse(await file.text());
-      setChatroomImportPreview({
-        fileName: file.name,
-        fileSize: file.size,
-        summary: summarizeImportedChatroom(raw),
-        raw,
-      });
-    } catch (err) {
-      showToast(`${tr("匯入失敗", "Import failed", "インポートに失敗しました", "가져오기에 실패했습니다")}：${sanitizeText(err?.message || tr("未知錯誤", "Unknown error", "不明なエラー", "알 수 없는 오류"), 80)}`);
-      if (chatroomImportRef.current) chatroomImportRef.current.value = "";
-      setChatroomImporting(false);
-    } finally {
-      if (chatroomImportRef.current) chatroomImportRef.current.value = "";
-    }
-  };
-  const confirmChatroomImportPreview = async () => {
-    const raw = chatroomImportPreview?.raw;
-    const targetId = chatroomImportTarget;
-    if (!raw || !targetId) return;
-    if (!window.confirm(tr("確認匯入後，將覆蓋這個聊天室的對話紀錄。確定要繼續嗎？", "Import will overwrite this chatroom's conversation history. Continue?", "インポートするとこのチャットルームの会話履歴が上書きされます。続けますか？", "가져오기를 하면 이 채팅방의 대화 기록이 덮어써집니다. 계속할까요?"))) return;
-    const chatHistoryItems = Array.isArray(raw?.chatHistory)
-      ? raw.chatHistory
-      : Array.isArray(raw?.messages)
-        ? raw.messages
-        : Array.isArray(raw)
-          ? raw
-          : [];
-    const targetName = currentChatChar?.id === targetId ? currentChatChar.name : (characters.find((c) => c.id === targetId)?.name || tr("這個角色", "this character", "このキャラ", "이 캐릭터"));
-    setChatHistory((prev) => ({ ...prev, [targetId]: chatHistoryItems }));
-    if (raw?.chatMode) {
-      setChatModes((prev) => ({ ...prev, [targetId]: raw.chatMode }));
-    }
-    if (Object.prototype.hasOwnProperty.call(raw || {}, "chatBackground")) {
-      setChatBackgrounds((prev) => ({ ...prev, [targetId]: normalizeChatBackground(raw.chatBackground) }));
-    }
-    if (raw?.chatLorebookBinding) {
-      setChatLorebookBindings((prev) => ({ ...prev, [targetId]: raw.chatLorebookBinding }));
-    }
-    if (raw?.innerThoughtSetting) {
-      setInnerThoughtSettings((prev) => ({ ...prev, [targetId]: raw.innerThoughtSetting }));
-    }
-    if (currentChatChar?.id === targetId) {
-      setChatActionPanelOpen(false);
-      setMessageEditor(null);
-      setActiveMessageId(null);
-      setIsTyping(false);
-      setChatInput("");
-    }
-    showToast(tr("聊天室已匯入", "Chatroom imported", "チャットルームを取り込みました", "채팅방을 가져왔습니다").replace("聊天室", targetName));
-    setChatroomImportPreview(null);
-    setChatroomImportTarget(null);
-    setChatroomImporting(false);
-  };
   const summarizeImportedData = (incoming) => {
     const src = incoming?.state && incoming?.format === "maliphone-app-state" ? incoming.state : incoming;
     return {
@@ -2648,46 +1761,25 @@ ${memoryText || "（無）"}`;
     setChatSettingsExpandedBooks({});
     await saveAppState(nextState);
   };
-  const importAllData = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setDataImporting(true);
-    try {
-      const raw = JSON.parse(await file.text());
-      setDataImportPreview({
-        fileName: file.name,
-        fileSize: file.size,
-        summary: summarizeImportedData(raw),
-        raw,
-      });
-    } catch (err) {
-      showToast(`${tr("匯入失敗", "Import failed", "インポートに失敗しました", "가져오기에 실패했습니다")}：${sanitizeText(err?.message || tr("未知錯誤", "Unknown error", "不明なエラー", "알 수 없는 오류"), 80)}`);
-      if (dataImportRef.current) dataImportRef.current.value = "";
-      setDataImporting(false);
-    } finally {
-      if (dataImportRef.current) dataImportRef.current.value = "";
-    }
-  };
-  const confirmImportPreview = async () => {
-    if (!dataImportPreview?.raw) return;
-    if (!window.confirm(tr("確認匯入後，將覆蓋目前裝置上的全域資料。確定要繼續嗎？", "Import will overwrite the current device's global data. Continue?", "インポートすると現在の端末の全体データが上書きされます。続けますか？", "가져오기를 하면 현재 기기의 전체 데이터가 덮어써집니다. 계속할까요?"))) return;
-    try {
-      await applyImportedAppState(dataImportPreview.raw);
-      showToast(tr("資料已匯入", "Data imported", "データを取り込みました", "데이터를 가져왔습니다"));
-      setDataImportPreview(null);
-    } catch (err) {
-      showToast(`${tr("匯入失敗", "Import failed", "インポートに失敗しました", "가져오기에 실패했습니다")}：${sanitizeText(err?.message || tr("未知錯誤", "Unknown error", "不明なエラー", "알 수 없는 오류"), 80)}`);
-    } finally {
-      setDataImporting(false);
-    }
-  };
+  const { importRef: dataImportRef, importing: dataImporting, preview: dataImportPreview, exportAllData, importAllData, confirmImport: confirmImportPreview, cancelImport: cancelDataImport } = useDataImportExport({
+    getExportableState: getExportableAppState,
+    downloadJsonFile,
+    summarizeImportedData,
+    applyImportedState: applyImportedAppState,
+    showToast,
+    tr,
+    sanitizeText,
+  });
   const canUseCurrentProvider = () => {
     const isOllamaLocal = apiConfig.provider === "ollama" && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(apiConfig.baseUrl || "");
     const providerNeedsApiKey = !(apiConfig.provider === "ollama" && isOllamaLocal);
     return !providerNeedsApiKey || !!apiConfig.apiKey;
   };
   const refreshCharacterStatus = async (charId, force = false) => {
-    if (statusRefreshBusyRef.current.has(charId)) return;
+    if (statusRefreshBusyRef.current.has(charId)) {
+      if (force) showToast(tr("狀態正在更新中", "Status is already updating", "ステータスを更新中です", "상태를 업데이트하는 중입니다"));
+      return;
+    }
     const char = characters.find((x) => x.id === charId);
     if (!char) { showToast("找不到角色"); return; }
     const nowTs = Date.now();
@@ -2702,6 +1794,7 @@ ${memoryText || "（無）"}`;
     if (!canUseCurrentProvider()) { showToast(tr("請先完成 AI 連線設定（API Key）", "Please finish AI connection setup (API key) first", "先にAI接続設定（APIキー）を完了してください", "먼저 AI 연결 설정(API 키)을 완료해주세요")); return; }
     if (!force) statusAutoRefreshAttemptRef.current.set(charId, nowTs);
     statusRefreshBusyRef.current.add(charId);
+    setStatusRefreshingIds((previous) => ({ ...previous, [charId]: true }));
     try {
       const roleProfile = [
         char.description ? `角色設定：${sanitizeText(char.description, 400)}` : "",
@@ -2722,6 +1815,7 @@ ${memoryText || "（無）"}`;
       showToast(`${tr("刷新失敗", "Refresh failed", "更新に失敗しました", "새로고침 실패")}：${sanitizeText(err?.message || tr("未知錯誤", "Unknown error", "不明なエラー", "알 수 없는 오류"), 120)}`);
     } finally {
       statusRefreshBusyRef.current.delete(charId);
+      setStatusRefreshingIds((previous) => { const next = { ...previous }; delete next[charId]; return next; });
     }
   };
   const togglePinMemory = (charId, memoryId) => {
@@ -2924,28 +2018,24 @@ ${recent || "（尚無）"}
     }
   };
 
-  // 商店 → 錢包同步：先清舊 shop 流水（餘額加回），再寫新流水（餘額扣掉）。刷新不會重複扣款。
-  const syncShopOrdersToWallet = (charId, orders) => {
-    setCharacterWallets((prev) => {
-      const w = prev[charId];
-      if (!w) return prev; // 錢包尚未生成就不寫，等錢包生成後玩家再刷新商店即可
-      const oldTx = Array.isArray(w.transactions) ? w.transactions : [];
-      const oldShopTotal = oldTx.filter((t) => t.source === "shop").reduce((s, t) => s + (+t.amount || 0), 0);
-      const kept = oldTx.filter((t) => t.source !== "shop");
-      const newTx = orders.map((o, i) => ({
-        id: gid(), type: "expense", source: "shop",
-        amount: o.price, note: `${o.emoji} ${o.item}`,
-        time: Date.now() - i * 3600000,
-      }));
-      const newTotal = newTx.reduce((s, t) => s + t.amount, 0);
-      return { ...prev, [charId]: {
-        ...w,
-        balance: Math.max(0, (+w.balance || 0) + oldShopTotal - newTotal),
-        transactions: [...newTx, ...kept],
-      } };
-    });
-  };
-
+  const {
+    syncShopOrdersToWallet,
+    transferToCurrentChar,
+    applyCharacterTransferToPlayer,
+    generateCharacterWallet,
+    regenerateCharacterWallet,
+    clearWalletData,
+  } = useWalletController({
+    wallet, setWallet, characterWallets, setCharacterWallets,
+    currentChatChar, transferSubmitting, transferAmount, transferNote,
+    setTransferSubmitting, setTransferAmount, setTransferNote, setTransferModalOpen,
+    setChatHistory, setWalletGenLoading,
+    setWalletSettingsPage, setWalletSettingsOpen,
+    defaultWallet: defaultAppState.wallet,
+    characterWalletTxLimit: CHARACTER_WALLET_TX_LIMIT,
+    apiConfig, canUseCurrentProvider, showToast, tr, getPlayerDisplayName,
+    formatMoney, stripUserPlaceholder, getOutputLanguageDirective, getWalletTimeSlot,
+  });
   const generatePhoneApp = async (char, appId) => {
     if (!char || !PHONE_APP_META[appId]) return;
     if (!canUseCurrentProvider()) { showToast(tr("請先完成 AI 連線設定（API Key）", "Please finish AI connection setup first", "先にAI接続設定を完了してください", "먼저 AI 연결 설정을 완료해주세요")); return; }
@@ -3034,219 +2124,23 @@ ${recent}`,
     setGenLoading(false);
   };
 
-  const generatePost = async (char) => {
-    if (!canUseCurrentProvider()) { showToast(tr("請先完成 AI 連線設定（API Key）", "Please finish AI connection setup (API key) first", "先にAI接続設定（APIキー）を完了してください", "먼저 AI 연결 설정(API 키)을 완료해주세요")); return; }
-    try {
-      const sysP = `${buildSystemPrompt(char, getPlayerContextBlock())}
-
-[目前輸出模式：社群貼文]
-以下社群貼文規則優先於上方「聊天規則」中關於即時通訊、只輸出私訊內容的限制。
-你正在替 {{char}} 產生一則公開/半公開社群動態。貼文要像角色自己發的近況，不是對 {{user}} 的私訊。`;
-      const t = await callAI([{
-        role: "user",
-        content: buildSocialPostPrompt(char),
-      }], apiConfig, sysP);
-        const content = sanitizeText(String(t || "").replace(/^["「]|["」]$/g, "").trim(), 120) || "今天也算是有好好過完了。";
-        setPosts(p => [{
-          id: gid(),
-          authorType: "character",
-          authorName: char.name,
-          authorAvatar: char.avatar,
-          charId: char.id,
-          charName: char.name,
-          charAvatar: char.avatar,
-          content,
-          comments: [],
-          time: Date.now(),
-          likes: rollCharacterPostLikes(char),
-          liked: false,
-        }, ...p]);
-        showToast(tr(`${char.name} 已發佈貼文`, `${char.name} published a post`, `${char.name} が投稿しました`, `${char.name}님이 게시물을 올렸습니다`));
-      } catch (err) {
-        showToast(`${tr("發文失敗", "Failed to post", "投稿に失敗しました", "게시 실패")}：${err.message}`);
-      }
-    };
-  const handleRandomSocialPost = () => {
-    const nowTs = Date.now();
-    const globalLeft = SOCIAL_GLOBAL_COOLDOWN_MS - (nowTs - (socialLastGlobalPostAtRef.current || 0));
-    if (globalLeft > 0) {
-      showToast(tr(`刷新太快，請 ${Math.ceil(globalLeft / 1000)} 秒後再試`, `Too fast, try again in ${Math.ceil(globalLeft / 1000)}s`, `更新が早すぎます。${Math.ceil(globalLeft / 1000)}秒後にもう一度お試しください`, `너무 빨라요. ${Math.ceil(globalLeft / 1000)}초 후 다시 시도해주세요`));
-      return;
-    }
-    const c = pickRandomSocialCharacter();
-    if (!c) return;
-    const lastForChar = socialLastPostByCharRef.current?.[c.id] || 0;
-    const charLeft = SOCIAL_CHAR_COOLDOWN_MS - (nowTs - lastForChar);
-    if (charLeft > 0) {
-      showToast(tr(`${c.name} 剛發過文，請 ${Math.ceil(charLeft / 1000)} 秒後再試`, `${c.name} just posted, try again in ${Math.ceil(charLeft / 1000)}s`, `${c.name} は投稿したばかりです。${Math.ceil(charLeft / 1000)}秒後にお試しください`, `${c.name}님이 방금 게시했어요. ${Math.ceil(charLeft / 1000)}초 후 다시 시도해주세요`));
-      return;
-    }
-    socialLastGlobalPostAtRef.current = nowTs;
-    socialLastPostByCharRef.current = { ...(socialLastPostByCharRef.current || {}), [c.id]: nowTs };
-    generatePost(c);
-  };
-  const pickRandomSocialCharacter = () => {
-    if (!Array.isArray(characters) || characters.length === 0) return null;
-    if (characters.length === 1) return characters[0];
-    const lastCharId = posts?.[0]?.charId || null;
-    const pool = characters.filter((c) => c.id !== lastCharId);
-    const list = pool.length ? pool : characters;
-    return list[Math.floor(Math.random() * list.length)] || null;
-  };
-  const generatePlayerPostReplies = async (post, responders) => {
-    if (!post?.id || !responders.length || !canUseCurrentProvider()) return;
-    for (const char of responders) {
-      try {
-        const sysP = `${buildSystemPrompt(char, getPlayerContextBlock())}
-
-[目前輸出模式：社群留言]
-以下規則優先於上方聊天規則。你正在替 {{char}} 在公開/半公開社群貼文下方留言，內容要像社群互動，不是私訊。`;
-        const ai = await callAI([{
-          role: "user",
-          content: buildPlayerPostReplyPrompt(char, post),
-        }], apiConfig, sysP);
-        const reply = sanitizeText(String(ai || "").replace(/^["「]|["」]$/g, "").trim(), 120);
-        if (!reply) continue;
-        const charComment = {
-          id: gid(),
-          role: "assistant",
-          charId: char.id,
-          charName: char.name,
-          charAvatar: char.avatar,
-          content: reply,
-          depth: 1,
-          time: Date.now(),
-        };
-        setPosts((prev) => prev.map((p) => (
-          p.id === post.id ? { ...p, comments: [...(p.comments || []), charComment] } : p
-        )));
-      } catch (_) {}
-    }
-  };
-  const submitPlayerPost = async () => {
-    if (playerPostSubmitting) return;
-    const content = sanitizeText(playerPostText.trim(), PLAYER_SOCIAL_POST_LIMIT);
-    if (!content) { showToast(tr("請輸入貼文內容", "Please enter post content", "投稿内容を入力してください", "게시물 내용을 입력해주세요")); return; }
-    const post = {
-      id: gid(),
-      authorType: "player",
-      authorName: getPlayerDisplayName(),
-      authorAvatar: getPlayerAvatar(),
-      charId: null,
-      charName: getPlayerDisplayName(),
-      charAvatar: getPlayerAvatar(),
-      content,
-      comments: [],
-      time: Date.now(),
-      likes: 0,
-      liked: false,
-      likedBy: pickPlayerPostReactors(content),
-    };
-    const responders = pickPlayerPostResponders(content);
-    setPosts((prev) => [post, ...prev]);
-    setPlayerPostText("");
-    setPlayerPostModalOpen(false);
-    if (!responders.length) return;
-    if (!canUseCurrentProvider()) {
-        showToast(tr("貼文已發佈；角色回覆需先完成 AI 連線設定", "Post published; AI connection is required for replies", "投稿しました。キャラの返信には先にAI接続設定が必要です。", "게시물이 등록되었습니다. 캐릭터 답글에는 먼저 AI 연결 설정이 필요합니다."));
-      return;
-    }
-    setPlayerPostSubmitting(true);
-    showToast(tr(`貼文已發佈，等待 ${responders.length} 則角色回覆`, `Post published, waiting for ${responders.length} replies`, `投稿しました。${responders.length}件のキャラ返信を待っています`, `게시물이 등록되었습니다. 캐릭터 답글 ${responders.length}개를 기다리는 중입니다`));
-    await generatePlayerPostReplies(post, responders);
-    setPlayerPostSubmitting(false);
-  };
-  const addPostComment = async (postId, explicitTarget = null) => {
-    const target = explicitTarget || null;
-    const inputKey = target ? `${postId}:${target.commentId}` : postId;
-    const raw = postCommentInputs[inputKey] || "";
-    const text = sanitizeText(raw, 240).trim();
-    if (!text) return;
-    const post = posts.find((x) => x.id === postId);
-    if (!post) return;
-    setPostCommentInputs((prev) => ({ ...prev, [inputKey]: "" }));
-    const parentDepth = getCommentDepth(target);
-    const userComment = {
-      id: gid(),
-      role: "user",
-      content: text,
-      parentId: target?.commentId || null,
-      replyToName: target?.authorName || "",
-      depth: target ? Math.min(3, parentDepth + 1) : 1,
-      time: Date.now(),
-    };
-    setPosts((prev) => prev.map((p) => (
-      p.id === postId
-        ? { ...p, comments: insertCommentAfterThread(p.comments || [], target?.commentId || null, userComment) }
-        : p
-    )));
-    if (target) setSocialReplyTarget(null);
-    const char = target?.charId
-      ? characters.find((c) => c.id === target.charId)
-      : characters.find((c) => c.id === post.charId);
-    if (!canUseCurrentProvider()) return;
-    if (!char || userComment.depth >= 3) return;
-    try {
-      const sysP = buildSystemPrompt(char, getPlayerContextBlock());
-      const ai = await callAI([{
-        role: "user",
-        content: target
-          ? buildSocialCommentReplyPrompt({ char, post, targetComment: target, userText: text })
-          : `你剛發了一則貼文：「${post.content}」\n{{user}} 留言：「${text}」\n請用角色口吻回覆 1 句自然留言，最多 45 字。`,
-      }], apiConfig, sysP);
-      const reply = sanitizeText(ai || "", 120).trim() || "收到，謝謝你的留言。";
-      const charComment = {
-        id: gid(),
-        role: "assistant",
-        charId: char.id,
-        charName: char.name,
-        charAvatar: char.avatar,
-        content: reply,
-        parentId: userComment.id,
-        replyToName: getPlayerDisplayName(),
-        depth: Math.min(3, userComment.depth + 1),
-        time: Date.now(),
-      };
-      setPosts((prev) => prev.map((p) => (
-        p.id === postId
-          ? { ...p, comments: insertCommentAfterThread(p.comments || [], userComment.id, charComment) }
-          : p
-      )));
-    } catch (_) {}
-  };
-  const sharePostToChat = (post) => {
-    if (getPostAuthorType(post) !== "character" || !post.charId) {
-      showToast(tr("玩家貼文目前不分享到角色聊天室", "Player posts can't be shared to character chats yet", "プレイヤーの投稿は今のところキャラのチャットに共有できません", "플레이어 게시물은 아직 캐릭터 채팅에 공유할 수 없습니다"));
-      return;
-    }
-    if (!window.confirm("要分享到此角色聊天室嗎？")) return;
-    const char = characters.find((c) => c.id === post.charId);
-    if (!char) return;
-    const lines = (post.comments || []).slice(-4).map((c) => `${c.role === "assistant" ? (c.charName || post.charName) : "{{user}}"}：${c.content}`);
-    const rawBody = [`貼文：${post.content}`, ...(lines.length ? ["留言：", ...lines] : [])].join("\n");
-    const approxTokens = Math.ceil(rawBody.length / 3.5);
-    const content = approxTokens <= SHARE_RAW_TOKEN_LIMIT
-      ? [
-          `[APP_SHARE_EVENT]`,
-          `source=social`,
-          `mode=raw`,
-          `actor=${post.charName}`,
-          `token_estimate=${approxTokens}`,
-          rawBody,
-        ].join("\n")
-      : [
-          `[APP_SHARE_EVENT]`,
-          `source=social`,
-          `mode=summary`,
-          `actor=${post.charName}`,
-          `token_estimate=${approxTokens}`,
-          `摘要：${sanitizeText(post.content, 220)}`,
-          ...(lines.length ? [`互動重點：${sanitizeText(lines.join(" / "), 260)}`] : []),
-        ].join("\n");
-    const notice = { id: gid(), role: "system_notice", content, time: Date.now() };
-    setChatHistory((h) => ({ ...h, [post.charId]: [...(h[post.charId] || []), notice] }));
-    showToast(approxTokens <= SHARE_RAW_TOKEN_LIMIT ? "已分享到聊天室（原文）" : "已分享到聊天室（摘要）");
-  };
+  const {
+    handleRandomSocialPost,
+    submitPlayerPost,
+    addPostComment,
+    sharePostToChat,
+  } = useSocialFeed({
+    apiConfig, characters, posts, setPosts, chatHistory, setChatHistory, memories, activeCharId,
+    hydrated, socialSettings, playerProfile, playerPostText, setPlayerPostText,
+    playerPostSubmitting, setPlayerPostSubmitting, setPlayerPostModalOpen,
+    postCommentInputs, setPostCommentInputs, setSocialReplyTarget,
+    socialLastGlobalPostAtRef, socialLastPostByCharRef, socialAutoPostingRef, socialAutoPostGapRef,
+    SOCIAL_GLOBAL_COOLDOWN_MS, SOCIAL_CHAR_COOLDOWN_MS, PLAYER_SOCIAL_POST_LIMIT, SHARE_RAW_TOKEN_LIMIT,
+    canUseCurrentProvider, showToast, tr, getPlayerContextBlock, buildSocialPostPrompt,
+    rollCharacterPostLikes, getPlayerDisplayName, getPlayerAvatar, pickPlayerPostReactors,
+    pickPlayerPostResponders, buildPlayerPostReplyPrompt, getCommentDepth,
+    insertCommentAfterThread, buildSocialCommentReplyPrompt, getPostAuthorType,
+  });
   useEffect(() => {
     if (!hydrated || !activeCharId) return;
     refreshCharacterStatus(activeCharId, false);
@@ -3302,40 +2196,6 @@ ${recent}`,
     };
   }, [hydrated, characters, chatHistory, proactiveSettings, proactiveUnread, apiConfig]);
 
-  const SOCIAL_AUTO_POST_GAP_RANGE_MS = [40 * 60 * 1000, 90 * 60 * 1000];
-  const rollSocialAutoPostGap = () => {
-    const [minMs, maxMs] = SOCIAL_AUTO_POST_GAP_RANGE_MS;
-    return minMs + Math.random() * (maxMs - minMs);
-  };
-  const runSocialAutoPostSweep = () => {
-    if (!hydrated || !socialSettings?.autoPost || socialAutoPostingRef.current || !canUseCurrentProvider()) return;
-    if (!Array.isArray(characters) || !characters.length) return;
-    if (!socialAutoPostGapRef.current) socialAutoPostGapRef.current = rollSocialAutoPostGap();
-    const lastCharPost = (posts || []).find((p) => getPostAuthorType(p) === "character");
-    const lastAt = Math.max(lastCharPost?.time || 0, socialLastGlobalPostAtRef.current || 0);
-    if (Date.now() - lastAt < socialAutoPostGapRef.current) return;
-    const c = pickRandomSocialCharacter();
-    if (!c) return;
-    socialAutoPostingRef.current = true;
-    socialLastGlobalPostAtRef.current = Date.now();
-    socialLastPostByCharRef.current = { ...(socialLastPostByCharRef.current || {}), [c.id]: Date.now() };
-    socialAutoPostGapRef.current = rollSocialAutoPostGap();
-    generatePost(c).finally(() => { socialAutoPostingRef.current = false; });
-  };
-  useEffect(() => {
-    if (!hydrated || !socialSettings?.autoPost) return;
-    const onVisible = () => { if (document.visibilityState === "visible") runSocialAutoPostSweep(); };
-    document.addEventListener("visibilitychange", onVisible);
-    window.addEventListener("focus", onVisible);
-    const kick = setTimeout(runSocialAutoPostSweep, 6000);
-    const iv = setInterval(runSocialAutoPostSweep, 10 * 60 * 1000);
-    return () => {
-      document.removeEventListener("visibilitychange", onVisible);
-      window.removeEventListener("focus", onVisible);
-      clearTimeout(kick);
-      clearInterval(iv);
-    };
-  }, [hydrated, socialSettings, characters, posts, apiConfig]);
 
   const normalizedThemeName = themeName === "湖水藍" ? "海鹽汽水" : themeName === "蜜桃手帳" ? "蜜桃慕斯" : themeName;
   const activeTheme = THEME_PRESETS[normalizedThemeName] || THEME_PRESETS["莓果蘇打"];
@@ -3529,7 +2389,6 @@ ${recent}`,
     openApp("chat");
     handleUnlock();
   };
-  if (locked) return (<><style>{css}</style><style>{themeCss}</style><div className="mp-wrap"><div className="mp-phone"><div className={`mp-lock ${unlocking?"out":""}`} onTouchStart={onLockTouchStart} onTouchEnd={onLockTouchEnd} onMouseDown={onLockMouseDown} onMouseUp={onLockMouseUp} onPointerDown={onLockPointerDown} onPointerUp={onLockPointerUp} onDoubleClick={handleUnlock}><BarClock ft={ft} hideTime /><LockClock ft={ft} fd={fd} />{lockNotifications.length > 0 && (<div className="mp-lock-notifs">{lockNotifications.map((notif) => (<button key={notif.charId} type="button" className="mp-lock-notif" onClick={(e) => { e.stopPropagation(); openLockNotification(notif); }}><div className="mp-lock-notif-avatar">{sanitizeUserImageUrl(notif.char.avatar) ? <img src={sanitizeUserImageUrl(notif.char.avatar)} alt="" /> : (notif.char.name?.[0] || "🙂")}</div><div className="mp-lock-notif-body"><div className="mp-lock-notif-name">{notif.char.name}</div><div className="mp-lock-notif-preview">{notif.preview}</div></div></button>))}</div>)}<div className="mp-lock-hint">{tr("向上滑動解鎖 MaliPhone（或雙擊）", "Swipe up to unlock MaliPhone (or double-click)", "MaliPhone を上にスワイプしてロック解除（またはダブルクリック）", "MaliPhone을 위로 밀어 잠금 해제(또는 더블클릭)")}</div></div></div></div></>);
 
   const localizedAppById = {
     chat: { ...DEFAULT_APPS.find((a) => a.id === "chat"), name: t("chat") },
@@ -3579,207 +2438,30 @@ ${recent}`,
   ];
   const dockApps = safeDock.map(id => appById[id]).filter(Boolean);
 
-  const findSlotIndex = (slots, appId) => slots.findIndex((id) => id === appId);
-  const moveAppToHomeSlot = (appId, targetSlotIndex) => {
-    if (!allAppIds.includes(appId)) return;
-    if (safeDock.includes(appId) && safeDock.length <= 2) return;
-    const nextDock = safeDock.filter((id) => id !== appId);
-    const nextSlots = [...cleanedSlots];
-    const fromSlot = findSlotIndex(nextSlots, appId);
-    if (fromSlot >= 0) nextSlots[fromSlot] = null;
-    const occupant = nextSlots[targetSlotIndex];
-    nextSlots[targetSlotIndex] = appId;
-    if (occupant && occupant !== appId) {
-      if (fromSlot >= 0) nextSlots[fromSlot] = occupant;
-      else {
-        const emptyIdx = nextSlots.findIndex((id) => id === null);
-        if (emptyIdx >= 0) nextSlots[emptyIdx] = occupant;
-      }
-    }
-    setDockOrder(nextDock);
-    setHomeSlots(nextSlots);
-  };
-  const moveAppToDock = (appId, targetDockIndex) => {
-    if (!allAppIds.includes(appId)) return;
-    const isFromDock = safeDock.includes(appId);
-    let nextDock = safeDock.filter((id) => id !== appId);
-    if (!isFromDock && nextDock.length >= 4) return;
-    if (isFromDock && nextDock.length < 2) return;
-    const idx = Math.max(0, Math.min(targetDockIndex, nextDock.length));
-    nextDock.splice(idx, 0, appId);
-    const nextSlots = cleanedSlots.map((id) => (id === appId ? null : id));
-    setDockOrder(nextDock);
-    setHomeSlots(nextSlots);
-  };
-  const onHomeTouchStart = (e) => {
-    if (isDraggingApp || pointerDrag) return;
-    swipeStartXRef.current = e.touches?.[0]?.clientX ?? null;
-    swipeStartYRef.current = e.touches?.[0]?.clientY ?? null;
-  };
-  const switchHomePageBySwipe = (sx, sy, ex, ey) => {
-    if (isDraggingApp) return;
-    if (sx === null || ex === null || sy === null || ey === null) return;
-    const diffX = sx - ex;
-    const diffY = sy - ey;
-    const absX = Math.abs(diffX);
-    const absY = Math.abs(diffY);
-    // 更接近手機手感：降低觸發門檻，並允許些微斜向滑動
-    if (absX < 18) return;
-    if (absY > absX * 1.35) return;
-    if (diffX > 0) setHomePage(p => Math.min(p + 1, homePages.length - 1));
-    else setHomePage(p => Math.max(p - 1, 0));
-  };
-  const onHomeTouchEnd = (e) => {
-    if (isDraggingApp || pointerDrag) {
-      swipeStartXRef.current = null;
-      swipeStartYRef.current = null;
-      return;
-    }
-    const sx = swipeStartXRef.current;
-    const sy = swipeStartYRef.current;
-    const ex = e.changedTouches?.[0]?.clientX ?? null;
-    const ey = e.changedTouches?.[0]?.clientY ?? null;
-    swipeStartXRef.current = null;
-    swipeStartYRef.current = null;
-    switchHomePageBySwipe(sx, sy, ex, ey);
-  };
-  const onHomeMouseDown = (e) => {
-    if (isDraggingApp || pointerDrag) return;
-    swipeStartXRef.current = e.clientX ?? null;
-    swipeStartYRef.current = e.clientY ?? null;
-  };
-  const onHomeMouseUp = (e) => {
-    if (isDraggingApp || pointerDrag) {
-      swipeStartXRef.current = null;
-      swipeStartYRef.current = null;
-      return;
-    }
-    const sx = swipeStartXRef.current;
-    const sy = swipeStartYRef.current;
-    const ex = e.clientX ?? null;
-    const ey = e.clientY ?? null;
-    swipeStartXRef.current = null;
-    swipeStartYRef.current = null;
-    switchHomePageBySwipe(sx, sy, ex, ey);
-  };
-  const onHomePointerDown = (e) => {
-    if (pointerDrag) return;
-    swipeStartXRef.current = e.clientX ?? null;
-    swipeStartYRef.current = e.clientY ?? null;
-  };
-  const onHomePointerUp = (e) => {
-    if (pointerDrag) {
-      const dragging = pointerDrag;
-      setPointerDrag(null);
-      setIsDraggingApp(false);
-      clearTimeout(edgeTurnTimerRef.current);
-      edgeTurnTimerRef.current = null;
-      edgeTurnDirRef.current = null;
-      const upDx = Math.abs((e.clientX || 0) - (dragging.startX || 0));
-      const upDy = Math.abs((e.clientY || 0) - (dragging.startY || 0));
-      const movedByDistance = (upDx + upDy) > 8;
-      if (!dragging.moved && !movedByDistance) {
-        openApp(dragging.appId);
-        return;
-      }
-      suppressAppClickUntilRef.current = Date.now() + 350;
-      const el = document.elementFromPoint(e.clientX, e.clientY);
-      const slotEl = el?.closest?.("[data-drop-slot]");
-      const dockEl = el?.closest?.("[data-drop-dock]");
-      const dockWrap = el?.closest?.("[data-drop-dock-wrap]");
-      if (slotEl) {
-        const slot = Number(slotEl.getAttribute("data-drop-slot"));
-        if (!Number.isNaN(slot)) moveAppToHomeSlot(dragging.appId, slot);
-      } else if (dockWrap) {
-        const rect = dockWrap.getBoundingClientRect();
-        const relX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
-        const slotCount = Math.max(1, dockApps.length);
-        const ratio = relX / rect.width;
-        const targetIndex = Math.max(0, Math.min(dockApps.length, Math.round(ratio * slotCount)));
-        moveAppToDock(dragging.appId, targetIndex);
-      } else if (dockEl) {
-        const idx = Number(dockEl.getAttribute("data-drop-dock"));
-        if (!Number.isNaN(idx)) moveAppToDock(dragging.appId, idx);
-      }
-      return;
-    }
-    const sx = swipeStartXRef.current;
-    const sy = swipeStartYRef.current;
-    const ex = e.clientX ?? null;
-    const ey = e.clientY ?? null;
-    swipeStartXRef.current = null;
-    swipeStartYRef.current = null;
-    switchHomePageBySwipe(sx, sy, ex, ey);
-  };
-  const onHomePointerMove = (e) => {
-    if (!pointerDrag) return;
-    const dx = Math.abs((e.clientX || 0) - pointerDrag.startX);
-    const dy = Math.abs((e.clientY || 0) - pointerDrag.startY);
-    const moved = dx + dy > 8;
-    setPointerDrag((p) => ({ ...p, x: e.clientX || 0, y: e.clientY || 0, moved }));
-    const vw = window.innerWidth || 0;
-    const x = e.clientX || 0;
-    const edge = 28;
-    let dir = null;
-    const maxPage = Math.max(0, homePages.length - 1);
-    if (x <= edge && homePage > 0) dir = -1;
-    else if (x >= vw - edge && homePage < maxPage) dir = 1;
-    if (dir !== edgeTurnDirRef.current) {
-      clearTimeout(edgeTurnTimerRef.current);
-      edgeTurnTimerRef.current = null;
-      edgeTurnDirRef.current = dir;
-      if (dir) {
-        edgeTurnTimerRef.current = setTimeout(() => {
-          setHomePage((p) => Math.max(0, Math.min(maxPage, p + dir)));
-          edgeTurnTimerRef.current = null;
-          edgeTurnDirRef.current = null;
-        }, 450);
-      }
-    }
-  };
+  const {
+    onHomeTouchStart, onHomeTouchEnd, onHomeMouseDown, onHomeMouseUp,
+    onHomePointerDown, onHomePointerUp, onHomePointerMove,
+    onPointerDragStartApp, cancelPointerDrag, onDropToHome, onDropToHomeGrid,
+    onDropToDock, onDropToDockContainer, onHomeDragOverPageEdge,
+  } = useHomeDragAndDrop({
+    allAppIds, safeDock, cleanedSlots, dockApps, homePages, homePage, setHomePage,
+    setHomeSlots, setDockOrder, isDraggingApp, setIsDraggingApp, pointerDrag, setPointerDrag,
+    swipeStartXRef, swipeStartYRef, edgeTurnTimerRef, edgeTurnDirRef, suppressAppClickUntilRef,
+    pageSize: PAGE_SIZE, openApp,
+  });
 
     // ---- Status (RPG) ----
   const renderStatus = () => <StatusApp
     closeApp={closeApp} t={t} tr={tr} characters={characters} chatHistory={chatHistory} memories={memories} posts={posts}
     sanitizeUserImageUrl={sanitizeUserImageUrl} statusExpandedCharId={statusExpandedCharId} setStatusExpandedCharId={setStatusExpandedCharId}
     statusMemoryExpandedCharId={statusMemoryExpandedCharId} setStatusMemoryExpandedCharId={setStatusMemoryExpandedCharId}
-    refreshCharacterStatus={refreshCharacterStatus} activeMemoryId={activeMemoryId} setActiveMemoryId={setActiveMemoryId}
+    refreshCharacterStatus={refreshCharacterStatus} statusRefreshingIds={statusRefreshingIds} activeMemoryId={activeMemoryId} setActiveMemoryId={setActiveMemoryId}
     setMemoryEditor={setMemoryEditor} togglePinMemory={togglePinMemory} deleteMemory={deleteMemory}
-    generateMemory={generateMemory} genLoading={genLoading}
+    generateMemory={generateMemory} genLoading={genLoading} applyUserPlaceholder={applyUserPlaceholder}
   />;
 
   // ---- Chat ----
-  const renderRealityInline = (text) => {
-    const raw = String(text || "");
-    const nodes = [];
-    const re = /(\*\*[^*\n]{1,500}\*\*|__[^_\n]{1,500}__|「[^」]{1,500}」|"[^"\n]{1,500}"|\*[^*\n]{1,500}\*|_[^_\n]{1,500}_)/g;
-    let last = 0;
-    let match;
-    while ((match = re.exec(raw))) {
-      if (match.index > last) nodes.push(raw.slice(last, match.index));
-      const token = match[0];
-      if (token.startsWith("**") || token.startsWith("__")) {
-        nodes.push(<strong key={`b-${match.index}`} className="mp-reality-strong">{token.slice(2, -2)}</strong>);
-      } else if (token.startsWith("「") || token.startsWith("\"")) {
-        nodes.push(<span key={`d-${match.index}`} className="mp-reality-dialogue">{token}</span>);
-      } else {
-        nodes.push(<span key={`t-${match.index}`} className="mp-reality-thought">{token.slice(1, -1)}</span>);
-      }
-      last = match.index + token.length;
-    }
-    if (last < raw.length) nodes.push(raw.slice(last));
-    return nodes.map((node, i) => typeof node === "string" ? <React.Fragment key={`s-${i}`}>{node}</React.Fragment> : node);
-  };
-  const renderRealityText = (text) => String(text || "").split(/\n{2,}/).map((para, idx) => (
-    <p key={idx} className="mp-reality-p">
-      {para.split("\n").map((line, lineIdx) => (
-        <React.Fragment key={lineIdx}>
-          {lineIdx > 0 && <br />}
-          {renderRealityInline(line)}
-        </React.Fragment>
-      ))}
-    </p>
-  ));
+  const renderRealityText = (text) => <RealityMessageText text={text} />;
   const getChatThreadSortMeta = (char) => {
     const msgs = chatHistory[char?.id] || [];
     const lastMsg = msgs[msgs.length - 1] || null;
@@ -3811,630 +2493,57 @@ ${recent}`,
       return prev.map((c) => (c.id === charId ? { ...c, pinned: !c.pinned } : c));
     });
   };
-  const getGroupMembers = (group) => {
-    const ids = Array.isArray(group?.memberIds) && group.memberIds.length ? group.memberIds : characters.map((c) => c.id);
-    return characters.filter((c) => ids.includes(c.id));
-  };
-  const compressGroupCoverFile = (file, done) => {
-    if (!file) return;
-    const r = new FileReader();
-    r.onload = () => {
-      const raw = String(r.result || "");
-      const safe = sanitizeUserImageUrl(raw);
-      if (!safe) return showToast(tr("圖片格式不支援", "Unsupported image format", "画像形式に対応していません", "이미지 형식을 지원하지 않습니다"));
-      const img = new Image();
-      img.onload = () => {
-        const maxEdge = 720;
-        const maxSide = Math.max(img.width, img.height);
-        const scale = maxSide > maxEdge ? (maxEdge / maxSide) : 1;
-        const w = Math.max(1, Math.round(img.width * scale));
-        const h = Math.max(1, Math.round(img.height * scale));
-        const canvas = document.createElement("canvas");
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return showToast("圖片處理失敗");
-        ctx.drawImage(img, 0, 0, w, h);
-        const out = canvas.toDataURL("image/jpeg", 0.82);
-        const next = sanitizeUserImageUrl(out);
-        if (!next) return showToast("圖片處理失敗");
-        done(next);
-      };
-      img.onerror = () => showToast(tr("圖片讀取失敗", "Image load failed", "画像の読み込みに失敗しました", "이미지 읽기에 실패했습니다"));
-      img.src = safe;
-    };
-    r.readAsDataURL(file);
-  };
-  const compressChatBackgroundFile = (file, done) => {
-    if (!file) return;
-    const r = new FileReader();
-    r.onload = () => {
-      const raw = String(r.result || "");
-      const safe = sanitizeUserImageUrl(raw);
-      if (!safe) return showToast(tr("圖片格式不支援", "Unsupported image format", "画像形式に対応していません", "이미지 형식을 지원하지 않습니다"));
-      const img = new Image();
-      img.onload = () => {
-        const maxBytes = 1500 * 1024;
-        const maxEdges = [1600, 1400, 1200, 1000, 820];
-        const qualities = [0.82, 0.74, 0.66, 0.58, 0.5];
-        let picked = null;
-        const bytesFromDataUrl = (dataUrl) => Math.ceil(Math.max(0, String(dataUrl || "").length - String(dataUrl || "").indexOf(",") - 1) * 0.75);
-        for (const maxEdge of maxEdges) {
-          const maxSide = Math.max(img.width, img.height);
-          const scale = maxSide > maxEdge ? (maxEdge / maxSide) : 1;
-          const w = Math.max(1, Math.round(img.width * scale));
-          const h = Math.max(1, Math.round(img.height * scale));
-          const canvas = document.createElement("canvas");
-          canvas.width = w;
-          canvas.height = h;
-          const ctx = canvas.getContext("2d");
-          if (!ctx) return showToast("圖片處理失敗");
-          ctx.drawImage(img, 0, 0, w, h);
-          for (const quality of qualities) {
-            const out = canvas.toDataURL("image/jpeg", quality);
-            const bytes = bytesFromDataUrl(out);
-            picked = { out, bytes };
-            if (bytes <= maxBytes) break;
-          }
-          if (picked?.bytes <= maxBytes) break;
-        }
-        if (!picked || picked.bytes > maxBytes) return showToast(tr("圖片壓縮後仍過大，請改用尺寸更小或內容較簡單的圖片", "The image is still too large after compression. Please use a smaller or simpler image.", "圧縮後も画像が大きすぎます。もっと小さい、またはシンプルな画像を使ってください。", "압축 후에도 이미지가 너무 큽니다. 더 작거나 단순한 이미지를 사용해주세요."));
-        const next = sanitizeUserImageUrl(picked.out);
-        if (!next) return showToast("圖片處理失敗");
-        done(next);
-      };
-      img.onerror = () => showToast(tr("圖片讀取失敗", "Image load failed", "画像の読み込みに失敗しました", "이미지 읽기에 실패했습니다"));
-      img.src = safe;
-    };
-    r.readAsDataURL(file);
-  };
-  const normalizeChatBackground = (bg) => {
-    if (!bg) return { src: "", x: 0, y: 0, zoom: 1, blur: 0 };
-    if (typeof bg === "string") return { src: sanitizeUserImageUrl(bg) || "", x: 0, y: 0, zoom: 1, blur: 0 };
-    return {
-      src: sanitizeUserImageUrl(bg?.src || bg?.url || "") || "",
-      x: Number.isFinite(Number(bg?.x)) ? Number(bg.x) : 0,
-      y: Number.isFinite(Number(bg?.y)) ? Number(bg.y) : 0,
-      zoom: Number.isFinite(Number(bg?.zoom)) ? Number(bg.zoom) : 1,
-      blur: Number.isFinite(Number(bg?.blur)) ? Number(bg.blur) : 0,
-    };
-  };
-  const getChatBackgroundLayerStyle = (bg, extraScale = 1, fitAxis = "height") => {
-    const normalized = normalizeChatBackground(bg);
-    const zoom = Math.max(1, Math.min(2.2, Number(normalized.zoom) || 1));
-    const scaledZoom = zoom * Math.max(1, Number(extraScale) || 1);
-    const backgroundSize = fitAxis === "width"
-      ? `calc(100% * ${scaledZoom}) auto`
-      : `auto calc(100% * ${scaledZoom})`;
-    return {
-      position: "absolute",
-      inset: 0,
-      backgroundImage: `url(${normalized.src})`,
-      backgroundRepeat: "no-repeat",
-      backgroundSize,
-      backgroundPosition: `${50 + (Number(normalized.x) || 0)}% ${50 + (Number(normalized.y) || 0)}%`,
-      pointerEvents: "none",
-    };
-  };
-  const getChatBackgroundBlurFilter = (bg) => {
-    const normalized = normalizeChatBackground(bg);
-    return `blur(${Math.max(0, Math.min(24, Number(normalized.blur) || 0))}px) saturate(.92) brightness(.96)`;
-  };
-  const updateChatBackground = (charId, bg) => {
-    setChatBackgrounds((prev) => ({ ...prev, [charId]: normalizeChatBackground(bg) }));
-  };
-  const onChatBackgroundFile = (charId, file) => {
-    if (!charId || !file) return;
-    compressChatBackgroundFile(file, (safe) => {
-      const next = { src: safe, x: 0, y: 0, zoom: 1, blur: 0 };
-      updateChatBackground(charId, next);
-      setChatBgEditor({ charId, ...next, dragging: false, dragStartX: 0, dragStartY: 0, startX: 0, startY: 0 });
-      showToast(tr("聊天室背景已更新", "Chat background updated", "チャット背景を更新しました", "채팅 배경이 업데이트되었습니다"));
-    });
-  };
-  const openGroupCoverCrop = (file, mode = "create") => {
-    if (!file) return;
-    const r = new FileReader();
-    r.onload = () => {
-      const safe = sanitizeUserImageUrl(String(r.result || ""));
-      if (!safe) return showToast(tr("圖片格式不支援", "Unsupported image format", "画像形式に対応していません", "이미지 형식을 지원하지 않습니다"));
-      const img = new Image();
-      img.onload = () => {
-        const crop = { src: safe, width: img.width, height: img.height, zoom: 1, panX: 0, panY: 0, dragging: false, dragStartX: 0, dragStartY: 0, startPanX: 0, startPanY: 0 };
-        if (mode === "edit") setGroupEditCoverCrop(crop);
-        else setGroupCoverCrop(crop);
-      };
-      img.onerror = () => showToast(tr("圖片讀取失敗", "Image load failed", "画像の読み込みに失敗しました", "이미지 읽기에 실패했습니다"));
-      img.src = safe;
-    };
-    r.readAsDataURL(file);
-  };
-  const applyGroupCoverCrop = (mode = "create") => {
-    const crop = mode === "edit" ? groupEditCoverCrop : groupCoverCrop;
-    if (!crop?.src) return;
-    const img = new Image();
-    img.onload = () => {
-      const size = 320;
-      const canvas = document.createElement("canvas");
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return showToast("圖片處理失敗");
-      const iw = img.width;
-      const ih = img.height;
-      const scale = Math.max(size / iw, size / ih) * Math.max(1, crop.zoom || 1);
-      const dw = iw * scale;
-      const dh = ih * scale;
-      const panX = Number(crop.panX || 0);
-      const panY = Number(crop.panY || 0);
-      const maxShiftX = Math.max(0, (dw - size) / 2);
-      const maxShiftY = Math.max(0, (dh - size) / 2);
-      const shiftX = (maxShiftX * panX) / 100;
-      const shiftY = (maxShiftY * panY) / 100;
-      const dx = (size - dw) / 2 + shiftX;
-      const dy = (size - dh) / 2 + shiftY;
-      ctx.drawImage(img, dx, dy, dw, dh);
-      const out = canvas.toDataURL("image/jpeg", 0.84);
-      const safe = sanitizeUserImageUrl(out);
-      if (!safe) return showToast("圖片處理失敗");
-      if (mode === "edit") {
-        setGroupEditCover(safe);
-        setGroupEditCoverCrop(null);
-      } else {
-        setGroupCreateCover(safe);
-        setGroupCoverCrop(null);
-      }
-    notify(tr("群組圖片已更新", "Group cover updated", "グループ画像を更新しました", "그룹 이미지가 업데이트되었습니다"), "Group cover updated");
-    };
-    img.onerror = () => showToast(tr("圖片讀取失敗", "Image load failed", "画像の読み込みに失敗しました", "이미지 읽기에 실패했습니다"));
-    img.src = crop.src;
-  };
-  const getGroupSpeakerForAssistant = (group, messages, excludeIds = []) => {
-    const members = getGroupMembers(group);
-    if (!members.length) return { name: "群組", avatar: null };
-    const used = new Set([...(excludeIds || [])]);
-    const pool = members.filter((m) => !used.has(m.id));
-    const baseList = pool.length ? pool : members;
-    const assistantCount = (messages || []).filter((m) => m.role === "assistant").length;
-    const idx = assistantCount % baseList.length;
-    const picked = baseList[idx] || baseList[0];
-    return { name: picked?.name || "群組", avatar: sanitizeUserImageUrl(picked?.avatar || null) };
-  };
-  const getGroupMemberProfileText = (char) => [
-    `角色：${char?.name || "未命名"}`,
-    char?.description ? `角色設定：${sanitizeText(char.description, 240)}` : "",
-    char?.personality ? `個性：${sanitizeText(char.personality, 180)}` : "",
-    char?.scenario ? `情境：${sanitizeText(char.scenario, 180)}` : "",
-    char?.relationshipToUser ? `與玩家關係：${sanitizeText(char.relationshipToUser, 120)}` : "",
-  ].filter(Boolean).join("\n");
-  const buildGroupChatSystemPrompt = (group, memberNames, memberProfiles, recent) => {
-    const scene = groupScenes?.[group?.id] || {};
-    const sceneText = [
-      scene.location ? `地點：${sanitizeText(scene.location, 15)}` : "",
-      scene.note ? `小備註：${sanitizeText(scene.note, 50)}` : "",
-    ].filter(Boolean).join(" · ");
-    return `${getOutputLanguageDirective()}
-
-你正在群組聊天室中回覆，請保持多人聊天感，不要提及系統、不要提到 AI 身份。
-群組成員：${memberNames}
-${sceneText ? `目前場景：${sceneText}\n` : ""}群組成員角色資料：
-${memberProfiles || "（無）"}
-回覆規則：
-1. 你要一次產生「這一輪群聊」的多位角色回覆，不要只回一位。
-2. 最多輸出 3 則回覆，至少 1 則。只有在自然適合時才讓多位角色發言，不要硬湊滿 3 則。
-3. 每一則回覆都要是不同角色，不能重複同一角色兩次。
-4. 每一則回覆都要維持一般聊天室的對話形式，像真的在群組裡接話，不要寫成公告、總結、條列或分析。
-5. 維持「線上聊天」感，只能講角色說出口的內容，不要加入旁白、動作、表情、內心獨白。
-6. 不要輸出像 *他站了起來*、（點頭）、【動作】這類格式，也不要寫成小說段落。
-7. 每則內容維持短到中等長度，通常 1~3 句；如果角色對這個話題很有興趣，可以讓同一段講得更完整一點，但不要超過 3 句。
-8. 若前文或這一輪明顯點名某角色，請優先安排該角色回覆。
-9. 可以有角色回玩家，也可以有角色回前一位角色，但每一則只能回一個對象，不要同時回兩個人。
-10. 可以自然接話、表態、提問、建議，並且主動推進話題，例如丟出新觀點、接續延伸、提出下一步或換一個相關話題，但幅度要小，不要一次推太多，也不要跳太遠。
-11. 不要輸出模式標籤、解說、分析或 Markdown，只能輸出 JSON。
-12. 請嚴格輸出以下格式，不要多字少字：
-{"replies":[{"speaker":"角色名稱","content":"回覆內容"}]}
-13. 如果這一輪只需要 1 則回覆，就只放 1 個物件。
-14. 需要承接最近對話：
-${recent || "（目前無內容）"}`;
-  };
-  const parseGroupReplies = (raw) => {
-    if (!raw) return [];
-    const text = String(raw).trim();
-    const candidates = [];
-    candidates.push(text);
-    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    if (fenced?.[1]) candidates.push(fenced[1].trim());
-    const firstBrace = text.indexOf("{");
-    const lastBrace = text.lastIndexOf("}");
-    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-      candidates.push(text.slice(firstBrace, lastBrace + 1).trim());
-    }
-    for (const candidate of candidates) {
-      try {
-        const parsed = JSON.parse(candidate);
-        const replies = Array.isArray(parsed?.replies) ? parsed.replies : Array.isArray(parsed?.turns) ? parsed.turns : [];
-        const cleaned = replies.map((item) => ({
-          speaker: sanitizeText(item?.speaker || item?.name || "", 80),
-          content: sanitizeText(item?.content || item?.reply || "", 4000).trim(),
-        })).filter((item) => item.speaker && item.content);
-        if (cleaned.length) return cleaned.slice(0, 3);
-      } catch (_) {}
-    }
-    const fallbackLines = text
-      .split(/\n+/)
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        const m = line.match(/^(?:[-*•]|\d+[.)]?)\s*(.+?)\s*[:：]\s*(.+)$/);
-        if (m) return { speaker: sanitizeText(m[1], 80), content: sanitizeText(m[2], 4000).trim() };
-        return null;
-      })
-      .filter(Boolean);
-    return fallbackLines.slice(0, 3);
-  };
+  const {
+    getGroupMembers, openCreateGroup, openEditGroup, handleGroupCreateCoverUp,
+    handleGroupEditCoverUp, saveEditGroup, createGroupChat, applyGroupCoverCrop,
+  } = useGroupChatController({
+    characters, currentChatGroup, groupCoverCrop, groupEditCoverCrop,
+    groupCreateMemberIds, groupCreateName, groupCreateRulePrompt, groupCreateCover,
+    groupEditGroupId, groupEditMemberIds, groupEditName, groupEditRulePrompt, groupEditCover,
+    setGroupCoverCrop, setGroupEditCoverCrop, setGroupCreateCover, setGroupEditCover,
+    setGroupCreateName, setGroupCreateRulePrompt, setGroupCreateMemberIds, setGroupCreateSearch, setGroupCreateOpen,
+    setGroupEditGroupId, setGroupEditName, setGroupEditRulePrompt, setGroupEditMemberIds, setGroupEditSearch, setGroupEditOpen,
+    setGroupChats, setCurrentChatGroup, sanitizeImageUrl: sanitizeUserImageUrl, showToast, notify, tr,
+  });
+  const {
+    normalizeChatBackground, getChatBackgroundLayerStyle, getChatBackgroundBlurFilter,
+    updateChatBackground, onChatBackgroundFile,
+  } = useChatBackground({
+    setChatBackgrounds, setChatBgEditor, sanitizeImageUrl: sanitizeUserImageUrl, showToast, tr,
+  });
+  const { importRef: chatroomImportRef, preview: chatroomImportPreview, importing: chatroomImporting, deleteChatroom: deleteChatroomForCharacter, exportChatroom: exportChatroomForCharacter, openImport: openChatroomImport, importFile: importChatroomFile, confirmImport: confirmChatroomImportPreview, cancelImport: cancelChatroomImport } = useChatroomImportExport({
+    currentCharacter: currentChatChar, characters, chatHistory, chatModes, chatBackgrounds, chatLorebookBindings, innerThoughtSettings,
+    setChatHistory, setChatModes, setChatBackgrounds, setChatLorebookBindings, setInnerThoughtSettings,
+    resetOpenChat: () => { setChatActionPanelOpen(false); setMessageEditor(null); setActiveMessageId(null); setIsTyping(false); setChatInput(""); },
+    normalizeBackground: normalizeChatBackground, downloadJsonFile, showToast, sanitizeText, tr,
+  });
+  const buildGroupPrompt = (group, memberNames, memberProfiles, recent) => buildGroupChatSystemPrompt({
+    group, memberNames, memberProfiles, recent, groupScenes, sanitizeText,
+    outputLanguageDirective: getOutputLanguageDirective(),
+  });
+  const parseGroupReplyPayload = (raw) => parseGroupReplies(raw, sanitizeText);
   const currentGroupMessages = currentChatGroup ? (currentChatGroup.messages || []) : [];
-  const getCurrentGroupModelHint = () => {
-    const providerShortMap = {
-      openai: "GPT",
-      deepseek: "DS",
-      claude: "Claude",
-      gemini: "Gemini",
-      vertex: "Vertex",
-      grok: "Grok",
-      openrouter: "OR",
-    };
-    return providerShortMap[apiConfig?.provider || "openai"] || "AI";
-  };
-  const openCreateGroup = () => {
-    setGroupCreateName("");
-    setGroupCreateRulePrompt("");
-    setGroupCreateMemberIds([]);
-    setGroupCreateSearch("");
-    setGroupCreateCover("");
-    setGroupCreateOpen(true);
-  };
-  const openEditGroup = (group) => {
-    if (!group) return;
-    setGroupEditGroupId(group.id);
-    setGroupEditName(group.name || "");
-    setGroupEditRulePrompt(group.rulePrompt || "");
-    setGroupEditMemberIds(Array.isArray(group.memberIds) ? group.memberIds.slice(0, 5) : []);
-    setGroupEditSearch("");
-    setGroupEditCover(group.cover || "");
-    setGroupEditOpen(true);
-  };
-  const handleGroupCreateCoverUp = (e) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    openGroupCoverCrop(f, "create");
-    e.target.value = "";
-  };
-  const handleGroupEditCoverUp = (e) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    openGroupCoverCrop(f, "edit");
-    e.target.value = "";
-  };
-  const saveEditGroup = () => {
-    if (!groupEditGroupId) return;
-    const members = characters.filter((c) => groupEditMemberIds.includes(c.id)).slice(0, 5);
-    if (members.length === 0) {
-      showToast(tr("請至少選擇 1 位角色", "Select at least 1 character", "少なくとも1人のキャラを選択してください", "캐릭터를 1명 이상 선택해주세요"));
-      return;
-    }
-    const memberLabel = members.map((m) => m.name).join("、");
-    const fallbackName = tr(`${memberLabel}的群組聊天室`, `${memberLabel}'s group chat`, `${memberLabel}のグループチャット`, `${memberLabel}의 그룹 채팅`);
-    const name = sanitizeText(groupEditName.trim() || fallbackName, 80);
-    setGroupChats((prev) => prev.map((g) => g.id === groupEditGroupId ? {
-      ...g,
-      name,
-      rulePrompt: sanitizeText(groupEditRulePrompt.trim(), 3000),
-      memberIds: members.map((m) => m.id),
-      cover: groupEditCover || "",
-      updatedAt: Date.now(),
-    } : g));
-    if (currentChatGroup?.id === groupEditGroupId) {
-      setCurrentChatGroup((prev) => prev ? {
-        ...prev,
-        name,
-        rulePrompt: sanitizeText(groupEditRulePrompt.trim(), 3000),
-        memberIds: members.map((m) => m.id),
-        cover: groupEditCover || "",
-        updatedAt: Date.now(),
-      } : prev);
-    }
-    setGroupEditOpen(false);
-    showToast(tr("群組已更新", "Group updated", "グループを更新しました", "그룹이 업데이트되었습니다"));
-  };
-  const createGroupChat = () => {
-    if (groupCreateMemberIds.length === 0) {
-      showToast(tr("請至少選擇 1 位角色", "Select at least 1 character", "少なくとも1人のキャラを選択してください", "캐릭터를 1명 이상 선택해주세요"));
-      return;
-    }
-    const members = characters.filter((c) => groupCreateMemberIds.includes(c.id)).slice(0, 5);
-    const memberLabel = members.map((m) => m.name).join("、");
-    const fallbackName = tr(`${memberLabel}的群組聊天室`, `${memberLabel}'s group chat`, `${memberLabel}のグループチャット`, `${memberLabel}의 그룹 채팅`);
-    const name = sanitizeText(groupCreateName.trim() || fallbackName, 80);
-    const payload = {
-      id: gid(),
-      name,
-      rulePrompt: sanitizeText(groupCreateRulePrompt.trim(), 3000),
-      memberIds: members.map((m) => m.id),
-      cover: groupCreateCover || "",
-      pinned: false,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      messages: [],
-    };
-    setGroupChats((prev) => [...prev, payload]);
-    setGroupCreateOpen(false);
-    setCurrentChatGroup(payload);
-    notify(tr("已建立群組", "Group created", "グループを作成しました", "그룹이 생성되었습니다"), `Group created: ${name || fallbackName}`);
-  };
-  const sendGroupMessage = async () => {
-    if (!currentChatGroup || isTyping) return;
-    const text = sanitizeText(chatInput.trim(), 4000);
-    const img = chatImage?.data || null;
-    if (!text && !img) return;
-    const nowMs = Date.now();
-    const members = getGroupMembers(currentChatGroup);
-    const now = new Date();
-    const nowDate = new Intl.DateTimeFormat("zh-TW", { year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
-    const nowTime = new Intl.DateTimeFormat("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false }).format(now);
-    const nowTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Taipei";
-    const nowContext = `[系統時間] 目前時間：${nowDate} ${nowTime} (${nowTz})`;
-    const userMsg = {
-      id: gid(),
-      role: "user",
-      content: text,
-      image: img,
-      imageSummary: "",
-      time: nowMs,
-      speakerName: getPlayerDisplayName(),
-      speakerAvatar: sanitizeUserImageUrl(getPlayerAvatar()),
-    };
-    const nextMessages = [...(currentChatGroup.messages || []), userMsg];
-    setGroupChats((prev) => prev.map((g) => g.id === currentChatGroup.id ? { ...g, messages: nextMessages, updatedAt: nowMs } : g));
-    setChatInput("");
-    setChatImage(null);
-    setChatActionPanelOpen(false);
-    setIsTyping(true);
-    try {
-      const memberNames = members.map((m) => m.name).join("、") || tr("群組成員", "Group members", "グループメンバー", "그룹 멤버");
-      const memberProfiles = members
-        .map((c) => getGroupMemberProfileText(c))
-        .filter(Boolean)
-        .join("\n\n");
-      const hist = nextMessages
-        .slice(-18)
-        .map((m) => {
-          const summaryLine = m.imageSummary ? `\n[圖片摘要]\n${m.imageSummary}` : "";
-          return { role: m.role, content: `${m.content || ""}${summaryLine}`.trim(), image: m.image || null };
-        })
-        .filter(Boolean);
-      const safeHist = hist.map((m, idx) => {
-        const isLast = idx === hist.length - 1;
-        if (img && isLast) return m;
-        return { ...m, image: null };
-      });
-      const recent = safeHist.map((m) => `${m.role === "user" ? "玩家" : (m.speakerName || "群組")}: ${m.content || "[圖片]"}`).join("\n");
-      const sysP = `${nowContext}\n\n${buildGroupChatSystemPrompt(currentChatGroup, memberNames, memberProfiles, recent)}`;
-      const reply = await callAI(safeHist, apiConfig, sysP);
-      const parsedReplies = parseGroupReplies(stripInternalBlocks(reply));
-      const speakerMap = new Map(members.map((m) => [m.name, m]));
-      const usableReplies = [];
-      const seenSpeakers = new Set();
-      for (const item of parsedReplies) {
-        const matched = speakerMap.get(item.speaker) || members.find((m) => m.name === item.speaker);
-        const resolvedName = matched?.name || item.speaker;
-        if (!resolvedName || !item.content || seenSpeakers.has(resolvedName)) continue;
-        seenSpeakers.add(resolvedName);
-        usableReplies.push({
-          speakerName: resolvedName,
-          speakerAvatar: sanitizeUserImageUrl(matched?.avatar || ""),
-          content: item.content,
-        });
-      }
-      if (!usableReplies.length) {
-        const fallbackSpeaker = members[0];
-        const fallbackContent = sanitizeText(stripInternalBlocks(reply), 4000).trim();
-        if (fallbackSpeaker && fallbackContent) {
-          usableReplies.push({
-            speakerName: fallbackSpeaker.name,
-            speakerAvatar: sanitizeUserImageUrl(fallbackSpeaker.avatar || ""),
-            content: fallbackContent,
-          });
-        }
-      }
-      const replyMessages = usableReplies.map((r) => ({
-        id: gid(),
-        role: "assistant",
-        content: r.content,
-        time: Date.now(),
-        speakerName: r.speakerName,
-        speakerAvatar: r.speakerAvatar,
-      }));
-      if (replyMessages.length) {
-        let workingMessages = [...nextMessages];
-        for (let i = 0; i < replyMessages.length; i += 1) {
-          const msg = replyMessages[i];
-          if (i > 0) {
-            const lengthFactor = Math.max(0, Math.min(1, (replyMessages[i - 1]?.content?.length || 0) / 220));
-            const wait = Math.round(220 + (lengthFactor * 520));
-            await new Promise((resolve) => setTimeout(resolve, wait));
-          }
-          workingMessages = [...workingMessages, msg];
-          setGroupChats((prev) => prev.map((g) => g.id === currentChatGroup.id ? { ...g, messages: workingMessages, updatedAt: Date.now() } : g));
-        }
-      }
-      if (img && replyMessages.length) {
-        const latestReplyText = replyMessages.map((m) => m.content).join(" / ");
-        const base = text ? `{{user}} 訊息：${text}\n` : "";
-        const imageSummary = sanitizeText(`${base}重點：${latestReplyText}`.slice(0, 220), 220);
-        if (imageSummary) {
-          setGroupChats((prev) => prev.map((g) => g.id === currentChatGroup.id ? {
-            ...g,
-            messages: (g.messages || []).map((m) => (m.id === userMsg.id ? { ...m, imageSummary } : m)),
-            updatedAt: Date.now(),
-          } : g));
-        }
-      }
-    } catch (err) {
-      const notice = { id: gid(), role: "system_notice", content: `${getConnectionErrorPrefix()}${sanitizeText(err?.message || tr("未知錯誤", "Unknown error", "不明なエラー", "알 수 없는 오류"), 500)}`, time: Date.now() };
-      setGroupChats((prev) => prev.map((g) => g.id === currentChatGroup.id ? { ...g, messages: [...nextMessages, notice], updatedAt: Date.now() } : g));
-    }
-    setIsTyping(false);
-  };
-  const retryGroupFromNotice = async (noticeId) => {
-    if (!currentChatGroup || isTyping) return;
-    const list = currentChatGroup.messages || [];
-    const noticeIdx = list.findIndex((m) => m.id === noticeId);
-    if (noticeIdx < 0) return;
-    const userMsg = [...list.slice(0, noticeIdx)].reverse().find((m) => m.role === "user");
-    if (!userMsg) return;
-    const nextMessages = list.filter((m) => m.id !== noticeId);
-    const members = getGroupMembers(currentChatGroup);
-    const now = new Date();
-    const nowDate = new Intl.DateTimeFormat("zh-TW", { year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
-    const nowTime = new Intl.DateTimeFormat("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false }).format(now);
-    const nowTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Taipei";
-    const nowContext = `[系統時間] 目前時間：${nowDate} ${nowTime} (${nowTz})`;
-    setGroupChats((prev) => prev.map((g) => g.id === currentChatGroup.id ? { ...g, messages: nextMessages, updatedAt: Date.now() } : g));
-    setIsTyping(true);
-    try {
-      const memberNames = members.map((m) => m.name).join("、") || tr("群組成員", "Group members", "グループメンバー", "그룹 멤버");
-      const memberProfiles = members
-        .map((c) => getGroupMemberProfileText(c))
-        .filter(Boolean)
-        .join("\n\n");
-      const hist = nextMessages
-        .slice(-18)
-        .map((m) => {
-          const summaryLine = m.imageSummary ? `\n[圖片摘要]\n${m.imageSummary}` : "";
-          return { role: m.role, content: `${m.content || ""}${summaryLine}`.trim(), image: m.image || null };
-        })
-        .filter(Boolean);
-      const safeHist = hist.map((m) => ({ ...m, image: null }));
-      const recent = safeHist.map((m) => `${m.role === "user" ? "玩家" : (m.speakerName || "群組")}: ${m.content || "[圖片]"}`).join("\n");
-      const sysP = `${nowContext}\n\n${buildGroupChatSystemPrompt(currentChatGroup, memberNames, memberProfiles, recent)}`;
-      const reply = await callAI(safeHist, apiConfig, sysP);
-      const parsedReplies = parseGroupReplies(stripInternalBlocks(reply));
-      const speakerMap = new Map(members.map((m) => [m.name, m]));
-      const usableReplies = [];
-      const seenSpeakers = new Set();
-      for (const item of parsedReplies) {
-        const matched = speakerMap.get(item.speaker) || members.find((m) => m.name === item.speaker);
-        const resolvedName = matched?.name || item.speaker;
-        if (!resolvedName || !item.content || seenSpeakers.has(resolvedName)) continue;
-        seenSpeakers.add(resolvedName);
-        usableReplies.push({
-          speakerName: resolvedName,
-          speakerAvatar: sanitizeUserImageUrl(matched?.avatar || ""),
-          content: item.content,
-        });
-      }
-      if (!usableReplies.length) {
-        const fallbackSpeaker = members[0];
-        const fallbackContent = sanitizeText(stripInternalBlocks(reply), 4000).trim();
-        if (fallbackSpeaker && fallbackContent) {
-          usableReplies.push({
-            speakerName: fallbackSpeaker.name,
-            speakerAvatar: sanitizeUserImageUrl(fallbackSpeaker.avatar || ""),
-            content: fallbackContent,
-          });
-        }
-      }
-      if (usableReplies.length) {
-        let workingMessages = [...nextMessages];
-        for (let i = 0; i < usableReplies.length; i += 1) {
-          const item = usableReplies[i];
-          if (i > 0) {
-            const prevLen = usableReplies[i - 1]?.content?.length || 0;
-            const lengthFactor = Math.max(0, Math.min(1, prevLen / 220));
-            const wait = Math.round(220 + (lengthFactor * 520));
-            await new Promise((resolve) => setTimeout(resolve, wait));
-          }
-          const msg = {
-            id: gid(),
-            role: "assistant",
-            content: item.content,
-            time: Date.now(),
-            speakerName: item.speakerName,
-            speakerAvatar: item.speakerAvatar,
-          };
-          workingMessages = [...workingMessages, msg];
-          setGroupChats((prev) => prev.map((g) => g.id === currentChatGroup.id ? { ...g, messages: workingMessages, updatedAt: Date.now() } : g));
-        }
-      }
-    } catch (err) {
-      const notice = { id: gid(), role: "system_notice", content: `${getConnectionErrorPrefix()}${sanitizeText(err?.message || tr("未知錯誤", "Unknown error", "不明なエラー", "알 수 없는 오류"), 500)}`, time: Date.now() };
-      setGroupChats((prev) => prev.map((g) => g.id === currentChatGroup.id ? { ...g, messages: [...nextMessages, notice], updatedAt: Date.now() } : g));
-    }
-    setIsTyping(false);
-  };
-  const renderGroupMemberGrid = (selectedIds, setSelectedIds, search, setSearch) => (
-    <>
-      <input
-        className="mp-sinp"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder={tr("搜尋角色名稱", "Search characters", "キャラを検索", "캐릭터 검색")}
-      />
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, fontSize: 11, color: "var(--mp-txt-l)", marginTop: 6 }}>
-        <span>{tr("最多 5 位角色", "Up to 5 characters", "最大5人まで", "최대 5명")}</span>
-        <span>{tr("已選", "Selected", "選択", "선택")} {selectedIds.length}/5</span>
-      </div>
-      <div style={{ marginTop: 6, maxHeight: 300, overflowY: "auto", paddingRight: 2 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 4 }}>
-          {sortChatThreads(characters)
-            .filter((c) => c.name?.includes(search.trim()) || !search.trim())
-            .map((c) => {
-              const selected = selectedIds.includes(c.id);
-              const disabled = !selected && selectedIds.length >= 5;
-              return (
-                <button
-                  key={c.id}
-                  type="button"
-                  className="mp-group-pick"
-                  style={{
-                    minHeight: 94,
-                    border: "none",
-                    boxShadow: "none",
-                    opacity: disabled ? 0.45 : (selected ? 1 : 0.5),
-                    background: "transparent",
-                  }}
-                  onClick={() => {
-                    if (selected) {
-                      setSelectedIds((prev) => prev.filter((id) => id !== c.id));
-                      return;
-                    }
-                    if (selectedIds.length >= 5) {
-                      showToast(tr("最多只能加入 5 位角色", "You can add up to 5 characters", "追加できるのは最大5人です", "최대 5명까지만 추가할 수 있습니다"));
-                      return;
-                    }
-                    setSelectedIds((prev) => [...prev, c.id]);
-                  }}
-                >
-                  <div style={{ position: "relative", width: "100%", aspectRatio: "1 / 1", borderRadius: 14, overflow: "hidden", background: "transparent", display: "flex", alignItems: "end", justifyContent: "start" }}>
-                    {sanitizeUserImageUrl(c.avatar) ? (
-                      <img src={sanitizeUserImageUrl(c.avatar)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                    ) : (
-                      <div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", background: "linear-gradient(135deg,#fce4ec,#e1f5fe)", color: "#5c6f7b", fontSize: 24, fontWeight: 800 }}>
-                        {c.name?.[0] || "🙂"}
-                      </div>
-                    )}
-                    <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "12px 5px 6px", background: "linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,.48) 100%)", color: "#fff", fontSize: 11, fontWeight: 700, lineHeight: 1.05, boxSizing: "border-box" }}>
-                      <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</div>
-                    </div>
-                    {selected && <div style={{ position: "absolute", top: 4, right: 4, width: 16, height: 16, borderRadius: 999, background: "rgba(184,122,65,.95)", color: "#fff", display: "grid", placeItems: "center", fontSize: 10, boxShadow: "0 4px 10px rgba(0,0,0,.18)" }}>✓</div>}
-                  </div>
-                </button>
-              );
-            })}
-        </div>
-      </div>
-    </>
-  );
+  const runGroupReplyGeneration = ({ group, members, messages, currentImage }) => generateGroupReplies({
+    group,
+    members: members.map((member) => ({ ...member, profileText: getGroupMemberProfileText(member, sanitizeText) })),
+    messages,
+    currentImage,
+    apiConfig,
+    callAI,
+    buildSystemPrompt: buildGroupPrompt,
+    parseReplies: parseGroupReplyPayload,
+    stripInternalBlocks,
+    sanitizeText,
+    sanitizeImageUrl: sanitizeUserImageUrl,
+    tr,
+  });
+  const { sendGroupMessage, retryGroupMessage: retryGroupFromNotice } = useGroupChatAI({
+    currentGroup: currentChatGroup, isTyping, input: chatInput, image: chatImage,
+    setInput: setChatInput, setImage: setChatImage, setActionPanelOpen: setChatActionPanelOpen, setIsTyping,
+    setGroups: setGroupChats, getMembers: getGroupMembers, getPlayerName: getPlayerDisplayName,
+    getPlayerAvatar, sanitizeText, sanitizeImageUrl: sanitizeUserImageUrl, createId: gid,
+    generateReplies: runGroupReplyGeneration, connectionErrorPrefix: getConnectionErrorPrefix, tr,
+  });
   const renderChat = () => {
     if (currentChatGroup) {
       const msgs = currentChatGroup.messages || [];
@@ -4463,280 +2572,54 @@ ${recent || "（目前無內容）"}`;
       const modelFull = `${providerFullMap[providerKey] || providerKey} · ${apiConfig?.model || "-"}`;
       return (
         <div className="mp-page" onClick={() => setModelBadgeOpen(false)} style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
-          <div className="mp-hdr">
-            <div className="mp-back" onClick={() => setCurrentChatGroup(null)}>←</div>
-            <button
-              type="button"
-              className={`mp-chat-pin ${currentChatGroup?.pinned ? "active" : ""}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                setGroupChats((prev) => prev.map((g) => g.id === currentChatGroup.id ? { ...g, pinned: !g.pinned } : g));
-              }}
-              title={currentChatGroup?.pinned ? tr("取消釘選", "Unpin", "固定を解除", "고정 해제") : tr("釘選聊天室", "Pin chatroom", "チャットルームを固定", "채팅방 고정")}
-            >
-              {currentChatGroup?.pinned ? "♥" : "♡"}
-            </button>
-            <div className="mp-htitle" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentChatGroup.name}</div>
-            <button
-              type="button"
-              className="mp-ibtn"
-              style={{ marginLeft: "auto" }}
-              title={modelFull}
-              onClick={(e) => {
-                e.stopPropagation();
-                setModelBadgeOpen((v) => !v);
-              }}
-            >
-              {modelShort}
-            </button>
-            <button className="mp-ibtn" onClick={() => openEditGroup(currentChatGroup)}>{tr("設定", "Settings", "設定", "설정")}</button>
-          </div>
-          {modelBadgeOpen && (
-            <div
-              style={{ position: "absolute", top: 56, right: 74, zIndex: 40, background: "#fff", border: "1px solid rgba(244,143,177,.35)", borderRadius: 12, padding: "8px 10px", boxShadow: "0 8px 24px rgba(0,0,0,.12)", maxWidth: 220 }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div style={{ fontSize: 11, fontWeight: 800, color: "#666", marginBottom: 2 }}>{tr("目前模型", "Current model", "現在のモデル", "현재 모델")}</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "#222" }}>{modelFull}</div>
-            </div>
-          )}
+          <ChatHeader item={currentChatGroup} modelShort={modelShort} modelFull={modelFull} modelBadgeOpen={modelBadgeOpen} setModelBadgeOpen={setModelBadgeOpen} onBack={() => setCurrentChatGroup(null)} onTogglePinned={() => setGroupChats((prev) => prev.map((group) => group.id === currentChatGroup.id ? { ...group, pinned: !group.pinned } : group))} onOpenSettings={() => openEditGroup(currentChatGroup)} tr={tr} />
           <div className="mp-cm" style={{ paddingTop: 8, paddingLeft: 0, paddingRight: 0, paddingBottom: 0, display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
             <div style={{ margin: "0 14px 8px", fontSize: 11, color: "var(--mp-txt-l)", lineHeight: 1.5, textAlign: "center" }}>
               {tr("群組成員：", "Group members: ", "グループメンバー: ", "그룹 멤버: ")}{members.length ? members.map((m) => m.name).join("、") : tr("暫無成員", "No members yet", "まだメンバーがいません", "아직 멤버가 없습니다")}
             </div>
             {renderSceneBar("group", currentChatGroup.id, tr("場景", "Scene", "シーン", "장면"))}
-            <div className="mp-cr" style={{ flex: 1, minHeight: 0 }}>
-              <div className="mp-msgs" ref={chatMsgsRef} style={{ flex: 1, minHeight: 0, paddingBottom: 12 }} onScroll={(e) => updateScrollToBottomVisibility(e.currentTarget)}>
-                {visibleMsgs.map((m) => (
-                  m.role === "system_notice" ? (
-                    <div key={m.id} className="mp-msg-note-wrap">
-                      <div className="mp-msg-note">
-                        <div>{m.content}</div>
-                        {isConnectionErrorNotice(m.content) && (
-                          <button className="mp-retry-btn" disabled={isTyping} onClick={(e) => { e.stopPropagation(); retryGroupFromNotice(m.id); }}>
-                            {tr("重新生成", "Regenerate", "再生成", "다시 생성")}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                  <div key={m.id} className={`mp-msg-wrap ${m.role === "user" ? "mp-msg-wrap-user mp-group-msg-wrap-user" : "mp-msg-wrap-ai mp-group-msg-wrap-ai"}`}>
-                    <div className="mp-group-msg-meta">
-                      <div className="mp-group-msg-avatar">
-                        {m.role === "user"
-                          ? (getPlayerAvatar() ? <img src={getPlayerAvatar()} alt="" /> : null)
-                          : (m.speakerAvatar ? <img src={m.speakerAvatar} alt="" /> : "👥")}
-                      </div>
-                      {m.role !== "user" && <div className="mp-group-msg-name">{m.speakerName || tr("群組", "Group", "グループ", "그룹")}</div>}
-                    </div>
-                    <div
-                      className={`mp-msg ${m.role === "user" ? "mp-msg-user" : "mp-msg-ai"}`}
-                      onClick={() => setActiveMessageId((p) => (p === m.id ? null : m.id))}
-                    >
-                      {m.image && <img src={`data:image/png;base64,${m.image}`} className="mp-msg-img" alt="" />}
-                      {m.content && <div>{m.content}</div>}
-                      <div className="mp-msg-t">{new Date(m.time).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"})}</div>
-                    </div>
-                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                      <button
-                        className={`mp-msg-editbtn ${activeMessageId === m.id ? "" : "mp-msg-editbtn-hidden"}`}
-                        onClick={() => setMessageEditor({ id: m.id, content: m.content || "", mode: "online" })}
-                      >
-                        ✎
-                      </button>
-                      <button
-                        className={`mp-msg-editbtn ${activeMessageId === m.id ? "" : "mp-msg-editbtn-hidden"}`}
-                        onClick={() => {
-                          if (!window.confirm(tr("確定要刪除這則對話嗎？", "Delete this message?", "このメッセージを削除しますか？", "이 메시지를 삭제할까요?"))) return;
-                          if (currentChatGroup) {
-                            const next = (currentChatGroup.messages || []).filter((x) => x.id !== m.id);
-                            setGroupChats((prev) => prev.map((g) => g.id === currentChatGroup.id ? { ...g, messages: next, updatedAt: Date.now() } : g));
-                          }
-                          setActiveMessageId(null);
-                        }}
-                      >
-                        🗑
-                      </button>
-                    </div>
-                  </div>
-                  )
-                ))}
-                {visibleMsgs.length === 0 && <div style={{fontSize:11,color:"var(--mp-txt-l)",textAlign:"center",padding:"18px 0"}}>{tr("目前沒有群組訊息", "No group messages yet", "グループメッセージはまだありません", "아직 그룹 메시지가 없습니다")}</div>}
-                {isTyping && <div className="mp-typing"><span /><span /><span /></div>}
-                <div ref={messagesEndRef} />
-              </div>
-              {showScrollToBottom && (
-                <button
-                  type="button"
-                  className="mp-scroll-bottom"
-                  style={{ bottom: 8 }}
-                  aria-label={tr("捲到最新訊息", "Scroll to latest message", "最新メッセージへ移動", "최신 메시지로 이동")}
-                  title={tr("捲到最新訊息", "Scroll to latest message", "最新メッセージへ移動", "최신 메시지로 이동")}
-                  onClick={scrollCurrentChatToBottom}
-                >
-                  <ArrowDown size={23} strokeWidth={2.2} aria-hidden="true" />
-                </button>
-              )}
-            </div>
-            {chatImage && (
-              <div className="mp-imgprev">
-                <img src={`data:${chatImage.mime};base64,${chatImage.data}`} alt="" />
-                <div style={{ fontSize: 10, color: "var(--mp-txt-l)", marginTop: 4 }}>
-                  {chatImage.width}x{chatImage.height} · {Math.round(chatImage.bytes / 1024)}KB
-                </div>
-                <button onClick={() => setChatImage(null)}>×</button>
-              </div>
-            )}
-            {chatActionPanelOpen && (
-              <div className="mp-chat-actions">
-                <button className="mp-chat-action" onClick={() => { setChatActionPanelOpen(false); fileInputRef.current?.click(); }}>
-                  <span className="mp-chat-action-i">🖼</span>
-                  <span>{tr("相片", "Photo", "写真", "사진")}</span>
-                </button>
-                <button className="mp-chat-action" disabled>
-                  <span className="mp-chat-action-i">📅</span>
-                  <span>{tr("日程", "Schedule", "予定", "일정")}</span>
-                </button>
-                <button className="mp-chat-action" disabled>
-                  <span className="mp-chat-action-i">⚙️</span>
-                  <span>{tr("更多", "More", "その他", "더보기")}</span>
-                </button>
-              </div>
-            )}
-            <div className="mp-inp-bar" style={{ borderTopLeftRadius: 0, borderTopRightRadius: 0 }}>
-              <button className={`mp-btn mp-btn-img ${chatActionPanelOpen ? "active" : ""}`} onClick={()=>setChatActionPanelOpen((v) => !v)}>＋</button>
-              <input type="file" ref={fileInputRef} accept="image/*" style={{display:"none"}} onChange={handleImgUp} />
-              <div className="mp-inp-wrap">
-                <textarea
-                  className="mp-inp"
-                  placeholder={tr("輸入群組訊息...", "Type a group message...", "グループメッセージを入力...", "그룹 메시지를 입력...")}
-                  rows={1}
-                  maxLength={4000}
-                  autoComplete="off"
-                  autoCorrect="off"
-                  autoCapitalize="sentences"
-                  spellCheck={false}
-                  data-form-type="other"
-                  data-lpignore="true"
-                  value={chatInput}
-                  onChange={e=>setChatInput(e.target.value.slice(0, 4000))}
-                />
-                <div className="mp-char-counter">{chatInput.length}/4000</div>
-              </div>
-              <button className="mp-btn mp-btn-send" onClick={sendGroupMessage}>➤</button>
-            </div>
+            <GroupChatContent
+              messages={visibleMsgs} isTyping={isTyping} activeMessageId={activeMessageId} setActiveMessageId={setActiveMessageId}
+              playerAvatar={getPlayerAvatar()} chatMsgsRef={chatMsgsRef} messagesEndRef={messagesEndRef}
+              onScroll={updateScrollToBottomVisibility} isConnectionErrorNotice={isConnectionErrorNotice} onRetry={retryGroupFromNotice}
+              onEdit={(message) => setMessageEditor({ id: message.id, content: message.content || "", mode: "online" })}
+              onDelete={(message) => {
+                if (!window.confirm(tr("確定要刪除這則對話嗎？", "Delete this message?", "このメッセージを削除しますか？", "이 메시지를 삭제할까요?"))) return;
+                const next = (currentChatGroup.messages || []).filter((item) => item.id !== message.id);
+                setGroupChats((previous) => previous.map((group) => group.id === currentChatGroup.id ? { ...group, messages: next, updatedAt: Date.now() } : group));
+                setActiveMessageId(null);
+              }}
+              showScrollToBottom={showScrollToBottom} onScrollToBottom={scrollCurrentChatToBottom}
+              chatImage={chatImage} onClearImage={() => setChatImage(null)} actionPanelOpen={chatActionPanelOpen} setActionPanelOpen={setChatActionPanelOpen}
+              fileInputRef={fileInputRef} onImageUpload={handleImgUp} chatInput={chatInput} setChatInput={setChatInput} onSend={sendGroupMessage} tr={tr}
+            />
           </div>
         </div>
       );
     }
     if (!currentChatChar) {
       return (
-        <div className="mp-page" onClick={() => setModelBadgeOpen(false)}>
-          <div className="mp-hdr">
-            <div className="mp-back" onClick={closeApp}>←</div>
-            <div className="mp-htitle">{t("chat")}</div>
-            {chatListTab === "groups" && (
-              <button
-                type="button"
-                className="mp-ibtn"
-                style={{ marginLeft: "auto", padding: "4px 10px", background: "linear-gradient(135deg,#f9e6ee,#fff6fb)" }}
-                onClick={openCreateGroup}
-                title="Add group"
-              >
-                ＋
-              </button>
-            )}
-          </div>
-          <div className="mp-cm" style={{ paddingTop: 2 }}>
-            <div className="mp-chat-switch">
-              <button
-                className={`mp-chat-switch-btn ${chatListTab === "friends" ? "active" : ""}`}
-                onClick={() => setChatListTab("friends")}
-              >
-              <span>{tr("好友", "Friends", "フレンド", "친구")}</span>
-              </button>
-              <button
-                className={`mp-chat-switch-btn ${chatListTab === "groups" ? "active" : ""}`}
-                onClick={() => setChatListTab("groups")}
-              >
-                <span>{t("chatroom")}</span>
-              </button>
-            </div>
-            {chatListTab === "friends" ? (
-              characters.length === 0 ? (
-                <div className="mp-empty mp-chat-empty">
-                  <div className="mp-empty-i">💬</div>
-                  <div className="mp-empty-t">No friend chats yet</div>
-                </div>
-              ) : (
-                <div className="mp-chat-list mp-chat-list-line">
-                  {sortChatThreads(characters).map((c) => {
-                    const ms = chatHistory[c.id] || [];
-                    const lm = ms[ms.length - 1];
-                    const isPinned = !!c.pinned || !!c.chatPinned;
-                    const unreadCount = Number(proactiveUnread?.[c.id]) || 0;
-                    const isUnread = unreadCount > 0;
-                    return (
-                      <button key={c.id} className={`mp-chat-row ${isPinned ? "pinned" : ""}`} onClick={() => {
-                        if (Date.now() <= suppressAppClickUntilRef.current) return;
-                        if (isUnread) setProactiveUnread((prev) => { const n = { ...prev }; delete n[c.id]; return n; });
-                        setCurrentChatChar(c);
-                      }}>
-                        <div className="mp-chat-row-avatar">
-                          {sanitizeUserImageUrl(c.avatar) ? <img src={sanitizeUserImageUrl(c.avatar)} alt="" /> : (c.name?.[0] || "🙂")}
-                        </div>
-                        <div className="mp-chat-row-body">
-                          <div className="mp-chat-row-top">
-                            <div className="mp-chat-row-name">
-                              {isPinned && <span className="mp-chat-row-pin">♥</span>}
-                              <span>{c.name}</span>
-                            </div>
-                            <div className="mp-chat-row-time">{lm?.time ? new Date(lm.time).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" }) : ""}</div>
-                          </div>
-                          <div className="mp-chat-row-bottom">
-                            <div className="mp-chat-row-preview" style={isUnread ? { fontWeight: 700, color: "var(--mp-txt)" } : undefined}>{lm?.content || t("noMessagesShort")}</div>
-                            {isUnread && <span className="mp-chat-row-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>}
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              )
-            ) : (
-              <div className="mp-chat-list mp-chat-list-line">
-                {sortGroupChats(groupChats).map((g) => {
-                  const msgs = g.messages || [];
-                  const lm = msgs[msgs.length - 1];
-                  const isPinned = !!g.pinned;
-                  const members = getGroupMembers(g);
-                  return (
-                    <button key={g.id} className={`mp-chat-row ${isPinned ? "pinned" : ""}`} onClick={() => Date.now() > suppressAppClickUntilRef.current && setCurrentChatGroup(g)}>
-                      <div className="mp-chat-row-avatar">
-                        {sanitizeUserImageUrl(g.cover)
-                          ? <img src={sanitizeUserImageUrl(g.cover)} alt="" />
-                          : (members[0]?.avatar && sanitizeUserImageUrl(members[0].avatar)
-                            ? <img src={sanitizeUserImageUrl(members[0].avatar)} alt="" />
-                            : "👥")}
-                      </div>
-                      <div className="mp-chat-row-body">
-                        <div className="mp-chat-row-top">
-                          <div className="mp-chat-row-name">
-                            {isPinned && <span className="mp-chat-row-pin">♥</span>}
-                            <span>{g.name}</span>
-                          </div>
-                          <div className="mp-chat-row-time">{lm?.time ? new Date(lm.time).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" }) : ""}</div>
-                        </div>
-                        <div className="mp-chat-row-preview">{lm?.content || `${members.length || characters.length} ${tr("位成員", "members", "人のメンバー", "명의 멤버")}`}</div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
+        <ChatListView
+          tab={chatListTab}
+          setTab={setChatListTab}
+          characters={sortChatThreads(characters)}
+          chatHistory={chatHistory}
+          groups={sortGroupChats(groupChats)}
+          proactiveUnread={proactiveUnread}
+          closeApp={closeApp}
+          openCreateGroup={openCreateGroup}
+          onOpenCharacter={(character, unread) => {
+            if (Date.now() <= suppressAppClickUntilRef.current) return;
+            if (unread) setProactiveUnread((previous) => { const next = { ...previous }; delete next[character.id]; return next; });
+            setCurrentChatChar(character);
+          }}
+          onOpenGroup={(group) => {
+            if (Date.now() > suppressAppClickUntilRef.current) setCurrentChatGroup(group);
+          }}
+          getGroupMembers={getGroupMembers}
+          t={t}
+          tr={tr}
+        />
       );
     }
     if (currentChatChar) {
@@ -4811,538 +2694,45 @@ ${recent || "（目前無內容）"}`;
         : { flex: 1, minHeight: 0 };
       return (
         <div className="mp-page" onClick={() => setModelBadgeOpen(false)}>
-          <div className="mp-hdr">
-            <div className="mp-back" onClick={() => {
-              if (chatSettingsOpen) {
-                setChatSettingsOpen(false);
-                return;
-              }
-              setCurrentChatChar(null);
-            }}>←</div>
-            <button
-              type="button"
-              className={`mp-chat-pin ${currentChatChar?.pinned ? "active" : ""}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                toggleChatPin(currentChatChar.id);
-              }}
-              title={currentChatChar?.pinned ? tr("取消釘選", "Unpin", "固定を解除", "고정 해제") : tr("釘選聊天室", "Pin chatroom", "チャットルームを固定", "채팅방 고정")}
-            >
-              {currentChatChar?.pinned ? "♥" : "♡"}
-            </button>
-            <div className="mp-htitle" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentChatChar.name}</div>
-            <button
-              type="button"
-              className="mp-ibtn"
-              style={{ marginLeft: "auto" }}
-              title={modelFull}
-              onClick={(e) => {
-                e.stopPropagation();
-                setModelBadgeOpen((v) => !v);
-              }}
-            >
-              {modelShort}
-            </button>
-            <button className="mp-ibtn" onClick={() => { setChatSettingsExpandedBooks({}); setChatSettingsBackgroundOpen(false); setChatSettingsLorebookOpen(false); setChatSettingsThoughtsOpen(false); setThoughtHistoryPage(0); setChatroomManageOpen(false); setChatBgEditor(null); setChatSettingsOpen(true); }}>{tr("設定", "Settings", "設定", "설정")}</button>
-          </div>
-          {modelBadgeOpen && (
-            <div
-              style={{ position: "absolute", top: 56, right: 74, zIndex: 40, background: "#fff", border: "1px solid rgba(244,143,177,.35)", borderRadius: 12, padding: "8px 10px", boxShadow: "0 8px 24px rgba(0,0,0,.12)", maxWidth: 220 }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div style={{ fontSize: 11, fontWeight: 800, color: "#666", marginBottom: 2 }}>{tr("目前模型", "Current model", "現在のモデル", "현재 모델")}</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "#222" }}>{modelFull}</div>
-            </div>
-          )}
+          <ChatHeader item={currentChatChar} modelShort={modelShort} modelFull={modelFull} modelBadgeOpen={modelBadgeOpen} setModelBadgeOpen={setModelBadgeOpen}
+            onBack={() => { if (chatSettingsOpen) setChatSettingsOpen(false); else setCurrentChatChar(null); }}
+            onTogglePinned={() => toggleChatPin(currentChatChar.id)}
+            onOpenSettings={() => { setChatSettingsExpandedBooks({}); setChatSettingsBackgroundOpen(false); setChatSettingsLorebookOpen(false); setChatSettingsThoughtsOpen(false); setThoughtHistoryPage(0); setChatroomManageOpen(false); setChatBgEditor(null); setChatSettingsOpen(true); }}
+            tr={tr}
+          />
           {chatSettingsOpen ? (
-            <div className="mp-cm" style={{ paddingTop: 8 }}>
-              <div className="mp-cc" style={{ marginBottom: 8 }}>
-                <div style={{ fontSize: 13, fontWeight: 700 }}>{tr("聊天室設定", "Chat settings", "チャット設定", "채팅 설정")}</div>
-              </div>
-              <div className="mp-cc">
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700 }}>{tr("互動模式", "Interaction mode", "インタラクションモード", "상호작용 모드")}</div>
-                  {hasPendingMode && <div style={{ fontSize: 10, color: "var(--mp-txt-l)" }}>{tr("下次送出後切換", "Switch after next send", "次の送信後に切り替え", "다음 전송 후 전환")}</div>}
-                </div>
-                <div className="mp-mode-tabs">
-                  <button className={`mp-mode-tab ${selectedMode === "online" ? "active" : ""}`} onClick={() => setSelectedChatMode(currentChatChar.id, "online")}>{tr("線上聊天", "Online chat", "オンラインチャット", "온라인 채팅")}</button>
-                  <button className={`mp-mode-tab ${selectedMode === "reality" ? "active" : ""}`} onClick={() => setSelectedChatMode(currentChatChar.id, "reality")}>{tr("現實模式", "Reality mode", "現実モード", "현실 모드")}</button>
-                </div>
-                <div className="mp-mode-hint">
-                  {selectedMode === "reality"
-                    ? tr("現實模式會以段落形式呈現，可包含敘述、動作、內心想法與對話。", "Reality mode uses full-width paragraphs and supports narration, actions, inner thoughts, and dialogue.", "現実モードは段落形式で、地の文、動作、内心、会話を含められます。", "현실 모드는 문단 형식으로 묘사, 행동, 내면, 대화를 포함할 수 있습니다.")
-                    : tr("線上聊天會維持手機訊息風格與短訊節奏。", "Online chat keeps the phone-bubble style and short-message pace.", "オンラインチャットはスマホの吹き出し形式と短文ペースを維持します。", "온라인 채팅은 휴대폰 말풍선 스타일과 짧은 메시지 템포를 유지합니다.")}
-                </div>
-              </div>
-              <div className="mp-cc">
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700 }}>{tr("自動心聲", "Automatic inner thoughts", "心の声の自動生成", "속마음 자동 생성")}</div>
-                    <div style={{ fontSize: 10, color: "var(--mp-txt-l)", marginTop: 3, lineHeight: 1.5 }}>
-                      {tr("偶爾在角色回覆後產生；關閉後仍可手動窺探。", "Occasionally appears after replies. Manual peeking remains available when off.", "返信後に時々生成されます。オフでも手動で確認できます。", "답장 후 가끔 생성됩니다. 꺼도 수동으로 볼 수 있습니다.")}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={isInnerThoughtAutoEnabled(currentChatChar.id)}
-                    className={`mp-switch ${isInnerThoughtAutoEnabled(currentChatChar.id) ? "active" : ""}`}
-                    onClick={() => setInnerThoughtAutoEnabled(currentChatChar.id, !isInnerThoughtAutoEnabled(currentChatChar.id))}
-                  >
-                    <span />
-                  </button>
-                </div>
-                <div className="mp-thought-history-divider" />
-                <button
-                  type="button"
-                  className="mp-thought-history-toggle"
-                  onClick={() => setChatSettingsThoughtsOpen((open) => !open)}
-                >
-                  <span>{tr("心聲紀錄", "Inner thought history", "心の声の履歴", "속마음 기록")} · {thoughtRecords.length}</span>
-                  <span>{chatSettingsThoughtsOpen ? tr("收合", "Collapse", "折りたたむ", "접기") : tr("展開", "Expand", "展開", "펼치기")}</span>
-                </button>
-                {chatSettingsThoughtsOpen && (
-                  <div className="mp-thought-history">
-                    {visibleThoughtRecords.length ? visibleThoughtRecords.map((message) => (
-                      <button
-                        key={message.id}
-                        type="button"
-                        className="mp-thought-record"
-                        onClick={() => jumpToThoughtMessage(message.id)}
-                      >
-                        <div className="mp-thought-record-meta">
-                          <Eye size={12} strokeWidth={2} aria-hidden="true" />
-                          <span>{new Date(message.innerThought.generatedAt || message.time).toLocaleString(uiLanguage, { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
-                        </div>
-                        <div className="mp-thought-record-content">{message.innerThought.content}</div>
-                        <div className="mp-thought-record-preview">{tr("原回覆", "Reply", "元の返信", "원래 답장")}：{sanitizeText(message.content || "", 46)}</div>
-                      </button>
-                    )) : (
-                      <div className="mp-thought-history-empty">{tr("還沒有留下任何心聲", "No inner thoughts yet", "心の声はまだありません", "아직 남겨진 속마음이 없습니다")}</div>
-                    )}
-                    {thoughtRecords.length > thoughtPageSize && (
-                      <div className="mp-thought-history-pages">
-                        <button
-                          type="button"
-                          aria-label={tr("上一頁", "Previous page", "前のページ", "이전 페이지")}
-                          disabled={activeThoughtPage === 0}
-                          onClick={() => setThoughtHistoryPage((page) => Math.max(0, page - 1))}
-                        >
-                          <ChevronLeft size={15} aria-hidden="true" />
-                        </button>
-                        <span>{activeThoughtPage + 1} / {thoughtPageCount}</span>
-                        <button
-                          type="button"
-                          aria-label={tr("下一頁", "Next page", "次のページ", "다음 페이지")}
-                          disabled={activeThoughtPage >= thoughtPageCount - 1}
-                          onClick={() => setThoughtHistoryPage((page) => Math.min(thoughtPageCount - 1, page + 1))}
-                        >
-                          <ChevronRight size={15} aria-hidden="true" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-              <div className="mp-cc">
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700 }}>{tr("主動傳訊息", "Proactive messages", "自発的なメッセージ", "먼저 보내는 메시지")}</div>
-                    <div style={{ fontSize: 10, color: "var(--mp-txt-l)", marginTop: 3, lineHeight: 1.5 }}>
-                      {tr("離開一段時間再回來時，角色有機會主動傳訊息給你。", "When you're away and come back, the character may occasionally message you first.", "しばらく離れてから戻ると、キャラが時々先にメッセージを送ることがあります。", "자리를 비웠다 돌아오면 캐릭터가 가끔 먼저 메시지를 보낼 수 있습니다.")}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={isProactiveEnabled(currentChatChar.id)}
-                    className={`mp-switch ${isProactiveEnabled(currentChatChar.id) ? "active" : ""}`}
-                    onClick={() => setProactiveEnabled(currentChatChar.id, !isProactiveEnabled(currentChatChar.id))}
-                  >
-                    <span />
-                  </button>
-                </div>
-                {isProactiveEnabled(currentChatChar.id) && (
-                  <div className="mp-mode-tabs" style={{ marginTop: 10, gridTemplateColumns: "repeat(3,1fr)" }}>
-                    <button className={`mp-mode-tab ${getProactiveFrequency(currentChatChar.id) === "low" ? "active" : ""}`} onClick={() => setProactiveFrequency(currentChatChar.id, "low")}>{tr("低頻率", "Low", "低頻度", "낮음")}</button>
-                    <button className={`mp-mode-tab ${getProactiveFrequency(currentChatChar.id) === "normal" ? "active" : ""}`} onClick={() => setProactiveFrequency(currentChatChar.id, "normal")}>{tr("一般", "Normal", "普通", "보통")}</button>
-                    <button className={`mp-mode-tab ${getProactiveFrequency(currentChatChar.id) === "high" ? "active" : ""}`} onClick={() => setProactiveFrequency(currentChatChar.id, "high")}>{tr("高頻率", "High", "高頻度", "높음")}</button>
-                  </div>
-                )}
-              </div>
-              <div className="mp-cc">
-                <div
-                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
-                  onClick={() => {
-                    setChatSettingsBackgroundOpen((v) => {
-                      const next = !v;
-                      if (!next) setChatBgEditor(null);
-                      return next;
-                    });
-                  }}
-                >
-                  <div style={{ fontSize: 13, fontWeight: 700 }}>{tr("聊天室背景", "Chat background", "チャット背景", "채팅 배경")}</div>
-                  <div style={{ fontSize: 11, color: "var(--mp-txt-l)" }}>
-                    {chatSettingsBackgroundOpen ? tr("收合", "Collapse", "折りたたむ", "접기") : tr("展開", "Expand", "展開", "펼치기")} · {normalizeChatBackground(chatBackgrounds?.[currentChatChar.id] || {}).src ? tr("已設定", "Set", "設定済み", "설정됨") : tr("未設定", "Not set", "未設定", "미설정")}
-                  </div>
-                </div>
-                {chatSettingsBackgroundOpen && (<>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  <div
-                    style={{
-                      width: 72,
-                      height: 112,
-                      borderRadius: 14,
-                      overflow: "hidden",
-                      border: "1px solid rgba(231,197,214,.8)",
-                      background: "linear-gradient(135deg,#fff,#f7eef6)",
-                      boxShadow: "0 2px 8px rgba(0,0,0,.04)",
-                      position: "relative",
-                    }}
-                  >
-                    {normalizeChatBackground(chatBackgrounds?.[currentChatChar.id] || {}).src && (
-                      <div
-                        style={{
-                          ...getChatBackgroundLayerStyle(chatBackgrounds?.[currentChatChar.id] || {}),
-                          filter: getChatBackgroundBlurFilter(chatBackgrounds?.[currentChatChar.id] || {}),
-                        }}
-                      />
-                    )}
-                  </div>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    style={{ display: "none" }}
-                    id={`chat-bg-${currentChatChar.id}`}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) onChatBackgroundFile(currentChatChar.id, file);
-                      e.target.value = "";
-                    }}
-                  />
-                  <button className="mp-ibtn" style={{ padding: "6px 12px", fontSize: 12, lineHeight: 1 }} onClick={() => document.getElementById(`chat-bg-${currentChatChar.id}`)?.click()}>
-                    {tr("上傳", "Upload", "アップロード", "업로드")}
-                  </button>
-                  <button className="mp-ibtn" style={{ padding: "6px 12px", fontSize: 12, lineHeight: 1 }} onClick={() => {
-                    const current = normalizeChatBackground(chatBackgrounds?.[currentChatChar.id] || {});
-                    setChatBgEditor({
-                      charId: currentChatChar.id,
-                      ...current,
-                      dragging: false,
-                      dragStartX: 0,
-                      dragStartY: 0,
-                      startX: 0,
-                      startY: 0,
-                    });
-                  }}>
-                    {tr("調整", "Adjust", "調整", "조정")}
-                  </button>
-                  <button className="mp-ibtn-r" style={{ padding: "6px 12px", fontSize: 12, lineHeight: 1 }} onClick={() => { updateChatBackground(currentChatChar.id, ""); setChatBgEditor(null); }}>
-                    {tr("清除", "Clear", "クリア", "지우기")}
-                  </button>
-                </div>
-                <div style={{ fontSize: 11, color: "var(--mp-txt-l)", marginTop: 6 }}>
-                  {tr("未設定時會維持原本底色。", "If not set, the default background color stays.", "未設定の場合は既定の背景色のままです。", "미설정 시 기본 배경색을 유지합니다.")}
-                </div>
-                {chatBgEditor?.charId === currentChatChar.id && chatBgEditor.src && (
-                  <div style={{ marginTop: 10, padding: 10, borderRadius: 12, background: "rgba(255,255,255,.72)", border: "1px solid rgba(231,197,214,.55)" }}>
-                    <div
-                      style={{
-                        width: "100%",
-                        aspectRatio: "9 / 16",
-                        maxHeight: 360,
-                        borderRadius: 14,
-                        overflow: "hidden",
-                        position: "relative",
-                        background: "#f8f1f6",
-                        touchAction: "none",
-                        border: "1px solid rgba(231,197,214,.6)",
-                        marginBottom: 10,
-                        boxShadow: "inset 0 0 0 1px rgba(255,255,255,.45)",
-                      }}
-                      onPointerDown={(e) => {
-                        e.preventDefault();
-                        try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch (_) {}
-                        setChatBgEditor((s) => s ? { ...s, dragging: true, dragStartX: e.clientX || 0, dragStartY: e.clientY || 0, startX: s.x || 0, startY: s.y || 0 } : s);
-                      }}
-                      onPointerMove={(e) => {
-                        if (!chatBgEditor?.dragging) return;
-                        e.preventDefault();
-                        const dx = ((e.clientX || 0) - (chatBgEditor.dragStartX || 0)) / 2;
-                        const dy = ((e.clientY || 0) - (chatBgEditor.dragStartY || 0)) / 2;
-                        setChatBgEditor((s) => s ? { ...s, x: Math.max(-50, Math.min(50, (s.startX || 0) - dx)), y: Math.max(-50, Math.min(50, (s.startY || 0) - dy)) } : s);
-                      }}
-                      onPointerUp={(e) => {
-                        try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch (_) {}
-                        setChatBgEditor((s) => s ? { ...s, dragging: false } : s);
-                      }}
-                      onPointerCancel={(e) => {
-                        try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch (_) {}
-                        setChatBgEditor((s) => s ? { ...s, dragging: false } : s);
-                      }}
-                      >
-                        <div
-                          style={{
-                            ...getChatBackgroundLayerStyle(chatBgEditor),
-                            filter: getChatBackgroundBlurFilter(chatBgEditor),
-                          }}
-                        />
-                      <div
-                        style={{
-                          position: "absolute",
-                          inset: 0,
-                          backgroundImage: "linear-gradient(rgba(255,255,255,.18) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.18) 1px, transparent 1px)",
-                          backgroundSize: "24px 24px",
-                          backgroundPosition: "center center",
-                          mixBlendMode: "soft-light",
-                          opacity: .55,
-                          pointerEvents: "none",
-                        }}
-                      />
-                      <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 1, transform: "translateX(-50%)", background: "rgba(255,255,255,.58)", pointerEvents: "none" }} />
-                      <div style={{ position: "absolute", top: "50%", left: 0, right: 0, height: 1, transform: "translateY(-50%)", background: "rgba(255,255,255,.58)", pointerEvents: "none" }} />
-                      <div style={{ position: "absolute", left: "50%", top: "50%", width: 12, height: 12, transform: "translate(-50%, -50%)", borderRadius: 999, border: "2px solid rgba(255,255,255,.92)", boxShadow: "0 0 0 2px rgba(244,143,177,.22)", pointerEvents: "none" }} />
-                      <div style={{ position: "absolute", inset: 0, background: "rgba(255,255,255,.08)" }} />
-                      <div style={{ position: "absolute", inset: 0, border: "2px solid rgba(255,255,255,.88)", borderRadius: 14, boxShadow: "0 0 0 9999px rgba(255,255,255,.10)", pointerEvents: "none" }} />
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 11, color: "var(--mp-txt-l)" }}>{tr("縮放", "Zoom", "ズーム", "확대")}</span>
-                      <input
-                        type="range"
-                        min="1"
-                        max="2.2"
-                        step="0.01"
-                        value={chatBgEditor.zoom || 1}
-                        onChange={(e) => setChatBgEditor((s) => s ? { ...s, zoom: Number(e.target.value) } : s)}
-                        style={{ flex: 1 }}
-                      />
-                      <button
-                        className="mp-ibtn"
-                        style={{ padding: "6px 10px", fontSize: 11, lineHeight: 1 }}
-                        onClick={() => {
-                          const current = normalizeChatBackground(chatBackgrounds?.[currentChatChar.id] || {});
-                          setChatBgEditor({ charId: currentChatChar.id, ...current, dragging: false, dragStartX: 0, dragStartY: 0, startX: 0, startY: 0 });
-                        }}
-                      >
-                        {tr("重置", "Reset", "リセット", "초기화")}
-                      </button>
-                      <button
-                        className="mp-ibtn"
-                        style={{ padding: "6px 10px", fontSize: 11, lineHeight: 1 }}
-                        onClick={() => setChatBgEditor((s) => s ? { ...s, blur: 0 } : s)}
-                      >
-                        {tr("無模糊", "No blur", "ぼかしなし", "흐림 없음")}
-                      </button>
-                      <button
-                        className="mp-save"
-                        style={{ padding: "6px 10px", fontSize: 11, lineHeight: 1, minWidth: 72 }}
-                        onClick={() => {
-                          updateChatBackground(currentChatChar.id, {
-                            src: chatBgEditor.src,
-                            x: chatBgEditor.x,
-                            y: chatBgEditor.y,
-                            zoom: chatBgEditor.zoom,
-                            blur: chatBgEditor.blur,
-                          });
-                          setChatBgEditor((s) => s ? { ...s, dragging: false } : s);
-                        }}
-                      >
-                        {tr("套用", "Apply", "適用", "적용")}
-                      </button>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
-                      <span style={{ fontSize: 11, color: "var(--mp-txt-l)" }}>{tr("模糊", "Blur", "ぼかし", "흐림")}</span>
-                      <input
-                        type="range"
-                        min="0"
-                        max="24"
-                        step="1"
-                        value={chatBgEditor.blur || 0}
-                        onChange={(e) => setChatBgEditor((s) => s ? { ...s, blur: Number(e.target.value) } : s)}
-                        style={{ flex: 1 }}
-                      />
-                      <span style={{ width: 32, textAlign: "right", fontSize: 11, color: "var(--mp-txt-l)" }}>{Math.round(chatBgEditor.blur || 0)}px</span>
-                    </div>
-                  </div>
-                )}
-                </>)}
-              </div>
-              <div className="mp-cc">
-                <div
-                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
-                  onClick={() => setChatSettingsLorebookOpen((v) => !v)}
-                >
-                  <div style={{ fontSize: 13, fontWeight: 700 }}>{tr("世界書綁定", "Lorebook binding", "ワールドブック連携", "월드북 연결")}</div>
-                  <div style={{ fontSize: 11, color: "var(--mp-txt-l)" }}>{chatSettingsLorebookOpen ? `${tr("收合", "Collapse", "折りたたむ", "접기")} · ${binding.enabledBookIds.length} ${tr("啟用", "enabled", "有効", "활성화")}` : `${tr("展開", "Expand", "展開", "펼치기")} · ${binding.enabledBookIds.length} ${tr("啟用", "enabled", "有効", "활성화")}`}</div>
-                </div>
-                {chatSettingsLorebookOpen && (
-                  <div style={{ marginTop: 8 }}>
-                    {(lorebooks || []).length === 0 && <div style={{ fontSize: 11, color: "var(--mp-txt-l)" }}>{tr("尚無世界書", "No lorebooks yet", "まだ世界観がありません", "아직 월드북이 없습니다")}</div>}
-                    {(lorebooks || []).map((book) => {
-                      const bookOn = binding.enabledBookIds.includes(book.id);
-                      const isExpanded = !!chatSettingsExpandedBooks[book.id];
-                      return (
-                        <div key={book.id} style={{ marginBottom: 10, border: "1px solid rgba(244,143,177,.2)", borderRadius: 10, overflow: "hidden" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 700, padding: "10px 10px 8px", background: "rgba(244,143,177,.08)" }}>
-                            <input type="checkbox" checked={bookOn} onChange={() => toggleChatLorebookBook(currentChatChar.id, book.id)} />
-                            <span style={{ flex: 1 }}>{book.name || tr("未命名世界書", "Untitled lorebook", "無題の世界観", "이름 없는 월드북")}</span>
-                            <span style={{ fontSize: 10, color: "var(--mp-txt-l)", fontWeight: 600 }}>{(book.entries || []).length} {tr("條目", "entries", "項目", "항목")}</span>
-                            <button
-                              className="mp-ibtn"
-                              style={{ padding: "2px 8px", fontSize: 10 }}
-                              onClick={(e) => { e.stopPropagation(); armAppClickSuppression(); setChatSettingsExpandedBooks((prev) => ({ ...prev, [book.id]: !isExpanded })); }}
-                            >
-                              {isExpanded ? tr("收合", "Collapse", "折りたたむ", "접기") : tr("展開", "Expand", "展開", "펼치기")}
-                            </button>
-                          </div>
-                          {isExpanded && (
-                            <div style={{ padding: "8px 10px 10px", background: "#fff" }}>
-                              <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                                <button className="mp-ibtn" style={{ fontSize: 10, padding: "2px 8px" }} disabled={!bookOn} onClick={(e) => { e.stopPropagation(); armAppClickSuppression(); setAllChatLorebookEntries(currentChatChar.id, book, true); }}>Select all</button>
-                                <button className="mp-ibtn" style={{ fontSize: 10, padding: "2px 8px" }} disabled={!bookOn} onClick={(e) => { e.stopPropagation(); armAppClickSuppression(); setAllChatLorebookEntries(currentChatChar.id, book, false); }}>Select none</button>
-                                {!bookOn && <span style={{ fontSize: 10, color: "var(--mp-txt-l)", marginLeft: "auto" }}>Enable this lorebook first</span>}
-                              </div>
-                              <div style={{ display: "grid", gap: 6, maxHeight: 220, overflowY: "auto", paddingRight: 2 }}>
-                              {(book.entries || []).map((entry) => {
-                                const entryOn = Object.prototype.hasOwnProperty.call(binding.entryOverrides, entry.id)
-                                  ? !!binding.entryOverrides[entry.id]
-                                  : !!entry.enabled;
-                                const mode = binding.entryModes?.[entry.id] || "AUTO";
-                                const modeColor = mode === "PIN" ? "#1e88e5" : "#43a047";
-                                return (
-                                  <label key={entry.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "var(--mp-txt-l)", padding: "4px 2px" }}>
-                                    <input type="checkbox" checked={entryOn} disabled={!bookOn} onChange={() => toggleChatLorebookEntry(currentChatChar.id, entry.id, !!entry.enabled)} />
-                                    <span style={{flex:1}}>{entry.title || "Untitled entry"}</span>
-                                    <button
-                                      className="mp-ibtn"
-                                      disabled={!bookOn}
-                                      style={{ fontSize: 10, padding: "1px 8px", borderColor: modeColor, color: modeColor }}
-                                      onClick={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        armAppClickSuppression();
-                                        cycleChatLorebookEntryMode(currentChatChar.id, entry.id);
-                                      }}
-                                      title={tr("AUTO=keyword match, PIN=pinned", "AUTO=keyword match, PIN=pinned", "AUTO=キーワード一致、PIN=固定", "AUTO=키워드 일치, PIN=고정")}
-                                    >
-                                      {mode}
-                                    </button>
-                                  </label>
-                                );
-                              })}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-              <div className="mp-cc">
-                <div
-                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
-                  onClick={() => setChatroomManageOpen((v) => !v)}
-                >
-                  <div style={{ fontSize: 13, fontWeight: 700 }}>{tr("聊天室管理", "Chatroom management", "チャットルーム管理", "채팅방 관리")}</div>
-                  <div style={{ fontSize: 11, color: "var(--mp-txt-l)" }}>{chatroomManageOpen ? tr("收合", "Collapse", "折りたたむ", "접기") : tr("展開", "Expand", "展開", "펼치기")}</div>
-                </div>
-                {chatroomManageOpen && (
-                  <>
-                    <div style={{ fontSize: 11, color: "var(--mp-txt-l)", lineHeight: 1.7, marginTop: 8, marginBottom: 8 }}>
-                      {tr("可獨立匯出/匯入這個角色的聊天室，或刪除對話重新開始，不會影響角色本體。", "Export/import this character's chatroom separately, or delete the conversation and start over without affecting the character itself.", "このキャラのチャットルームを個別にエクスポート/インポートしたり、会話を削除して最初からやり直せます。キャラ本体には影響しません。", "이 캐릭터의 채팅방을 따로 내보내기/가져오기 하거나 대화를 삭제하고 다시 시작할 수 있으며, 캐릭터 자체에는 영향이 없습니다.")}
-                    </div>
-                    <div style={{ display: "grid", gap: 8 }}>
-                      <button
-                        type="button"
-                        className="mp-save"
-                        style={{ background: "linear-gradient(135deg,#90caf9,#42a5f5)" }}
-                        onClick={() => exportChatroomForCharacter(currentChatChar.id, currentChatChar.name)}
-                      >
-                        {tr("匯出聊天室", "Export chatroom", "チャットルームを書き出す", "채팅방 내보내기")}
-                      </button>
-                      <button
-                        type="button"
-                        className="mp-save"
-                        style={{ background: "linear-gradient(135deg,#b0bec5,#78909c)" }}
-                        onClick={() => openChatroomImport(currentChatChar.id)}
-                      >
-                        {chatroomImporting ? tr("等待選擇檔案...", "Waiting for file selection...", "ファイル選択待ち...", "파일 선택 대기 중...") : tr("匯入聊天室", "Import chatroom", "チャットルームを取り込む", "채팅방 가져오기")}
-                      </button>
-                      <button
-                        type="button"
-                        className="mp-save"
-                        style={{ background: "linear-gradient(135deg,#ef9a9a,#e53935)" }}
-                        onClick={() => deleteChatroomForCharacter(currentChatChar.id, currentChatChar.name)}
-                      >
-                        {tr("刪除聊天室", "Delete chatroom", "チャットルームを削除", "채팅방 삭제")}
-                      </button>
-                      <input ref={chatroomImportRef} type="file" accept=".json,application/json" style={{display:"none"}} onChange={importChatroomFile} />
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
+            <ChatSettingsPanel tr={tr}
+              mode={{ selectedMode, pending: hasPendingMode, onChange: (mode) => setSelectedChatMode(currentChatChar.id, mode) }}
+              innerThought={{ autoEnabled: isInnerThoughtAutoEnabled(currentChatChar.id), onToggleAuto: () => setInnerThoughtAutoEnabled(currentChatChar.id, !isInnerThoughtAutoEnabled(currentChatChar.id)), open: chatSettingsThoughtsOpen, setOpen: setChatSettingsThoughtsOpen, records: thoughtRecords, visibleRecords: visibleThoughtRecords, page: activeThoughtPage, pageCount: thoughtPageCount, setPage: setThoughtHistoryPage, onJump: jumpToThoughtMessage, locale: uiLanguage, sanitizeText }}
+              proactive={{ enabled: isProactiveEnabled(currentChatChar.id), frequency: getProactiveFrequency(currentChatChar.id), onToggle: () => setProactiveEnabled(currentChatChar.id, !isProactiveEnabled(currentChatChar.id)), onFrequencyChange: (frequency) => setProactiveFrequency(currentChatChar.id, frequency) }}
+              background={{ currentChatChar, chatSettingsBackgroundOpen, setChatSettingsBackgroundOpen, chatBackgrounds, normalizeChatBackground, getChatBackgroundLayerStyle, getChatBackgroundBlurFilter, onChatBackgroundFile, chatBgEditor, setChatBgEditor, updateChatBackground }}
+              lorebook={{ chatSettingsLorebookOpen, setChatSettingsLorebookOpen, binding, lorebooks, chatSettingsExpandedBooks, setChatSettingsExpandedBooks, toggleChatLorebookBook, setAllChatLorebookEntries, toggleChatLorebookEntry, cycleChatLorebookEntryMode, currentChatChar, armAppClickSuppression }}
+              management={{ open: chatroomManageOpen, setOpen: setChatroomManageOpen, character: currentChatChar, importing: chatroomImporting, importRef: chatroomImportRef, onImportFile: importChatroomFile, onExport: exportChatroomForCharacter, onOpenImport: openChatroomImport, onDelete: deleteChatroomForCharacter }}
+            />
           ) : (
-            <div className={`mp-cr mp-chat-mode-${selectedMode}`} style={chatCrStyle}>
-            {chatBgUrl && (
-              <>
-                <div
-                  style={{
-                    ...getChatBackgroundLayerStyle(chatBg, 1.08),
-                    filter: getChatBackgroundBlurFilter(chatBg),
-                    zIndex: 0,
-                  }}
-                />
-                <div style={{ position: "absolute", inset: 0, background: isNightTheme ? "rgba(18,12,28,.46)" : "rgba(255,255,255,.52)", pointerEvents: "none", zIndex: 0 }} />
-              </>
-            )}
-            <div style={{position:"relative",zIndex:1}}>
-              {renderSceneBar("char", currentChatChar.id, tr("場景", "Scene", "シーン", "장면"))}
-            </div>
-            <div
-              className="mp-msgs"
-              ref={chatMsgsRef}
-              style={{ position: "relative", zIndex: 1 }}
-              onScroll={(e) => {
-                const el = e.currentTarget;
-                updateScrollToBottomVisibility(el);
-                if (el.scrollTop > 0) return;
-                if (visibleCount >= msgs.length) return;
+            <>
+            <DirectMessageList mode={selectedMode} containerStyle={chatCrStyle}
+              backgroundLayer={chatBgUrl ? <><div style={{ ...getChatBackgroundLayerStyle(chatBg, 1.08), filter: getChatBackgroundBlurFilter(chatBg), zIndex: 0 }} /><div style={{ position: "absolute", inset: 0, background: isNightTheme ? "rgba(18,12,28,.46)" : "rgba(255,255,255,.52)", pointerEvents: "none", zIndex: 0 }} /></> : null}
+              sceneBar={<div style={{ position: "relative", zIndex: 1 }}>{renderSceneBar("char", currentChatChar.id, tr("場景", "Scene", "シーン", "장면"))}</div>}
+              messagesRef={chatMsgsRef} messagesEndRef={messagesEndRef}
+              onScroll={(element) => {
+                updateScrollToBottomVisibility(element);
+                if (element.scrollTop > 0 || visibleCount >= msgs.length) return;
                 const nextCount = Math.min(msgs.length, visibleCount + 50);
-                chatLoadAdjustRef.current = {
-                  charId: currentChatChar.id,
-                  prevScrollHeight: el.scrollHeight,
-                  prevScrollTop: el.scrollTop,
-                };
-                setChatVisibleCounts((prev) => ({ ...prev, [currentChatChar.id]: nextCount }));
+                chatLoadAdjustRef.current = { charId: currentChatChar.id, prevScrollHeight: element.scrollHeight, prevScrollTop: element.scrollTop };
+                setChatVisibleCounts((previous) => ({ ...previous, [currentChatChar.id]: nextCount }));
               }}
+              hasEarlier={visibleCount < msgs.length} onLoadEarlier={() => {
+                const element = chatMsgsRef.current;
+                if (!element) return;
+                const nextCount = Math.min(msgs.length, visibleCount + 50);
+                chatLoadAdjustRef.current = { charId: currentChatChar.id, prevScrollHeight: element.scrollHeight, prevScrollTop: element.scrollTop };
+                setChatVisibleCounts((previous) => ({ ...previous, [currentChatChar.id]: nextCount }));
+              }}
+              isTyping={isTyping} showScrollToBottom={showScrollToBottom}
+              scrollButtonBottom={chatActionPanelOpen ? 142 : (chatImage ? 148 : 68)}
+              onScrollToBottom={scrollCurrentChatToBottom} tr={tr}
             >
-              {visibleCount < msgs.length && (
-                <div style={{display:"flex",justifyContent:"center",padding:"6px 0 10px"}}>
-                  <button
-                    type="button"
-                    className="mp-ibtn"
-                    style={{fontSize:11,padding:"4px 10px"}}
-                    onClick={(ev) => {
-                      ev.preventDefault();
-                      ev.stopPropagation();
-                      const el = chatMsgsRef.current;
-                      if (!el) return;
-                      const nextCount = Math.min(msgs.length, visibleCount + 50);
-                      chatLoadAdjustRef.current = {
-                        charId: currentChatChar.id,
-                        prevScrollHeight: el.scrollHeight,
-                        prevScrollTop: el.scrollTop,
-                      };
-                      setChatVisibleCounts((prev) => ({ ...prev, [currentChatChar.id]: nextCount }));
-                    }}
-                  >
-                    Load earlier messages
-                  </button>
-                </div>
-              )}
               {visibleMsgs.map(m => {
                   if (m.role === "mode_transition") {
                     return (
@@ -5353,183 +2743,51 @@ ${recent || "（目前無內容）"}`;
                   }
                   if (m.role === "system_notice") {
                     const share = parseShareEventNotice(m.content);
-                    const isConnectionError = isConnectionErrorNotice(m.content);
-                    return (
-                      <div key={m.id} className="mp-msg-note-wrap">
-                        <div
-                          className="mp-msg-note"
-                          onPointerDown={() => startNoticeLongPress(m.id)}
-                        onPointerUp={cancelNoticeLongPress}
-                        onPointerLeave={cancelNoticeLongPress}
-                      >
-                          {share ? (
-                            <div style={{ textAlign: "left" }}>
-                              <div style={{ fontWeight: 700, marginBottom: 4 }}>{tr("社群分享", "Social share", "SNS共有", "소셜 공유")}</div>
-                              <div style={{ fontSize: 11, color: "var(--mp-txt-l)", marginBottom: 6 }}>
-                                {tr("來源：", "Source: ", "出典: ", "출처: ")}{share.meta.source || "-"}
-                              </div>
-                              <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5, maxHeight: 180, overflowY: "auto", paddingRight: 2 }}>{applyUserPlaceholder(share.body)}</div>
-                            </div>
-                          ) : (
-                            <div>
-                              <div>{m.content}</div>
-                              {isConnectionError && (
-                                <button className="mp-retry-btn" disabled={isTyping} onClick={(e) => { e.stopPropagation(); retryChatFromNotice(m.id); }}>
-                                  重新生成
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      {activeMessageId === m.id && (
-                        <button className="mp-msg-editbtn" onClick={() => deleteChatMessage(currentChatChar.id, m.id)}>🗑</button>
-                      )}
-                    </div>
-                  );
-                }
+                    return <SystemNoticeMessage key={m.id} message={m} share={share} connectionError={isConnectionErrorNotice(m.content)}
+                      active={activeMessageId === m.id} isTyping={isTyping}
+                      onLongPressStart={() => startNoticeLongPress(m.id)} onLongPressEnd={cancelNoticeLongPress}
+                      onRetry={() => retryChatFromNotice(m.id)} onDelete={() => deleteChatMessage(currentChatChar.id, m.id)}
+                      applyUserPlaceholder={applyUserPlaceholder} tr={tr} />;
+                  }
                 const isUser = m.role === "user";
                 const isActive = activeMessageId === m.id;
                 if (m.role === "transfer") {
-                  const fromName = m.fromType === "player" ? tr("你", "You", "あなた", "당신") : (m.fromName || tr("對方", "The other party", "相手", "상대방"));
-                  const toName = m.toType === "player" ? tr("你", "You", "あなた", "당신") : (m.toName || tr("對方", "The other party", "相手", "상대방"));
-                  const heading = m.fromType === "player" ? `${tr("你", "You", "あなた", "당신")} ${tr("轉帳給", "transfer to", "送金先", "송금 대상")} ${toName}` : `${fromName} ${tr("轉帳給", "transfer to", "送金先", "송금 대상")} ${tr("你", "You", "あなた", "당신")}`;
-                  const statusText = m.fromType === "player" ? tr("已送出", "Sent", "送信済み", "전송됨") : tr("已收到", "Received", "受信済み", "받음");
-                  return (
-                    <div key={m.id} className="mp-msg-wrap mp-msg-wrap-transfer">
-                      <div
-                        className="mp-msg mp-transfer-card"
-                        onClick={() => setActiveMessageId((p) => (p === m.id ? null : m.id))}
-                      >
-                        <div className="mp-transfer-success">
-                          <div className="mp-transfer-check">✓</div>
-                        <div className="mp-transfer-success-text">{tr("轉帳成功", "Transfer successful", "送金成功", "송금 성공")}</div>
-                        </div>
-                        <div className="mp-transfer-line">{heading}</div>
-                        <div className="mp-transfer-meta">
-                          <div className="mp-transfer-row"><span className="mp-transfer-k">{tr("轉帳金額", "Amount", "金額", "금액")}</span><span className="mp-transfer-v">${formatMoney(m.amount || 0)}</span></div>
-                          <div className="mp-transfer-row"><span className="mp-transfer-k">{tr("轉帳日期", "Date", "日付", "날짜")}</span><span className="mp-transfer-v">{new Date(m.time).toLocaleDateString("zh-TW")}</span></div>
-                        </div>
-                        <div className="mp-transfer-note">{m.note ? `${tr("備註", "Note", "メモ", "메모")}：${m.note}` : tr("無備註", "No note", "メモなし", "메모 없음")}</div>
-                        <div className="mp-transfer-footer">
-                          <span>{new Date(m.time).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"})}</span>
-                          <span className="mp-transfer-status">{statusText}</span>
-                        </div>
-                      </div>
-                      {activeMessageId === m.id && <button className="mp-msg-editbtn" onClick={() => {
-                        if (!window.confirm(tr("刪除後不保留這筆交易紀錄，確定嗎？", "This transaction record will be removed. Continue?", "削除するとこの取引記録は残りません。続けますか？", "삭제하면 이 거래 기록은 남지 않습니다. 계속할까요?"))) return;
-                        deleteChatMessage(currentChatChar.id, m.id);
-                      }}>🗑</button>}
-                    </div>
-                  );
+                  return <TransferMessage key={m.id} message={m} active={isActive}
+                    onToggle={() => setActiveMessageId((previous) => previous === m.id ? null : m.id)}
+                    onDelete={() => {
+                      if (!window.confirm(tr("刪除後不保留這筆交易紀錄，確定嗎？", "This transaction record will be removed. Continue?", "削除するとこの取引記録は残りません。続けますか？", "삭제하면 이 거래 기록은 남지 않습니다. 계속할까요?"))) return;
+                      deleteChatMessage(currentChatChar.id, m.id);
+                    }}
+                    formatMoney={formatMoney} tr={tr} />;
                 }
                 const isReality = getMessageMode(m) === "reality";
                 const displayContent = stripModeLabel(stripInternalBlocks(m.content));
                 if (isReality) {
-                  return (
-                    <div data-message-id={m.id} key={m.id} className={`mp-reality-wrap ${isUser ? "mp-reality-user" : "mp-reality-ai"} ${highlightedThoughtMessageId === m.id ? "mp-thought-jump-highlight" : ""}`}>
-                      {isUser && <button className={`mp-msg-editbtn ${isActive ? "" : "mp-msg-editbtn-hidden"}`} onClick={() => setMessageEditor({ id: m.id, content: m.content || "", mode: getMessageMode(m) })}>✎</button>}
-                      <div className={`mp-thought-stack ${isUser ? "mp-thought-stack-user" : ""}`}>
-                        <div className="mp-reality-msg" onClick={() => setActiveMessageId((p) => (p === m.id ? null : m.id))}>
-                          {m.image && <img src={`data:image/png;base64,${m.image}`} className="mp-msg-img" alt="" />}
-                          {displayContent && renderRealityText(displayContent)}
-                          {isUser && <div className="mp-reality-t">{new Date(m.time).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"})}</div>}
-                        </div>
-                        {!isUser && <div className="mp-reality-footer">
-                          <span className="mp-reality-t">{new Date(m.time).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"})}</span>
-                          {isActive && <button className="mp-msg-editbtn" onClick={() => setMessageEditor({ id: m.id, content: m.content || "", mode: getMessageMode(m) })}>✎</button>}
-                          {renderCharacterVoiceAction(currentChatChar, m, isActive, true)}
-                        </div>}
-                        {!isUser && canRenderInnerThought(m) && renderInnerThought(currentChatChar, m)}
-                      </div>
-                    </div>
-                  );
+                  return <RealityChatMessage key={m.id} message={m} isUser={isUser} active={isActive}
+                    highlighted={highlightedThoughtMessageId === m.id} displayContent={displayContent}
+                    renderedContent={renderRealityText(displayContent)}
+                    innerThought={canRenderInnerThought(m) ? renderInnerThought(currentChatChar, m) : null}
+                    voiceAction={renderCharacterVoiceAction(currentChatChar, m, isActive, true)}
+                    onToggle={() => setActiveMessageId((previous) => previous === m.id ? null : m.id)}
+                    onEdit={() => setMessageEditor({ id: m.id, content: m.content || "", mode: getMessageMode(m) })}
+                  />;
                 }
-                return (
-                  <div data-message-id={m.id} key={m.id} className={`mp-msg-wrap ${isUser?"mp-msg-wrap-user":"mp-msg-wrap-ai"} ${highlightedThoughtMessageId === m.id ? "mp-thought-jump-highlight" : ""}`}>
-                    {isUser && <button className={`mp-msg-editbtn ${isActive ? "" : "mp-msg-editbtn-hidden"}`} onClick={() => setMessageEditor({ id: m.id, content: m.content || "", mode: getMessageMode(m) })}>✎</button>}
-                    <div className={`mp-thought-stack ${isUser ? "mp-thought-stack-user" : ""}`}>
-                      <div className={`mp-msg ${isUser?"mp-msg-user":"mp-msg-ai"}`} onClick={() => setActiveMessageId((p) => (p === m.id ? null : m.id))}>
-                        {m.image && <img src={`data:image/png;base64,${m.image}`} className="mp-msg-img" alt="" />}
-                        {displayContent && <div>{displayContent}</div>}
-                        <div className="mp-msg-t">{new Date(m.time).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"})}</div>
-                      </div>
-                      {!isUser && canRenderInnerThought(m) && renderInnerThought(currentChatChar, m)}
-                    </div>
-                    {!isUser && <button className={`mp-msg-editbtn ${isActive ? "" : "mp-msg-editbtn-hidden"}`} onClick={() => setMessageEditor({ id: m.id, content: m.content || "", mode: getMessageMode(m) })}>✎</button>}
-                    {!isUser && renderCharacterVoiceAction(currentChatChar, m, isActive)}
-                  </div>
-                );
+                return <OnlineChatMessage key={m.id} message={m} isUser={isUser} active={isActive}
+                  highlighted={highlightedThoughtMessageId === m.id} displayContent={displayContent}
+                  innerThought={canRenderInnerThought(m) ? renderInnerThought(currentChatChar, m) : null}
+                  voiceAction={renderCharacterVoiceAction(currentChatChar, m, isActive)}
+                  onToggle={() => setActiveMessageId((previous) => previous === m.id ? null : m.id)}
+                  onEdit={() => setMessageEditor({ id: m.id, content: m.content || "", mode: getMessageMode(m) })}
+                />;
               })}
-              {isTyping && <div className="mp-typing"><span /><span /><span /></div>}
-              <div ref={messagesEndRef} />
-            </div>
-            {showScrollToBottom && (
-              <button
-                type="button"
-                className="mp-scroll-bottom"
-                style={{ bottom: chatActionPanelOpen ? 142 : (chatImage ? 148 : 68) }}
-                aria-label={tr("捲到最新訊息", "Scroll to latest message", "最新メッセージへ移動", "최신 메시지로 이동")}
-                title={tr("捲到最新訊息", "Scroll to latest message", "最新メッセージへ移動", "최신 메시지로 이동")}
-                onClick={scrollCurrentChatToBottom}
-              >
-                <ArrowDown size={23} strokeWidth={2.2} aria-hidden="true" />
-              </button>
-            )}
-            {chatImage && (
-              <div className="mp-imgprev">
-                <img src={`data:${chatImage.mime};base64,${chatImage.data}`} alt="" />
-                <div style={{ fontSize: 10, color: "var(--mp-txt-l)", marginTop: 4 }}>
-                  {chatImage.width}x{chatImage.height} · {Math.round(chatImage.bytes / 1024)}KB
-                </div>
-                <button onClick={() => setChatImage(null)}>×</button>
-              </div>
-            )}
-            {chatActionPanelOpen && (
-              <div className="mp-chat-actions">
-                <button className="mp-chat-action" onClick={() => { setChatActionPanelOpen(false); fileInputRef.current?.click(); }}>
-                  <span className="mp-chat-action-i">🖼</span>
-                  <span>{tr("相片", "Photo", "写真", "사진")}</span>
-                </button>
-                {selectedMode !== "reality" && (
-                  <button className="mp-chat-action" onClick={() => { setChatActionPanelOpen(false); setTransferModalOpen(true); }}>
-                    <span className="mp-chat-action-i">💸</span>
-                    <span>{tr("轉帳", "Transfer", "送金", "송금")}</span>
-                  </button>
-                )}
-                <button className="mp-chat-action" disabled>
-                  <span className="mp-chat-action-i">📅</span>
-                  <span>{tr("日程", "Schedule", "予定", "일정")}</span>
-                </button>
-                <button className="mp-chat-action" disabled>
-                  <span className="mp-chat-action-i">⚙️</span>
-                  <span>{tr("更多", "More", "その他", "더보기")}</span>
-                </button>
-              </div>
-            )}
-              <div className="mp-inp-bar">
-                <button className={`mp-btn mp-btn-img ${chatActionPanelOpen ? "active" : ""}`} onClick={()=>setChatActionPanelOpen((v) => !v)}>＋</button>
-                <input type="file" ref={fileInputRef} accept="image/*" style={{display:"none"}} onChange={handleImgUp} />
-                <div className="mp-inp-wrap">
-                  <textarea
-                    className="mp-inp"
-                    placeholder={tr("輸入訊息...", "Type a message...", "メッセージを入力...", "메시지를 입력...")}
-                    name="mali_chat_text"
-                    rows={1}
-                    maxLength={inputTextLimit}
-                    autoComplete="off"
-                    autoCorrect="off"
-                    autoCapitalize="sentences"
-                    spellCheck={false}
-                    data-form-type="other"
-                    data-lpignore="true"
-                    value={chatInput}
-                    onChange={e=>setChatInput(e.target.value.slice(0, inputTextLimit))}
-                  />
-                  <div className="mp-char-counter">{chatInput.length}/{inputTextLimit}</div>
-                </div>
-                <button className="mp-btn mp-btn-send" onClick={sendMessage}>➤</button>
-              </div>
-            </div>
+            </DirectMessageList>
+            <DirectChatComposer image={chatImage} onClearImage={() => setChatImage(null)}
+              actionPanelOpen={chatActionPanelOpen} setActionPanelOpen={setChatActionPanelOpen}
+              allowTransfer={selectedMode !== "reality"} onOpenTransfer={() => setTransferModalOpen(true)}
+              fileInputRef={fileInputRef} onImageUpload={handleImgUp}
+              value={chatInput} setValue={setChatInput} textLimit={inputTextLimit} onSend={sendMessage} tr={tr}
+            />
+            </>
           )}
         </div>
       );
@@ -5655,9 +2913,7 @@ ${recent || "（目前無內容）"}`;
     setPlayerProfile(defaultAppState.playerProfile);
     setApiConfig(defaultAppState.apiConfig);
     setTtsConfig(defaultAppState.ttsConfig);
-    stopCurrentVoiceAudio();
-    voiceAudioCacheRef.current.clear();
-    setVoicePlayback({ key: null, status: "idle" });
+    clearVoicePlaybackCache();
     setScreenLockTimeout(defaultAppState.screenLockTimeout);
     setHomeSlots(Array.from({ length: HOME_SLOT_COUNT }, () => null));
     setDockOrder(DOCK_APPS);
@@ -5794,130 +3050,56 @@ ${recent || "（目前無內容）"}`;
         showToast(`${tr("清除快取失敗", "Failed to clear cache", "キャッシュ削除に失敗しました", "캐시 삭제 실패")}：${err?.message || tr("未知錯誤", "Unknown error", "不明なエラー", "알 수 없는 오류")}`);
       }
     };
-    return (
-      <div className="mp-page">
-        <div className="mp-hdr"><div className="mp-back" onClick={closeApp}>←</div><div className="mp-htitle">{t("settings")}</div></div>
-        <div className="mp-set">
-          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:4}}>
-            {[
-              { id: "appearance", label: t("appearance") },
-              { id: "api", label: t("api") },
-              { id: "data", label: t("data") },
-              { id: "about", label: t("about") },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                className="mp-ibtn"
-                style={{
-                  padding: "8px 6px",
-                  minWidth: 0,
-                  fontWeight: 800,
-                  background: settingsTab === tab.id
-                    ? (isNightTheme ? "linear-gradient(135deg,#4b3a62,#3a2d4f)" : "linear-gradient(135deg,#9aa8b3,#7b8791)")
-                    : (isNightTheme ? "rgba(47,36,64,.72)" : "rgba(255,255,255,.72)"),
-                  color: settingsTab === tab.id ? "#fff" : "var(--mp-txt)",
-                  border: settingsTab === tab.id
-                    ? (isNightTheme ? "1px solid rgba(200,168,224,.38)" : "1px solid rgba(123,135,145,.35)")
-                    : (isNightTheme ? "1px solid #3a2d4f" : "1px solid rgba(160,176,186,.25)"),
-                }}
-                onClick={() => setSettingsTab(tab.id)}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-          {settingsTab === "appearance" && (
-            <>
-            <div className="mp-sg">
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,cursor:"pointer"}} onClick={() => setSettingsAppearanceOpen((value) => !value)}>
-                <div><div className="mp-sg-t" style={{marginBottom:2}}>{tr("主題與外觀", "Theme & appearance", "テーマと外観", "테마 및 외관")}</div><div style={{fontSize:10,color:"var(--mp-txt-l)"}}>{tr("主題、桌面立繪與自訂 CSS", "Theme, desktop image, and custom CSS", "テーマ、立ち絵、カスタム CSS", "테마, 데스크톱 이미지, 사용자 CSS")}</div></div>
-                <span style={{fontSize:11,fontWeight:800,color:"var(--mp-pink-dk)"}}>{settingsAppearanceOpen ? tr("收合", "Collapse", "折りたたむ", "접기") : tr("展開", "Expand", "展開", "펼치기")}</span>
-              </div>
-              {settingsAppearanceOpen && <div style={{display:"flex",flexDirection:"column",marginTop:12}}>
-              <ThemeSettings t={t} tr={tr} themeName={themeName} setThemeName={setThemeName} fontName={fontName} setFontName={setFontName} effectsEnabled={themeEffectsEnabled} setEffectsEnabled={setThemeEffectsEnabled} />
-              <CustomCssSettings
-                tr={tr}
-                enabled={customCssEnabled}
-                setEnabled={setCustomCssEnabled}
-                draft={customCssDraft}
-                setDraft={setCustomCssDraft}
-                notice={customCssNotice}
-                setNotice={setCustomCssNotice}
-                sanitize={sanitizeCustomCss}
-                onOpenGuide={() => setCustomCssGuideOpen(true)}
-                onReset={() => { setCustomCssDraft(""); setCustomCss(""); setCustomCssEnabled(false); setCustomCssNotice(tr("已重設", "Reset", "リセットしました", "초기화됨")); try { localStorage.removeItem("mali_custom_css"); } catch {} }}
-                onApply={(safe) => { setCustomCssDraft(safe); setCustomCss(safe); setCustomCssEnabled(true); setCustomCssNotice(tr("已儲存並套用", "Saved and applied", "保存して適用しました", "저장 및 적용됨")); try { localStorage.setItem("mali_custom_css", safe); } catch {} }}
-              />
-              <HeroImageSettings
-                tr={tr} activeChar={activeChar} heroFileRef={heroFileRef} onHeroFile={onHeroFile}
-                heroDraft={heroDraft} setHeroDraft={setHeroDraft} beginHeroEdit={beginHeroEdit}
-                removeHero={() => setCharacters((list) => list.map((item) => item.id === activeChar.id ? { ...item, heroImage:"", heroView:null } : item))}
-                startDrag={startHeroSettingDrag} moveDrag={moveHeroSettingDrag} endDrag={endHeroSettingDrag}
-                heroImgStyle={heroImgStyle} saveDraft={saveHeroDraft}
-              />
-              </div>}
-            </div>
-            <InterfaceSettings t={t} tr={tr} uiLanguage={uiLanguage} setUiLanguage={setUiLanguage} screenLockTimeout={screenLockTimeout} setScreenLockTimeout={setScreenLockTimeout} />
-            </>
-          )}
-          {settingsTab === "api" && (
-            <>
-              <ApiPresetSettings tr={tr} activePresetIndex={activePresetIndex} config={tc} onApplyPreset={applyApiPreset} />
-              <AiConnectionSettings
-                t={t} tr={tr} open={settingsAiConnOpen} setOpen={setSettingsAiConnOpen}
-                config={tc} setConfig={setTempConfig} providers={API_PROVIDERS} modelOptions={modelOptions}
-                fetchingModels={fetchingModels} onFetchModels={fetchLatestModels}
-                testingConnection={testingConnection} onTest={testApiConnection}
-                onProviderChange={(providerId) => { const provider = API_PROVIDERS.find((item) => item.id === providerId); setTempConfig((current) => ({ ...current, provider: provider.id, baseUrl: getProviderBaseUrl(provider.id, current?.baseUrl || ""), model: provider.models[0] || "" })); }}
-                onSave={() => { setApiConfig(tc); notify(tr("設定已儲存", "Settings saved", "設定を保存しました", "설정이 저장되었습니다"), "Settings saved"); }}
-                onSavePreset={() => setPresetSavePickerOpen(true)}
-              />
-              <VoiceApiSettings
-                tr={tr} open={settingsVoiceOpen} setOpen={setSettingsVoiceOpen}
-                config={ttsConfig} setConfig={setTtsConfig} activeConfig={activeTtsConfig}
-                updateConfig={(patch) => { setTtsConnectionState("idle"); setTtsVoices([]); updateActiveTtsConfig(patch); }}
-                voices={availableTtsVoices} connectionState={ttsConnectionState}
-                onLoadVoices={() => void loadElevenLabsDefaultVoices()}
-                onPreview={() => void previewDefaultTtsVoice()}
-              />
-            </>
-          )}
-          {presetSavePickerOpen && <ApiPresetModal
-            tr={tr} t={t} onClose={() => setPresetSavePickerOpen(false)}
-            onSave={(index) => { saveApiPreset(index); setPresetSavePickerOpen(false); }}
-          />}
-          {settingsTab === "data" && (
-            <>
-              <DataBackupSettings tr={tr} dataImporting={dataImporting} dataImportRef={dataImportRef} onExport={exportAllData} onImport={importAllData} />
-            </>
-          )}
-          {dataImportPreview && <DataImportPreviewModal
-            tr={tr} preview={dataImportPreview}
-            onCancel={() => { setDataImportPreview(null); setDataImporting(false); }}
-            onConfirm={confirmImportPreview}
-          />}
-          {chatroomImportPreview && <ChatroomImportPreviewModal
-            tr={tr} preview={chatroomImportPreview}
-            onCancel={() => { setChatroomImportPreview(null); setChatroomImportTarget(null); setChatroomImporting(false); }}
-            onConfirm={confirmChatroomImportPreview}
-          />}
-          {settingsTab === "about" && (
-            <>
-              <AboutInfoSettings
-                tr={tr} version={VERSION} currentChangelogTitle={currentChangelogTitle} currentChangelog={currentChangelog}
-                versionOpen={settingsVersionOpen} setVersionOpen={setSettingsVersionOpen}
-                disclaimerOpen={settingsDisclaimerOpen} setDisclaimerOpen={setSettingsDisclaimerOpen}
-              />
-              <ResetDataSettings
-                tr={tr} open={settingsResetDataOpen} setOpen={setSettingsResetDataOpen}
-                clearCacheArmed={clearCacheArmed} onClearAll={clearAllData} onClearCache={clearSiteCache}
-              />
-            </>
-          )}
-          </div>
-        </div>
-      );
+    const settingsAppearance = {
+      open: settingsAppearanceOpen,
+      toggleOpen: () => setSettingsAppearanceOpen((value) => !value),
+      themeProps: { t, tr, themeName, setThemeName, fontName, setFontName, effectsEnabled: themeEffectsEnabled, setEffectsEnabled: setThemeEffectsEnabled },
+      cssProps: {
+        tr, enabled: customCssEnabled, setEnabled: setCustomCssEnabled, draft: customCssDraft, setDraft: setCustomCssDraft,
+        notice: customCssNotice, setNotice: setCustomCssNotice, sanitize: sanitizeCustomCss,
+        onOpenGuide: () => setCustomCssGuideOpen(true),
+        onReset: () => { setCustomCssDraft(""); setCustomCss(""); setCustomCssEnabled(false); setCustomCssNotice(tr("已重設", "Reset", "リセットしました", "초기화됨")); try { localStorage.removeItem("mali_custom_css"); } catch {} },
+        onApply: (safe) => { setCustomCssDraft(safe); setCustomCss(safe); setCustomCssEnabled(true); setCustomCssNotice(tr("已儲存並套用", "Saved and applied", "保存して適用しました", "저장 및 적용됨")); try { localStorage.setItem("mali_custom_css", safe); } catch {} },
+      },
+      heroProps: {
+        tr, activeChar, heroFileRef, onHeroFile, heroDraft, setHeroDraft, beginHeroEdit,
+        removeHero: () => setCharacters((list) => list.map((item) => item.id === activeChar.id ? { ...item, heroImage: "", heroView: null } : item)),
+        startDrag: startHeroSettingDrag, moveDrag: moveHeroSettingDrag, endDrag: endHeroSettingDrag, heroImgStyle, saveDraft: saveHeroDraft,
+      },
+      interfaceProps: { t, tr, uiLanguage, setUiLanguage, screenLockTimeout, setScreenLockTimeout },
+    };
+    const settingsApi = {
+      presetProps: { tr, activePresetIndex, config: tc, onApplyPreset: applyApiPreset },
+      connectionProps: {
+        t, tr, open: settingsAiConnOpen, setOpen: setSettingsAiConnOpen, config: tc, setConfig: setTempConfig,
+        providers: API_PROVIDERS, modelOptions, fetchingModels, onFetchModels: fetchLatestModels,
+        testingConnection, onTest: testApiConnection,
+        onProviderChange: (providerId) => { const provider = API_PROVIDERS.find((item) => item.id === providerId); setTempConfig((current) => ({ ...current, provider: provider.id, baseUrl: getProviderBaseUrl(provider.id, current?.baseUrl || ""), model: provider.models[0] || "" })); },
+        onSave: () => { setApiConfig(tc); notify(tr("設定已儲存", "Settings saved", "設定を保存しました", "설정이 저장되었습니다"), "Settings saved"); },
+        onSavePreset: () => setPresetSavePickerOpen(true),
+      },
+      voiceProps: {
+        tr, open: settingsVoiceOpen, setOpen: setSettingsVoiceOpen, config: ttsConfig, setConfig: setTtsConfig,
+        activeConfig: activeTtsConfig, updateConfig: (patch) => { setTtsConnectionState("idle"); setTtsVoices([]); updateActiveTtsConfig(patch); },
+        voices: availableTtsVoices, connectionState: ttsConnectionState,
+        onLoadVoices: () => void loadElevenLabsDefaultVoices(), onPreview: () => void previewDefaultTtsVoice(),
+      },
+    };
+    const settingsModals = {
+      preset: presetSavePickerOpen ? { tr, t, onClose: () => setPresetSavePickerOpen(false), onSave: (index) => { saveApiPreset(index); setPresetSavePickerOpen(false); } } : null,
+      dataImport: dataImportPreview ? { tr, preview: dataImportPreview, onCancel: cancelDataImport, onConfirm: confirmImportPreview } : null,
+      chatroomImport: chatroomImportPreview ? { tr, preview: chatroomImportPreview, onCancel: cancelChatroomImport, onConfirm: confirmChatroomImportPreview } : null,
+    };
+    return <SettingsApp
+      closeApp={closeApp} t={t} tr={tr} tab={settingsTab} setTab={setSettingsTab} nightTheme={isNightTheme}
+      appearance={settingsAppearance} api={settingsApi}
+      data={{ syncProps: { tr, notify }, backupProps: { tr, dataImporting, dataImportRef, onExport: exportAllData, onImport: importAllData } }}
+      about={{
+        infoProps: { tr, version: VERSION, currentChangelogTitle, currentChangelog, versionOpen: settingsVersionOpen, setVersionOpen: setSettingsVersionOpen, disclaimerOpen: settingsDisclaimerOpen, setDisclaimerOpen: setSettingsDisclaimerOpen },
+        resetProps: { tr, open: settingsResetDataOpen, setOpen: setSettingsResetDataOpen, clearCacheArmed, onClearAll: clearAllData, onClearCache: clearSiteCache },
+      }}
+      modals={settingsModals}
+    />;
     };
 
   const renderPlayer = () => <PlayerProfileApp
@@ -5927,309 +3109,6 @@ ${recent || "（目前無內容）"}`;
     onCropPointerDown={onPlayerAvatarPointerDown} onCropPointerMove={onPlayerAvatarPointerMove} onCropPointerUp={onPlayerAvatarPointerUp}
     onApplyCrop={applyPlayerAvatarCrop}
   />;
-  const addWalletTransaction = (type, amount, note) => {
-    const safeAmount = Math.max(0, Number(amount) || 0);
-    if (!safeAmount) return;
-    setWallet((w) => {
-      const prev = w || { balance: 0, transactions: [], assets: [] };
-      const delta = type === "expense" ? -safeAmount : safeAmount;
-      const nextBalance = Math.max(0, (prev.balance || 0) + delta);
-      const tx = {
-        id: gid(),
-        type,
-        amount: safeAmount,
-        note: sanitizeText(note || "", 80) || (type === "income" ? "入帳" : "消費"),
-        time: Date.now(),
-        source: "manual",
-      };
-      return { ...prev, balance: nextBalance, transactions: [tx, ...(prev.transactions || [])].slice(0, 1000) };
-    });
-  };
-  const addWalletAsset = (name, qty = 1) => {
-    const title = sanitizeText(name || "", 40).trim();
-    if (!title) return;
-    const count = Math.max(1, Number(qty) || 1);
-    setWallet((w) => {
-      const prev = w || { balance: 0, transactions: [], assets: [] };
-      const list = [...(prev.assets || [])];
-      const idx = list.findIndex((a) => a.name === title);
-      if (idx >= 0) list[idx] = { ...list[idx], qty: (list[idx].qty || 0) + count, updatedAt: Date.now() };
-      else list.unshift({ id: gid(), name: title, qty: count, updatedAt: Date.now() });
-      return { ...prev, assets: list.slice(0, 120) };
-    });
-  };
-  const transferToCurrentChar = () => {
-    if (!currentChatChar || transferSubmitting) return;
-    const amount = Math.max(0, Math.round(Number(transferAmount) || 0));
-    if (!amount) { showToast(tr("請輸入轉帳金額", "Please enter a transfer amount", "振込金額を入力してください", "송금 금액을 입력해주세요")); return; }
-    const currentBalance = Number(wallet?.balance || 0);
-    if (currentBalance < amount) { showToast(tr("餘額不足", "Insufficient balance", "残高不足", "잔액 부족")); return; }
-    const cid = currentChatChar.id;
-    const note = sanitizeText(transferNote, 60);
-    const now = Date.now();
-    const transferMsg = {
-      id: gid(),
-      role: "transfer",
-      fromType: "player",
-      fromName: getPlayerDisplayName(),
-      toType: "character",
-      toId: cid,
-      toName: currentChatChar.name,
-      amount,
-      note,
-      content: note ? `轉帳 $${formatMoney(amount)}｜${note}` : `轉帳 $${formatMoney(amount)}`,
-      time: now,
-    };
-    setTransferSubmitting(true);
-    try {
-      setWallet((w) => ({
-        ...(w || { balance: 0, transactions: [], assets: [] }),
-        balance: Math.max(0, (w?.balance || 0) - amount),
-        transactions: [{
-          id: gid(),
-          type: "expense",
-          amount,
-          note: note ? stripUserPlaceholder(`轉帳給${currentChatChar.name}｜${note}`) : `轉帳給${currentChatChar.name}`,
-          time: now,
-          charId: cid,
-          source: "chat",
-        }, ...(w?.transactions || [])].slice(0, 1000),
-      }));
-      setCharacterWallets((prev) => {
-        const cw = prev[cid] || { balance: 0, transactions: [], summary: "", generatedAt: Date.now() };
-        return {
-          ...prev,
-          [cid]: {
-            ...cw,
-            balance: Math.max(0, (cw.balance || 0) + amount),
-            transactions: [{
-              id: gid(),
-              type: "income",
-              amount,
-            note: note ? stripUserPlaceholder(`收到玩家轉帳｜${note}`) : "收到玩家轉帳",
-              time: now,
-            }, ...(cw.transactions || [])].slice(0, CHARACTER_WALLET_TX_LIMIT),
-          },
-        };
-      });
-      setChatHistory((h) => ({ ...h, [cid]: [...(h[cid] || []), transferMsg] }));
-      setTransferAmount("");
-      setTransferNote("");
-      setTransferModalOpen(false);
-      showToast(tr("已完成轉帳", "Transfer completed", "振込が完了しました", "송금이 완료되었습니다"));
-    } finally {
-      setTransferSubmitting(false);
-    }
-  };
-  const applyCharacterTransferToPlayer = ({ cid, char, amount, note, time, displayAtEnd = true }) => {
-    const safeAmount = Math.max(0, Math.round(Number(amount) || 0));
-    if (!cid || !char || !safeAmount) return null;
-    const safeNote = sanitizeText(note || "", 60);
-    const now = Number(time) || Date.now();
-    const transferMsg = {
-      id: gid(),
-      role: "transfer",
-      fromType: "character",
-      fromId: cid,
-      fromName: char.name || "角色",
-      toType: "player",
-      toName: getPlayerDisplayName(),
-      amount: safeAmount,
-      note: safeNote,
-      content: safeNote ? `轉帳 $${formatMoney(safeAmount)}｜${safeNote}` : `轉帳 $${formatMoney(safeAmount)}`,
-      time: now,
-    };
-    setWallet((w) => ({
-      ...(w || { balance: 0, transactions: [], assets: [] }),
-      balance: Math.max(0, (w?.balance || 0) + safeAmount),
-      transactions: [{
-        id: gid(),
-        type: "income",
-        amount: safeAmount,
-        note: safeNote ? stripUserPlaceholder(`收到${char.name || "角色"}轉帳｜${safeNote}`) : `收到${char.name || "角色"}轉帳`,
-        time: now,
-        charId: cid,
-        source: "chat",
-      }, ...(w?.transactions || [])].slice(0, 1000),
-    }));
-    setCharacterWallets((prev) => {
-      const cw = prev[cid] || { balance: 0, transactions: [], summary: "", generatedAt: Date.now() };
-      return {
-        ...prev,
-        [cid]: {
-          ...cw,
-          balance: Math.max(0, (cw.balance || 0) - safeAmount),
-          transactions: [{
-            id: gid(),
-            type: "expense",
-            amount: safeAmount,
-            note: safeNote ? stripUserPlaceholder(`轉帳給玩家｜${safeNote}`) : "轉帳給玩家",
-            time: now,
-          }, ...(cw.transactions || [])].slice(0, CHARACTER_WALLET_TX_LIMIT),
-        },
-      };
-    });
-    setChatHistory((h) => {
-      const next = [...(h[cid] || []), transferMsg];
-      return { ...h, [cid]: displayAtEnd ? next : next };
-    });
-    return transferMsg;
-  };
-  const normalizeWalletData = (data) => {
-    const txs = Array.isArray(data?.transactions) ? data.transactions : [];
-    return {
-      balance: Math.max(0, Math.round(Number(data?.balance) || 0)),
-      transactions: txs.slice(0, CHARACTER_WALLET_TX_LIMIT).map((t) => ({
-        id: t.id || gid(),
-        type: t.type === "income" ? "income" : "expense",
-        amount: Math.max(1, Math.round(Number(t.amount) || 1)),
-        note: stripUserPlaceholder(sanitizeText(t.note || "", 80)) || (t.type === "income" ? "入帳" : "消費"),
-        time: Number(t.time) || Date.now(),
-      })),
-      summary: stripUserPlaceholder(sanitizeText(data?.summary || "", 120)),
-      walletProfile: stripUserPlaceholder(sanitizeText(data?.walletProfile || data?.summary || "", 220)),
-      generatedAt: data?.generatedAt || Date.now(),
-      refreshedAt: data?.refreshedAt || data?.generatedAt || Date.now(),
-      lastRefreshedSlot: data?.lastRefreshedSlot || null,
-    };
-  };
-  const reconcileWalletLedger = (openingBalance, transactions, limit = CHARACTER_WALLET_TX_LIMIT) => {
-    let balance = Math.max(0, Math.round(Number(openingBalance) || 0));
-    const reconciled = [];
-    const ordered = [...(transactions || [])].sort((a, b) => Number(a?.time || 0) - Number(b?.time || 0));
-    ordered.forEach((tx) => {
-      if (!tx) return;
-      const type = tx.type === "income" ? "income" : "expense";
-      let amount = Math.max(1, Math.round(Number(tx.amount) || 0));
-      if (!amount) return;
-      if (type === "expense") {
-        if (balance <= 0) return;
-        if (amount > balance) amount = balance;
-        if (amount <= 0) return;
-        balance -= amount;
-      } else {
-        balance += amount;
-      }
-      reconciled.push({
-        id: tx.id || gid(),
-        type,
-        amount,
-        note: stripUserPlaceholder(sanitizeText(tx.note || "", 80)) || (type === "income" ? "入帳" : "消費"),
-        time: Number(tx.time) || Date.now(),
-      });
-    });
-    return { balance, transactions: reconciled.slice(0, limit).reverse() };
-  };
-  const buildWalletRoleProfile = (char) => [
-    char.description ? `角色描述：${sanitizeText(char.description, 900)}` : "",
-    char.systemPrompt ? `系統提示詞：${sanitizeText(char.systemPrompt, 600)}` : "",
-    char.personality ? `個性：${sanitizeText(char.personality, 500)}` : "",
-    char.scenario ? `情境：${sanitizeText(char.scenario, 500)}` : "",
-    char.relationshipToUser ? `與玩家關係：${sanitizeText(char.relationshipToUser, 120)}` : "",
-    Array.isArray(char.tags) && char.tags.length ? `標籤：${sanitizeText(char.tags.join("、"), 120)}` : "",
-  ].filter(Boolean).join("\n");
-  const buildWalletRefreshHistory = (cw) => (cw?.transactions || [])
-    .slice(0, 3)
-    .map((t) => `${t.type === "income" ? "收入" : "支出"} ${formatMoney(t.amount)}：${stripUserPlaceholder(t.note)}`)
-    .join("\n");
-  const generateCharacterWallet = async (char, { mode = "initial" } = {}) => {
-    if (!char) return;
-    if (!canUseCurrentProvider()) { showToast(tr("請先完成 AI 連線設定（API Key）", "Please finish AI connection setup (API key) first", "先にAI接続設定（APIキー）を完了してください", "먼저 AI 연결 설정(API 키)을 완료해주세요")); return; }
-    setWalletGenLoading(true);
-    try {
-      const currentWallet = characterWallets[char.id] || null;
-      const walletProfile = currentWallet?.walletProfile || currentWallet?.summary || "";
-      const refreshHistory = buildWalletRefreshHistory(currentWallet);
-      const isRefresh = mode === "refresh";
-      const roleProfile = isRefresh ? "" : buildWalletRoleProfile(char);
-      const walletPrompt = isRefresh
-        ? `請根據角色的錢包摘要，補充角色「${char.name}」在當前時段的新流水，只輸出有效 JSON。
-規則：
-1) 只生成 1~3 筆新的 transactions，內容必須是日常收入或日常支出。
-2) 不要生成轉帳事件，轉帳已由聊天室事件另外處理。
-3) 不要重做整個錢包，也不要清空既有交易；只回傳增量結果。
-4) balance 請回傳本次刷新後、可對帳的整數餘額起點；實際最後餘額會由程式依流水逐筆計算。
-5) summary 與 walletProfile 原樣沿用，不要重寫成全新摘要。
-6) 所有支出必須能被目前餘額支撐，若錢不夠，請改成較小額支出、臨時收入、借貸、預支，或直接不產生支出。
-7) time 使用目前時間附近的毫秒 timestamp，可用 ${Date.now()} 往前推。
-格式：
-{"balance":1200,"summary":"原摘要可沿用","walletProfile":"原摘要可沿用","transactions":[{"type":"income","amount":300,"note":"午班收入","time":1710000000000}]}
-
-錢包摘要：
-${walletProfile || "（無）"}
-
-最近流水摘要：
-${refreshHistory || "（無）"}
-
-角色設定補充：已由 walletProfile 取代，刷新時不要重新閱讀完整角色設定。`
-        : `請根據角色設定，生成角色「${char.name}」自己的錢包狀態與錢包摘要，只輸出有效 JSON。
-規則：
-1) balance 是合理餘額，整數，不要太誇張。
-2) transactions 產生 8~12 筆，包含 income/expense，金額與備註要貼近角色職業、生活、興趣、作息、社交圈。
-3) 收入/支出要明顯符合角色身分，不要出現與角色設定衝突的來源或消費。例：學生不要有高薪月薪；居家型角色不要頻繁高額外出消費；上班族收入可來自薪資/兼職/獎金，但不要莫名其妙像企業老闆。
-4) 若角色是醫生，收入/支出可部分和醫療、值班、書籍、交通有關，但不能全部都醫療；也要有飲食、娛樂、興趣、人際等生活花費。
-5) 不要提到 {{user}}，這是角色自己的錢包。
-6) 另外產生一份只用於錢包的 summary，並同步產生 walletProfile。walletProfile 只保留職業、收入來源、消費習慣、生活風格、財務風格等財務相關資訊，不要包含對 {{user}} 的態度、性行為、曖昧互動或私密感情。
-7) walletProfile 會用於之後的錢包刷新，請寫得簡短、穩定、方便長期重複使用。
-8) 所有支出必須能被目前餘額支撐，若錢不夠，請改成較小額支出、臨時收入、借貸、預支，或直接不產生支出。
-9) 每筆流水的 note 要像角色真的會有的消費/收入，不要是泛用模板。
-10) time 使用目前時間附近的毫秒 timestamp，可用 ${Date.now()} 往前推。
-格式：
-{"balance":1200,"summary":"一句 20~50 字生活摘要","walletProfile":"一句更短的錢包摘要","transactions":[{"type":"income","amount":3000,"note":"薪資入帳","time":1710000000000}]}
-
-角色設定：
-${roleProfile || "（無）"}`;
-      const raw = await callAI([{
-        role: "user",
-        content: `${getOutputLanguageDirective()}\n\n${walletPrompt}`,
-      }], apiConfig, "你是角色生活流水生成器，只能輸出有效 JSON。");
-      const match = String(raw || "").match(/\{[\s\S]*\}/);
-      if (!match) throw new Error("模型未回傳 JSON");
-      const parsed = JSON.parse(match[0]);
-      const next = normalizeWalletData(parsed);
-      const refreshedAt = Date.now();
-      const lastRefreshedSlot = getWalletTimeSlot(refreshedAt);
-      setCharacterWallets((prev) => {
-        const current = prev[char.id] || { balance: 0, transactions: [], summary: "", generatedAt: Date.now() };
-        const mergedTransactions = isRefresh
-          ? [...(next.transactions || []), ...(current.transactions || [])].slice(0, CHARACTER_WALLET_TX_LIMIT)
-          : (next.transactions || []).slice(0, CHARACTER_WALLET_TX_LIMIT);
-        const orderedTransactions = [...mergedTransactions].sort((a, b) => Number(a?.time || 0) - Number(b?.time || 0));
-        const openingBalance = isRefresh ? (current.balance || 0) : (Number(parsed.balance) || 0);
-        const reconciled = reconcileWalletLedger(openingBalance, orderedTransactions, CHARACTER_WALLET_TX_LIMIT);
-        return {
-          ...prev,
-          [char.id]: {
-            ...current,
-            ...next,
-            summary: next.summary || current.summary || "",
-            walletProfile: isRefresh ? (current.walletProfile || current.summary || "") : (next.walletProfile || next.summary || current.walletProfile || current.summary || ""),
-            balance: reconciled.balance,
-            transactions: reconciled.transactions,
-            refreshedAt,
-            lastRefreshedSlot,
-          },
-        };
-      });
-      showToast(isRefresh ? `${char.name} 的錢包已刷新` : `${char.name} 的錢包已更新`);
-    } catch (err) {
-      showToast(`${tr("角色錢包生成失敗", "Character wallet generation failed", "キャラのウォレット生成に失敗しました", "캐릭터 지갑 생성에 실패했습니다")}：${sanitizeText(err?.message || tr("未知錯誤", "Unknown error", "不明なエラー", "알 수 없는 오류"), 120)}`);
-    }
-    setWalletGenLoading(false);
-  };
-  const regenerateCharacterWallet = async (char) => {
-    if (!char) return;
-    const ok = window.confirm(tr("重新生成會清空舊的錢包資料，並重新讀取角色設定建立新錢包，確定要繼續嗎？", "Regenerating will clear the old wallet data and rebuild a new wallet from the character settings. Continue?", "再生成すると古いウォレットデータが消去され、キャラ設定を読み直して新しいウォレットが作成されます。続けますか？", "다시 생성하면 기존 지갑 데이터가 지워지고 캐릭터 설정을 다시 읽어 새 지갑이 만들어집니다. 계속할까요?"));
-    if (!ok) return;
-    setCharacterWallets((prev) => ({ ...prev, [char.id]: { balance: 0, transactions: [], summary: "", generatedAt: Date.now() } }));
-    await generateCharacterWallet(char, { mode: "initial" });
-  };
-  const clearWalletData = () => {
-    if (!window.confirm(tr("確定要清除錢包頁面的資料嗎？", "Clear the wallet page data?", "ウォレットページのデータを消去しますか？", "지갑 페이지 데이터를 지울까요?"))) return;
-    if (!window.confirm(tr("請再次確認：這只會清除錢包頁面內容，不會影響聊天室，確定要繼續嗎？", "Please confirm again: this only clears the wallet page content and won't affect chats. Continue?", "再確認してください。これはウォレットページの内容のみを消去し、チャットには影響しません。続けますか？", "다시 확인해주세요. 이것은 지갑 페이지만 지우며 채팅에는 영향을 주지 않습니다. 계속할까요?"))) return;
-    setWallet(defaultAppState.wallet); setCharacterWallets({}); setWalletSettingsPage("main"); setWalletSettingsOpen(false);
-    showToast(tr("錢包資料已清除", "Wallet data cleared", "ウォレットデータを消去しました", "지갑 데이터를 지웠습니다"));
-  };
   const renderWallet = () => walletSettingsOpen && walletSettingsPage === "settings"
     ? <WalletSettingsApp tr={tr} onBack={() => setWalletSettingsPage("main")} onClear={clearWalletData} />
     : <WalletLedgerView wallet={wallet} setWallet={setWallet} characters={characters} closeApp={closeApp} openSettings={() => { setWalletSettingsPage("settings"); setWalletSettingsOpen(true); }} tr={tr} formatMoney={formatMoney} displayWalletText={displayWalletText} sanitizeUserImageUrl={sanitizeUserImageUrl} />;
@@ -6245,164 +3124,52 @@ ${roleProfile || "（無）"}`;
     formatMoney={formatMoney} displayWalletText={displayWalletText} armAppClickSuppression={armAppClickSuppression}
     suppressAppClickUntilRef={suppressAppClickUntilRef} gid={gid}
   />;
-  const renderPlaceholder = (i, n) => (<div className="mp-page"><div className="mp-hdr"><div className="mp-back" onClick={closeApp}>←</div><div className="mp-htitle">{i} {n}</div></div><div className="mp-empty" style={{flex:1}}><div className="mp-empty-i">{i}</div><div className="mp-empty-t">{t("comingSoon")}<br/>{t("stayTuned")}</div></div></div>);
-  const renderGame = () => <GameCenter page={gamePage} setPage={setGamePage} closeApp={closeApp} t={t} tr={tr} />;
-  const renderBook = () => <AnswerBookApp closeApp={closeApp} title={t("answerBook")} />;
-  const renderApp = () => {
-    switch(currentApp) {
-      case "chat": return renderChat();
-      case "status": return renderStatus();
-      case "social": return renderSocial();
-      case "lorebook": return renderLorebook();
-      case "characters": return renderCharacters();
-      case "settings": return renderSettings();
-      case "player": return renderPlayer();
-      case "wallet": return renderWallet();
-      case "gallery": return renderPlaceholder("🖼️", t("gallery"));
-      case "game": return renderGame();
-      case "petHome": return <PetHome onClose={closeApp} />;
-      case "lbook": return renderBook();
-      case "notebook": return renderPlaceholder("📒", t("notebook"));
-      case "phone": return renderPhone();
-      default: return null;
-    }
-  };
-  const onPointerDragStartApp = (e, appId, fromArea) => {
-    if (e.button !== undefined && e.button !== 0) return;
-    e.stopPropagation();
-    e.preventDefault();
-    swipeStartXRef.current = null;
-    swipeStartYRef.current = null;
-    clearTimeout(edgeTurnTimerRef.current);
-    edgeTurnTimerRef.current = null;
-    edgeTurnDirRef.current = null;
-    setIsDraggingApp(true);
-    setPointerDrag({
-      appId,
-      fromArea,
-      startX: e.clientX || 0,
-      startY: e.clientY || 0,
-      x: e.clientX || 0,
-      y: e.clientY || 0,
-      moved: false,
-    });
-  };
-  const cancelPointerDrag = () => {
-    setPointerDrag(null);
-    setIsDraggingApp(false);
-    clearTimeout(edgeTurnTimerRef.current);
-    edgeTurnTimerRef.current = null;
-    edgeTurnDirRef.current = null;
-  };
-  const onDropToHome = (e, slotIndex) => {
-    e.preventDefault();
-    try {
-      const { appId } = JSON.parse(e.dataTransfer.getData("text/plain"));
-      moveAppToHomeSlot(appId, slotIndex);
-    } catch (_) {}
-  };
-  const onDropToHomeGrid = (e, pageIdx) => {
-    e.preventDefault();
-    // 目前以主畫面(中間頁)為主：拖放一律落在中間頁 4x3
-    const targetPage = 1;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const relX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
-    const relY = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
-    const col = Math.max(0, Math.min(3, Math.floor((relX / rect.width) * 4)));
-    const row = Math.max(0, Math.min(2, Math.floor((relY / rect.height) * 3)));
-    const slot = targetPage * PAGE_SIZE + row * 4 + col;
-    onDropToHome(e, slot);
-  };
-  const onDropToDock = (e, index) => {
-    e.preventDefault();
-    try {
-      const { appId } = JSON.parse(e.dataTransfer.getData("text/plain"));
-      moveAppToDock(appId, index);
-    } catch (_) {}
-  };
-  const onDropToDockContainer = (e) => {
-    e.preventDefault();
-    try {
-      const { appId } = JSON.parse(e.dataTransfer.getData("text/plain"));
-      const rect = e.currentTarget.getBoundingClientRect();
-      const relX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
-      const slotCount = Math.max(1, dockApps.length);
-      const ratio = relX / rect.width;
-      const targetIndex = Math.max(0, Math.min(dockApps.length, Math.round(ratio * slotCount)));
-      moveAppToDock(appId, targetIndex);
-    } catch (_) {}
-  };
-  const onHomeDragOverPageEdge = (e) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX;
-    const edge = 28;
-    const maxPage = Math.max(0, homePages.length - 1);
-    if (x <= rect.left + edge) setHomePage(p => Math.max(0, p - 1));
-    else if (x >= rect.right - edge) setHomePage(p => Math.min(maxPage, p + 1));
-  };
+  if (locked) return (
+    <>
+      <style>{css}</style>
+      <style>{themeCss}</style>
+      <LockScreen
+        unlocking={unlocking}
+        notifications={lockNotifications}
+        onOpenNotification={openLockNotification}
+        onUnlock={handleUnlock}
+        gestureHandlers={{
+          onTouchStart: onLockTouchStart,
+          onTouchEnd: onLockTouchEnd,
+          onMouseDown: onLockMouseDown,
+          onMouseUp: onLockMouseUp,
+          onPointerDown: onLockPointerDown,
+          onPointerUp: onLockPointerUp,
+        }}
+        ft={ft}
+        fd={fd}
+        tr={tr}
+      />
+    </>
+  );
+
   return (<><style>{css}</style><style>{themeCss}</style><div className="mp-wrap" onClickCapture={blockRecentAppClicks}><div className="mp-phone">
-    <div className="mp-desk" onTouchStart={onHomeTouchStart} onTouchEnd={onHomeTouchEnd} onMouseDown={onHomeMouseDown} onMouseUp={onHomeMouseUp} onPointerDown={onHomePointerDown} onPointerUp={onHomePointerUp} onPointerMove={onHomePointerMove} onPointerCancel={cancelPointerDrag} onDragOver={onHomeDragOverPageEdge}><BarClock ft={ft} /><div className="mp-desk-scroll">
-      <DeskClock ft={ft} fd={fd} />
-      {activeChar && (isPeachTheme ? <PeachHero character={activeChar} imageUrl={sanitizeUserImageUrl(activeChar.heroImage)} statusText={(activeChar.statusText || activeChar.description || tr("在線中", "Online", "オンライン中", "온라인 중")).slice(0,34)} onOpen={() => openApp("status")} /> : <div className="mp-cw" onClick={(e)=>{e.stopPropagation(); openApp("status");}} onPointerUp={(e)=>openAppFromTouch("status", e)}><div className="mp-av">{sanitizeUserImageUrl(activeChar.avatar)?<img src={sanitizeUserImageUrl(activeChar.avatar)} alt=""/>:"??"}</div><div className="mp-cw-info"><div className="mp-cw-name">{activeChar.name}<span className="mp-active-badge">ACTIVE</span></div><div className="mp-cw-desc">{(activeChar.statusText || activeChar.description || tr("在線中", "Online", "オンライン中", "온라인 중")).slice(0,34)}</div><div style={{fontSize:10,color:"var(--mp-txt-l)",marginTop:2}}>{tr("更新：", "Updated: ", "更新: ", "업데이트: ")}{activeChar.statusUpdatedAt ? new Date(activeChar.statusUpdatedAt).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"}) : "--:--"}</div></div></div>)}
-      <div className="mp-home-mid">
-        <div className="mp-pages">
-          <div className="mp-pages-track" style={{ transform: `translateX(-${homePage * 100}%)` }}>
-            {homePages.map((apps, idx) => (
-              <div key={idx} className="mp-grid" onDragOver={(e)=>e.preventDefault()} onDrop={(e)=>onDropToHomeGrid(e, idx)}>
-                {Array.from({ length: PAGE_SIZE }).map((_, slotIdx) => {
-                  const app = apps[slotIdx] ? appById[apps[slotIdx]] : null;
-                  const absoluteIdx = idx * PAGE_SIZE + slotIdx;
-                  return (
-                    <div
-                      key={`slot-${absoluteIdx}`}
-                      className={`mp-icon ${app ? "" : "mp-icon-empty"}`}
-                      data-app-id={app?.id || undefined}
-                      onDragOver={(e)=>e.preventDefault()}
-                      onDrop={(e)=>onDropToHome(e, absoluteIdx)}
-                      data-drop-slot={absoluteIdx}
-                      onClick={(e)=>{ e.stopPropagation(); app && !isDraggingApp && Date.now() > suppressAppClickUntilRef.current && openApp(app.id); }}
-                      onPointerUp={(e)=>{ if (app && !isDraggingApp) openAppFromTouch(app.id, e); }}
-                      draggable={false}
-                      onPointerDown={(e)=>app && onPointerDragStartApp(e, app.id, "home")}
-                    >
-                      <div className={`mp-icon-c ${app?.iconUrl ? "mp-icon-c-img" : ""}`}>{app ? renderAppIcon(app, app.iconUrl ? 56 : 26) : ""}</div>
-                      <span className="mp-icon-l">{app ? app.name : ""}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>{!currentApp && <div className="mp-page-dots">
-      {homePages.map((_, idx) => <span key={idx} className={`mp-page-dot ${homePage===idx ? "active" : ""}`} />)}
-    </div>}<div className="mp-dock" data-drop-dock-wrap="1" onDragOver={(e)=>e.preventDefault()} onDrop={onDropToDockContainer} style={{justifyContent: "center", gap: dockApps.length <= 2 ? 22 : 14}}>
-      {dockApps.map((app, idx) => {
-        return (
-          <div
-            key={`dock-${idx}`}
-            className="mp-dock-i"
-            data-app-id={app.id}
-            onDragOver={(e)=>e.preventDefault()}
-            onDrop={(e)=>onDropToDock(e, idx)}
-            data-drop-dock={idx}
-            onClick={(e)=>{ e.stopPropagation(); !isDraggingApp && Date.now() > suppressAppClickUntilRef.current && openApp(app.id); }}
-            onPointerUp={(e)=>{ if (!isDraggingApp) openAppFromTouch(app.id, e); }}
-            draggable={false}
-            onPointerDown={(e)=>onPointerDragStartApp(e, app.id, "dock")}
-          >
-            {renderAppIcon(app, app.iconUrl ? 56 : 24)}
-          </div>
-        );
-      })}
-    </div></div>
-    {pointerDrag && pointerDrag.moved && (
-      <div style={{position:"fixed",left:pointerDrag.x-22,top:pointerDrag.y-22,width:44,height:44,borderRadius:14,background:"rgba(255,255,255,.92)",border:"1px solid rgba(231,197,214,.9)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,pointerEvents:"none",zIndex:9999,boxShadow:"0 8px 18px rgba(0,0,0,.15)"}}>
-        {appById[pointerDrag.appId]?.icon || "🧩"}
-      </div>
-    )}
-    {currentApp && renderApp()}
+    <HomeScreen
+      ft={ft} fd={fd} activeCharacter={activeChar} peachTheme={isPeachTheme} tr={tr} currentApp={currentApp}
+      pages={homePages} page={homePage} pageSize={PAGE_SIZE} appById={appById} dockApps={dockApps}
+      dragging={isDraggingApp} pointerDrag={pointerDrag} renderAppIcon={renderAppIcon}
+      gestureHandlers={{ onTouchStart: onHomeTouchStart, onTouchEnd: onHomeTouchEnd, onMouseDown: onHomeMouseDown, onMouseUp: onHomeMouseUp, onPointerDown: onHomePointerDown, onPointerUp: onHomePointerUp, onPointerMove: onHomePointerMove, onPointerCancel: cancelPointerDrag, onDragOver: onHomeDragOverPageEdge }}
+      onOpenStatus={() => openApp("status")} onOpenStatusFromTouch={(event) => openAppFromTouch("status", event)}
+      onDropGrid={onDropToHomeGrid} onDropSlot={onDropToHome} onDropDockContainer={onDropToDockContainer} onDropDockApp={onDropToDock}
+      onOpenApp={(appId) => { if (Date.now() > suppressAppClickUntilRef.current) openApp(appId); }}
+      onOpenFromTouch={openAppFromTouch} onPointerDragStart={onPointerDragStartApp}
+    />
+    <AppRouter currentApp={currentApp} closeApp={closeApp} t={t} tr={tr} game={{ page: gamePage, setPage: setGamePage }} yunyin={{ characters, apiConfig }} renderers={{
+      chat: renderChat,
+      status: renderStatus,
+      social: renderSocial,
+      lorebook: renderLorebook,
+      characters: renderCharacters,
+      settings: renderSettings,
+      player: renderPlayer,
+      wallet: renderWallet,
+      phone: renderPhone,
+    }} />
     {customCssGuideOpen && <CustomCssGuide onClose={() => setCustomCssGuideOpen(false)} />}
     <DesktopPet currentApp={currentApp} />
     {modal === "addChar" && <AddCharacterModal setModal={setModal} setEditingCharacter={setEditingCharacter} addCharacter={addCharacter} updateCharacter={updateCharacter} exportCharacter={exportCharacter} deleteCharacter={deleteCharacter} editingCharacter={editingCharacter} sanitizeUserImageUrl={sanitizeUserImageUrl} uiLanguage={uiLanguage} ttsConfig={ttsConfig} ttsVoices={ttsVoices.length ? ttsVoices : (ttsConfig.elevenlabs?.availableVoices || [])} onVoicePreview={previewCharacterVoice} />}
@@ -6550,7 +3317,7 @@ ${roleProfile || "（無）"}`;
           </div>
           <div className="mp-row">
             <div className="mp-lbl">{tr("要加入的角色", "Characters to add", "追加するキャラ", "추가할 캐릭터")}</div>
-            {renderGroupMemberGrid(groupCreateMemberIds, setGroupCreateMemberIds, groupCreateSearch, setGroupCreateSearch)}
+            <GroupMemberPicker characters={sortChatThreads(characters)} selectedIds={groupCreateMemberIds} setSelectedIds={setGroupCreateMemberIds} search={groupCreateSearch} setSearch={setGroupCreateSearch} tr={tr} showToast={showToast} />
           </div>
           <div className="mp-row">
             <div className="mp-lbl">{tr("群組聊天規則", "Group chat rules", "グループチャットのルール", "그룹 채팅 규칙")}</div>
@@ -6598,7 +3365,7 @@ ${roleProfile || "（無）"}`;
           </div>
           <div className="mp-row">
             <div className="mp-lbl">{tr("要加入的角色", "Characters to add", "追加するキャラ", "추가할 캐릭터")}</div>
-            {renderGroupMemberGrid(groupEditMemberIds, setGroupEditMemberIds, groupEditSearch, setGroupEditSearch)}
+            <GroupMemberPicker characters={sortChatThreads(characters)} selectedIds={groupEditMemberIds} setSelectedIds={setGroupEditMemberIds} search={groupEditSearch} setSearch={setGroupEditSearch} tr={tr} showToast={showToast} />
           </div>
           <div className="mp-row">
             <div className="mp-lbl">{tr("群組聊天規則", "Group chat rules", "グループチャットのルール", "그룹 채팅 규칙")}</div>

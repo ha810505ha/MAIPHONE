@@ -1,0 +1,6 @@
+import React from "react";
+import { ArrowDown } from "lucide-react";
+
+export default function DirectMessageList({ mode, containerStyle, backgroundLayer, sceneBar, messagesRef, messagesEndRef, onScroll, hasEarlier, onLoadEarlier, isTyping, showScrollToBottom, scrollButtonBottom, onScrollToBottom, tr, children }) {
+  return <div className={`mp-cr mp-chat-mode-${mode}`} style={containerStyle}>{backgroundLayer}{sceneBar}<div className="mp-msgs" ref={messagesRef} style={{ position: "relative", zIndex: 1 }} onScroll={(event) => onScroll(event.currentTarget)}>{hasEarlier && <div style={{ display: "flex", justifyContent: "center", padding: "6px 0 10px" }}><button type="button" className="mp-ibtn" style={{ fontSize: 11, padding: "4px 10px" }} onClick={(event) => { event.preventDefault(); event.stopPropagation(); onLoadEarlier(); }}>Load earlier messages</button></div>}{children}{isTyping && <div className="mp-typing"><span /><span /><span /></div>}<div ref={messagesEndRef} /></div>{showScrollToBottom && <button type="button" className="mp-scroll-bottom" style={{ bottom: scrollButtonBottom }} aria-label={tr("捲到最新訊息", "Scroll to latest message", "最新メッセージへ移動", "최신 메시지로 이동")} title={tr("捲到最新訊息", "Scroll to latest message", "最新メッセージへ移動", "최신 메시지로 이동")} onClick={onScrollToBottom}><ArrowDown size={23} strokeWidth={2.2} aria-hidden="true" /></button>}</div>;
+}

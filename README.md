@@ -118,3 +118,7 @@ npm run dev
 - 群聊與單聊各自保存自己的場景
 - 場景資訊會進入聊天上下文
 - 不同 API 供應商與模型的效果會有差異
+
+## 素材來源
+
+- 雲隱山莊（`yunyin/`）美術素材：[Modern Farm](https://limezu.itch.io/)（付費授權，不隨 repo 附上原始檔，需自行購買後放入 `yunyin/assets/`，見 [`yunyin/ASSETS_SETUP.md`](yunyin/ASSETS_SETUP.md)）

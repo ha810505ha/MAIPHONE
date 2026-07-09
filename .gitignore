@@ -2,8 +2,25 @@ node_modules
 dist
 .DS_Store
 android/.idea/
-backend/**/.dev.vars
-backend/**/.env
-backend/**/.env.*
-!backend/**/.env.example
-backend/**/.wrangler/
+backend/.env
+backend/.env.*
+!backend/.env.example
+backend/node_modules/
+backend/public/
+.pglite-dev/
+
+# Local prototypes that are not wired into the production app yet
+GachaGame.jsx
+card/
+chat-layout-preview.html
+chat-layout-preview.css
+
+# Private Yunyin assets stay out of Git
+yunyin/assets/
+
+# Local developer config / internal planning docs
+.claude/
+backend/docs/plan.md
+
+# 付費素材原始檔：授權禁止散布，repo 是 public 的所以不能進 git（build 產物 dist/ 已排除，不受影響）
+yunyin/assets/
