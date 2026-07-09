@@ -1,6 +1,10 @@
 const ZH_CHANGELOG = {
-  "1.2.1": [
-    "07/06 更新",
+  "1.2.2": [
+    "07/10 更新",
+    "「雲隱山莊」測試版開放！",
+    "本次先開放農田、秘境、商店等玩法，玩家可以開始體驗資源收集與經營內容。",
+    "人物角色調整功能目前暫未開放，會在後續版本繼續更新。",
+    "調整手機 App 部分畫面顯示不完全的問題，改善相簿、音樂、商店、地圖、瀏覽器與使用紀錄等資訊呈現。",
     "錢包全面改版：新增角色往來篩選、每月收支統計、週別圖表與月結回顧",
     "聊天室版型與訊息顯示優化，手機輸入可正常換行，改為點擊發送按鈕才送出訊息",
     "統一各款主題的版型設計，新增蜜桃慕斯與主題動態效果開關，並改善特效呈現",
@@ -59,10 +63,10 @@ const ZH_CHANGELOG = {
 };
 
 const TRANSLATED_CHANGELOG = {
-  "1.2.1": {
-    en: ["07/06 Update", "Redesigned Wallet with character filters, monthly income and expense totals, weekly charts, and monthly recaps", "Improved chat layout and message display; Enter now creates a new line on mobile and messages are sent only with the Send button", "Unified layouts across themes, added Peach Mousse and a theme-effects toggle, and refined visual effects", "Improved Settings, Custom CSS, and overall app interface stability", "Expanded the character phone with themed apps and improved chat refresh and player contact notes", "Added a global interface font selector"],
-    ja: ["07/06 更新", "キャラクター別フィルター、月間収支、週別グラフ、月次まとめを備えたウォレット画面に刷新", "チャットのレイアウトとメッセージ表示を改善し、モバイルでは Enter で改行、送信ボタンでのみ送信するよう変更", "各テーマのレイアウトを統一し、ピーチムースとテーマ演出スイッチを追加、エフェクト表示を改善", "設定、カスタム CSS、各アプリ画面の構成と安定性を改善", "テーマ対応アプリを備えたキャラクタースマホを拡張し、チャット更新とプレイヤー連絡先メモを改善", "全体のインターフェースフォント選択機能を追加"],
-    ko: ["07/06 업데이트", "캐릭터별 필터, 월간 수입·지출, 주간 차트와 월간 결산을 포함하도록 지갑 화면 개편", "채팅 레이아웃과 메시지 표시를 개선하고 모바일에서 Enter는 줄바꿈, 전송 버튼을 눌러야만 메시지가 전송되도록 변경", "모든 테마의 레이아웃을 통일하고 피치 무스와 테마 효과 스위치를 추가했으며 효과 표현 개선", "설정, 사용자 CSS 및 여러 앱 화면의 구조와 안정성 개선", "테마형 앱을 갖춘 캐릭터 휴대폰을 확장하고 채팅 새로고침과 플레이어 연락처 메모 개선", "전체 인터페이스 글꼴 선택 기능 추가"],
+  "1.2.2": {
+    en: ["07/10 Update", "Yunyin Villa beta is now open!", "This release opens farming, expeditions, shops, and other systems so players can begin collecting resources and managing the villa.", "Character customization is not available yet and will continue to be updated in future versions.", "Adjusted several phone app screens where text or information could be cut off, improving display in Gallery, Music, Shop, Map, Browser, and Screen Time.", "Redesigned Wallet with character filters, monthly income and expense totals, weekly charts, and monthly recaps", "Improved chat layout and message display; Enter now creates a new line on mobile and messages are sent only with the Send button", "Unified layouts across themes, added Peach Mousse and a theme-effects toggle, and refined visual effects", "Improved Settings, Custom CSS, and overall app interface stability", "Expanded the character phone with themed apps and improved chat refresh and player contact notes", "Added a global interface font selector"],
+    ja: ["07/10 更新", "「雲隠山荘」ベータ版を公開しました！", "今回は農場、秘境、ショップなどの遊びを先行公開し、資源収集と経営要素を体験できるようになりました。", "キャラクター調整機能は現在未公開で、今後のバージョンで引き続き更新予定です。", "スマホアプリの一部画面で情報が表示しきれない問題を調整し、アルバム、音楽、ショップ、地図、ブラウザ、使用履歴の表示を改善しました。", "キャラクター別フィルター、月間収支、週別グラフ、月次まとめを備えたウォレット画面に刷新", "チャットのレイアウトとメッセージ表示を改善し、モバイルでは Enter で改行、送信ボタンでのみ送信するよう変更", "各テーマのレイアウトを統一し、ピーチムースとテーマ演出スイッチを追加、エフェクト表示を改善", "設定、カスタム CSS、各アプリ画面の構成と安定性を改善", "テーマ対応アプリを備えたキャラクタースマホを拡張し、チャット更新とプレイヤー連絡先メモを改善", "全体のインターフェースフォント選択機能を追加"],
+    ko: ["07/10 업데이트", "「운은산장」 베타가 열렸습니다!", "이번에는 농장, 비경, 상점 등의 콘텐츠를 먼저 열어 자원 수집과 경영 요소를 체험할 수 있습니다.", "캐릭터 조정 기능은 아직 제공되지 않으며 이후 버전에서 계속 업데이트될 예정입니다.", "휴대폰 앱 일부 화면에서 정보가 잘리는 문제를 조정해 앨범, 음악, 상점, 지도, 브라우저, 사용 기록 표시를 개선했습니다.", "캐릭터별 필터, 월간 수입·지출, 주간 차트와 월간 결산을 포함하도록 지갑 화면 개편", "채팅 레이아웃과 메시지 표시를 개선하고 모바일에서 Enter는 줄바꿈, 전송 버튼을 눌러야만 메시지가 전송되도록 변경", "모든 테마의 레이아웃을 통일하고 피치 무스와 테마 효과 스위치를 추가했으며 효과 표현 개선", "설정, 사용자 CSS 및 여러 앱 화면의 구조와 안정성 개선", "테마형 앱을 갖춘 캐릭터 휴대폰을 확장하고 채팅 새로고침과 플레이어 연락처 메모 개선", "전체 인터페이스 글꼴 선택 기능 추가"],
   },
   "1.2.0": {
     en: ["07/04 Update", "Added Pet Home with pet care, free roaming, map interactions, desktop pets, and data backup", "Added Matcha Lemon and Sea Salt Soda themes with unified primary-action colors", "Added automatic social posts so characters can share updates on their own", "Added proactive character messages with per-character controls and frequency settings"],

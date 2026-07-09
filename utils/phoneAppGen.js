@@ -133,8 +133,8 @@ ${ctx}`;
   if (appId === "map") return `${G}
 
 請生成角色常去地點 JSON，輸出 JSON 且只能輸出 JSON。
-格式：{"places":[{"emoji":"🏪","name":"10字內","note":"12字內"}]}
-規則：3~5 個；note 透露生活習慣但不破壞懸念；不要 markdown。
+格式：{"places":[{"emoji":"🏪","name":"10字內","note":"24字內"}]}
+規則：3~5 個；note 透露生活習慣但不破壞懸念，必須是完整短句；不要 markdown。
 
 ${ctx}`;
   if (appId === "shop") return `${G}
@@ -188,7 +188,7 @@ export const sanitizePhoneAppData = (appId, parsed, prevData) => {
   }
   if (appId === "map") {
     const places = (Array.isArray(parsed?.places) ? parsed.places : []).slice(0, 5).map((p) => ({
-      emoji: sanitizeText(p?.emoji || "📍", 4), name: sanitizeText(p?.name || "", 12), note: sanitizeText(p?.note || "", 14),
+      emoji: sanitizeText(p?.emoji || "📍", 4), name: sanitizeText(p?.name || "", 12), note: sanitizeText(p?.note || "", 40),
     })).filter((p) => p.name);
     return places.length ? { places } : null;
   }
