@@ -315,7 +315,7 @@ export default function PhoneApp({
                     {data.photos.map((p, i) => (
                       <div key={i} style={{ ...cardS, borderRadius: 10, padding: 6 }}>
                         <div style={{ height: 88, borderRadius: 6, background: `linear-gradient(150deg, ${p.tone}, ${mixHex(p.tone, th.mode === "dark" ? "#000000" : "#ffffff")})` }} />
-                        <div style={{ fontSize: 10, color: th.text, marginTop: 6 }}>{p.caption}</div>
+                        <div style={{ fontSize: 10, color: th.text, marginTop: 6, lineHeight: 1.35, overflowWrap: "anywhere" }}>{p.caption}</div>
                         <div style={{ fontSize: 9, color: th.textSub }}>{p.time}</div>
                       </div>
                     ))}
@@ -328,8 +328,8 @@ export default function PhoneApp({
                     {data.nowPlaying && (
                       <div style={{ ...cardS, borderRadius: 18, padding: 16, textAlign: "center" }}>
                         <div style={{ width: 110, height: 110, margin: "0 auto", borderRadius: 14, background: `linear-gradient(150deg, ${th.accent}44, ${th.accent}11)`, display: "grid", placeItems: "center", fontSize: 38 }}>🎧</div>
-                        <div style={{ fontSize: 15, fontWeight: 900, color: th.text, marginTop: 12 }}>{data.nowPlaying.title}</div>
-                        <div style={{ fontSize: 11, color: th.textSub, marginTop: 2 }}>{data.nowPlaying.artist}</div>
+                        <div style={{ fontSize: 15, fontWeight: 900, color: th.text, marginTop: 12, lineHeight: 1.35, overflowWrap: "anywhere" }}>{data.nowPlaying.title}</div>
+                        <div style={{ fontSize: 11, color: th.textSub, marginTop: 2, lineHeight: 1.35, overflowWrap: "anywhere" }}>{data.nowPlaying.artist}</div>
                         <div style={{ height: 3, borderRadius: 99, background: th.cardBorder, marginTop: 12 }}>
                           <div style={{ width: `${Math.round(data.nowPlaying.progress * 100)}%`, height: "100%", borderRadius: 99, background: th.accent }} />
                         </div>
@@ -338,8 +338,8 @@ export default function PhoneApp({
                     <div style={{ fontSize: 11, fontWeight: 700, color: th.textSub, letterSpacing: 1 }}>{selectedChar.name}{tr("的歌單", "'s playlist", "のプレイリスト", "의 플레이리스트")}</div>
                     {data.playlist.map((s, i) => (
                       <div key={i} style={{ ...cardS, borderRadius: 10, padding: "8px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <div><div style={{ fontSize: 11.5, color: th.text, fontWeight: 700 }}>{s.title}</div><div style={{ fontSize: 9.5, color: th.textSub }}>{s.artist}</div></div>
-                        <span style={{ fontSize: 10, color: th.textSub }}>{s.length}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 11.5, color: th.text, fontWeight: 700, lineHeight: 1.35, overflowWrap: "anywhere" }}>{s.title}</div><div style={{ fontSize: 9.5, color: th.textSub, lineHeight: 1.35, overflowWrap: "anywhere" }}>{s.artist}</div></div>
+                        <span style={{ fontSize: 10, color: th.textSub, flex: "none" }}>{s.length}</span>
                       </div>
                     ))}
                   </div>
@@ -359,7 +359,7 @@ export default function PhoneApp({
                     {data.places.map((p, i) => (
                       <div key={i} style={{ ...cardS, borderRadius: 10, padding: "9px 12px", display: "flex", alignItems: "center", gap: 10 }}>
                         <span style={{ fontSize: 16 }}>{p.emoji}</span>
-                        <div><div style={{ fontSize: 11.5, color: th.text, fontWeight: 700 }}>{p.name}</div><div style={{ fontSize: 9.5, color: th.textSub }}>{p.note}</div></div>
+                        <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 11.5, color: th.text, fontWeight: 700 }}>{p.name}</div><div style={{ fontSize: 9.5, color: th.textSub, lineHeight: 1.45, whiteSpace: "normal", overflowWrap: "anywhere" }}>{p.note}</div></div>
                       </div>
                     ))}
                   </div>
@@ -372,8 +372,8 @@ export default function PhoneApp({
                     {data.orders.map((o) => (
                       <div key={o.id} style={{ ...cardS, borderRadius: 12, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10 }}>
                         <span style={{ fontSize: 18 }}>{o.emoji}</span>
-                        <div style={{ flex: 1 }}><div style={{ fontSize: 11.5, color: th.text, fontWeight: 700 }}>{o.item}</div><div style={{ fontSize: 9.5, color: th.textSub }}>{o.date}</div></div>
-                        <div style={{ textAlign: "right" }}>
+                        <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 11.5, color: th.text, fontWeight: 700, lineHeight: 1.35, overflowWrap: "anywhere" }}>{o.item}</div><div style={{ fontSize: 9.5, color: th.textSub }}>{o.date}</div></div>
+                        <div style={{ textAlign: "right", flex: "none" }}>
                           <div style={{ fontSize: 11.5, color: th.text, fontWeight: 700 }}>${formatMoney(o.price)}</div>
                           <div style={{ fontSize: 9, color: o.status === "shipping" ? "#E6B45A" : "#6FBF8E" }}>{o.status === "shipping" ? tr("配送中", "Shipping", "配送中", "배송 중") : tr("已送達", "Delivered", "配達済み", "배송 완료")}</div>
                         </div>
@@ -424,8 +424,8 @@ export default function PhoneApp({
                     <div style={{ fontSize: 11, fontWeight: 700, color: th.textSub, letterSpacing: 1, margin: "6px 0 2px" }}>{tr("搜尋紀錄", "Search history", "検索履歴", "검색 기록")}</div>
                     {data.searches.map((s, i) => (
                       <div key={i} style={{ ...cardS, borderRadius: 10, padding: "9px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <span style={{ fontSize: 11.5, color: th.text }}>{s.query}</span>
-                        <span style={{ fontSize: 9.5, color: th.textSub }}>{s.time}</span>
+                        <span style={{ fontSize: 11.5, color: th.text, flex: 1, minWidth: 0, lineHeight: 1.35, overflowWrap: "anywhere" }}>{s.query}</span>
+                        <span style={{ fontSize: 9.5, color: th.textSub, flex: "none", marginLeft: 8 }}>{s.time}</span>
                       </div>
                     ))}
                   </div>
@@ -446,15 +446,15 @@ export default function PhoneApp({
                         })}
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 8.5, color: th.textSub, marginTop: 4 }}><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div>
-                      {data.summary && <div style={{ fontSize: 10, color: th.textSub, marginTop: 8 }}>{data.summary}</div>}
+                      {data.summary && <div style={{ fontSize: 10, color: th.textSub, marginTop: 8, lineHeight: 1.45, overflowWrap: "anywhere" }}>{data.summary}</div>}
                     </div>
                     <div style={{ fontSize: 11, fontWeight: 700, color: th.textSub, letterSpacing: 1 }}>{tr("App 使用排行", "Top apps", "アプリ別", "앱 사용 순위")}</div>
                     {data.apps.map((a, i) => {
                       const maxM = Math.max(...data.apps.map((x) => x.minutes), 1);
                       return (
                         <div key={i} style={{ ...cardS, borderRadius: 10, padding: "8px 12px" }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5 }}>
-                            <span style={{ color: th.text }}>{a.icon} {a.name}</span><span style={{ color: th.textSub }}>{a.minutes} {tr("分", "min", "分", "분")}</span>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, minWidth: 0, fontSize: 11.5 }}>
+                            <span style={{ color: th.text, flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>{a.icon} {a.name}</span><span style={{ color: th.textSub, flex: "none", marginLeft: 8 }}>{a.minutes} {tr("分", "min", "分", "분")}</span>
                           </div>
                           <div style={{ height: 3, borderRadius: 99, background: th.cardBorder, marginTop: 6 }}>
                             <div style={{ width: `${Math.round((a.minutes / maxM) * 100)}%`, height: "100%", borderRadius: 99, background: th.accent }} />

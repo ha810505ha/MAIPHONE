@@ -1616,6 +1616,32 @@ ${targetReply || target.content || "（無文字）"}`;
     URL.revokeObjectURL(url);
     showToast(`${char.name || tr("角色", "character", "キャラ", "캐릭터")} ${tr("已匯出", "exported", "書き出しました", "내보냈습니다")}`);
   };
+  const LOCAL_APP_DATA_KEYS = [
+    "maliphone-pet-home",
+    "maliphone-pet-settings",
+    "maliphone-pet-cooldown-until",
+    "mali_yunyin_save_v1",
+    "mali_yunyin_crystals_v1",
+  ];
+  const getLocalAppDataSnapshot = () => LOCAL_APP_DATA_KEYS.reduce((snapshot, key) => {
+    try {
+      const value = localStorage.getItem(key);
+      if (value !== null) snapshot[key] = value;
+    } catch {}
+    return snapshot;
+  }, {});
+  const applyLocalAppDataSnapshot = (snapshot) => {
+    if (!snapshot || typeof snapshot !== "object") return;
+    LOCAL_APP_DATA_KEYS.forEach((key) => {
+      if (!Object.prototype.hasOwnProperty.call(snapshot, key)) return;
+      try {
+        const value = snapshot[key];
+        if (value === null || value === undefined) localStorage.removeItem(key);
+        else localStorage.setItem(key, String(value));
+      } catch {}
+    });
+    try { window.dispatchEvent(new Event("pet-settings-changed")); } catch {}
+  };
   const getExportableAppState = () => ({
     version: VERSION,
     exportedAt: new Date().toISOString(),
@@ -1652,6 +1678,7 @@ ${targetReply || target.content || "（無文字）"}`;
       uiLanguage,
       homeSlots,
       dockOrder,
+      localAppData: getLocalAppDataSnapshot(),
     },
   });
   const downloadJsonFile = (payload, filename) => {
@@ -1678,6 +1705,8 @@ ${targetReply || target.content || "（無文字）"}`;
       posts: Array.isArray(src?.posts) ? src.posts.length : 0,
       lorebooks: Array.isArray(src?.lorebooks) ? src.lorebooks.length : 0,
       playerProfile: !!src?.playerProfile,
+      petHome: !!src?.localAppData?.["maliphone-pet-home"],
+      yunyin: !!src?.localAppData?.["mali_yunyin_save_v1"],
     };
   };
   const applyImportedAppState = async (incoming) => {
@@ -1720,6 +1749,7 @@ ${targetReply || target.content || "（無文字）"}`;
       uiLanguage: src.uiLanguage || defaultAppState.uiLanguage,
       homeSlots: Array.isArray(src.homeSlots) && src.homeSlots.length === HOME_SLOT_COUNT ? src.homeSlots : Array.from({ length: HOME_SLOT_COUNT }, () => null),
       dockOrder: Array.isArray(src.dockOrder) && src.dockOrder.length ? src.dockOrder : DOCK_APPS,
+      localAppData: src.localAppData && typeof src.localAppData === "object" ? src.localAppData : {},
     };
     setCharacters(nextState.characters);
     setActiveCharId(nextState.activeCharId);
@@ -1751,6 +1781,7 @@ ${targetReply || target.content || "（無文字）"}`;
     setUiLanguage(nextState.uiLanguage);
     setHomeSlots(nextState.homeSlots);
     setDockOrder(nextState.dockOrder);
+    applyLocalAppDataSnapshot(nextState.localAppData);
     setActiveLorebookId(nextState.lorebooks[0]?.id || null);
     setCurrentChatChar(null);
     setCurrentChatGroup(null);

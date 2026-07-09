@@ -40,5 +40,13 @@ export default function AboutInfoSettings({ tr, version, currentChangelogTitle, 
                   </div>
                 )}
               </div>
+              <div className="mp-sg">
+                <div className="mp-sg-t">{tr("素材授權與致謝", "Asset credits and licenses", "素材ライセンスとクレジット", "소재 라이선스 및 크레딧")}</div>
+                <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.8}}>
+                  <div>{tr("部分雲隱山莊視覺素材使用 Modern Farm by limezu。", "Some Yunyin Villa visual assets use Modern Farm by limezu.", "雲隠山荘の一部ビジュアル素材には limezu の Modern Farm を使用しています。", "운은산장의 일부 시각 소재는 limezu의 Modern Farm을 사용합니다.")}</div>
+                  <div>{tr("授權摘要：可用於商業與非商業專案；不可轉售或散佈素材本體。", "License summary: allowed for commercial and non-commercial projects; asset files may not be resold or redistributed.", "ライセンス概要：商用・非商用プロジェクトで使用可能。素材ファイル自体の再販売・再配布は禁止です。", "라이선스 요약: 상업 및 비상업 프로젝트에 사용 가능하며, 소재 파일 자체의 재판매 또는 재배포는 금지됩니다.")}</div>
+                  <div><a href="https://limezu.itch.io/" target="_blank" rel="noreferrer">limezu.itch.io</a></div>
+                </div>
+              </div>
   </>;
 }
