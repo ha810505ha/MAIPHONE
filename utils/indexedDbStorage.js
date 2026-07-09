@@ -3,11 +3,40 @@ const DB_VERSION = 1;
 const STORE_NAME = "app_kv";
 const APP_STATE_KEY = "app_state";
 
-// 大資料各自獨立成分區，其餘小資料統一放 core 分區。
-// 儲存時只重寫「參照有變動」的分區，避免打一個字就整包重寫。
-const PARTITION_FIELDS = ["chatHistory", "chatBackgrounds", "posts", "phoneInboxCache", "phoneAppCache"];
-const CORE_KEY = "part_core";
-const partitionKey = (field) => `part_${field}`;
+// === 儲存格式（v3：per-entity） ===
+// 每個實體獨立一筆，包一層同步 metadata：
+//   { data, updatedAt, rev, deviceId, deleted }
+// 實體種類：
+//   ent_core          其餘小設定（含 charOrder）
+//   ent_char_<id>     單一角色卡
+//   ent_chat_<id>     單一角色（或群組）的對話
+//   ent_chatbg_<id>   單一聊天室背景（可能含 base64 圖）
+//   ent_posts         貼文（整包，追加為主、量小）
+//   ent_inboxCache    手機收件匣快取（不進 outbox）
+//   ent_appCache      手機 App 快取（不進 outbox）
+// 刪除用墓碑（deleted: true）保留，供未來雲端同步傳播刪除。
+// sync_outbox 記錄尚未上傳的實體 key → updatedAt，同步引擎上傳成功後移除。
+
+const ENT_PREFIX = "ent_";
+const CORE_KEY = "ent_core";
+const OUTBOX_KEY = "sync_outbox";
+const charKey = (id) => `ent_char_${id}`;
+const chatKey = (id) => `ent_chat_${id}`;
+const chatBgKey = (id) => `ent_chatbg_${id}`;
+const SINGLETON_ENTITIES = {
+  posts: "ent_posts",
+  phoneInboxCache: "ent_inboxCache",
+  phoneAppCache: "ent_appCache",
+  apiConfig: "ent_apiConfig",
+  ttsConfig: "ent_ttsConfig",
+};
+// 不上雲：快取類，以及含玩家 API key 的設定（金鑰只留在裝置本地）
+const NO_SYNC_KEYS = new Set(["ent_inboxCache", "ent_appCache", "ent_apiConfig", "ent_ttsConfig"]);
+
+// 舊版 v2 分區格式
+const V2_PARTITION_FIELDS = ["chatHistory", "chatBackgrounds", "posts", "phoneInboxCache", "phoneAppCache"];
+const V2_CORE_KEY = "part_core";
+const v2PartitionKey = (field) => `part_${field}`;
 
 const LEGACY_LOCAL_KEYS = [
   "mali_characters",
@@ -17,6 +46,21 @@ const LEGACY_LOCAL_KEYS = [
   "mali_memories",
   "mali_apiConfig",
 ];
+
+const getDeviceId = () => {
+  try {
+    let id = localStorage.getItem("mali_device_id");
+    if (!id) {
+      id = (typeof crypto !== "undefined" && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 11)}`;
+      localStorage.setItem("mali_device_id", id);
+    }
+    return id;
+  } catch {
+    return "unknown-device";
+  }
+};
 
 function openDb() {
   return new Promise((resolve, reject) => {
@@ -41,6 +85,28 @@ function readKv(key) {
     req.onerror = () => reject(req.error || new Error("IndexedDB read failed"));
     tx.oncomplete = () => db.close();
     tx.onerror = () => db.close();
+  }));
+}
+
+function readAllEntities() {
+  return openDb().then((db) => new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readonly");
+    const store = tx.objectStore(STORE_NAME);
+    const range = IDBKeyRange.bound(ENT_PREFIX, `${ENT_PREFIX}￿`);
+    const keysReq = store.getAllKeys(range);
+    const valuesReq = store.getAll(range);
+    tx.oncomplete = () => {
+      db.close();
+      const out = {};
+      const keys = keysReq.result || [];
+      const values = valuesReq.result || [];
+      for (let i = 0; i < keys.length; i += 1) out[keys[i]] = values[i];
+      resolve(out);
+    };
+    tx.onerror = () => {
+      db.close();
+      reject(tx.error || new Error("IndexedDB read failed"));
+    };
   }));
 }
 
@@ -96,70 +162,185 @@ function clearLegacyLocalStorage() {
   } catch {}
 }
 
-function splitState(state) {
-  const core = { ...state };
-  const parts = {};
-  for (const field of PARTITION_FIELDS) {
-    parts[field] = core[field];
+// === 記憶體中的儲存狀態 ===
+// lastSaved：每個實體上次寫入時的資料參照，儲存時比對決定要不要重寫
+// lastRevs：每個實體目前的版本號
+// outbox：尚未同步的實體 key → updatedAt（快取類除外）
+const mem = {
+  lastSaved: new Map(),
+  lastRevs: new Map(),
+  outbox: {},
+};
+
+const wrapEntity = (key, data, deleted = false) => {
+  const rev = (mem.lastRevs.get(key) || 0) + 1;
+  mem.lastRevs.set(key, rev);
+  return { data: deleted ? null : data, updatedAt: Date.now(), rev, deviceId: getDeviceId(), deleted };
+};
+
+// 把整包 app state 拆成實體 map：{ 實體key → 資料參照 }
+function splitStateToEntities(state) {
+  const {
+    characters = [],
+    chatHistory = {},
+    chatBackgrounds = {},
+    ...rest
+  } = state;
+  const entities = new Map();
+  const core = { ...rest };
+  for (const field of Object.keys(SINGLETON_ENTITIES)) {
+    entities.set(SINGLETON_ENTITIES[field], core[field]);
     delete core[field];
   }
-  return { core, parts };
-}
-
-// 記住每個分區上次寫入的參照，儲存時比對決定要不要重寫該分區
-const lastSaved = { core: null, parts: {} };
-
-async function writeStatePartitioned(state, force = false) {
-  const { core, parts } = splitState(state);
-  const entries = [];
-  const coreChanged = force || lastSaved.core === null ||
-    Object.keys(core).length !== Object.keys(lastSaved.core).length ||
-    Object.keys(core).some((k) => core[k] !== lastSaved.core[k]);
-  if (coreChanged) entries.push([CORE_KEY, core]);
-  for (const field of PARTITION_FIELDS) {
-    if (force || parts[field] !== lastSaved.parts[field]) {
-      entries.push([partitionKey(field), parts[field]]);
-    }
+  core.charOrder = characters.map((c) => c?.id).filter(Boolean);
+  entities.set(CORE_KEY, core);
+  for (const c of characters) {
+    if (c?.id) entities.set(charKey(c.id), c);
   }
-  await writeEntries(entries);
-  lastSaved.core = core;
-  lastSaved.parts = { ...parts };
+  for (const [id, msgs] of Object.entries(chatHistory)) {
+    entities.set(chatKey(id), msgs);
+  }
+  for (const [id, bg] of Object.entries(chatBackgrounds)) {
+    entities.set(chatBgKey(id), bg);
+  }
+  return entities;
 }
 
-async function readStatePartitioned() {
-  const core = await readKv(CORE_KEY);
+const coreChanged = (next, prev) => {
+  if (!prev) return true;
+  const nextKeys = Object.keys(next);
+  if (nextKeys.length !== Object.keys(prev).length) return true;
+  return nextKeys.some((k) => {
+    // charOrder 是每次重建的陣列，逐項比較避免天天誤判為變動
+    if (k === "charOrder") {
+      const a = next[k] || [], b = prev[k] || [];
+      return a.length !== b.length || a.some((v, i) => v !== b[i]);
+    }
+    return next[k] !== prev[k];
+  });
+};
+
+async function writeStateEntities(state, force = false) {
+  const entities = splitStateToEntities(state);
+  const writes = [];
+  let outboxDirty = false;
+  const markOutbox = (key, updatedAt) => {
+    if (NO_SYNC_KEYS.has(key)) return;
+    mem.outbox[key] = updatedAt;
+    outboxDirty = true;
+  };
+
+  for (const [key, data] of entities) {
+    const changed = force ||
+      (key === CORE_KEY ? coreChanged(data, mem.lastSaved.get(key)) : data !== mem.lastSaved.get(key));
+    if (!changed) continue;
+    const wrapped = wrapEntity(key, data);
+    writes.push([key, wrapped]);
+    markOutbox(key, wrapped.updatedAt);
+    mem.lastSaved.set(key, data);
+  }
+
+  // 消失的實體（角色被刪等）→ 墓碑，讓未來的同步能傳播刪除
+  for (const key of mem.lastSaved.keys()) {
+    if (key === CORE_KEY || entities.has(key)) continue;
+    const wrapped = wrapEntity(key, null, true);
+    writes.push([key, wrapped]);
+    markOutbox(key, wrapped.updatedAt);
+    mem.lastSaved.delete(key);
+  }
+
+  if (outboxDirty) writes.push([OUTBOX_KEY, { ...mem.outbox }]);
+  await writeEntries(writes);
+}
+
+// 從實體 map 還原成整包 app state
+function assembleState(defaultState, entities) {
+  const coreWrapped = entities[CORE_KEY];
+  if (!coreWrapped || coreWrapped.deleted) return null;
+  const state = { ...defaultState, ...coreWrapped.data };
+  const charOrder = Array.isArray(state.charOrder) ? state.charOrder : [];
+  delete state.charOrder;
+  const characters = [];
+  const chatHistory = {};
+  const chatBackgrounds = {};
+  for (const [key, wrapped] of Object.entries(entities)) {
+    if (!wrapped || wrapped.deleted) continue;
+    if (key.startsWith("ent_char_")) characters.push(wrapped.data);
+    else if (key.startsWith("ent_chat_") && !key.startsWith("ent_chatbg_")) chatHistory[key.slice("ent_chat_".length)] = wrapped.data;
+    else if (key.startsWith("ent_chatbg_")) chatBackgrounds[key.slice("ent_chatbg_".length)] = wrapped.data;
+  }
+  characters.sort((a, b) => {
+    const ai = charOrder.indexOf(a?.id), bi = charOrder.indexOf(b?.id);
+    return (ai < 0 ? charOrder.length : ai) - (bi < 0 ? charOrder.length : bi);
+  });
+  state.characters = characters;
+  state.chatHistory = chatHistory;
+  state.chatBackgrounds = chatBackgrounds;
+  for (const [field, key] of Object.entries(SINGLETON_ENTITIES)) {
+    const wrapped = entities[key];
+    if (wrapped && !wrapped.deleted) state[field] = wrapped.data;
+  }
+  return state;
+}
+
+// 載入後初始化記憶體狀態，讓後續 saveAppState 的參照比對有基準
+function primeMemory(state, entities) {
+  mem.lastSaved = splitStateToEntities(state);
+  mem.lastRevs = new Map();
+  for (const [key, wrapped] of Object.entries(entities || {})) {
+    if (wrapped?.rev) mem.lastRevs.set(key, wrapped.rev);
+  }
+}
+
+async function readV2PartitionedState() {
+  const core = await readKv(V2_CORE_KEY);
   if (!core) return null;
   const state = { ...core };
-  for (const field of PARTITION_FIELDS) {
-    const value = await readKv(partitionKey(field));
+  for (const field of V2_PARTITION_FIELDS) {
+    const value = await readKv(v2PartitionKey(field));
     if (value !== null && value !== undefined) state[field] = value;
   }
   return state;
 }
 
+async function migrateToEntities(migrated, oldKeysToDelete) {
+  mem.lastSaved = new Map();
+  mem.lastRevs = new Map();
+  mem.outbox = {};
+  await writeStateEntities(migrated, true);
+  await writeEntries(oldKeysToDelete.map((key) => [key, undefined]));
+}
+
 async function loadAppState(defaultState) {
-  const partitioned = await readStatePartitioned();
-  if (partitioned) {
-    const state = { ...defaultState, ...partitioned };
-    const { core, parts } = splitState(state);
-    lastSaved.core = core;
-    lastSaved.parts = { ...parts };
-    return state;
+  const entities = await readAllEntities();
+  const assembled = assembleState(defaultState, entities);
+  if (assembled) {
+    mem.outbox = (await readKv(OUTBOX_KEY)) || {};
+    primeMemory(assembled, entities);
+    return assembled;
   }
 
-  // 舊版單一 key 格式 → 遷移成分區格式後刪除舊 key
-  const savedLegacyKv = await readKv(APP_STATE_KEY);
-  if (savedLegacyKv) {
-    const migrated = { ...defaultState, ...savedLegacyKv };
-    await writeStatePartitioned(migrated, true);
-    await writeEntries([[APP_STATE_KEY, undefined]]);
+  // v2 分區格式 → 遷移
+  const v2 = await readV2PartitionedState();
+  if (v2) {
+    const migrated = { ...defaultState, ...v2 };
+    await migrateToEntities(migrated, [V2_CORE_KEY, ...V2_PARTITION_FIELDS.map(v2PartitionKey)]);
     return migrated;
   }
 
+  // v1 單一 blob 格式 → 遷移
+  const savedLegacyKv = await readKv(APP_STATE_KEY);
+  if (savedLegacyKv) {
+    const migrated = { ...defaultState, ...savedLegacyKv };
+    await migrateToEntities(migrated, [APP_STATE_KEY]);
+    return migrated;
+  }
+
+  // 最早的 localStorage 格式 → 遷移
   const legacy = readLegacyLocalStorage();
   if (legacy) {
     const migrated = { ...defaultState, ...legacy };
-    await writeStatePartitioned(migrated, true);
+    await migrateToEntities(migrated, []);
     clearLegacyLocalStorage();
     return migrated;
   }
@@ -167,7 +348,70 @@ async function loadAppState(defaultState) {
 }
 
 function saveAppState(state) {
-  return writeStatePartitioned(state);
+  return writeStateEntities(state);
 }
 
-export { loadAppState, saveAppState };
+// === 給未來同步引擎用的 API ===
+// 取得待同步清單（實體 key → 本地最後更新時間）
+async function getSyncOutbox() {
+  return { ...((await readKv(OUTBOX_KEY)) || {}) };
+}
+// 讀取單一實體（含 metadata 包裝），供上傳用
+function readEntity(key) {
+  return readKv(key);
+}
+// 套用從伺服器拉下來的實體（不進 outbox——那是本地變更專用）。
+// 回傳實際寫入的筆數；呼叫端若在 App 執行中收到 > 0，必須重新載入，
+// 否則畫面與 mem.lastSaved 還握著舊資料，下次存檔會把舊資料蓋回雲端。
+async function applyRemoteEntities(list) {
+  const writes = [];
+  const myDeviceId = getDeviceId();
+  for (const e of list || []) {
+    if (!e?.key || !e.key.startsWith(ENT_PREFIX)) continue;
+    // 這台裝置自己推上去又被拉回來的版本（echo）：本地已有，跳過，
+    // 免得呼叫端誤判「雲端有新資料」而觸發不必要的重載
+    if (e.deviceId === myDeviceId && (Number(e.rev) || 0) <= (mem.lastRevs.get(e.key) || 0)) continue;
+    writes.push([e.key, {
+      data: e.deleted ? null : (e.data ?? null),
+      updatedAt: Number(e.updatedAt) || Date.now(),
+      rev: Number(e.rev) || 1,
+      deviceId: e.deviceId || null,
+      deleted: !!e.deleted,
+    }]);
+    mem.lastRevs.set(e.key, Number(e.rev) || 1);
+  }
+  await writeEntries(writes);
+  return writes.length;
+}
+
+// 換帳號時清除本地所有實體與 outbox，之後由雲端資料重建。
+// 只能在確定接下來會從雲端完整拉取時呼叫。
+async function resetLocalEntities() {
+  const entities = await readAllEntities();
+  mem.lastSaved = new Map();
+  mem.lastRevs = new Map();
+  mem.outbox = {};
+  await writeEntries([
+    ...Object.keys(entities).map((key) => [key, undefined]),
+    [OUTBOX_KEY, {}],
+  ]);
+}
+
+// 清空待同步清單（切換帳號時用：舊帳號的未上傳項目不該推到新帳號）
+async function clearSyncOutbox() {
+  mem.outbox = {};
+  await writeEntries([[OUTBOX_KEY, {}]]);
+}
+
+// 上傳成功後把實體移出 outbox；墓碑實體順便真正刪除
+async function ackSynced(keys) {
+  const deletes = [];
+  for (const key of keys) {
+    delete mem.outbox[key];
+    const wrapped = await readKv(key);
+    if (wrapped?.deleted) deletes.push([key, undefined]);
+  }
+  await writeEntries([...deletes, [OUTBOX_KEY, { ...mem.outbox }]]);
+}
+
+export { loadAppState, saveAppState, getSyncOutbox, readEntity, ackSynced, applyRemoteEntities, clearSyncOutbox, resetLocalEntities, getDeviceId };

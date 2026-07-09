@@ -31,6 +31,18 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
+      # 雲隱山莊的美術素材是付費授權、禁止散布，不進這個 public repo（見 yunyin/ASSETS_SETUP.md）。
+      # 存放在私有的素材 repo，這裡用唯讀 PAT 抓下來放進 yunyin/assets/ 再 build；
+      # 素材 repo 沒設定（token 沒填）就跳過，遊戲會自動退回色塊/emoji 占位，不會讓部署失敗。
+      - name: Fetch private game assets
+        if: ${{ secrets.ASSETS_PAT != '' }}
+        run: |
+          git clone --depth 1 "https://x-access-token:${{ secrets.ASSETS_PAT }}@github.com/${{ secrets.ASSETS_REPO }}.git" tmp-assets
+          rm -rf tmp-assets/.git
+          mkdir -p yunyin/assets
+          cp -r tmp-assets/* yunyin/assets/
+          rm -rf tmp-assets
+
       - name: Build
         run: npm run build
 

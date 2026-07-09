@@ -1,65 +1,6 @@
 const MALIPHONE_AI_PROXY = "https://orange-butterfly-8390.d778105.workers.dev";
 const CURRENT_VERSION = "1.2.1";
 
-const CHANGELOG = {
-  "1.2.1": [
-    "07/06 更新",
-    "錢包全面改版：新增角色往來篩選、每月收支統計、週別圖表與月結回顧",
-    "聊天室版型與訊息顯示優化，手機輸入可正常換行，改為點擊發送按鈕才送出訊息",
-    "統一各款主題的版型設計，新增蜜桃慕斯與主題動態效果開關，並改善特效呈現",
-    "改善設定、自訂 CSS 與多個 App 的介面結構及操作穩定性",
-    "調整角色手機 App：新增主題化桌面、相簿、音樂、地圖、商店、日記、瀏覽與使用紀錄，並改善聊天刷新與玩家備註",
-    "新增全站字體選擇功能，可依喜好切換介面字體",
-  ],
-  "1.2.0": [
-    "07/04 更新",
-    "新增寵物小屋，支援寵物照顧、自由活動、地圖互動、桌面小寵物與資料備份",
-    "新增抹茶檸檬與海鹽汽水主題，統一主要操作按鈕的配色",
-    "新增社群自動發文功能，角色會依設定自行分享近況",
-    "新增聊天室角色主動訊息，可為每位角色設定開關與互動頻率",
-  ],
-  "1.1.9": [
-    "06/29 更新",
-    "新增角色心聲功能，支援自動生成、手動查看與心聲紀錄",
-    "新增角色語音功能（測試版），支援 ElevenLabs 聲線設定、試聽與聊天室手動播放",
-  ],
-  "1.1.8": [
-    "06/25 更新",
-    "新增英文、日文、韓文介面語言，角色回應會根據 UI 語言設定回覆",
-    "新增聊天室背景上傳功能",
-    "調整現實模式的玩家對話框",
-  ],
-  "1.1.6": [
-    "06/19 更新",
-    "API 新增 DeepSeek",
-    "聊天室新增群聊功能",
-    "聊天室新增場景設定",
-    "新增聊天室釘選功能",
-  ],
-  "1.1.5": [
-    "06/13 更新",
-    "API 新增 Vertex AI",
-    "修正角色相關設定與 UI 顯示",
-  ],
-  "1.1.4": [
-    "06/03 更新",
-    "修正 Gemma / 角色相關設定與 UI 顯示",
-  ],
-  "1.1.3": [
-    "06/02 更新",
-    "加入角色狀態 / 設定 / 匯入 / 匯出",
-    "修正角色與聊天顯示",
-    "修正個人資料設定",
-    "提升設定穩定性",
-  ],
-  "1.1.2": [
-    "05/28 更新",
-    "加入 AI / 對話 / 記憶 / 角色卡",
-    "加入 AIRP 與聊天提示詞",
-    "新增角色管理",
-    "修正部分錯誤",
-  ],
-};
 
 const API_PROVIDERS = [
   { id: "openai", name: "OpenAI", baseUrl: "https://api.openai.com/v1", models: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"] },
@@ -84,6 +25,7 @@ const DEFAULT_APPS = [
   { id: "wallet", name: "錢包", icon: "💰", iconUrl: "./app-icons/wallet.png?v=1.1.5" },
   { id: "game", name: "遊戲中心", icon: "🎮", iconUrl: "./app-icons/game.png?v=1.1.7" },
   { id: "petHome", name: "寵物小屋", icon: "🐾" },
+  { id: "yunyin", name: "雲隱山莊", icon: "⛰️" },
   { id: "lbook", name: "解答之書", icon: "📖", iconUrl: "./app-icons/book.png?v=1.1.1" },
   { id: "notebook", name: "筆記", icon: "📒", iconUrl: "./app-icons/notes.png?v=1.1.5" },
   { id: "settings", name: "設定", icon: "⚙️", iconUrl: "./app-icons/settings.png?v=1.1.5" },
@@ -93,7 +35,7 @@ const DEFAULT_APPS = [
 
 const DOCK_APPS = ["chat", "social", "characters", "settings"];
 
-export { CURRENT_VERSION as VERSION, CHANGELOG, API_PROVIDERS, DEFAULT_APPS, DOCK_APPS };
+export { CURRENT_VERSION as VERSION, API_PROVIDERS, DEFAULT_APPS, DOCK_APPS };
 
 
 
