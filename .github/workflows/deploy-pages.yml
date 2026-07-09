@@ -33,9 +33,12 @@ jobs:
 
       # Fetch private Yunyin assets at build time. Keep yunyin/assets out of Git.
       - name: Fetch private game assets
-        if: ${{ secrets.ASSETS_PAT != '' && secrets.ASSETS_REPO != '' }}
+        if: ${{ env.ASSETS_PAT != '' && env.ASSETS_REPO != '' }}
+        env:
+          ASSETS_PAT: ${{ secrets.ASSETS_PAT }}
+          ASSETS_REPO: ${{ secrets.ASSETS_REPO }}
         run: |
-          git clone --depth 1 "https://x-access-token:${{ secrets.ASSETS_PAT }}@github.com/${{ secrets.ASSETS_REPO }}.git" tmp-assets
+          git clone --depth 1 "https://x-access-token:${ASSETS_PAT}@github.com/${ASSETS_REPO}.git" tmp-assets
           rm -rf tmp-assets/.git
           mkdir -p yunyin/assets
           cp -r tmp-assets/* yunyin/assets/
