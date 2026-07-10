@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { parseSillyTavernJSON, parseSillyTavernPNG } from "../../utils/characterParser";
 import { createDefaultVoiceSettings, normalizeCharacterVoiceSettings } from "../../utils/voiceSettings";
+import { calculateCoverCrop, calculateCropDrag, createImageCropState, drawCoverCrop } from "../../utils/imageCrop";
 
 export default function AddCharacterModal({ setModal, setEditingCharacter, addCharacter, updateCharacter, exportCharacter, deleteCharacter, editingCharacter, sanitizeUserImageUrl, uiLanguage, ttsConfig, ttsVoices, onVoicePreview }) {
   const [tab, setTab] = useState("manual");
@@ -47,7 +48,7 @@ export default function AddCharacterModal({ setModal, setEditingCharacter, addCh
       const img = new Image();
       img.onload = () => {
         setAvatarOriginal(safe);
-        setAvatarCrop({ src: safe, width: img.width, height: img.height, zoom: 1, panX: 0, panY: 0, dragging: false, dragStartX: 0, dragStartY: 0, startPanX: 0, startPanY: 0 });
+        setAvatarCrop(createImageCropState({ src: safe, width: img.width, height: img.height }));
       };
       img.onerror = () => alert(tr("頭像讀取失敗", "Image load failed", "画像の読み込みに失敗しました", "이미지 읽기에 실패했습니다"));
       img.src = safe;
@@ -74,14 +75,7 @@ export default function AddCharacterModal({ setModal, setEditingCharacter, addCh
           if (!ctx) continue;
           ctx.fillStyle = "#fff";
           ctx.fillRect(0, 0, c.size, c.size);
-          const scale = Math.max(c.size / img.width, c.size / img.height) * Math.max(1, avatarCrop.zoom || 1);
-          const dw = img.width * scale;
-          const dh = img.height * scale;
-          const maxShiftX = Math.max(0, (dw - c.size) / 2);
-          const maxShiftY = Math.max(0, (dh - c.size) / 2);
-          const dx = (c.size - dw) / 2 + (maxShiftX * Number(avatarCrop.panX || 0)) / 100;
-          const dy = (c.size - dh) / 2 + (maxShiftY * Number(avatarCrop.panY || 0)) / 100;
-          ctx.drawImage(img, dx, dy, dw, dh);
+          drawCoverCrop(ctx, img, avatarCrop, c.size);
           const out = canvas.toDataURL("image/jpeg", c.quality);
           const b64 = out.split(",")[1] || "";
           const bytes = Math.ceil((b64.length * 3) / 4);
@@ -109,9 +103,7 @@ export default function AddCharacterModal({ setModal, setEditingCharacter, addCh
       if (!s?.dragging) return s;
       const px = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
       const py = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
-      const nextPanX = (s.startPanX || 0) + ((px - (s.dragStartX || 0)) / 1.8);
-      const nextPanY = (s.startPanY || 0) + ((py - (s.dragStartY || 0)) / 1.8);
-      return { ...s, panX: Math.max(-100, Math.min(100, nextPanX)), panY: Math.max(-100, Math.min(100, nextPanY)) };
+      return { ...s, ...calculateCropDrag(s, px, py) };
     });
   };
   const endAvatarDrag = () => setAvatarCrop((s) => s ? { ...s, dragging: false } : s);
@@ -131,19 +123,13 @@ export default function AddCharacterModal({ setModal, setEditingCharacter, addCh
   };
   const getAvatarCropImageStyle = () => {
     const box = 220;
-    const iw = Number(avatarCrop?.width || 1);
-    const ih = Number(avatarCrop?.height || 1);
-    const scale = Math.max(box / iw, box / ih) * Math.max(1, Number(avatarCrop?.zoom || 1));
-    const dw = iw * scale;
-    const dh = ih * scale;
-    const maxShiftX = Math.max(0, (dw - box) / 2);
-    const maxShiftY = Math.max(0, (dh - box) / 2);
+    const geometry = calculateCoverCrop({ width: avatarCrop?.width, height: avatarCrop?.height, frameWidth: box, zoom: avatarCrop?.zoom, panX: avatarCrop?.panX, panY: avatarCrop?.panY });
     return {
       position: "absolute",
-      width: dw,
-      height: dh,
-      left: (box - dw) / 2 + (maxShiftX * Number(avatarCrop?.panX || 0)) / 100,
-      top: (box - dh) / 2 + (maxShiftY * Number(avatarCrop?.panY || 0)) / 100,
+      width: geometry.width,
+      height: geometry.height,
+      left: geometry.left,
+      top: geometry.top,
       userSelect: "none",
       WebkitUserDrag: "none",
       pointerEvents: "none",

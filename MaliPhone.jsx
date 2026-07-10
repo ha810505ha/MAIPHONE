@@ -11,18 +11,22 @@ import { callAI, fetchAvailableModels } from "./services/aiService";
 import { fetchElevenLabsDefaultVoices, synthesizeSpeech } from "./services/ttsService";
 import { loadAppState, saveAppState } from "./utils/indexedDbStorage";
 import { syncOnBoot, schedulePush } from "./services/syncService";
-import { PHONE_APP_META, sanitizePhoneTheme, buildPhonePromptContext, buildPhoneAppPrompt, sanitizePhoneAppData } from "./utils/phoneAppGen";
 import { createDefaultVoiceSettings, normalizeCharacterVoiceSettings } from "./utils/voiceSettings";
 import { sanitizeCustomCss } from "./utils/customCss";
-import css, { THEME_PRESETS, FONT_PRESETS } from "./styles/maliPhoneCss";
+import { calculateCropDrag, clampCropPan, createImageCropState, drawCoverCrop } from "./utils/imageCrop";
+import css, { FONT_PRESETS } from "./styles/maliPhoneCss";
 import DesktopPet from "./DesktopPet";
 import CustomCssGuide from "./CustomCssGuide";
 import SettingsApp from "./components/settings/SettingsApp";
 import AppRouter from "./components/apps/AppRouter";
 import useAppearanceSettings from "./hooks/settings/useAppearanceSettings";
+import useThemeRuntime from "./hooks/settings/useThemeRuntime";
 import useDirectChatAI from "./hooks/chat/useDirectChatAI";
 import useGroupChatAI from "./hooks/chat/useGroupChatAI";
 import useGroupChatController from "./hooks/chat/useGroupChatController";
+import useInnerThought from "./hooks/chat/useInnerThought";
+import usePhoneDataGeneration from "./hooks/phone/usePhoneDataGeneration";
+import useCharacterInsights from "./hooks/characters/useCharacterInsights";
 import useChatBackground from "./hooks/chat/useChatBackground";
 import useHomeDragAndDrop from "./hooks/home/useHomeDragAndDrop";
 import { getGroupMemberProfileText, buildGroupChatSystemPrompt, parseGroupReplies } from "./services/chat/groupChatHelpers";
@@ -42,15 +46,10 @@ import StatusApp from "./components/apps/StatusApp";
 import AddCharacterModal from "./components/characters/AddCharacterModal";
 import { heroImgStyle } from "./components/home/PeachHero";
 import WalletLedgerView from "./components/wallet/WalletLedgerView";
-import GroupMemberPicker from "./components/chat/GroupMemberPicker";
-import ChatListView from "./components/chat/ChatListView";
-import ChatHeader from "./components/chat/ChatHeader";
-import ChatSettingsPanel from "./components/chat/settings/ChatSettingsPanel";
-import GroupChatContent from "./components/chat/GroupChatContent";
-import { OnlineChatMessage, RealityChatMessage, SystemNoticeMessage, TransferMessage } from "./components/chat/DirectMessageTypes";
-import DirectMessageList from "./components/chat/DirectMessageList";
-import DirectChatComposer from "./components/chat/DirectChatComposer";
-import { CharacterVoiceAction, InnerThoughtPanel, RealityMessageText, SceneBar } from "./components/chat/ChatMessageParts";
+import GroupChatModals from "./components/chat/GroupChatModals";
+import ChatView from "./components/chat/ChatView";
+import DirectChatView from "./components/chat/DirectChatView";
+import { CharacterVoiceAction, RealityMessageText, SceneBar } from "./components/chat/ChatMessageParts";
 import LockScreen from "./components/shell/LockScreen";
 import HomeScreen from "./components/shell/HomeScreen";
 import { DEFAULT_APP_STATE } from "./constants/defaultAppState";
@@ -72,6 +71,7 @@ export default function MaliPhone() {
   const [groupChats, setGroupChats] = useState(defaultAppState.groupChats);
   const [chatScenes, setChatScenes] = useState(defaultAppState.chatScenes);
   const [groupScenes, setGroupScenes] = useState(defaultAppState.groupScenes);
+  const [chatTimeSettings, setChatTimeSettings] = useState(defaultAppState.chatTimeSettings);
   const [innerThoughtSettings, setInnerThoughtSettings] = useState(defaultAppState.innerThoughtSettings);
   const [proactiveSettings, setProactiveSettings] = useState(defaultAppState.proactiveSettings);
   const [proactiveUnread, setProactiveUnread] = useState(defaultAppState.proactiveUnread);
@@ -91,14 +91,13 @@ export default function MaliPhone() {
   const [groupEditGroupId, setGroupEditGroupId] = useState(null);
   const [groupEditName, setGroupEditName] = useState("");
   const [groupEditRulePrompt, setGroupEditRulePrompt] = useState("");
+  const [groupEditUseRealTime, setGroupEditUseRealTime] = useState(true);
   const [groupEditMemberIds, setGroupEditMemberIds] = useState([]);
   const [groupEditSearch, setGroupEditSearch] = useState("");
   const [groupEditCover, setGroupEditCover] = useState("");
   const [groupCoverCrop, setGroupCoverCrop] = useState(null);
   const [groupEditCoverCrop, setGroupEditCoverCrop] = useState(null);
   const [sceneEditor, setSceneEditor] = useState(null);
-  const groupCoverInputRef = useRef(null);
-  const groupEditCoverInputRef = useRef(null);
   const CHAT_IMAGE_MAX_BYTES = 1024 * 1024; // 1MB
   const [isTyping, setIsTyping] = useState(false);
   const [currentChatChar, setCurrentChatChar] = useState(null);
@@ -210,8 +209,6 @@ export default function MaliPhone() {
   const socialAutoPostingRef = useRef(false);
   const socialAutoPostGapRef = useRef(0);
   const walletAutoRefreshBusyRef = useRef(false);
-  const statusRefreshBusyRef = useRef(new Set());
-  const statusAutoRefreshAttemptRef = useRef(new Map());
   const proactiveSweepingRef = useRef(false);
   const currentChatCharIdRef = useRef(null);
   const SOCIAL_GLOBAL_COOLDOWN_MS = 60 * 1000;
@@ -272,6 +269,7 @@ export default function MaliPhone() {
   setGroupChats(Array.isArray(data.groupChats) ? data.groupChats : []);
   setChatScenes(data.chatScenes && typeof data.chatScenes === "object" ? data.chatScenes : defaultAppState.chatScenes);
   setGroupScenes(data.groupScenes && typeof data.groupScenes === "object" ? data.groupScenes : defaultAppState.groupScenes);
+  setChatTimeSettings(data.chatTimeSettings && typeof data.chatTimeSettings === "object" ? data.chatTimeSettings : defaultAppState.chatTimeSettings);
   setInnerThoughtSettings(data.innerThoughtSettings && typeof data.innerThoughtSettings === "object" ? data.innerThoughtSettings : defaultAppState.innerThoughtSettings);
   setProactiveSettings(data.proactiveSettings && typeof data.proactiveSettings === "object" ? data.proactiveSettings : defaultAppState.proactiveSettings);
   setProactiveUnread(data.proactiveUnread && typeof data.proactiveUnread === "object" ? data.proactiveUnread : defaultAppState.proactiveUnread);
@@ -332,7 +330,7 @@ export default function MaliPhone() {
   }
 
   };
-  const persistenceSnapshot = { characters, activeCharId, chatHistory, chatModes, chatBackgrounds, groupChats, chatScenes, groupScenes, innerThoughtSettings, proactiveSettings, proactiveUnread, posts, socialSettings, memories, lorebooks, chatLorebookBindings, phoneInboxCache, phoneAppCache, wallet, characterWallets, screenLockTimeout, apiPresets, playerProfile, apiConfig, ttsConfig, themeName, fontName, uiLanguage, homeSlots, dockOrder };
+  const persistenceSnapshot = { characters, activeCharId, chatHistory, chatModes, chatBackgrounds, groupChats, chatScenes, groupScenes, chatTimeSettings, innerThoughtSettings, proactiveSettings, proactiveUnread, posts, socialSettings, memories, lorebooks, chatLorebookBindings, phoneInboxCache, phoneAppCache, wallet, characterWallets, screenLockTimeout, apiPresets, playerProfile, apiConfig, ttsConfig, themeName, fontName, uiLanguage, homeSlots, dockOrder };
   const { hydrated } = useAppPersistence({
     defaults: defaultAppState,
     snapshot: persistenceSnapshot,
@@ -633,19 +631,7 @@ export default function MaliPhone() {
         const output = canvas.toDataURL("image/jpeg", 0.86);
         const processed = sanitizeUserImageUrl(output);
         if (!processed) return notify("頭像處理失敗", tr("頭像處理失敗", "Avatar processing failed", "アバターの処理に失敗しました", "아바타 처리가 실패했습니다"));
-        setPlayerAvatarCrop({
-          src: processed,
-          width,
-          height,
-          zoom: 1,
-          panX: 0,
-          panY: 0,
-          dragging: false,
-          dragStartX: 0,
-          dragStartY: 0,
-          startPanX: 0,
-          startPanY: 0,
-        });
+        setPlayerAvatarCrop(createImageCropState({ src: processed, width, height }));
       };
       img.onerror = () => notify("圖片讀取失敗", tr("圖片讀取失敗", "Image load failed", "画像の読み込みに失敗しました", "이미지 읽기에 실패했습니다"));
       img.src = safe;
@@ -657,26 +643,13 @@ export default function MaliPhone() {
     if (!playerAvatarCrop?.src) return;
     const img = new Image();
     img.onload = () => {
-      const iw = img.width;
-      const ih = img.height;
       const size = 320;
       const canvas = document.createElement("canvas");
       canvas.width = size;
       canvas.height = size;
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
-      const scale = Math.max(size / iw, size / ih) * Math.max(1, playerAvatarCrop.zoom || 1);
-      const dw = iw * scale;
-      const dh = ih * scale;
-      const panX = Number(playerAvatarCrop.panX || 0);
-      const panY = Number(playerAvatarCrop.panY || 0);
-      const maxShiftX = Math.max(0, (dw - size) / 2);
-      const maxShiftY = Math.max(0, (dh - size) / 2);
-      const shiftX = (maxShiftX * panX) / 100;
-      const shiftY = (maxShiftY * panY) / 100;
-      const dx = (size - dw) / 2 + shiftX;
-      const dy = (size - dh) / 2 + shiftY;
-      ctx.drawImage(img, dx, dy, dw, dh);
+      drawCoverCrop(ctx, img, playerAvatarCrop, size);
       const out = canvas.toDataURL("image/jpeg", 0.86);
       const safe = sanitizeUserImageUrl(out);
       if (!safe) return notify("頭像處理失敗", tr("頭像處理失敗", "Avatar processing failed", "アバターの処理に失敗しました", "아바타 처리가 실패했습니다"));
@@ -698,9 +671,7 @@ export default function MaliPhone() {
       if (!s?.dragging) return s;
       const px = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
       const py = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
-      const nextPanX = (s.startPanX || 0) + ((px - (s.dragStartX || 0)) / 1.8);
-      const nextPanY = (s.startPanY || 0) + ((py - (s.dragStartY || 0)) / 1.8);
-      return { ...s, panX: Math.max(-100, Math.min(100, nextPanX)), panY: Math.max(-100, Math.min(100, nextPanY)) };
+      return { ...s, ...calculateCropDrag(s, px, py) };
     });
   };
   const endPlayerAvatarDrag = () => setPlayerAvatarCrop((s) => s ? { ...s, dragging: false } : s);
@@ -875,6 +846,14 @@ export default function MaliPhone() {
       [charId]: { ...(prev?.[charId] || {}), auto: !!enabled },
     }));
   };
+  const isChatRealTimeEnabled = (charId) => chatTimeSettings?.[charId]?.enabled !== false;
+  const setChatRealTimeEnabled = (charId, enabled) => {
+    setChatTimeSettings((prev) => ({
+      ...(prev || {}),
+      [charId]: { ...(prev?.[charId] || {}), enabled: !!enabled },
+    }));
+  };
+  const isGroupRealTimeEnabled = (group) => group?.useRealTime !== false;
   const isProactiveEnabled = (charId) => !!proactiveSettings?.[charId]?.enabled;
   const getProactiveFrequency = (charId) => proactiveSettings?.[charId]?.frequency || "normal";
   const setProactiveEnabled = (charId, enabled) => {
@@ -888,150 +867,6 @@ export default function MaliPhone() {
       ...(prev || {}),
       [charId]: { ...(prev?.[charId] || {}), frequency },
     }));
-  };
-  const normalizeInnerThought = (text) => {
-    let clean = stripInternalBlocks(String(text || ""))
-      .replace(/^\s*(?:心聲|內心(?:想法|獨白)?|想法)\s*[：:]\s*/i, "")
-      .replace(/^[「『\"']+|[」』\"']+$/g, "")
-      .replace(/\{\{char\}\}/gi, "")
-      .replace(/\{\{user\}\}/gi, getUserDisplayName())
-      .replace(/\n{2,}/g, "\n")
-      .trim();
-    clean = sanitizeText(clean, 240);
-    // 超長被裁切時，退回到最後一個句末標點，避免句中截斷
-    if (clean.length === 240) {
-      const lastEnd = Math.max(...["。", "！", "？", "…", "～", "!", "?", "."].map((p) => clean.lastIndexOf(p)));
-      if (lastEnd > 0) clean = clean.slice(0, lastEnd + 1);
-    }
-    return clean;
-  };
-  const isIncompleteInnerThought = (text) => {
-    const clean = String(text || "").trim();
-    // 被 MAX_TOKENS 硬切的句子結尾通常是一般文字，改成檢查是否以句末標點收尾
-    return !clean || !/[。！？…～!?.」』"'）)\]】]$/.test(clean);
-  };
-  const generateInnerThought = async ({ char, messageId, source = "manual", historySnapshot = null }) => {
-    if (!char?.id || !messageId || innerThoughtLoading[messageId]) return;
-    const fullHistory = Array.isArray(historySnapshot) ? historySnapshot : (chatHistory[char.id] || []);
-    const targetIndex = fullHistory.findIndex((m) => m.id === messageId);
-    if (targetIndex < 0 || fullHistory[targetIndex]?.role !== "assistant") return;
-    const target = fullHistory[targetIndex];
-    const replyMessages = target.replyGroupId
-      ? fullHistory.slice(0, targetIndex + 1).filter((m) => m.role === "assistant" && m.replyGroupId === target.replyGroupId)
-      : (() => {
-          const group = [];
-          for (let index = targetIndex; index >= 0 && fullHistory[index]?.role === "assistant"; index -= 1) group.unshift(fullHistory[index]);
-          return group;
-        })();
-    const targetReply = replyMessages.map((m) => m.content || "").filter(Boolean).join("\n");
-    const targetMode = getMessageMode(target);
-    const roundLimit = targetMode === "reality" ? 3 : 6;
-    const eligibleMessages = fullHistory
-      .slice(0, targetIndex + 1)
-      .filter((m) => m.role === "user" || m.role === "assistant")
-      .filter((m) => getMessageMode(m) === targetMode);
-    const recentRoundMessages = [];
-    let includedRounds = 0;
-    for (let index = eligibleMessages.length - 1; index >= 0; index -= 1) {
-      const message = eligibleMessages[index];
-      if (message.role === "user") {
-        includedRounds += 1;
-        if (includedRounds > roundLimit) break;
-      }
-      recentRoundMessages.unshift(message);
-    }
-    let contextMessages = recentRoundMessages
-      .map((m) => ({
-        role: m.role,
-        content: sanitizeText(m.content || (m.image ? "[圖片]" : ""), 1200),
-      }));
-    const memoryContext = pickMemoriesForPrompt(char.id, contextMessages)
-      .map((m, i) => `- ${i + 1}. ${m.text}`)
-      .join("\n");
-    const scene = chatScenes?.[char.id] || {};
-    const sceneContext = [scene.location ? `地點：${sanitizeText(scene.location, 30)}` : "", scene.note ? `備註：${sanitizeText(scene.note, 100)}` : ""].filter(Boolean).join("\n");
-    const prompt = `${getOutputLanguageDirective()}
-
-你要寫的是角色「${char.name}」在目標訊息當下沒有說出口的心聲。
-
-規則：
-1. 必須使用角色第一人稱，並與目標訊息及當時劇情直接相關。
-2. 只輸出心聲本身，不要角色名、標籤、引號、旁白、Markdown 或「我心想」。
-3. 只寫 1 到 2 句，簡短自然，最多 80 字；每句都必須完整，不得在逗號、冒號或未完成語意處中斷。
-4. 可以呈現嘴硬、猶豫、期待、隱瞞或話語與真心的反差，但不要為了反差硬加感情。
-5. 不要替玩家描述內心、感受或未說出口的意圖。
-6. 不要使用角色在當時不可能知道的資訊，也不要參考目標訊息之後的劇情。
-7. 保留曖昧與留白，不要一次揭露角色所有秘密。
-
-${sceneContext ? `[當時場景]\n${sceneContext}\n` : ""}${memoryContext ? `[相關記憶]\n${memoryContext}\n` : ""}
-目標回覆（前端可能拆成多個氣泡，但屬於同一次回覆）：
-${targetReply || target.content || "（無文字）"}`;
-    const thoughtInstruction = "請根據以上對話與系統規則，生成角色在目標回覆當下沒有說出口的心聲。只輸出心聲本身。";
-    const inputTokenLimit = 3000;
-    const countThoughtInputTokens = () => estimateTokens(prompt) + estimateTokens(thoughtInstruction) + contextMessages.reduce((sum, message) => sum + estimateTokens(message.content || ""), 0);
-    while (contextMessages.length > 1 && countThoughtInputTokens() > inputTokenLimit) {
-      contextMessages = contextMessages.slice(1);
-    }
-    setInnerThoughtLoading((prev) => ({ ...prev, [messageId]: true }));
-    try {
-      const thoughtMessages = [
-        ...contextMessages,
-        {
-          role: "user",
-          content: thoughtInstruction,
-        },
-      ];
-      // thinking 模型（如 Gemini 2.5）的內部思考會計入 maxOutputTokens，額度太低會讓正文被截斷
-      let raw = await callAI(thoughtMessages, { ...apiConfig, maxTokens: 3000 }, applyUserPlaceholder(prompt));
-      if (isIncompleteInnerThought(raw)) {
-        raw = await callAI([
-          ...thoughtMessages,
-          { role: "assistant", content: raw },
-          { role: "user", content: "上一版心聲在語意未完成處中斷。請重新輸出一版完整的心聲，維持 1 到 2 句、最多 80 字，只輸出心聲本身。" },
-        ], { ...apiConfig, maxTokens: 3000 }, applyUserPlaceholder(prompt));
-      }
-      if (isIncompleteInnerThought(raw)) throw new Error(tr("模型回傳的心聲不完整，請再試一次", "The generated thought was incomplete. Please try again.", "生成された心の声が不完全です。もう一度お試しください", "생성된 속마음이 완전하지 않습니다. 다시 시도해주세요"));
-      const content = normalizeInnerThought(raw);
-      if (!content) throw new Error(tr("模型沒有產生心聲", "No inner thought was generated", "心の声が生成されませんでした", "속마음이 생성되지 않았습니다"));
-      setChatHistory((prev) => ({
-        ...prev,
-        [char.id]: (prev[char.id] || []).map((m) => m.id === messageId ? {
-          ...m,
-          innerThought: { content, generatedAt: Date.now(), source, seen: source !== "auto" },
-        } : m),
-      }));
-      setExpandedInnerThoughts((prev) => ({ ...prev, [messageId]: source !== "auto" }));
-      if (source === "auto") {
-        showToast(`${char.name || tr("角色", "The character", "キャラ", "캐릭터")}${tr(" 好像在想些什麼…", " seems to be thinking about something...", " は何か考えているみたい…", "이(가) 뭔가 생각하는 것 같아…")}`);
-      }
-    } catch (err) {
-      showToast(`${tr("心聲生成失敗", "Failed to generate inner thought", "心の声の生成に失敗しました", "속마음 생성 실패")}：${sanitizeText(err?.message || "", 120)}`);
-    } finally {
-      setInnerThoughtLoading((prev) => ({ ...prev, [messageId]: false }));
-    }
-  };
-  const renderInnerThought = (char, message) => {
-    if (message?.role !== "assistant") return null;
-    const thought = message.innerThought?.content || "";
-    const expanded = !!expandedInnerThoughts[message.id];
-    const loading = !!innerThoughtLoading[message.id];
-    const unseenAutoThought = !!thought && message.innerThought?.source === "auto" && message.innerThought?.seen === false;
-    const markInnerThoughtSeen = () => {
-      if (!unseenAutoThought) return;
-      setChatHistory((prev) => ({
-        ...prev,
-        [char.id]: (prev[char.id] || []).map((m) => m.id === message.id ? {
-          ...m,
-          innerThought: { ...m.innerThought, seen: true },
-        } : m),
-      }));
-    };
-    return <InnerThoughtPanel thought={thought} expanded={expanded} loading={loading} unseen={unseenAutoThought} tr={tr} onToggle={() => {
-      if (thought) {
-        if (!expanded) markInnerThoughtSeen();
-        setExpandedInnerThoughts((prev) => ({ ...prev, [message.id]: !prev[message.id] }));
-      } else void generateInnerThought({ char, messageId: message.id, source: "manual" });
-    }} onRegenerate={() => void generateInnerThought({ char, messageId: message.id, source: "manual" })} />;
   };
   const isChatMode = (mode) => mode === "reality" || mode === "online";
   const getMessageMode = (m) => (isChatMode(m?.mode) ? m.mode : "online");
@@ -1203,19 +1038,6 @@ ${targetReply || target.content || "（無文字）"}`;
     getOutputLanguageDirective, tr, uiLanguage, playerProfile, sanitizeUserImageUrl,
     normalizeForMatch, tokenizeForRecall, memories, activeCharId, characters, socialTick,
   });
-  const normalizeMemoryText = (text) =>
-    String(text || "")
-      .toLowerCase()
-      .replace(/[，。！？、,.!?\s]+/g, " ")
-      .trim();
-  const memorySimilarity = (a, b) => {
-    const sa = new Set(normalizeMemoryText(a).split(" ").filter(Boolean));
-    const sb = new Set(normalizeMemoryText(b).split(" ").filter(Boolean));
-    if (!sa.size || !sb.size) return 0;
-    let inter = 0;
-    sa.forEach((w) => { if (sb.has(w)) inter += 1; });
-    return inter / Math.max(sa.size, sb.size);
-  };
   const pickMemoriesForPrompt = (charId, recentMsgs) => {
     const list = (memories[charId] || []).filter((m) => m?.text);
     if (!list.length) return [];
@@ -1233,6 +1055,27 @@ ${targetReply || target.content || "（無文字）"}`;
     const recalled = scored.filter((x) => x.hit > 0).slice(0, 3).map((x) => x.m);
     return [...pinned, ...recalled];
   };
+  const { generateInnerThought, renderInnerThought } = useInnerThought({
+    chatHistory,
+    chatScenes,
+    innerThoughtLoading,
+    expandedInnerThoughts,
+    apiConfig,
+    setChatHistory,
+    setInnerThoughtLoading,
+    setExpandedInnerThoughts,
+    pickMemoriesForPrompt,
+    getMessageMode,
+    getOutputLanguageDirective,
+    getUserDisplayName,
+    applyUserPlaceholder,
+    estimateTokens,
+    stripInternalBlocks,
+    callAI,
+    sanitizeText,
+    showToast,
+    tr,
+  });
   const getChatLorebookBinding = (charId) => {
     const fallbackBookIds = (lorebooks || []).map((b) => b.id);
     const binding = chatLorebookBindings?.[charId];
@@ -1389,7 +1232,7 @@ ${targetReply || target.content || "（無文字）"}`;
       return null;
     })
     .filter(Boolean);
-  const generateAssistantForHistory = (args) => generateDirectAssistant(args, {
+  const generateAssistantForHistory = (args) => generateDirectAssistant({ ...args, includeRealTime: isChatRealTimeEnabled(args.cid) }, {
     formatMessagesForPrompt, pickMemoriesForPrompt, pickLorebookEntriesForPrompt, characterWallets,
     formatMoney, tr, getPlayerContextBlock, estimateTokens, totalContextTokenLimit: TOTAL_CONTEXT_TOKEN_LIMIT,
     apiConfig, applyUserPlaceholder, buildChatSystemPrompt, callAI, sanitizeText, normalizeRealityReply,
@@ -1656,6 +1499,7 @@ ${targetReply || target.content || "（無文字）"}`;
       groupChats,
       chatScenes,
       groupScenes,
+      chatTimeSettings,
       innerThoughtSettings,
       proactiveSettings,
       proactiveUnread,
@@ -1722,6 +1566,7 @@ ${targetReply || target.content || "（無文字）"}`;
       groupChats: Array.isArray(src.groupChats) ? src.groupChats : [],
       chatScenes: src.chatScenes && typeof src.chatScenes === "object" ? src.chatScenes : {},
       groupScenes: src.groupScenes && typeof src.groupScenes === "object" ? src.groupScenes : {},
+      chatTimeSettings: src.chatTimeSettings && typeof src.chatTimeSettings === "object" ? src.chatTimeSettings : {},
       innerThoughtSettings: src.innerThoughtSettings && typeof src.innerThoughtSettings === "object" ? src.innerThoughtSettings : {},
       proactiveSettings: src.proactiveSettings && typeof src.proactiveSettings === "object" ? src.proactiveSettings : {},
       proactiveUnread: src.proactiveUnread && typeof src.proactiveUnread === "object" ? src.proactiveUnread : {},
@@ -1759,6 +1604,7 @@ ${targetReply || target.content || "（無文字）"}`;
     setGroupChats(nextState.groupChats);
     setChatScenes(nextState.chatScenes);
     setGroupScenes(nextState.groupScenes);
+    setChatTimeSettings(nextState.chatTimeSettings);
     setInnerThoughtSettings(nextState.innerThoughtSettings);
     setProactiveSettings(nextState.proactiveSettings);
     setProactiveUnread(nextState.proactiveUnread);
@@ -1806,69 +1652,11 @@ ${targetReply || target.content || "（無文字）"}`;
     const providerNeedsApiKey = !(apiConfig.provider === "ollama" && isOllamaLocal);
     return !providerNeedsApiKey || !!apiConfig.apiKey;
   };
-  const refreshCharacterStatus = async (charId, force = false) => {
-    if (statusRefreshBusyRef.current.has(charId)) {
-      if (force) showToast(tr("狀態正在更新中", "Status is already updating", "ステータスを更新中です", "상태를 업데이트하는 중입니다"));
-      return;
-    }
-    const char = characters.find((x) => x.id === charId);
-    if (!char) { showToast("找不到角色"); return; }
-    const nowTs = Date.now();
-    const autoRetryCooldown = 3 * 60 * 1000;
-    const fourHours = 4 * 60 * 60 * 1000;
-    if (!force && nowTs - (statusAutoRefreshAttemptRef.current.get(charId) || 0) < autoRetryCooldown) return;
-    if (!force && char.statusUpdatedAt && nowTs - char.statusUpdatedAt < fourHours) return;
-    const msgs = (chatHistory[charId] || [])
-      .filter((m) => m.role === "user" || m.role === "assistant")
-      .slice(-12);
-    if (!force && msgs.length === 0) return;
-    if (!canUseCurrentProvider()) { showToast(tr("請先完成 AI 連線設定（API Key）", "Please finish AI connection setup (API key) first", "先にAI接続設定（APIキー）を完了してください", "먼저 AI 연결 설정(API 키)을 완료해주세요")); return; }
-    if (!force) statusAutoRefreshAttemptRef.current.set(charId, nowTs);
-    statusRefreshBusyRef.current.add(charId);
-    setStatusRefreshingIds((previous) => ({ ...previous, [charId]: true }));
-    try {
-      const roleProfile = [
-        char.description ? `角色設定：${sanitizeText(char.description, 400)}` : "",
-        char.personality ? `個性：${sanitizeText(char.personality, 200)}` : "",
-        char.scenario ? `情境：${sanitizeText(char.scenario, 200)}` : "",
-        char.systemPrompt ? `補充規則：${sanitizeText(char.systemPrompt, 240)}` : "",
-      ].filter(Boolean).join("\n");
-      const mems = (memories[charId] || []).filter((m) => m.pinned).slice(0, 2).map((m) => `- ${m.text}`).join("\n");
-      const conv = msgs.map((m) => `${m.role === "user" ? "{{user}}" : char.name}: ${m.content || "[圖片]"}`).join("\n");
-      const statusPrompt = isGemmaModel(apiConfig.model)
-        ? `${getOutputLanguageDirective()}\n\n請只輸出 1 句手機狀態文字，20~40 字，自然像角色正在發狀態。\n不要輸出角色設定摘要、年齡、職業、人格標籤、草稿、規則文字、Markdown 或解釋。\n\n角色：${char.name}\n${roleProfile ? `角色背景（只供參考，不要複述）：\n${roleProfile}\n\n` : ""}最近對話：\n${conv}\n${mems ? `\n參考記憶：\n${mems}\n` : ""}`
-        : `${getOutputLanguageDirective()}\n\n請根據以下資訊，生成一則「符合角色人設」的手機狀態文字。\n規則：僅輸出 1 句，20~40 字，口語自然、對外可見，不要內心獨白、不要動作描述、不要引號包整句。\n\n角色：${char.name}\n${roleProfile ? `角色資料：\n${roleProfile}\n\n` : ""}最近對話：\n${conv}\n${mems ? `\n參考記憶：\n${mems}\n` : ""}`;
-      const status = sanitizeText(stripInternalBlocks(await callAI([{ role: "user", content: statusPrompt }], apiConfig, "你是狀態文字助理。")), 80);
-      if (!status) { showToast("未取得狀態內容"); return; }
-      setCharacters((prev) => prev.map((c) => c.id === charId ? { ...c, statusText: status, statusUpdatedAt: Date.now() } : c));
-      showToast("狀態已更新");
-    } catch (err) {
-      showToast(`${tr("刷新失敗", "Refresh failed", "更新に失敗しました", "새로고침 실패")}：${sanitizeText(err?.message || tr("未知錯誤", "Unknown error", "不明なエラー", "알 수 없는 오류"), 120)}`);
-    } finally {
-      statusRefreshBusyRef.current.delete(charId);
-      setStatusRefreshingIds((previous) => { const next = { ...previous }; delete next[charId]; return next; });
-    }
-  };
-  const togglePinMemory = (charId, memoryId) => {
-    setMemories((prev) => {
-      const arr = [...(prev[charId] || [])];
-      const pinCount = arr.filter((x) => x.pinned).length;
-      const idx = arr.findIndex((x) => x.id === memoryId);
-      if (idx < 0) return prev;
-      const target = arr[idx];
-      if (!target.pinned && pinCount >= 5) {
-        showToast(tr("釘選最多 5 條", "You can pin up to 5 items.", "固定できるのは最大5件です。", "최대 5개까지 고정할 수 있습니다."));
-        return prev;
-      }
-      arr[idx] = { ...target, pinned: !target.pinned };
-      return { ...prev, [charId]: arr };
-    });
-  };
-  const deleteMemory = (charId, memoryId) => {
-    if (!window.confirm(tr("確定要刪除這條記憶嗎？", "Delete this memory?", "このメモリを削除しますか？", "이 기억을 삭제할까요?"))) return;
-    setMemories((prev) => ({ ...prev, [charId]: (prev[charId] || []).filter((x) => x.id !== memoryId) }));
-    showToast(tr("記憶已刪除", "Memory deleted", "メモリを削除しました", "기억이 삭제되었습니다"));
-  };
+  const { refreshCharacterStatus, togglePinMemory, deleteMemory, generateMemory } = useCharacterInsights({
+    characters, chatHistory, memories, apiConfig, setCharacters, setMemories,
+    setStatusRefreshingIds, setGenLoading, canUseCurrentProvider, getOutputLanguageDirective,
+    isGemmaModel, stripInternalBlocks, buildMemoryDigest, callAI, sanitizeText, gid, showToast, tr,
+  });
   const deleteCharacter = (id) => {
     const c = characters.find(x => x.id === id);
     setCharacters(p => p.filter(x => x.id !== id));
@@ -1890,165 +1678,6 @@ ${targetReply || target.content || "（無文字）"}`;
     showToast(`${c?.name || "角色"} 已刪除`);
   };
 
-  const parseJsonObjectFromText = (raw) => {
-    const t = String(raw || "").trim();
-    try { return JSON.parse(t); } catch {}
-    const start = t.indexOf("{");
-    const end = t.lastIndexOf("}");
-    if (start >= 0 && end > start) {
-      try { return JSON.parse(t.slice(start, end + 1)); } catch {}
-    }
-    return null;
-  };
-
-  const generatePhoneNpcChats = async (char) => {
-    if (!char) return;
-    if (!window.confirm("刷新其他聊天只會重新生成其他聯絡人的聊天內容，不包含與玩家的聊天，也不會修改玩家暱稱或備註。確定要繼續嗎？")) return;
-    if (!canUseCurrentProvider()) { showToast(tr("請先完成 AI 連線設定（API Key）", "Please finish AI connection setup (API key) first", "先にAI接続設定（APIキー）を完了してください", "먼저 AI 연결 설정(API 키)을 완료해주세요")); return; }
-    setPhoneGenLoading(true);
-    try {
-      const playerFormalName = sanitizeText(playerProfile?.name || "玩家", 40);
-      const playerNickname = sanitizeText(playerProfile?.nickname || "", 40);
-      const recent = (chatHistory[char.id] || []).slice(-10).map((m) => `${m.role === "user" ? playerFormalName : char.name}: ${m.content || "[圖片]"}`).join("\n");
-      const roleProfile = [char.description, char.personality, char.scenario].filter(Boolean).join("\n");
-      const prompt = [{
-        role: "user",
-        content: `請幫我生成 ${char.name} 的手機「其他聊天」資料（不含玩家），輸出 JSON 且只能輸出 JSON。
-格式：
-{
-  "threads":[
-    {
-      "name":"聯絡人名稱",
-      "relation":"與角色關係（簡短）",
-      "messages":[
-        {"from":"other","text":"..."},
-        {"from":"char","text":"..."}
-      ]
-    }
-  ]
-}
-規則：
-1) 只產生 3~5 個 threads。
-2) 每個 thread 產生 4~8 則短訊息，語氣像通訊軟體。
-3) from 只能是 "char" 或 "other"。
-4) 不要時間戳、不要 markdown、不要多餘欄位。
-5) 玩家正式名稱是「${playerFormalName}」${playerNickname ? `，暱稱是「${playerNickname}」` : "，未設定暱稱"}。暱稱屬於較私密的稱呼，其他 NPC 預設不要使用；只有能從設定合理判斷該 NPC 與玩家很親近、而且知道這個暱稱時，才可以偶爾使用。一般情況請使用正式名稱、代稱或自然省略稱呼。
-6) 不要讓所有 NPC 都認識玩家，也不要讓所有 NPC 都用相同方式稱呼玩家；依每個 NPC 與角色、玩家的關係自然判斷。
-
-角色設定：
-${roleProfile || "（無）"}
-
-最近和 {{user}} 對話（供語氣參考）：
-${recent || "（尚無）"}
-`,
-      }];
-      const raw = await callAI(prompt, apiConfig, "你是手機聊天資料生成器，只能輸出有效 JSON。");
-      const parsed = parseJsonObjectFromText(raw);
-      const threadsRaw = Array.isArray(parsed?.threads) ? parsed.threads : [];
-      const generatedAt = Date.now();
-      const threads = threadsRaw.slice(0, 5).map((t, idx) => {
-        const msgs = Array.isArray(t?.messages) ? t.messages : [];
-        const lastMessageOffsetMinutes = 3 + idx * 19 + Math.floor(Math.random() * 12);
-        const lastMessageTime = generatedAt - lastMessageOffsetMinutes * 60000;
-        const messageGapMinutes = 2 + (idx % 4);
-        return {
-          id: `npc-${idx}-${gid()}`,
-          name: sanitizeText(t?.name || `聯絡人${idx + 1}`, 24),
-          relation: sanitizeText(t?.relation || "", 40),
-          messages: msgs.slice(0, 8).map((m, mi) => ({
-            id: `m-${idx}-${mi}-${gid()}`,
-            from: m?.from === "char" ? "char" : "other",
-            text: sanitizeText(m?.text || "", 120),
-            time: lastMessageTime - Math.max(0, msgs.length - 1 - mi) * messageGapMinutes * 60000,
-          })).filter((m) => !!m.text),
-        };
-      }).filter((t) => t.messages.length > 0);
-      if (!threads.length) throw new Error("模型未回傳可用的聊天資料");
-      setPhoneInboxCache((prev) => ({
-        ...prev,
-        [char.id]: { ...(prev[char.id] || {}), updatedAt: Date.now(), threads },
-      }));
-      showToast(`已更新其他聊天（${threads.length} 人）`);
-    } catch (err) {
-      showToast(`${tr("生成失敗", "Generation failed", "生成に失敗しました", "생성 실패")}：${sanitizeText(err?.message || tr("未知錯誤", "Unknown error", "不明なエラー", "알 수 없는 오류"), 120)}`);
-    }
-    setPhoneGenLoading(false);
-  };
-
-  const refreshPhonePlayerContact = async (char) => {
-    if (!char) return;
-    if (!window.confirm("確定刷新玩家聊天室？\n\n只會更新玩家名稱、括號稱呼與關係備註；與玩家的對話內容、其他聯絡人聊天都不會改變。")) return;
-    if (!canUseCurrentProvider()) { showToast(tr("請先完成 AI 連線設定（API Key）", "Please finish AI connection setup (API key) first", "先にAI接続設定（APIキー）を完了してください", "먼저 AI 연결 설정(API 키)을 완료해주세요")); return; }
-    setPhonePlayerContactLoading(true);
-    try {
-      const currentPlayerContact = phoneInboxCache[char.id]?.playerContact || {};
-      const recentPlayerChat = (chatHistory[char.id] || []).slice(-6)
-        .map((message) => `${message.role === "user" ? "玩家" : char.name}：${sanitizeText(message.content || "[圖片]", 300)}`)
-        .join("\n");
-      const prompt = [{
-        role: "user",
-        content: `${getOutputLanguageDirective()}
-
-請從 ${char.name} 的視角，生成玩家在角色手機通訊錄中的資料，只能輸出 JSON：
-{"suffix":"放在玩家名稱括號內的關係稱呼，可空白","note":"角色替玩家設定的短備註名"}
-
-規則：
-1) suffix 放在玩家名稱後方括號內，通常留空；只有角色個性或關係非常適合時才填寫，最多 8 字。
-2) suffix 以雙方關係為主，例如「老婆」「男友」「室友」「青梅竹馬」，最多 8 字；不要填 thought、note、玩家等系統詞。
-3) note 是 ${char.name} 替玩家設定的短備註名，例如「我家那位」「最重要的人」「總忘記帶傘」，2~16 字，不要寫成完整句子，但詞語與語意必須完整，禁止輸出「值得信任的後」這類未完成片段。
-4) suffix 與 note 都必須使用目前介面語言，不要中英混搭，不要輸出 thought、note、memo、remark、角色設定等標籤。
-5) 如果「與玩家關係」未設定，請從角色描述、System prompt、性格、情境與近期互動推斷最自然的稱呼與備註。
-6) 目前備註是「${sanitizeText(currentPlayerContact.note || "尚無", 16)}」。這次刷新請生成不同的新備註，不要原樣重複。
-
-角色設定：${sanitizeText([char.description, char.systemPrompt, char.personality, char.scenario].filter(Boolean).join("\n") || "未設定", 3200)}
-與玩家關係：${sanitizeText(char.relationshipToUser || "未設定", 120)}
-玩家名稱：${sanitizeText(playerProfile?.name || "玩家", 40)}
-玩家暱稱：${sanitizeText(playerProfile?.nickname || "未設定", 40)}
-近期互動：\n${recentPlayerChat || "尚無對話"}`,
-      }];
-      const raw = await callAI(prompt, { ...apiConfig, maxTokens: 300 }, "你是角色手機聯絡人資料生成器，只能輸出有效 JSON。");
-      const parsed = parseJsonObjectFromText(raw) || {};
-      const parsedContact = parsed.playerContact && typeof parsed.playerContact === "object"
-        ? parsed.playerContact
-        : parsed.contact && typeof parsed.contact === "object"
-          ? parsed.contact
-          : parsed;
-      let nextNote = sanitizeText(
-        parsedContact.note || parsedContact.remark || parsedContact.memo || parsedContact.contactNote || parsedContact["備註"] || "",
-        16,
-      ).replace(/^\s*(?:thought|note|memo|remark|備註)\s*[:：-]?\s*/i, "").trim();
-      if (!nextNote) {
-        const noteMatch = String(raw || "").match(/["']?(?:note|remark|memo|contactNote|備註)["']?\s*[:：]\s*["']([^"'\n}]{1,40})/i);
-        nextNote = sanitizeText(noteMatch?.[1] || "", 16).replace(/^\s*(?:thought|note|memo|remark|備註)\s*[:：-]?\s*/i, "").trim();
-      }
-      const isIncompleteContactNote = (value) => /(?:的後|的前|的這|的那|[的與和或但而把被在向從為])$/.test(String(value || "").trim());
-      if (!nextNote || /[a-z]{3,}/i.test(nextNote) || isIncompleteContactNote(nextNote)) {
-        const retryRaw = await callAI([{
-          role: "user",
-          content: `${getOutputLanguageDirective()}\n請以 ${char.name} 的視角，只輸出一則 2~16 字、詞語完整的玩家聯絡人短備註名，例如「我家那位」或「最重要的人」。不要輸出未完成片段，不要 JSON、英文、標籤、引號或說明。玩家關係：${sanitizeText(char.relationshipToUser || "未設定", 120)}`,
-        }], { ...apiConfig, maxTokens: 100 }, "你只輸出聯絡人備註文字。");
-        nextNote = sanitizeText(String(retryRaw || "").replace(/^[「『"']+|[」』"']+$/g, "").trim(), 16)
-          .replace(/^\s*(?:thought|note|memo|remark|備註)\s*[:：-]?\s*/i, "").trim();
-      }
-      if (!nextNote || isIncompleteContactNote(nextNote)) throw new Error("模型沒有產生完整的玩家聯絡人備註");
-      const generatedSuffix = sanitizeText(parsedContact.suffix || "", 8)
-        .replace(/^\s*(?:thought|note|memo|remark|稱呼)\s*[:：-]?\s*/i, "").trim();
-      const playerContact = {
-        suffix: Math.random() < 0.5 && !/[a-z]{3,}/i.test(generatedSuffix) ? generatedSuffix : "",
-        note: nextNote,
-      };
-      setPhoneInboxCache((prev) => ({
-        ...prev,
-        [char.id]: { ...(prev[char.id] || {}), playerContact, playerContactUpdatedAt: Date.now() },
-      }));
-      showToast("玩家暱稱與備註已刷新");
-    } catch (err) {
-      showToast(`${tr("生成失敗", "Generation failed", "生成に失敗しました", "생성 실패")}：${sanitizeText(err?.message || "", 120)}`);
-    } finally {
-      setPhonePlayerContactLoading(false);
-    }
-  };
-
   const {
     syncShopOrdersToWallet,
     transferToCurrentChar,
@@ -2067,94 +1696,12 @@ ${recent || "（尚無）"}
     apiConfig, canUseCurrentProvider, showToast, tr, getPlayerDisplayName,
     formatMoney, stripUserPlaceholder, getOutputLanguageDirective, getWalletTimeSlot,
   });
-  const generatePhoneApp = async (char, appId) => {
-    if (!char || !PHONE_APP_META[appId]) return;
-    if (!canUseCurrentProvider()) { showToast(tr("請先完成 AI 連線設定（API Key）", "Please finish AI connection setup first", "先にAI接続設定を完了してください", "먼저 AI 연결 설정을 완료해주세요")); return; }
-    setPhoneAppGenLoading(appId);
-    try {
-      const theme = sanitizePhoneTheme(phoneAppCache[char.id]?.theme?.data);
-      const extra = appId === "shop"
-        ? { balance: characterWallets[char.id]?.balance }
-        : appId === "diary"
-          ? { prevTitles: (phoneAppCache[char.id]?.diary?.data?.entries || []).map((e) => e.title) }
-          : { mode: theme.mode };
-      const ctx = buildPhonePromptContext(char, chatHistory);
-      const prompt = [{ role: "user", content: buildPhoneAppPrompt(appId, getOutputLanguageDirective(), ctx, extra) }];
-      const raw = await callAI(prompt, apiConfig, "你是手機 App 資料生成器，只能輸出有效 JSON。");
-      const data = sanitizePhoneAppData(appId, parseJsonObjectFromText(raw), phoneAppCache[char.id]?.[appId]?.data);
-      if (!data) throw new Error(tr("模型未回傳可用資料", "Model returned no usable data", "モデルが有効なデータを返しませんでした", "모델이 사용 가능한 데이터를 반환하지 않았습니다"));
-      setPhoneAppCache((prev) => ({
-        ...prev,
-        [char.id]: { ...(prev[char.id] || {}), [appId]: { updatedAt: Date.now(), data } },
-      }));
-      if (appId === "shop") syncShopOrdersToWallet(char.id, data.orders);
-      if (appId === "diary") setDiaryPage(0);
-      showToast(`已更新${PHONE_APP_META[appId].name}`);
-    } catch (err) {
-      showToast(`${tr("生成失敗", "Generation failed", "生成に失敗しました", "생성 실패")}：${sanitizeText(err?.message || "", 120)}`);
-    }
-    setPhoneAppGenLoading(null);
-  };
-
-  const generateMemory = async (char) => {
-    const msgs = chatHistory[char.id] || [];
-    if (msgs.length < 4) { showToast("對話太少，先多聊幾句再生成記憶"); return; }
-    const existing = memories[char.id] || [];
-    if (existing.length >= 30) { showToast("記憶已滿 30 條，請先刪除後再生成"); return; }
-    const isOllamaLocal = apiConfig.provider === "ollama" && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(apiConfig.baseUrl || "");
-    const providerNeedsApiKey = !(apiConfig.provider === "ollama" && isOllamaLocal);
-    if (providerNeedsApiKey && !apiConfig.apiKey) { showToast("請先設定 API Key"); return; }
-    setGenLoading(true);
-    try {
-      const recent = msgs
-        .slice(-30)
-        .map((m) => `${m.role === "user" ? "{{user}}" : char.name}: ${m.content || "[圖片]"}`)
-        .join("\n");
-      const roleProfile = [
-        char.description ? `角色描述：${sanitizeText(char.description, 320)}` : "",
-        char.personality ? `角色個性：${sanitizeText(char.personality, 220)}` : "",
-        char.scenario ? `角色情境：${sanitizeText(char.scenario, 220)}` : "",
-        char.relationshipToUser ? `與玩家關係：${sanitizeText(char.relationshipToUser, 120)}` : "",
-      ].filter(Boolean).join("\n");
-      const existingMemoriesContext = buildMemoryDigest(existing);
-      const prompt = [{
-        role: "user",
-        content: `${getOutputLanguageDirective()}
-
-你要為角色「${char.name}」整理長期記憶，務必嚴格遵守角色人設。
-規則：
-1) 只能輸出 1 則記憶，20~80 字。
-2) 記憶必須具體、可持續（偏好/事實/關係/約定），避免空話。
-3) 不得臆測或改寫角色的性別、身分、關係設定；若對話未提及就不要補。
-4) 不要使用「她/他」等可能造成性別偏移的主詞，優先用角色名「${char.name}」。
-5) 既有記憶摘要會列在下方，請避免重複、近似或只換句話說；若真的沒有新資訊，就不要硬生出同義句。
-6) 只輸出記憶文字本身，不要解釋。
-
-角色設定：
-${roleProfile || "（無）"}
-
-既有記憶（請避免重複）：
-${existingMemoriesContext || "（無）"}
-
-最近對話：
-${recent}`,
-      }];
-      const text = await callAI(prompt, apiConfig, "你是角色記憶整理助手。");
-      const safeText = sanitizeText(text, 120);
-      if (!safeText || safeText.length < 8) throw new Error(tr("模型未產生有效記憶", "The model did not generate a valid memory", "モデルが有効なメモリを生成しませんでした", "모델이 유효한 기억을 생성하지 않았습니다"));
-      const duplicated = existing.some((mem) => memorySimilarity(mem.text, safeText) >= 0.78);
-      if (duplicated) {
-        showToast("記憶過於相似，已略過新增");
-      } else {
-        setMemories(m => ({ ...m, [char.id]: [...(m[char.id] || []), { id: gid(), text: safeText, date: Date.now(), pinned: false }] }));
-        showToast("記憶生成成功");
-      }
-    } catch (err) {
-      showToast(`記憶生成失敗：${err.message}`);
-    }
-    setGenLoading(false);
-  };
-
+  const { generatePhoneNpcChats, refreshPhonePlayerContact, generatePhoneApp } = usePhoneDataGeneration({
+    phoneInboxCache, phoneAppCache, chatHistory, playerProfile, characterWallets, apiConfig,
+    setPhoneInboxCache, setPhoneAppCache, setPhoneGenLoading, setPhonePlayerContactLoading,
+    setPhoneAppGenLoading, setDiaryPage, syncShopOrdersToWallet, canUseCurrentProvider,
+    getOutputLanguageDirective, callAI, sanitizeText, gid, showToast, tr,
+  });
   const {
     handleRandomSocialPost,
     submitPlayerPost,
@@ -2228,179 +1775,13 @@ ${recent}`,
   }, [hydrated, characters, chatHistory, proactiveSettings, proactiveUnread, apiConfig]);
 
 
-  const normalizedThemeName = themeName === "湖水藍" ? "海鹽汽水" : themeName === "蜜桃手帳" ? "蜜桃慕斯" : themeName;
-  const activeTheme = THEME_PRESETS[normalizedThemeName] || THEME_PRESETS["莓果蘇打"];
-  const isNightTheme = themeName === "夜色絨幕";
-  const hasPeachEffects = normalizedThemeName === "蜜桃慕斯";
-  const isPeachTheme = true;
-  const showThemeEffects = !currentApp;
-  const activeFontStack = (FONT_PRESETS[fontName] || FONT_PRESETS["圓體"]).stack;
-  const themeCss = `
-    :root{
-      ${Object.entries(activeTheme?.vars || {}).map(([k, v]) => `${k}:${v};`).join("")}
-      --mp-font:${activeFontStack};
-    }
-    .mp-wrap{background:${activeTheme?.surfaces?.wrapBg || "linear-gradient(135deg,#fce4ec 0%,#e8eaf6 50%,#e1f5fe 100%)"};}
-    .mp-phone{background:${activeTheme?.surfaces?.phoneBg || "linear-gradient(160deg,#fce4ec 0%,#f8bbd0 25%,#e1f5fe 50%,#b3e5fc 75%,#f3e5f5 100%)"};}
-    .mp-lock{background:${activeTheme?.surfaces?.lockBg || "linear-gradient(160deg,#fce4ec 0%,#f8bbd0 30%,#e8eaf6 60%,#b3e5fc 100%)"};}
-    .mp-lock-hint{max-width:min(82vw,320px);padding:0 12px;text-align:center;line-height:1.4;word-break:keep-all;overflow-wrap:anywhere;font-size:12px;}
-    .mp-page{background:${activeTheme?.surfaces?.pageBg || "linear-gradient(180deg,#fce4ec 0%,#fff 30%)"};}
-    ${isNightTheme ? `
-      .mp-page{background:${activeTheme.surfaces.pageBg};}
-      .mp-cr{background:linear-gradient(180deg,rgba(36,27,51,.97),rgba(26,22,37,.99));}
-      .mp-bar,.mp-hdr,.mp-inp-bar,.mp-dock{background:rgba(26,22,37,.95);border-color:#3a2d4f;}
-      .mp-modal,.mp-sg,.mp-cc,.mp-post,.mp-sc,.mp-cw,.mp-transfer-card{background:rgba(36,27,51,.95);border-color:#3a2d4f;box-shadow:0 8px 24px rgba(7,4,12,.26);}
-      .mp-icon-c,.mp-dock-i,.mp-back{background:rgba(47,36,64,.9);border-color:#3a2d4f;box-shadow:0 3px 12px rgba(7,4,12,.24);}
-      .mp-icon-c:hover,.mp-dock-i:hover,.mp-cw:hover{background:rgba(58,45,79,.96);box-shadow:0 5px 16px rgba(7,4,12,.3);}
-      .mp-chat-switch,.mp-mode-tabs{background:rgba(47,36,64,.72);border-color:#3a2d4f;box-shadow:none;}
-      .mp-chat-switch-btn{color:#b8a8c9;}
-      .mp-chat-switch-btn.active{color:#f0e6f5;background:rgba(244,143,177,.18);box-shadow:0 2px 8px rgba(7,4,12,.2);}
-      .mp-chat-row,.mp-ci{border-color:rgba(122,107,138,.24);}
-      .mp-chat-row:hover,.mp-chat-row.pinned:hover,.mp-ci:hover{background:rgba(255,255,255,.055);}
-      .mp-chat-row:active{background:rgba(244,143,177,.1);}
-      .mp-msg-ai{background:#2f2440;color:#f0e6f5;border-color:#3a2d4f;box-shadow:0 2px 8px rgba(7,4,12,.2);}
-      .mp-msg-user{background:linear-gradient(135deg,#ec6a95,#d95e88);color:#fff;box-shadow:0 2px 8px rgba(7,4,12,.22);}
-      .mp-post-menu{background:rgba(36,27,51,.98);border-color:#3a2d4f;box-shadow:0 8px 24px rgba(7,4,12,.4);}
-      .mp-msg-ai .mp-msg-t{color:#9384a2;}
-      .mp-msg-user .mp-msg-t{color:rgba(255,255,255,.72);}
-      .mp-reality-msg{background:transparent;border-color:transparent;box-shadow:none;color:#c9b8da;}
-      .mp-reality-user .mp-reality-msg{background:linear-gradient(135deg,#465d79,#394b66);color:#f4f8fc;box-shadow:inset 0 0 0 1px rgba(165,201,232,.22),0 2px 10px rgba(7,4,12,.22);}
-      .mp-reality-ai .mp-reality-msg{background:transparent;color:#b5a3c4;box-shadow:none;}
-      .mp-reality-dialogue{color:#fff7fc;font-weight:400;}
-      .mp-reality-thought{color:#d9a6e8;font-style:italic;font-weight:600;}
-      .mp-reality-strong{color:#ff91b8;font-weight:800;}
-      .mp-mode-sep{color:#a5c9e8;}
-      .mp-mode-sep::before{background:linear-gradient(90deg,rgba(165,201,232,0),rgba(165,201,232,.42));}
-      .mp-mode-sep::after{background:linear-gradient(90deg,rgba(165,201,232,.42),rgba(165,201,232,0));}
-      .mp-mode-sep span{background:#26384d;border-color:rgba(165,201,232,.34);color:#c5def2;}
-      .mp-chat-mode-reality .mp-inp-bar{background:rgba(30,24,43,.97);border-top-color:rgba(165,201,232,.28);box-shadow:0 -6px 18px rgba(7,4,12,.22);}
-      .mp-chat-mode-reality .mp-inp{background:#292039;border-color:rgba(165,201,232,.24);}
-      .mp-chat-mode-reality .mp-btn-send{background:linear-gradient(135deg,#a5c9e8,#7ba8d1);color:#1a1625;}
-      .mp-thought-content{background:rgba(47,36,64,.72);border-color:rgba(200,168,224,.5);}
-      .mp-inp,.mp-sinp,.mp-ssel,.mp-ta{background:#2f2440;color:#f0e6f5;border-color:#3a2d4f;}
-      .mp-ssel option{background:#241b33;color:#f0e6f5;}
-      .mp-inp:focus,.mp-sinp:focus,.mp-ta:focus{border-color:#7ba8d1;}
-      .mp-inp::placeholder,.mp-sinp::placeholder,.mp-ta::placeholder{color:#9384a2;}
-      .mp-cw-desc,.mp-ci-prev,.mp-lbl,.mp-mode-hint{color:#b8a8c9;}
-      .mp-msg-t,.mp-reality-t,.mp-char-counter{color:#81728f;}
-      .mp-htitle,.mp-clock-big,.mp-clock-day,.mp-lock-time,.mp-cw-name,.mp-ctitle,.mp-sec-ct,.mp-persona,.mp-icon-l{color:#f0e6f5;}
-      .mp-lock-notif{background:rgba(47,36,64,.72);border-color:rgba(165,201,232,.24);}
-      .mp-lock-notif-name{color:#f0e6f5;}
-      .mp-ibtn,.mp-ibtn-chat{background:rgba(165,201,232,.1);border-color:rgba(165,201,232,.3);color:#a5c9e8;}
-      .mp-ibtn-view{background:rgba(130,177,255,.12);border-color:rgba(130,177,255,.34);color:#a9c8ff;}
-      .mp-ibtn-r{background:rgba(229,115,115,.1);border-color:rgba(229,115,115,.28);color:#ef9696;}
-      .mp-badge-enabled{background:rgba(129,199,132,.16);color:#9bd29e;}
-      .mp-badge-disabled{background:rgba(122,107,138,.18);color:#b8a8c9;}
-      .mp-lorebook-content{background:#2f2440;border-color:#3a2d4f;color:#f0e6f5;}
-      .mp-btn-img{background:rgba(47,36,64,.9);color:#f0e6f5;border-color:#3a2d4f;}
-      .mp-btn-img.active{background:rgba(165,201,232,.14);color:#a5c9e8;border-color:rgba(165,201,232,.32);}
-      .mp-save{background:linear-gradient(135deg,#f48fb1,#ec6a95);color:#1a1625;}
-      .mp-mode-tab{color:#b8a8c9;}
-      .mp-mode-tab.active{background:#3a2d4f;color:#f0e6f5;box-shadow:0 2px 8px rgba(7,4,12,.24);}
-      .mp-msg-note{background:rgba(47,36,64,.72);border-color:#3a2d4f;color:#b8a8c9;}
-      .mp-msg-editbtn{background:#2f2440;border-color:rgba(165,201,232,.34);color:#a5c9e8;box-shadow:0 2px 7px rgba(7,4,12,.32);}
-      .mp-msg-editbtn:hover{background:#3a2d4f;border-color:rgba(165,201,232,.52);color:#c5def2;}
-      .mp-msg-editbtn + .mp-msg-editbtn{border-color:rgba(229,115,115,.34);color:#e98a8a;}
-      .mp-msg-editbtn + .mp-msg-editbtn:hover{border-color:rgba(229,115,115,.52);color:#ffaaaa;}
-      .mp-page-dot{background:rgba(255,255,255,.2);}
-      .mp-page-dot.active{background:#f48fb1;}
-      .mp-scroll-bottom{color:#f0e6f5;filter:drop-shadow(0 1px 3px rgba(7,4,12,.78));}
-    ` : ``}
-    ${isPeachTheme ? `
-      .mp-chat-row,.mp-ci{border-bottom-color:var(--mp-line);}
-      .mp-thought-history-divider{background:var(--mp-line);}
-      .mp-thought-history,.mp-thought-record{border-color:var(--mp-line);}
-      .mp-thought-history-pages button,.mp-transfer-row,.mp-transfer-note{border-color:var(--mp-line);}
-      .mp-msg{border-radius:18px;}
-      .mp-msg-ai{background:var(--mp-surface);border:none;border-radius:18px 18px 18px 6px;box-shadow:0 4px 12px color-mix(in srgb,var(--mp-pink) 12%,transparent);}
-      .mp-msg-user{border-radius:18px 18px 6px 18px;}
-      .mp-chat-row-badge{background:linear-gradient(135deg,var(--mp-bubble),var(--mp-bubble-2));box-shadow:0 2px 6px color-mix(in srgb,var(--mp-bubble-2) 40%,transparent);}
-      .mp-chat-row-time,.mp-msg-t,.mp-reality-t,.mp-post-tm{font-family:var(--mp-hand);font-size:10px;}
-      .mp-cr::before{content:'';position:absolute;inset:0;pointer-events:none;z-index:0;background-image:radial-gradient(color-mix(in srgb,var(--mp-pink-dk) 8%,transparent) 1px,transparent 1px),radial-gradient(circle at 15% 10%,color-mix(in srgb,var(--mp-pink-lt) 45%,transparent),transparent 38%);background-size:9px 9px,100% 100%;}
-      .mp-msgs{position:relative;z-index:1;}
-      .mp-phone::before,.mp-phone::after{position:absolute;top:-26px;z-index:95;pointer-events:none;font-size:12px;opacity:0;animation:mpPetal 12s linear infinite;}
-      .mp-phone::before{content:'🌸';left:12%;text-shadow:98px 76px 0 rgba(244,169,176,.8);}
-      .mp-phone::after{content:'🌸';left:64%;text-shadow:74px 128px 0 rgba(224,122,139,.72);animation-delay:3s;animation-duration:14s;}
-      .mp-desk-scroll>.mp-cw{position:relative;height:155px;margin:6px 0 12px;padding:0;display:block;overflow:hidden;border:0;border-radius:20px;background:repeating-linear-gradient(45deg,color-mix(in srgb,var(--mp-surface) 78%,transparent) 0 12px,color-mix(in srgb,var(--mp-pink) 12%,transparent) 12px 24px);box-shadow:0 8px 24px color-mix(in srgb,var(--mp-pink-dk) 10%,transparent);touch-action:pan-x pan-y;}
-      .mp-desk-scroll>.mp-cw::before{content:'角色立繪 ／ 自訂桌布';position:absolute;left:50%;top:50%;z-index:0;transform:translate(-50%,-50%);padding:7px 13px;border-radius:12px;background:color-mix(in srgb,var(--mp-surface) 86%,transparent);color:var(--mp-txt-l);font-size:10px;white-space:nowrap;}
-      .mp-desk-scroll>.mp-cw>.mp-av{position:absolute;inset:0;z-index:1;width:100%;height:100%;border-radius:0;background:transparent;box-shadow:none;font-size:0;}
-      .mp-desk-scroll>.mp-cw>.mp-av img{position:absolute;inset:0;z-index:1;width:100%;height:100%;object-fit:cover;object-position:center;transform-origin:center;will-change:transform;user-select:none;-webkit-user-drag:none;}
-      .mp-desk-scroll>.mp-cw>.mp-av img.mp-hero-blur-bg{z-index:0;object-fit:cover;transform:scale(1.12);filter:blur(16px) saturate(1.08) brightness(1.02);opacity:.85;}
-      .mp-desk-scroll>.mp-cw>.mp-cw-info{position:absolute;left:12px;bottom:12px;z-index:2;width:max-content;max-width:calc(100% - 24px);padding:7px 14px 8px 10px;border-radius:18px;background:color-mix(in srgb,var(--mp-surface) 88%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);box-shadow:0 4px 14px color-mix(in srgb,var(--mp-pink-dk) 18%,transparent);}
-      .mp-desk-scroll>.mp-cw .mp-cw-name{font-size:11px;font-weight:800;gap:5px;}
-      .mp-desk-scroll>.mp-cw .mp-active-badge{width:7px;height:7px;min-width:7px;padding:0;border-radius:50%;font-size:0;background:#9CCC65;box-shadow:0 0 6px rgba(156,204,101,.8);}
-      .mp-desk-scroll>.mp-cw .mp-cw-desc{max-width:270px;margin-top:2px;font-family:var(--mp-font);font-size:11px;line-height:1.35;color:var(--mp-pink-dk);white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;}
-      .peach-hero{cursor:default;}
-      .peach-hero:active{transform:none;}
-      .peach-hero>.mp-cw-info{cursor:pointer;transition:max-width .18s ease,padding .18s ease,border-radius .18s ease;}
-      .peach-hero>.mp-cw-info.is-collapsed{width:auto;max-width:calc(100% - 24px);padding:7px 12px;border-radius:999px;}
-      .peach-status-time{font-family:var(--mp-font);font-size:9px;font-weight:500;color:var(--mp-txt-l);white-space:nowrap;}
-      .peach-status-new{width:7px;height:7px;border-radius:50%;background:#ef6f83;box-shadow:0 0 0 3px rgba(239,111,131,.16),0 0 7px rgba(239,111,131,.7);animation:mpThoughtPulse 1.15s ease-in-out infinite;}
-      .peach-hero-adjust{position:absolute;right:9px;top:9px;z-index:4;padding:5px 9px;border:0;border-radius:999px;background:rgba(255,252,248,.88);color:var(--mp-pink-dk);font-size:10px;font-weight:800;box-shadow:0 3px 10px rgba(107,87,80,.14);cursor:pointer;}
-      .peach-hero.is-adjusting{cursor:grab;touch-action:none;box-shadow:inset 0 0 0 2px var(--mp-pink-dk),0 8px 24px rgba(224,122,139,.18);}
-      .peach-hero.is-adjusting:active{transform:none;cursor:grabbing;}
-      .peach-hero-tools{position:absolute;left:8px;right:8px;bottom:8px;z-index:5;display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:14px;background:rgba(255,252,248,.92);box-shadow:0 4px 14px rgba(107,87,80,.18);}
-      .peach-hero-tools input{min-width:0;flex:1;accent-color:var(--mp-pink-dk);}
-      .peach-hero-tools button{border:0;border-radius:10px;padding:5px 8px;background:var(--mp-pink-lt);color:var(--mp-txt);font-size:10px;font-weight:800;cursor:pointer;}
-      .peach-hero-tools button:last-child{background:linear-gradient(135deg,var(--mp-save-1),var(--mp-save-2));color:#fff;}
-      .peach-hero.is-adjusting>.mp-cw-info{display:none;}
-      .mp-home-mid{min-height:240px;}
-      .mp-grid{gap:14px 8px;}
-      .mp-chat-list{width:100%;min-width:0;max-width:100%;overflow-x:hidden;}
-      .mp-chat-list-line{width:100%;min-width:0;max-width:100%;padding:8px 14px 16px;gap:10px;box-sizing:border-box;overflow-x:hidden;}
-      .mp-chat-list-line .mp-chat-row{position:relative;width:100%;min-width:0;max-width:100%;min-height:84px;padding:12px 14px 12px 12px;gap:12px;box-sizing:border-box;border:1px solid color-mix(in srgb,var(--mp-pink) 20%,var(--mp-surface));border-radius:22px;background:color-mix(in srgb,var(--mp-surface) 86%,transparent);box-shadow:0 7px 20px color-mix(in srgb,var(--mp-pink-dk) 8%,transparent);overflow:hidden;}
-      .mp-chat-list-line .mp-chat-row:hover{background:var(--mp-surface);box-shadow:0 9px 24px color-mix(in srgb,var(--mp-pink-dk) 12%,transparent);}
-      .mp-chat-list-line .mp-chat-row:active{transform:scale(.985);background:var(--mp-surface);}
-      .mp-chat-list-line .mp-chat-row.pinned{border-color:color-mix(in srgb,var(--mp-pink) 72%,transparent);box-shadow:0 0 0 3px color-mix(in srgb,var(--mp-pink) 17%,transparent),0 8px 22px color-mix(in srgb,var(--mp-pink-dk) 11%,transparent);}
-      .mp-chat-list-line .mp-chat-row-avatar{width:56px;height:56px;border-radius:50%;border:2px solid var(--mp-surface);box-shadow:0 0 0 2px color-mix(in srgb,var(--mp-pink) 48%,transparent);font-size:22px;}
-      .mp-chat-list-line .mp-chat-row.pinned .mp-chat-row-avatar{box-shadow:0 0 0 3px color-mix(in srgb,var(--mp-pink) 62%,transparent),0 0 0 6px var(--mp-surface);}
-      .mp-chat-list-line .mp-chat-row-body{align-self:stretch;display:flex;flex-direction:column;justify-content:center;}
-      .mp-chat-list-line .mp-chat-row-top{align-items:center;}
-      .mp-chat-list-line .mp-chat-row-name{font-size:14px;color:var(--mp-txt);}
-      .mp-chat-list-line .mp-chat-row-name>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-      .mp-chat-list-line .mp-chat-row-pin{order:2;color:var(--mp-pink-dk);font-size:11px;}
-      .mp-chat-list-line .mp-chat-row-time{font-family:var(--mp-hand);font-size:9px;color:var(--mp-txt-l);padding:0;}
-      .mp-chat-list-line .mp-chat-row-preview{min-width:0;max-width:100%;margin-top:4px;font-size:12px;color:var(--mp-txt-l);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-      .mp-chat-list-line .mp-chat-row-bottom{align-items:center;}
-      .mp-chat-list-line .mp-chat-row-badge{min-width:30px;height:24px;padding:0 9px;border-radius:999px;background:linear-gradient(135deg,var(--mp-bubble),var(--mp-bubble-2));box-shadow:0 3px 9px color-mix(in srgb,var(--mp-bubble-2) 24%,transparent);font-family:var(--mp-hand);font-size:11px;}
-      @media (prefers-reduced-motion:reduce){.mp-phone::before,.mp-phone::after{display:none;}}
-    ` : ``}
-    ${!hasPeachEffects ? `.mp-cr::before{display:none!important}` : ``}
-    ${!themeEffectsEnabled ? `.mp-phone::before,.mp-phone::after{display:none!important;animation:none!important}` : ``}
-    ${false && showThemeEffects && normalizedThemeName === "莓果蘇打" ? `
-      .mp-phone::before,.mp-phone::after{display:block;content:'○';top:auto;bottom:-30px;color:rgba(255,255,255,.72);font-size:25px;text-shadow:72px -130px 0 rgba(144,202,249,.38),188px -48px 0 rgba(206,147,216,.32),278px -210px 0 rgba(244,143,177,.36);animation:mpBubbleRise 13s ease-in infinite;}
-      .mp-phone::after{left:46%;font-size:17px;animation-delay:5s;animation-duration:16s;}
-    ` : ``}
-    ${false && showThemeEffects && normalizedThemeName === "夜色絨幕" ? `
-      .mp-phone::before,.mp-phone::after{display:block;content:'✦';top:12%;left:12%;color:#f4dfff;font-size:9px;text-shadow:62px 88px 0 #a5c9e8,176px 22px 0 #f48fb1,248px 154px 0 #c8a8e0,94px 310px 0 #fff;animation:mpStarTwinkle 4.8s ease-in-out infinite;}
-      .mp-phone::after{content:'·';top:24%;left:28%;font-size:17px;animation-delay:1.8s;animation-duration:6.2s;}
-    ` : ``}
-    ${false && showThemeEffects && normalizedThemeName === "抹茶檸檬" ? `
-      .mp-phone::before,.mp-phone::after{display:block;content:'🍃';top:-30px;left:13%;font-size:13px;text-shadow:104px 120px 0 rgba(124,179,66,.55),232px 30px 0 rgba(230,168,23,.38);animation:mpLeafFall 15s linear infinite;}
-      .mp-phone::after{left:58%;font-size:10px;animation-delay:6s;animation-duration:18s;}
-    ` : ``}
-    ${false && showThemeEffects && normalizedThemeName === "海鹽汽水" ? `
-      .mp-phone::before,.mp-phone::after{display:block;content:'';inset:0;top:0;left:0;font-size:0;background-image:radial-gradient(ellipse at 20% 30%,rgba(255,255,255,.22) 0 2px,transparent 3px),radial-gradient(ellipse at 70% 65%,rgba(77,182,172,.16) 0 3px,transparent 4px);background-size:54px 38px,76px 52px;animation:mpWaterShimmer 12s ease-in-out infinite;}
-      .mp-phone::after{animation-delay:3s;animation-duration:16s;filter:blur(1px);}
-    ` : ``}
-    ${normalizedThemeName === "莓果蘇打" ? `
-      .mp-phone::before,.mp-phone::after{content:'🫧';top:auto;bottom:-28px;color:rgba(255,255,255,.82);font-family:var(--mp-font);font-size:22px;text-shadow:none;filter:none;animation:mpBubbleRise 13s ease-in infinite;}
-      .mp-phone::after{content:'🫧';left:58%;font-size:20px;text-shadow:none;filter:none;animation-name:mpBubbleRiseAlt;animation-delay:3.7s;animation-duration:16.8s;animation-timing-function:ease-in-out;}
-    ` : ``}
-    ${normalizedThemeName === "夜色絨幕" ? `
-      .mp-phone::before,.mp-phone::after{content:'✦';color:#f4dfff;font-size:11px;text-shadow:98px 76px 0 rgba(165,201,232,.78);}
-      .mp-phone::after{content:'⋆';font-size:15px;color:#c8a8e0;text-shadow:74px 128px 0 rgba(244,143,177,.72);}
-    ` : ``}
-    ${normalizedThemeName === "抹茶檸檬" ? `
-      .mp-phone::before,.mp-phone::after{content:'🍃';font-size:13px;text-shadow:98px 76px 0 rgba(124,179,66,.48);}
-      .mp-phone::after{content:'•';font-size:18px;color:#e6a817;text-shadow:74px 128px 0 rgba(230,168,23,.42);}
-    ` : ``}
-    ${normalizedThemeName === "海鹽汽水" ? `
-      .mp-phone::before,.mp-phone::after{content:'❄️';top:22%;left:-25px;font-size:14px;text-shadow:78px 34px 0 rgba(79,195,247,.22);animation:mpSaltCrystalDrift 15s ease-in-out infinite;}
-      .mp-phone::after{content:'❄️';top:62%;left:auto;right:-25px;font-size:10px;color:rgba(255,255,255,.82);text-shadow:64px -32px 0 rgba(77,182,172,.2);animation:mpSaltCrystalDriftAlt 18s ease-in-out 4s infinite;}
-    ` : ``}
-    ${scopedCustomCss}
-  `;
+  const { isNightTheme, isPeachTheme, themeCss } = useThemeRuntime({
+    themeName,
+    fontName,
+    currentApp,
+    themeEffectsEnabled,
+    scopedCustomCss,
+  });
 
   const lockNotifications = Object.keys(proactiveUnread || {})
     .filter((cid) => proactiveUnread[cid])
@@ -2530,10 +1911,10 @@ ${recent}`,
   } = useGroupChatController({
     characters, currentChatGroup, groupCoverCrop, groupEditCoverCrop,
     groupCreateMemberIds, groupCreateName, groupCreateRulePrompt, groupCreateCover,
-    groupEditGroupId, groupEditMemberIds, groupEditName, groupEditRulePrompt, groupEditCover,
+    groupEditGroupId, groupEditMemberIds, groupEditName, groupEditRulePrompt, groupEditUseRealTime, groupEditCover,
     setGroupCoverCrop, setGroupEditCoverCrop, setGroupCreateCover, setGroupEditCover,
     setGroupCreateName, setGroupCreateRulePrompt, setGroupCreateMemberIds, setGroupCreateSearch, setGroupCreateOpen,
-    setGroupEditGroupId, setGroupEditName, setGroupEditRulePrompt, setGroupEditMemberIds, setGroupEditSearch, setGroupEditOpen,
+    setGroupEditGroupId, setGroupEditName, setGroupEditRulePrompt, setGroupEditUseRealTime, setGroupEditMemberIds, setGroupEditSearch, setGroupEditOpen,
     setGroupChats, setCurrentChatGroup, sanitizeImageUrl: sanitizeUserImageUrl, showToast, notify, tr,
   });
   const {
@@ -2543,8 +1924,8 @@ ${recent}`,
     setChatBackgrounds, setChatBgEditor, sanitizeImageUrl: sanitizeUserImageUrl, showToast, tr,
   });
   const { importRef: chatroomImportRef, preview: chatroomImportPreview, importing: chatroomImporting, deleteChatroom: deleteChatroomForCharacter, exportChatroom: exportChatroomForCharacter, openImport: openChatroomImport, importFile: importChatroomFile, confirmImport: confirmChatroomImportPreview, cancelImport: cancelChatroomImport } = useChatroomImportExport({
-    currentCharacter: currentChatChar, characters, chatHistory, chatModes, chatBackgrounds, chatLorebookBindings, innerThoughtSettings,
-    setChatHistory, setChatModes, setChatBackgrounds, setChatLorebookBindings, setInnerThoughtSettings,
+    currentCharacter: currentChatChar, characters, chatHistory, chatModes, chatBackgrounds, chatLorebookBindings, innerThoughtSettings, chatTimeSettings,
+    setChatHistory, setChatModes, setChatBackgrounds, setChatLorebookBindings, setInnerThoughtSettings, setChatTimeSettings,
     resetOpenChat: () => { setChatActionPanelOpen(false); setMessageEditor(null); setActiveMessageId(null); setIsTyping(false); setChatInput(""); },
     normalizeBackground: normalizeChatBackground, downloadJsonFile, showToast, sanitizeText, tr,
   });
@@ -2559,6 +1940,7 @@ ${recent}`,
     members: members.map((member) => ({ ...member, profileText: getGroupMemberProfileText(member, sanitizeText) })),
     messages,
     currentImage,
+    includeRealTime: isGroupRealTimeEnabled(group),
     apiConfig,
     callAI,
     buildSystemPrompt: buildGroupPrompt,
@@ -2601,57 +1983,52 @@ ${recent}`,
       const modelShort = providerShortMap[apiConfig?.provider || "openai"] || "AI";
       const providerKey = apiConfig?.provider || "openai";
       const modelFull = `${providerFullMap[providerKey] || providerKey} · ${apiConfig?.model || "-"}`;
-      return (
-        <div className="mp-page" onClick={() => setModelBadgeOpen(false)} style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
-          <ChatHeader item={currentChatGroup} modelShort={modelShort} modelFull={modelFull} modelBadgeOpen={modelBadgeOpen} setModelBadgeOpen={setModelBadgeOpen} onBack={() => setCurrentChatGroup(null)} onTogglePinned={() => setGroupChats((prev) => prev.map((group) => group.id === currentChatGroup.id ? { ...group, pinned: !group.pinned } : group))} onOpenSettings={() => openEditGroup(currentChatGroup)} tr={tr} />
-          <div className="mp-cm" style={{ paddingTop: 8, paddingLeft: 0, paddingRight: 0, paddingBottom: 0, display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-            <div style={{ margin: "0 14px 8px", fontSize: 11, color: "var(--mp-txt-l)", lineHeight: 1.5, textAlign: "center" }}>
-              {tr("群組成員：", "Group members: ", "グループメンバー: ", "그룹 멤버: ")}{members.length ? members.map((m) => m.name).join("、") : tr("暫無成員", "No members yet", "まだメンバーがいません", "아직 멤버가 없습니다")}
-            </div>
-            {renderSceneBar("group", currentChatGroup.id, tr("場景", "Scene", "シーン", "장면"))}
-            <GroupChatContent
-              messages={visibleMsgs} isTyping={isTyping} activeMessageId={activeMessageId} setActiveMessageId={setActiveMessageId}
-              playerAvatar={getPlayerAvatar()} chatMsgsRef={chatMsgsRef} messagesEndRef={messagesEndRef}
-              onScroll={updateScrollToBottomVisibility} isConnectionErrorNotice={isConnectionErrorNotice} onRetry={retryGroupFromNotice}
-              onEdit={(message) => setMessageEditor({ id: message.id, content: message.content || "", mode: "online" })}
-              onDelete={(message) => {
-                if (!window.confirm(tr("確定要刪除這則對話嗎？", "Delete this message?", "このメッセージを削除しますか？", "이 메시지를 삭제할까요?"))) return;
-                const next = (currentChatGroup.messages || []).filter((item) => item.id !== message.id);
-                setGroupChats((previous) => previous.map((group) => group.id === currentChatGroup.id ? { ...group, messages: next, updatedAt: Date.now() } : group));
-                setActiveMessageId(null);
-              }}
-              showScrollToBottom={showScrollToBottom} onScrollToBottom={scrollCurrentChatToBottom}
-              chatImage={chatImage} onClearImage={() => setChatImage(null)} actionPanelOpen={chatActionPanelOpen} setActionPanelOpen={setChatActionPanelOpen}
-              fileInputRef={fileInputRef} onImageUpload={handleImgUp} chatInput={chatInput} setChatInput={setChatInput} onSend={sendGroupMessage} tr={tr}
-            />
-          </div>
-        </div>
-      );
+      return <ChatView
+        currentGroup={currentChatGroup}
+        tr={tr}
+        group={{
+          onPageClick: () => setModelBadgeOpen(false),
+          members,
+          header: {
+            item: currentChatGroup, modelShort, modelFull, modelBadgeOpen, setModelBadgeOpen,
+            onBack: () => setCurrentChatGroup(null),
+            onTogglePinned: () => setGroupChats((previous) => previous.map((group) => group.id === currentChatGroup.id ? { ...group, pinned: !group.pinned } : group)),
+            onOpenSettings: () => openEditGroup(currentChatGroup),
+          },
+          sceneBar: renderSceneBar("group", currentChatGroup.id, tr("場景", "Scene", "シーン", "장면")),
+          content: {
+            messages: visibleMsgs, isTyping, activeMessageId, setActiveMessageId,
+            playerAvatar: getPlayerAvatar(), chatMsgsRef, messagesEndRef,
+            onScroll: updateScrollToBottomVisibility, isConnectionErrorNotice, onRetry: retryGroupFromNotice,
+            onEdit: (message) => setMessageEditor({ id: message.id, content: message.content || "", mode: "online" }),
+            onDelete: (message) => {
+              if (!window.confirm(tr("確定要刪除這則對話嗎？", "Delete this message?", "このメッセージを削除しますか？", "이 메시지를 삭제할까요?"))) return;
+              const next = (currentChatGroup.messages || []).filter((item) => item.id !== message.id);
+              setGroupChats((previous) => previous.map((group) => group.id === currentChatGroup.id ? { ...group, messages: next, updatedAt: Date.now() } : group));
+              setActiveMessageId(null);
+            },
+            showScrollToBottom, onScrollToBottom: scrollCurrentChatToBottom,
+            chatImage, onClearImage: () => setChatImage(null), actionPanelOpen: chatActionPanelOpen,
+            setActionPanelOpen: setChatActionPanelOpen, fileInputRef, onImageUpload: handleImgUp,
+            chatInput, setChatInput, onSend: sendGroupMessage,
+          },
+        }}
+      />;
     }
     if (!currentChatChar) {
-      return (
-        <ChatListView
-          tab={chatListTab}
-          setTab={setChatListTab}
-          characters={sortChatThreads(characters)}
-          chatHistory={chatHistory}
-          groups={sortGroupChats(groupChats)}
-          proactiveUnread={proactiveUnread}
-          closeApp={closeApp}
-          openCreateGroup={openCreateGroup}
-          onOpenCharacter={(character, unread) => {
-            if (Date.now() <= suppressAppClickUntilRef.current) return;
-            if (unread) setProactiveUnread((previous) => { const next = { ...previous }; delete next[character.id]; return next; });
-            setCurrentChatChar(character);
-          }}
-          onOpenGroup={(group) => {
-            if (Date.now() > suppressAppClickUntilRef.current) setCurrentChatGroup(group);
-          }}
-          getGroupMembers={getGroupMembers}
-          t={t}
-          tr={tr}
-        />
-      );
+      return <ChatView tr={tr} list={{
+        tab: chatListTab, setTab: setChatListTab, characters: sortChatThreads(characters),
+        chatHistory, groups: sortGroupChats(groupChats), proactiveUnread, closeApp, openCreateGroup,
+        onOpenCharacter: (character, unread) => {
+          if (Date.now() <= suppressAppClickUntilRef.current) return;
+          if (unread) setProactiveUnread((previous) => { const next = { ...previous }; delete next[character.id]; return next; });
+          setCurrentChatChar(character);
+        },
+        onOpenGroup: (group) => {
+          if (Date.now() > suppressAppClickUntilRef.current) setCurrentChatGroup(group);
+        },
+        getGroupMembers, t,
+      }} />;
     }
     if (currentChatChar) {
       const msgs = chatHistory[currentChatChar.id] || [];
@@ -2723,120 +2100,74 @@ ${recent}`,
             overflow: "hidden",
           }
         : { flex: 1, minHeight: 0 };
-      return (
-        <div className="mp-page" onClick={() => setModelBadgeOpen(false)}>
-          <ChatHeader item={currentChatChar} modelShort={modelShort} modelFull={modelFull} modelBadgeOpen={modelBadgeOpen} setModelBadgeOpen={setModelBadgeOpen}
-            onBack={() => { if (chatSettingsOpen) setChatSettingsOpen(false); else setCurrentChatChar(null); }}
-            onTogglePinned={() => toggleChatPin(currentChatChar.id)}
-            onOpenSettings={() => { setChatSettingsExpandedBooks({}); setChatSettingsBackgroundOpen(false); setChatSettingsLorebookOpen(false); setChatSettingsThoughtsOpen(false); setThoughtHistoryPage(0); setChatroomManageOpen(false); setChatBgEditor(null); setChatSettingsOpen(true); }}
-            tr={tr}
-          />
-          {chatSettingsOpen ? (
-            <ChatSettingsPanel tr={tr}
-              mode={{ selectedMode, pending: hasPendingMode, onChange: (mode) => setSelectedChatMode(currentChatChar.id, mode) }}
-              innerThought={{ autoEnabled: isInnerThoughtAutoEnabled(currentChatChar.id), onToggleAuto: () => setInnerThoughtAutoEnabled(currentChatChar.id, !isInnerThoughtAutoEnabled(currentChatChar.id)), open: chatSettingsThoughtsOpen, setOpen: setChatSettingsThoughtsOpen, records: thoughtRecords, visibleRecords: visibleThoughtRecords, page: activeThoughtPage, pageCount: thoughtPageCount, setPage: setThoughtHistoryPage, onJump: jumpToThoughtMessage, locale: uiLanguage, sanitizeText }}
-              proactive={{ enabled: isProactiveEnabled(currentChatChar.id), frequency: getProactiveFrequency(currentChatChar.id), onToggle: () => setProactiveEnabled(currentChatChar.id, !isProactiveEnabled(currentChatChar.id)), onFrequencyChange: (frequency) => setProactiveFrequency(currentChatChar.id, frequency) }}
-              background={{ currentChatChar, chatSettingsBackgroundOpen, setChatSettingsBackgroundOpen, chatBackgrounds, normalizeChatBackground, getChatBackgroundLayerStyle, getChatBackgroundBlurFilter, onChatBackgroundFile, chatBgEditor, setChatBgEditor, updateChatBackground }}
-              lorebook={{ chatSettingsLorebookOpen, setChatSettingsLorebookOpen, binding, lorebooks, chatSettingsExpandedBooks, setChatSettingsExpandedBooks, toggleChatLorebookBook, setAllChatLorebookEntries, toggleChatLorebookEntry, cycleChatLorebookEntryMode, currentChatChar, armAppClickSuppression }}
-              management={{ open: chatroomManageOpen, setOpen: setChatroomManageOpen, character: currentChatChar, importing: chatroomImporting, importRef: chatroomImportRef, onImportFile: importChatroomFile, onExport: exportChatroomForCharacter, onOpenImport: openChatroomImport, onDelete: deleteChatroomForCharacter }}
-            />
-          ) : (
-            <>
-            <DirectMessageList mode={selectedMode} containerStyle={chatCrStyle}
-              backgroundLayer={chatBgUrl ? <><div style={{ ...getChatBackgroundLayerStyle(chatBg, 1.08), filter: getChatBackgroundBlurFilter(chatBg), zIndex: 0 }} /><div style={{ position: "absolute", inset: 0, background: isNightTheme ? "rgba(18,12,28,.46)" : "rgba(255,255,255,.52)", pointerEvents: "none", zIndex: 0 }} /></> : null}
-              sceneBar={<div style={{ position: "relative", zIndex: 1 }}>{renderSceneBar("char", currentChatChar.id, tr("場景", "Scene", "シーン", "장면"))}</div>}
-              messagesRef={chatMsgsRef} messagesEndRef={messagesEndRef}
-              onScroll={(element) => {
-                updateScrollToBottomVisibility(element);
-                if (element.scrollTop > 0 || visibleCount >= msgs.length) return;
-                const nextCount = Math.min(msgs.length, visibleCount + 50);
-                chatLoadAdjustRef.current = { charId: currentChatChar.id, prevScrollHeight: element.scrollHeight, prevScrollTop: element.scrollTop };
-                setChatVisibleCounts((previous) => ({ ...previous, [currentChatChar.id]: nextCount }));
-              }}
-              hasEarlier={visibleCount < msgs.length} onLoadEarlier={() => {
-                const element = chatMsgsRef.current;
-                if (!element) return;
-                const nextCount = Math.min(msgs.length, visibleCount + 50);
-                chatLoadAdjustRef.current = { charId: currentChatChar.id, prevScrollHeight: element.scrollHeight, prevScrollTop: element.scrollTop };
-                setChatVisibleCounts((previous) => ({ ...previous, [currentChatChar.id]: nextCount }));
-              }}
-              isTyping={isTyping} showScrollToBottom={showScrollToBottom}
-              scrollButtonBottom={chatActionPanelOpen ? 142 : (chatImage ? 148 : 68)}
-              onScrollToBottom={scrollCurrentChatToBottom} tr={tr}
-            >
-              {visibleMsgs.map(m => {
-                  if (m.role === "mode_transition") {
-                    return (
-                      <div key={m.id} className="mp-mode-sep">
-                        <span>{getModeLabel(m.toMode)}</span>
-                      </div>
-                    );
-                  }
-                  if (m.role === "system_notice") {
-                    const share = parseShareEventNotice(m.content);
-                    return <SystemNoticeMessage key={m.id} message={m} share={share} connectionError={isConnectionErrorNotice(m.content)}
-                      active={activeMessageId === m.id} isTyping={isTyping}
-                      onLongPressStart={() => startNoticeLongPress(m.id)} onLongPressEnd={cancelNoticeLongPress}
-                      onRetry={() => retryChatFromNotice(m.id)} onDelete={() => deleteChatMessage(currentChatChar.id, m.id)}
-                      applyUserPlaceholder={applyUserPlaceholder} tr={tr} />;
-                  }
-                const isUser = m.role === "user";
-                const isActive = activeMessageId === m.id;
-                if (m.role === "transfer") {
-                  return <TransferMessage key={m.id} message={m} active={isActive}
-                    onToggle={() => setActiveMessageId((previous) => previous === m.id ? null : m.id)}
-                    onDelete={() => {
-                      if (!window.confirm(tr("刪除後不保留這筆交易紀錄，確定嗎？", "This transaction record will be removed. Continue?", "削除するとこの取引記録は残りません。続けますか？", "삭제하면 이 거래 기록은 남지 않습니다. 계속할까요?"))) return;
-                      deleteChatMessage(currentChatChar.id, m.id);
-                    }}
-                    formatMoney={formatMoney} tr={tr} />;
-                }
-                const isReality = getMessageMode(m) === "reality";
-                const displayContent = stripModeLabel(stripInternalBlocks(m.content));
-                if (isReality) {
-                  return <RealityChatMessage key={m.id} message={m} isUser={isUser} active={isActive}
-                    highlighted={highlightedThoughtMessageId === m.id} displayContent={displayContent}
-                    renderedContent={renderRealityText(displayContent)}
-                    innerThought={canRenderInnerThought(m) ? renderInnerThought(currentChatChar, m) : null}
-                    voiceAction={renderCharacterVoiceAction(currentChatChar, m, isActive, true)}
-                    onToggle={() => setActiveMessageId((previous) => previous === m.id ? null : m.id)}
-                    onEdit={() => setMessageEditor({ id: m.id, content: m.content || "", mode: getMessageMode(m) })}
-                  />;
-                }
-                return <OnlineChatMessage key={m.id} message={m} isUser={isUser} active={isActive}
-                  highlighted={highlightedThoughtMessageId === m.id} displayContent={displayContent}
-                  innerThought={canRenderInnerThought(m) ? renderInnerThought(currentChatChar, m) : null}
-                  voiceAction={renderCharacterVoiceAction(currentChatChar, m, isActive)}
-                  onToggle={() => setActiveMessageId((previous) => previous === m.id ? null : m.id)}
-                  onEdit={() => setMessageEditor({ id: m.id, content: m.content || "", mode: getMessageMode(m) })}
-                />;
-              })}
-            </DirectMessageList>
-            <DirectChatComposer image={chatImage} onClearImage={() => setChatImage(null)}
-              actionPanelOpen={chatActionPanelOpen} setActionPanelOpen={setChatActionPanelOpen}
-              allowTransfer={selectedMode !== "reality"} onOpenTransfer={() => setTransferModalOpen(true)}
-              fileInputRef={fileInputRef} onImageUpload={handleImgUp}
-              value={chatInput} setValue={setChatInput} textLimit={inputTextLimit} onSend={sendMessage} tr={tr}
-            />
-            </>
-          )}
-        </div>
-      );
+      const loadEarlier = () => {
+        const element = chatMsgsRef.current;
+        if (!element) return;
+        const nextCount = Math.min(msgs.length, visibleCount + 50);
+        chatLoadAdjustRef.current = { charId: currentChatChar.id, prevScrollHeight: element.scrollHeight, prevScrollTop: element.scrollTop };
+        setChatVisibleCounts((previous) => ({ ...previous, [currentChatChar.id]: nextCount }));
+      };
+      return <ChatView currentCharacter={currentChatChar} tr={tr} directView={<DirectChatView
+        onPageClick={() => setModelBadgeOpen(false)}
+        tr={tr}
+        header={{
+          item: currentChatChar, modelShort, modelFull, modelBadgeOpen, setModelBadgeOpen,
+          onBack: () => { if (chatSettingsOpen) setChatSettingsOpen(false); else setCurrentChatChar(null); },
+          onTogglePinned: () => toggleChatPin(currentChatChar.id),
+          onOpenSettings: () => {
+            setChatSettingsExpandedBooks({});
+            setChatSettingsBackgroundOpen(false);
+            setChatSettingsLorebookOpen(false);
+            setChatSettingsThoughtsOpen(false);
+            setThoughtHistoryPage(0);
+            setChatroomManageOpen(false);
+            setChatBgEditor(null);
+            setChatSettingsOpen(true);
+          },
+        }}
+        settingsOpen={chatSettingsOpen}
+        settings={{
+          mode: { selectedMode, pending: hasPendingMode, onChange: (mode) => setSelectedChatMode(currentChatChar.id, mode) },
+          innerThought: { autoEnabled: isInnerThoughtAutoEnabled(currentChatChar.id), onToggleAuto: () => setInnerThoughtAutoEnabled(currentChatChar.id, !isInnerThoughtAutoEnabled(currentChatChar.id)), open: chatSettingsThoughtsOpen, setOpen: setChatSettingsThoughtsOpen, records: thoughtRecords, visibleRecords: visibleThoughtRecords, page: activeThoughtPage, pageCount: thoughtPageCount, setPage: setThoughtHistoryPage, onJump: jumpToThoughtMessage, locale: uiLanguage, sanitizeText },
+          proactive: { enabled: isProactiveEnabled(currentChatChar.id), frequency: getProactiveFrequency(currentChatChar.id), onToggle: () => setProactiveEnabled(currentChatChar.id, !isProactiveEnabled(currentChatChar.id)), onFrequencyChange: (frequency) => setProactiveFrequency(currentChatChar.id, frequency) },
+          realTime: { enabled: isChatRealTimeEnabled(currentChatChar.id), onToggle: () => setChatRealTimeEnabled(currentChatChar.id, !isChatRealTimeEnabled(currentChatChar.id)) },
+          background: { currentChatChar, chatSettingsBackgroundOpen, setChatSettingsBackgroundOpen, chatBackgrounds, normalizeChatBackground, getChatBackgroundLayerStyle, getChatBackgroundBlurFilter, onChatBackgroundFile, chatBgEditor, setChatBgEditor, updateChatBackground },
+          lorebook: { chatSettingsLorebookOpen, setChatSettingsLorebookOpen, binding, lorebooks, chatSettingsExpandedBooks, setChatSettingsExpandedBooks, toggleChatLorebookBook, setAllChatLorebookEntries, toggleChatLorebookEntry, cycleChatLorebookEntryMode, currentChatChar, armAppClickSuppression },
+          management: { open: chatroomManageOpen, setOpen: setChatroomManageOpen, character: currentChatChar, importing: chatroomImporting, importRef: chatroomImportRef, onImportFile: importChatroomFile, onExport: exportChatroomForCharacter, onOpenImport: openChatroomImport, onDelete: deleteChatroomForCharacter },
+        }}
+        messageList={{
+          mode: selectedMode,
+          containerStyle: chatCrStyle,
+          backgroundLayer: chatBgUrl ? <><div style={{ ...getChatBackgroundLayerStyle(chatBg, 1.08), filter: getChatBackgroundBlurFilter(chatBg), zIndex: 0 }} /><div style={{ position: "absolute", inset: 0, background: isNightTheme ? "rgba(18,12,28,.46)" : "rgba(255,255,255,.52)", pointerEvents: "none", zIndex: 0 }} /></> : null,
+          sceneBar: <div style={{ position: "relative", zIndex: 1 }}>{renderSceneBar("char", currentChatChar.id, tr("場景", "Scene", "シーン", "장면"))}</div>,
+          messagesRef: chatMsgsRef, messagesEndRef,
+          onScroll: (element) => {
+            updateScrollToBottomVisibility(element);
+            if (element.scrollTop > 0 || visibleCount >= msgs.length) return;
+            const nextCount = Math.min(msgs.length, visibleCount + 50);
+            chatLoadAdjustRef.current = { charId: currentChatChar.id, prevScrollHeight: element.scrollHeight, prevScrollTop: element.scrollTop };
+            setChatVisibleCounts((previous) => ({ ...previous, [currentChatChar.id]: nextCount }));
+          },
+          hasEarlier: visibleCount < msgs.length, onLoadEarlier: loadEarlier, isTyping, showScrollToBottom,
+          scrollButtonBottom: chatActionPanelOpen ? 142 : (chatImage ? 148 : 68),
+          onScrollToBottom: scrollCurrentChatToBottom,
+        }}
+        messageRenderer={{
+          messages: visibleMsgs, character: currentChatChar, activeMessageId, setActiveMessageId,
+          highlightedThoughtMessageId, isTyping, getModeLabel, getMessageMode, stripModeLabel,
+          stripInternalBlocks, parseShareEventNotice, isConnectionErrorNotice, startNoticeLongPress,
+          cancelNoticeLongPress, retryChatFromNotice, deleteChatMessage, applyUserPlaceholder,
+          formatMoney, renderRealityText, renderInnerThought, canRenderInnerThought,
+          renderCharacterVoiceAction, setMessageEditor,
+        }}
+        composer={{
+          image: chatImage, onClearImage: () => setChatImage(null), actionPanelOpen: chatActionPanelOpen,
+          setActionPanelOpen: setChatActionPanelOpen, allowTransfer: selectedMode !== "reality",
+          onOpenTransfer: () => setTransferModalOpen(true), fileInputRef, onImageUpload: handleImgUp,
+          value: chatInput, setValue: setChatInput, textLimit: inputTextLimit, onSend: sendMessage,
+        }}
+      />} />;
     }
-    return (
-      <div className="mp-page">
-        <div className="mp-hdr"><div className="mp-back" onClick={closeApp}>←</div><div className="mp-htitle">{t("chat")}</div></div>
-        <div className="mp-cl">
-          {characters.length === 0 ? <div className="mp-empty"><div className="mp-empty-i">💬</div><div className="mp-empty-t">No characters to chat with yet<br/>Add one from Characters</div></div>
-          : characters.map(c => { const ms = chatHistory[c.id]||[]; const lm = ms[ms.length-1]; return (
-            <div key={c.id} className="mp-ci" onClick={()=>setCurrentChatChar(c)}>
-              <div className="mp-ci-av">{sanitizeUserImageUrl(c.avatar)?<img src={sanitizeUserImageUrl(c.avatar)} alt=""/>:"🦊"}</div>
-              <div className="mp-ci-info"><div className="mp-ci-name">{c.name}</div><div className="mp-ci-prev">{lm?(lm.role==="transfer"?(lm.note?`Transfer ${formatMoney(lm.amount)}｜${lm.note}`:`Transfer ${formatMoney(lm.amount)}`):(lm.image?"[Image]":stripModeLabel(stripInternalBlocks(lm.content))?.slice(0,30))):"No messages yet"}</div></div>
-              {lm && <div className="mp-ci-time">{new Date(lm.time).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"})}</div>}
-            </div>); })}
-        </div>
-      </div>
-    );
   };
 
   const renderSocial = () => <SocialApp
@@ -2902,7 +2233,7 @@ ${recent}`,
       if (!old) return old;
       // 放大時位移對畫面的影響變大，靈敏度除以縮放倍率讓拖曳速度保持一致
       const z = Math.max(1, Number(old.zoom) || 1);
-      return { ...old, x: Math.max(-50, Math.min(50, drag.x + (event.clientX - drag.px) / (2 * z))), y: Math.max(-50, Math.min(50, drag.y + (event.clientY - drag.py) / (1.5 * z))) };
+      return { ...old, x: clampCropPan(drag.x + (event.clientX - drag.px) / (2 * z), 50), y: clampCropPan(drag.y + (event.clientY - drag.py) / (1.5 * z), 50) };
     });
   };
   const endHeroSettingDrag = (event) => {
@@ -3320,204 +2651,56 @@ ${recent}`,
         </div>
       </div>
     )}
-    {groupCreateOpen && (
-      <div className="mp-overlay" onClick={() => setGroupCreateOpen(false)}>
-        <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
-          <div className="mp-modal-t">{tr("新增群組", "Create group", "グループを作成", "그룹 만들기")}</div>
-          <div className="mp-row">
-            <div className="mp-lbl">{tr("群組名稱", "Group name", "グループ名", "그룹 이름")}</div>
-            <input
-              className="mp-sinp"
-              value={groupCreateName}
-              onChange={(e) => setGroupCreateName(e.target.value)}
-              placeholder={tr("可留空，建立後再命名", "Optional, name it later", "未入力でも可。後で名前を変更できます", "비워도 됩니다. 나중에 이름을 정하세요")}
-            />
-            <div style={{ fontSize: 11, color: "var(--mp-txt-l)", marginTop: 6 }}>{tr("未命名時，會自動依成員名稱生成群組名。", "If left blank, the group name will be generated from the members.", "未入力の場合はメンバー名から自動生成されます。", "비워두면 멤버 이름으로 자동 생성됩니다.")}</div>
-          </div>
-            <div className="mp-row">
-            <div className="mp-lbl">{tr("群組圖片", "Group cover", "グループ画像", "그룹 이미지")}</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div className="mp-av" style={{ cursor: "pointer" }} onClick={() => groupCoverInputRef.current?.click()}>
-                {groupCreateCover ? <img src={groupCreateCover} alt="" /> : "👥"}
-              </div>
-              <input type="file" ref={groupCoverInputRef} accept="image/*" style={{ display: "none" }} onChange={handleGroupCreateCoverUp} />
-              <button className="mp-ibtn" style={{ padding: "6px 12px", fontSize: 12, lineHeight: 1 }} onClick={() => groupCoverInputRef.current?.click()}>{tr("上傳", "Upload", "アップロード", "업로드")}</button>
-              <button className="mp-ibtn-r" style={{ padding: "6px 12px", fontSize: 12, lineHeight: 1 }} onClick={() => setGroupCreateCover("")}>{tr("移除", "Remove", "削除", "제거")}</button>
-            </div>
-            <div style={{ fontSize: 11, color: "var(--mp-txt-l)", marginTop: 6 }}>{tr("會顯示在群組聊天室列表。", "Shown in the group chat list.", "グループチャット一覧に表示されます。", "그룹 채팅 목록에 표시됩니다.")}</div>
-          </div>
-          <div className="mp-row">
-            <div className="mp-lbl">{tr("要加入的角色", "Characters to add", "追加するキャラ", "추가할 캐릭터")}</div>
-            <GroupMemberPicker characters={sortChatThreads(characters)} selectedIds={groupCreateMemberIds} setSelectedIds={setGroupCreateMemberIds} search={groupCreateSearch} setSearch={setGroupCreateSearch} tr={tr} showToast={showToast} />
-          </div>
-          <div className="mp-row">
-            <div className="mp-lbl">{tr("群組聊天規則", "Group chat rules", "グループチャットのルール", "그룹 채팅 규칙")}</div>
-            <textarea
-              className="mp-ta"
-              value={groupCreateRulePrompt}
-              onChange={(e) => setGroupCreateRulePrompt(e.target.value)}
-              placeholder={tr("例如：自然聊天、可互相吐槽、不要提系統...", "For example: natural chat, playful teasing, no system talk...", "例: 自然な会話、軽いツッコミ可、システムの話はしない...", "예: 자연스러운 대화, 가벼운 농담 가능, 시스템 언급 금지...")}
-              style={{ minHeight: 120, resize: "vertical" }}
-            />
-            <div style={{ fontSize: 11, color: "var(--mp-txt-l)", marginTop: 6 }}>{tr("之後可作為群組 AI 回覆的專屬 Prompt。", "Can be used later as the group AI's dedicated prompt.", "後でグループAIの専用プロンプトとして使えます。", "나중에 그룹 AI 전용 프롬프트로 사용할 수 있습니다.")}</div>
-          </div>
-          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-            <button className="mp-save" style={{ flex: 1, background: "linear-gradient(135deg,#b0bec5,#90a4ae)" }} onClick={() => setGroupCreateOpen(false)}>{tr("取消", "Cancel", "キャンセル", "취소")}</button>
-            <button className="mp-save" style={{ flex: 1 }} onClick={createGroupChat}>{tr("建立群組", "Create group", "グループを作成", "그룹 만들기")}</button>
-          </div>
-        </div>
-      </div>
-    )}
-    {groupEditOpen && (
-      <div className="mp-overlay" onClick={() => setGroupEditOpen(false)}>
-        <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
-          <div className="mp-modal-t">{tr("編輯群組", "Edit group", "グループを編集", "그룹 편집")}</div>
-          <div className="mp-row">
-            <div className="mp-lbl">{tr("群組名稱", "Group name", "グループ名", "그룹 이름")}</div>
-            <input
-              className="mp-sinp"
-              value={groupEditName}
-              onChange={(e) => setGroupEditName(e.target.value)}
-              placeholder={tr("可留空，儲存後再命名", "Optional, name it later", "未入力でも可。保存後に名前を変更できます", "비워도 됩니다. 저장 후 이름을 정하세요")}
-            />
-            <div style={{ fontSize: 11, color: "var(--mp-txt-l)", marginTop: 6 }}>{tr("未命名時，會自動依成員名稱生成群組名。", "If left blank, the group name will be generated from the members.", "未入力の場合はメンバー名から自動生成されます。", "비워두면 멤버 이름으로 자동 생성됩니다.")}</div>
-          </div>
-          <div className="mp-row">
-            <div className="mp-lbl">{tr("群組圖片", "Group cover", "グループ画像", "그룹 이미지")}</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div className="mp-av" style={{ cursor: "pointer" }} onClick={() => groupEditCoverInputRef.current?.click()}>
-                {groupEditCover ? <img src={groupEditCover} alt="" /> : "👥"}
-              </div>
-              <input type="file" ref={groupEditCoverInputRef} accept="image/*" style={{ display: "none" }} onChange={handleGroupEditCoverUp} />
-              <button className="mp-ibtn" style={{ padding: "6px 12px", fontSize: 12, lineHeight: 1 }} onClick={() => groupEditCoverInputRef.current?.click()}>{tr("上傳", "Upload", "アップロード", "업로드")}</button>
-              <button className="mp-ibtn-r" style={{ padding: "6px 12px", fontSize: 12, lineHeight: 1 }} onClick={() => setGroupEditCover("")}>{tr("移除", "Remove", "削除", "제거")}</button>
-            </div>
-            <div style={{ fontSize: 11, color: "var(--mp-txt-l)", marginTop: 6 }}>{tr("會顯示在群組聊天室列表。", "Shown in the group chat list.", "グループチャット一覧に表示されます。", "그룹 채팅 목록에 표시됩니다.")}</div>
-          </div>
-          <div className="mp-row">
-            <div className="mp-lbl">{tr("要加入的角色", "Characters to add", "追加するキャラ", "추가할 캐릭터")}</div>
-            <GroupMemberPicker characters={sortChatThreads(characters)} selectedIds={groupEditMemberIds} setSelectedIds={setGroupEditMemberIds} search={groupEditSearch} setSearch={setGroupEditSearch} tr={tr} showToast={showToast} />
-          </div>
-          <div className="mp-row">
-            <div className="mp-lbl">{tr("群組聊天規則", "Group chat rules", "グループチャットのルール", "그룹 채팅 규칙")}</div>
-            <textarea
-              className="mp-ta"
-              value={groupEditRulePrompt}
-              onChange={(e) => setGroupEditRulePrompt(e.target.value)}
-              placeholder={tr("例如：自然聊天、可互相吐槽、不要提系統...", "For example: natural chat, playful teasing, no system talk...", "例: 自然な会話、軽いツッコミ可、システムの話はしない...", "예: 자연스러운 대화, 가벼운 농담 가능, 시스템 언급 금지...")}
-              style={{ minHeight: 120, resize: "vertical" }}
-            />
-            <div style={{ fontSize: 11, color: "var(--mp-txt-l)", marginTop: 6 }}>{tr("之後可作為群組 AI 回覆的專屬 Prompt。", "Can be used later as the group AI's dedicated prompt.", "後でグループAIの専用プロンプトとして使えます。", "나중에 그룹 AI 전용 프롬프트로 사용할 수 있습니다.")}</div>
-          </div>
-          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-            <button className="mp-save" style={{ flex: 1, background: "linear-gradient(135deg,#b0bec5,#90a4ae)" }} onClick={() => setGroupEditOpen(false)}>{tr("取消", "Cancel", "キャンセル", "취소")}</button>
-            <button className="mp-save" style={{ flex: 1 }} onClick={saveEditGroup}>{tr("儲存", "Save", "保存", "저장")}</button>
-          </div>
-          </div>
-        </div>
-      )}
-      {(groupCoverCrop || groupEditCoverCrop) && (
-        <div className="mp-overlay" onClick={() => { setGroupCoverCrop(null); setGroupEditCoverCrop(null); }}>
-          <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="mp-modal-t">{tr("裁切群組圖片", "Crop group cover", "グループ画像をトリミング", "그룹 이미지 자르기")}</div>
-            <div style={{ fontSize: 11, color: "var(--mp-txt-l)", marginBottom: 10 }}>{tr("可拖曳調整位置，完成後會自動壓縮。", "Drag to adjust the position; it will be compressed automatically when done.", "ドラッグで位置を調整できます。完了時に自動で圧縮されます。", "드래그로 위치를 조정할 수 있으며 완료 시 자동 압축됩니다.")}</div>
-            <div
-              style={{ width: 220, height: 220, borderRadius: 18, overflow: "hidden", border: "1px solid rgba(244,143,177,.35)", background: "#fff", touchAction: "none", cursor: "grab", position: "relative", margin: "0 auto" }}
-              onPointerDown={(e) => {
-                const crop = groupEditCoverCrop || groupCoverCrop;
-                if (!crop) return;
-                e.preventDefault();
-                try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch (_) {}
-                const px = e.clientX ?? 0;
-                const py = e.clientY ?? 0;
-                const next = { ...crop, dragging: true, dragStartX: px, dragStartY: py, startPanX: crop.panX || 0, startPanY: crop.panY || 0 };
-                if (groupEditCoverCrop) setGroupEditCoverCrop(next); else setGroupCoverCrop(next);
-              }}
-              onPointerMove={(e) => {
-                const crop = groupEditCoverCrop || groupCoverCrop;
-                if (!crop?.dragging) return;
-                e.preventDefault();
-                const px = e.clientX ?? 0;
-                const py = e.clientY ?? 0;
-                const nextPanX = (crop.startPanX || 0) + ((px - (crop.dragStartX || 0)) / 1.8);
-                const nextPanY = (crop.startPanY || 0) + ((py - (crop.dragStartY || 0)) / 1.8);
-                const next = { ...crop, panX: Math.max(-100, Math.min(100, nextPanX)), panY: Math.max(-100, Math.min(100, nextPanY)) };
-                if (groupEditCoverCrop) setGroupEditCoverCrop(next); else setGroupCoverCrop(next);
-              }}
-              onPointerUp={(e) => {
-                try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch (_) {}
-                const crop = groupEditCoverCrop || groupCoverCrop;
-                if (!crop) return;
-                const next = { ...crop, dragging: false };
-                if (groupEditCoverCrop) setGroupEditCoverCrop(next); else setGroupCoverCrop(next);
-              }}
-            >
-              <img
-                src={(groupEditCoverCrop || groupCoverCrop)?.src}
-                alt=""
-                style={{
-                  position: "absolute",
-                  width: (() => {
-                    const crop = groupEditCoverCrop || groupCoverCrop;
-                    const box = 220;
-                    const iw = Number(crop?.width || 1);
-                    const ih = Number(crop?.height || 1);
-                    return iw * Math.max(box / iw, box / ih) * Math.max(1, Number(crop?.zoom || 1));
-                  })(),
-                  height: (() => {
-                    const crop = groupEditCoverCrop || groupCoverCrop;
-                    const box = 220;
-                    const iw = Number(crop?.width || 1);
-                    const ih = Number(crop?.height || 1);
-                    return ih * Math.max(box / iw, box / ih) * Math.max(1, Number(crop?.zoom || 1));
-                  })(),
-                  left: (() => {
-                    const crop = groupEditCoverCrop || groupCoverCrop;
-                    const box = 220;
-                    const iw = Number(crop?.width || 1);
-                    const ih = Number(crop?.height || 1);
-                    const scale = Math.max(box / iw, box / ih) * Math.max(1, Number(crop?.zoom || 1));
-                    const dw = iw * scale;
-                    const maxShiftX = Math.max(0, (dw - box) / 2);
-                    return (box - dw) / 2 + (maxShiftX * Number(crop?.panX || 0)) / 100;
-                  })(),
-                  top: (() => {
-                    const crop = groupEditCoverCrop || groupCoverCrop;
-                    const box = 220;
-                    const iw = Number(crop?.width || 1);
-                    const ih = Number(crop?.height || 1);
-                    const scale = Math.max(box / iw, box / ih) * Math.max(1, Number(crop?.zoom || 1));
-                    const dh = ih * scale;
-                    const maxShiftY = Math.max(0, (dh - box) / 2);
-                    return (box - dh) / 2 + (maxShiftY * Number(crop?.panY || 0)) / 100;
-                  })(),
-                  objectFit: "cover",
-                  pointerEvents: "none",
-                  userSelect: "none",
-                }}
-              />
-            </div>
-            <div className="mp-row">
-              <div className="mp-lbl">{tr("縮放", "Zoom", "ズーム", "확대")}</div>
-              <input
-                type="range"
-                min="1"
-                max="3"
-                step="0.01"
-                value={(groupEditCoverCrop || groupCoverCrop)?.zoom || 1}
-                onChange={(e) => {
-                  const value = Number(e.target.value);
-                  if (groupEditCoverCrop) setGroupEditCoverCrop((s) => ({ ...(s || {}), zoom: value })); else setGroupCoverCrop((s) => ({ ...(s || {}), zoom: value }));
-                }}
-              />
-            </div>
-            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-              <button className="mp-save" style={{ flex: 1, background: "linear-gradient(135deg,#b0bec5,#90a4ae)" }} onClick={() => { setGroupCoverCrop(null); setGroupEditCoverCrop(null); }}>{tr("取消", "Cancel", "キャンセル", "취소")}</button>
-              <button className="mp-save" style={{ flex: 1 }} onClick={() => applyGroupCoverCrop(groupEditCoverCrop ? "edit" : "create")}>{tr("完成裁切", "Finish crop", "トリミング完了", "자르기 완료")}</button>
-            </div>
-          </div>
-        </div>
-      )}
+    <GroupChatModals
+      characters={sortChatThreads(characters)}
+      tr={tr}
+      showToast={showToast}
+      create={{
+        open: groupCreateOpen,
+        name: groupCreateName,
+        setName: setGroupCreateName,
+        cover: groupCreateCover,
+        setCover: setGroupCreateCover,
+        memberIds: groupCreateMemberIds,
+        setMemberIds: setGroupCreateMemberIds,
+        search: groupCreateSearch,
+        setSearch: setGroupCreateSearch,
+        rulePrompt: groupCreateRulePrompt,
+        setRulePrompt: setGroupCreateRulePrompt,
+        onCoverUpload: handleGroupCreateCoverUp,
+        onClose: () => setGroupCreateOpen(false),
+        onSubmit: createGroupChat,
+      }}
+      edit={{
+        open: groupEditOpen,
+        name: groupEditName,
+        setName: setGroupEditName,
+        cover: groupEditCover,
+        setCover: setGroupEditCover,
+        memberIds: groupEditMemberIds,
+        setMemberIds: setGroupEditMemberIds,
+        search: groupEditSearch,
+        setSearch: setGroupEditSearch,
+        rulePrompt: groupEditRulePrompt,
+        setRulePrompt: setGroupEditRulePrompt,
+        useRealTime: groupEditUseRealTime,
+        setUseRealTime: setGroupEditUseRealTime,
+        onCoverUpload: handleGroupEditCoverUp,
+        onClose: () => setGroupEditOpen(false),
+        onSubmit: saveEditGroup,
+      }}
+      crop={{
+        createValue: groupCoverCrop,
+        setCreateValue: setGroupCoverCrop,
+        editValue: groupEditCoverCrop,
+        setEditValue: setGroupEditCoverCrop,
+        onApply: applyGroupCoverCrop,
+        onClose: () => {
+          setGroupCoverCrop(null);
+          setGroupEditCoverCrop(null);
+        },
+      }}
+    />
       {toast && <div className="mp-toast">{toast}</div>}
   </div></div></>);
 }

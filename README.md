@@ -121,4 +121,7 @@ npm run dev
 
 ## 素材來源
 
-- 雲隱山莊（`yunyin/`）美術素材：[Modern Farm](https://limezu.itch.io/)（付費授權，不隨 repo 附上原始檔，需自行購買後放入 `yunyin/assets/`，見 [`yunyin/ASSETS_SETUP.md`](yunyin/ASSETS_SETUP.md)）
+雲隱山莊（`yunyin/`）美術素材由 [limezu](https://limezu.itch.io/) 製作（付費授權，不隨 repo 附上原始檔，需自行購買後放入 `yunyin/assets/`，見 [`yunyin/ASSETS_SETUP.md`](yunyin/ASSETS_SETUP.md)）：
+
+- 地形／建築／作物：Modern Farm
+- 角色（紙娃娃分層）：Modern Interiors — Character Generator 2.0

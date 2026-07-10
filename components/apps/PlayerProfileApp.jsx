@@ -1,17 +1,10 @@
 import React from "react";
+import { calculateCoverCrop } from "../../utils/imageCrop";
 
 export default function PlayerProfileApp({ t, tr, closeApp, profile, setProfile, avatarRef, sanitizeImage, onAvatarUpload, crop, setCrop, onCropPointerDown, onCropPointerMove, onCropPointerUp, onApplyCrop }) {
   const cropPreview = crop ? (() => {
     const frame = 220;
-    const width = Math.max(1, Number(crop.width) || frame);
-    const height = Math.max(1, Number(crop.height) || frame);
-    const coverScale = Math.max(frame / width, frame / height);
-    const baseWidth = width * coverScale;
-    const baseHeight = height * coverScale;
-    const zoom = Math.max(1, Number(crop.zoom) || 1);
-    const shiftX = Math.max(0, (baseWidth * zoom - frame) / 2) * (Number(crop.panX) || 0) / 100;
-    const shiftY = Math.max(0, (baseHeight * zoom - frame) / 2) * (Number(crop.panY) || 0) / 100;
-    return { baseWidth, baseHeight, zoom, shiftX, shiftY };
+    return calculateCoverCrop({ width: crop.width, height: crop.height, frameWidth: frame, zoom: crop.zoom, panX: crop.panX, panY: crop.panY });
   })() : null;
   return <div className="mp-page">
     <div className="mp-hdr"><div className="mp-back" onClick={closeApp}>←</div><div className="mp-htitle">{t("playerProfile")}</div></div>
@@ -32,7 +25,7 @@ export default function PlayerProfileApp({ t, tr, closeApp, profile, setProfile,
     </div>
     {crop && <div className="mp-overlay" onClick={() => setCrop(null)}><div className="mp-modal" onClick={(event) => event.stopPropagation()}>
       <div className="mp-modal-t">{tr("裁切大頭貼", "Crop avatar", "アバターをトリミング", "프로필 사진 자르기")}</div>
-      <div style={{ display: "grid", placeItems: "center", marginBottom: 10 }}><div style={{ width: 220, height: 220, borderRadius: 18, overflow: "hidden", border: "1px solid rgba(244,143,177,.35)", background: "#fff", touchAction: "none", cursor: crop.dragging ? "grabbing" : "grab", position: "relative" }} onPointerDown={onCropPointerDown} onPointerMove={onCropPointerMove} onPointerUp={onCropPointerUp} onPointerCancel={onCropPointerUp}><img src={crop.src} alt="" style={{ position: "absolute", left: "50%", top: "50%", width: cropPreview.baseWidth, height: cropPreview.baseHeight, maxWidth: "none", transform: `translate(-50%, -50%) translate(${cropPreview.shiftX}px, ${cropPreview.shiftY}px) scale(${cropPreview.zoom})`, transformOrigin: "center center", userSelect: "none", WebkitUserDrag: "none", pointerEvents: "none" }} /></div></div>
+      <div style={{ display: "grid", placeItems: "center", marginBottom: 10 }}><div style={{ width: 220, height: 220, borderRadius: 18, overflow: "hidden", border: "1px solid rgba(244,143,177,.35)", background: "#fff", touchAction: "none", cursor: crop.dragging ? "grabbing" : "grab", position: "relative" }} onPointerDown={onCropPointerDown} onPointerMove={onCropPointerMove} onPointerUp={onCropPointerUp} onPointerCancel={onCropPointerUp}><img src={crop.src} alt="" style={{ position: "absolute", left: cropPreview.left, top: cropPreview.top, width: cropPreview.width, height: cropPreview.height, maxWidth: "none", userSelect: "none", WebkitUserDrag: "none", pointerEvents: "none" }} /></div></div>
       <div className="mp-row"><div className="mp-lbl">{tr("縮放", "Zoom", "ズーム", "확대")}</div><input type="range" min="1" max="3" step="0.01" value={crop.zoom} onChange={(event) => setCrop((current) => ({ ...(current || {}), zoom: Number(event.target.value) }))} /></div>
       <div style={{ fontSize: 11, color: "var(--mp-txt-l)", marginTop: 4 }}>{tr("拖曳圖片選擇要顯示的部位，套用後輸出為正方形頭像", "Drag to choose the visible area. The applied avatar will be square.", "画像をドラッグして表示範囲を選びます。適用後は正方形のアバターになります。", "이미지를 드래그해 표시할 영역을 선택하세요. 적용 후 정사각형 프로필 사진으로 저장됩니다.")}</div>
       <div style={{ display: "flex", gap: 8, marginTop: 8 }}><button className="mp-save" style={{ flex: 1, background: "linear-gradient(135deg,#b0bec5,#90a4ae)" }} onClick={() => setCrop(null)}>{tr("取消", "Cancel", "キャンセル", "취소")}</button><button className="mp-save" style={{ flex: 1 }} onClick={onApplyCrop}>{tr("套用", "Apply", "適用", "적용")}</button></div>

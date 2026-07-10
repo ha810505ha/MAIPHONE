@@ -1,4 +1,5 @@
 import { gid, sanitizeText } from "../../utils/coreUtils";
+import { createImageCropState, drawCoverCrop } from "../../utils/imageCrop";
 
 export default function useGroupChatController({
   characters,
@@ -13,6 +14,7 @@ export default function useGroupChatController({
   groupEditMemberIds,
   groupEditName,
   groupEditRulePrompt,
+  groupEditUseRealTime,
   groupEditCover,
   setGroupCoverCrop,
   setGroupEditCoverCrop,
@@ -26,6 +28,7 @@ export default function useGroupChatController({
   setGroupEditGroupId,
   setGroupEditName,
   setGroupEditRulePrompt,
+  setGroupEditUseRealTime,
   setGroupEditMemberIds,
   setGroupEditSearch,
   setGroupEditOpen,
@@ -49,7 +52,7 @@ export default function useGroupChatController({
       if (!safe) return showToast(tr("圖片格式不支援", "Unsupported image format", "画像形式に対応していません", "이미지 형식을 지원하지 않습니다"));
       const img = new Image();
       img.onload = () => {
-        const crop = { src: safe, width: img.width, height: img.height, zoom: 1, panX: 0, panY: 0, dragging: false, dragStartX: 0, dragStartY: 0, startPanX: 0, startPanY: 0 };
+        const crop = createImageCropState({ src: safe, width: img.width, height: img.height });
         if (mode === "edit") setGroupEditCoverCrop(crop);
         else setGroupCoverCrop(crop);
       };
@@ -69,20 +72,7 @@ export default function useGroupChatController({
       canvas.height = size;
       const ctx = canvas.getContext("2d");
       if (!ctx) return showToast("圖片處理失敗");
-      const iw = img.width;
-      const ih = img.height;
-      const scale = Math.max(size / iw, size / ih) * Math.max(1, crop.zoom || 1);
-      const dw = iw * scale;
-      const dh = ih * scale;
-      const panX = Number(crop.panX || 0);
-      const panY = Number(crop.panY || 0);
-      const maxShiftX = Math.max(0, (dw - size) / 2);
-      const maxShiftY = Math.max(0, (dh - size) / 2);
-      const shiftX = (maxShiftX * panX) / 100;
-      const shiftY = (maxShiftY * panY) / 100;
-      const dx = (size - dw) / 2 + shiftX;
-      const dy = (size - dh) / 2 + shiftY;
-      ctx.drawImage(img, dx, dy, dw, dh);
+      drawCoverCrop(ctx, img, crop, size);
       const out = canvas.toDataURL("image/jpeg", 0.84);
       const safe = sanitizeImageUrl(out);
       if (!safe) return showToast("圖片處理失敗");
@@ -112,6 +102,7 @@ export default function useGroupChatController({
     setGroupEditGroupId(group.id);
     setGroupEditName(group.name || "");
     setGroupEditRulePrompt(group.rulePrompt || "");
+    setGroupEditUseRealTime(group.useRealTime !== false);
     setGroupEditMemberIds(Array.isArray(group.memberIds) ? group.memberIds.slice(0, 5) : []);
     setGroupEditSearch("");
     setGroupEditCover(group.cover || "");
@@ -143,6 +134,7 @@ export default function useGroupChatController({
       ...g,
       name,
       rulePrompt: sanitizeText(groupEditRulePrompt.trim(), 3000),
+      useRealTime: groupEditUseRealTime !== false,
       memberIds: members.map((m) => m.id),
       cover: groupEditCover || "",
       updatedAt: Date.now(),
@@ -152,6 +144,7 @@ export default function useGroupChatController({
         ...prev,
         name,
         rulePrompt: sanitizeText(groupEditRulePrompt.trim(), 3000),
+        useRealTime: groupEditUseRealTime !== false,
         memberIds: members.map((m) => m.id),
         cover: groupEditCover || "",
         updatedAt: Date.now(),
@@ -173,6 +166,7 @@ export default function useGroupChatController({
       id: gid(),
       name,
       rulePrompt: sanitizeText(groupCreateRulePrompt.trim(), 3000),
+      useRealTime: true,
       memberIds: members.map((m) => m.id),
       cover: groupCreateCover || "",
       pinned: false,
