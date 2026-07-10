@@ -1,7 +1,7 @@
 // 漫遊 NPC：idle(3~8秒) → 半徑 6 格挑一個可走格 → A* 走過去 → idle → …
 // 只存 seed（外觀與名字由 seed 重建），位置每次進場重擲，不進存檔。
 import { astar, nearestWalkable } from "../engine/pathfind";
-import { randomAppearance } from "../engine/sprite";
+import { randomAppearance, sanitizeAppearance } from "../engine/sprite";
 import { roll, rngOf } from "../engine/rng";
 import { NPC_NAMES, pickLine } from "../data/lines";
 import { TILE } from "../engine/tilemap";
@@ -38,7 +38,8 @@ export function spawnNpcs(save, map) {
     const spot = nearestWalkable(x, y, map.w, map.h, map.isBlocked) || { x: map.spawn[0], y: map.spawn[1] };
     return {
       seed: def.seed, name: def.name,
-      appearance: randomAppearance(def.seed),
+      // 玩家在設定裡編輯過的外觀優先，否則用 seed 隨機（同一 NPC 每次進場長一樣）
+      appearance: def.appearance ? sanitizeAppearance(def.appearance) : randomAppearance(def.seed),
       x: spot.x, y: spot.y, px: spot.x * TILE, py: spot.y * TILE,
       path: [], stepT: 0, facing: "down", moving: false,
       waitUntil: performance.now() + 1000 + rand() * 5000,
@@ -95,11 +96,14 @@ export function updateNpcs(npcs, map, dt, now) {
   }
 }
 
-// 點 NPC：冒一句話（之後 settings.ai.npcChat 開啟時這裡改走 aiLine，失敗 fallback 回句庫）
-export function talkToNpc(npc, now) {
-  npc.bubble = { text: pickLine(npc.rand), until: now + 2800 };
+// 點 NPC：冒一句話。有入駐角色的個人句庫（chat 池）就用角色口吻，否則抽通用時段句庫。
+export function talkToNpc(npc, now, chatLines = null) {
+  const text = chatLines?.length
+    ? chatLines[Math.floor(npc.rand() * chatLines.length)]
+    : pickLine(npc.rand);
+  npc.bubble = { text, until: now + 2800 };
   npc.path = []; // 停下來面對玩家
-  return npc.bubble.text;
+  return text;
 }
 
 // 行走中也點得到：邏輯格或視覺位置任一命中都算

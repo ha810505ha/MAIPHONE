@@ -1,10 +1,10 @@
-export async function generateDirectAssistant({ cid, char, nextForDisplay, selectedMode, um, text }, context) {
+export async function generateDirectAssistant({ cid, char, nextForDisplay, selectedMode, um, text, includeRealTime = true }, context) {
   const { formatMessagesForPrompt, pickMemoriesForPrompt, pickLorebookEntriesForPrompt, characterWallets, formatMoney, tr, getPlayerContextBlock, estimateTokens, totalContextTokenLimit, apiConfig, applyUserPlaceholder, buildChatSystemPrompt, callAI, sanitizeText, normalizeRealityReply, realityChatTextLimit, normalizeAssistantReply, extractTransferDirective, stripModeLabel, stripInternalBlocks, splitAssistantBubbles, createId, wait, setChatHistory, applyCharacterTransferToPlayer, isInnerThoughtAutoEnabled, generateInnerThought } = context;
       const now = new Date();
       const nowDate = new Intl.DateTimeFormat("zh-TW", { year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
       const nowTime = new Intl.DateTimeFormat("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false }).format(now);
       const nowTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Taipei";
-      const nowContext = `[系統時間] 目前時間：${nowDate} ${nowTime} (${nowTz})`;
+      const nowContext = includeRealTime ? `[系統時間] 目前時間：${nowDate} ${nowTime} (${nowTz})` : "";
       const hist = formatMessagesForPrompt(nextForDisplay.slice(-30)).slice(-20);
       const hasCurrentImage = !!um.image;
       // 視覺 token 只花在本輪新圖：舊圖一律改用摘要文字，不再重送 image。

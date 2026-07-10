@@ -14,6 +14,11 @@ import tuft3 from "../assets/decor/tuft_3.png";
 import tuft4 from "../assets/decor/tuft_4.png";
 import tuft5 from "../assets/decor/tuft_5.png";
 import tuft6 from "../assets/decor/tuft_6.png";
+import tuft7 from "../assets/decor/tuft_7.png";
+import tuft8 from "../assets/decor/tuft_8.png";
+import tuft9 from "../assets/decor/tuft_9.png";
+import tuft10 from "../assets/decor/tuft_10.png";
+import tuft11 from "../assets/decor/tuft_11.png";
 
 import qinglingSeed from "../assets/crops/qingling_Seed.png";
 import qinglingSprout from "../assets/crops/qingling_Sprout.png";
@@ -50,7 +55,7 @@ export const PATH_BLOB = {
 export const TREE_IMAGES = [oakGreenImg, oakGreenSmallImg, pineGreenImg];
 
 // 草地是純平塗底色，紋理感要靠這些草叢/小花裝飾疏疏落落蓋上去（草地本身沒有花紋）
-export const GRASS_TUFTS = [tuft1, tuft2, tuft3, tuft4, tuft5, tuft6];
+export const GRASS_TUFTS = [tuft1, tuft2, tuft3, tuft4, tuft5, tuft6, tuft7, tuft8, tuft9, tuft10, tuft11];
 
 // 陣列索引對應 plotStage()：0 種／1 芽／2 長／3 熟
 export const CROP_IMAGES = {

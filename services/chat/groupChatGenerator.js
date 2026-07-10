@@ -1,4 +1,4 @@
-export async function generateGroupReplies({ group, members, messages, currentImage, apiConfig, callAI, buildSystemPrompt, parseReplies, stripInternalBlocks, sanitizeText, sanitizeImageUrl, tr }) {
+export async function generateGroupReplies({ group, members, messages, currentImage, includeRealTime = true, apiConfig, callAI, buildSystemPrompt, parseReplies, stripInternalBlocks, sanitizeText, sanitizeImageUrl, tr }) {
   const now = new Date();
   const date = new Intl.DateTimeFormat("zh-TW", { year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
   const time = new Intl.DateTimeFormat("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false }).format(now);
@@ -11,16 +11,29 @@ export async function generateGroupReplies({ group, members, messages, currentIm
   });
   const safeHistory = history.map((message, index) => currentImage && index === history.length - 1 ? message : { ...message, image: null });
   const recent = safeHistory.map((message) => `${message.role === "user" ? "玩家" : (message.speakerName || "群組")}: ${message.content || "[圖片]"}`).join("\n");
-  const systemPrompt = `[系統時間] 目前時間：${date} ${time} (${timezone})\n\n${buildSystemPrompt(group, memberNames, memberProfiles, recent)}`;
+  const systemPrompt = [includeRealTime ? `[系統時間] 目前時間：${date} ${time} (${timezone})` : "", buildSystemPrompt(group, memberNames, memberProfiles, recent)].filter(Boolean).join("\n\n");
   const raw = await callAI(safeHistory, apiConfig, systemPrompt);
   const parsed = parseReplies(stripInternalBlocks(raw));
-  const memberMap = new Map(members.map((member) => [member.name, member]));
+  const normalizeSpeaker = (value) => String(value || "")
+    .trim()
+    .replace(/^[「『【\[(]+|[」』】\])]+$/g, "")
+    .replace(/\s+/g, "")
+    .toLowerCase();
+  const memberMap = new Map(members.map((member) => [normalizeSpeaker(member.name), member]));
+  const resolveMember = (speaker) => {
+    const normalized = normalizeSpeaker(speaker);
+    const exact = memberMap.get(normalized);
+    if (exact) return exact;
+    if (!normalized) return null;
+    const profileMatches = members.filter((member) => normalizeSpeaker(member.profileText).includes(normalized));
+    return profileMatches.length === 1 ? profileMatches[0] : null;
+  };
   const seen = new Set();
   const replies = [];
   for (const item of parsed) {
-    const matched = memberMap.get(item.speaker) || members.find((member) => member.name === item.speaker);
-    const name = matched?.name || item.speaker;
-    if (!name || !item.content || seen.has(name)) continue;
+    const matched = resolveMember(item.speaker);
+    const name = matched?.name;
+    if (!matched || !name || !item.content || seen.has(name)) continue;
     seen.add(name);
     replies.push({ speakerName: name, speakerAvatar: sanitizeImageUrl(matched?.avatar || ""), content: item.content });
   }

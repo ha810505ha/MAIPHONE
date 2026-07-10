@@ -10,9 +10,9 @@ import { plotStage, plotUnlocked, harvestPlot, plantCrop, remainMin, ripenedDuri
 import { CROPS } from "./data/crops";
 import { settleShelves, refreshOrders, furnaceDone } from "./systems/shop";
 import { resetDungeonDaily } from "./systems/dungeon";
-import { drawActor } from "./engine/sprite";
+import { drawActor, randomAppearance } from "./engine/sprite";
 import { spawnNpcs, updateNpcs, talkToNpc, npcAtTile } from "./systems/npc";
-import { companionReact } from "./systems/ai";
+import { companionReact, activePackLines, PACK_POOLS, addPackVersion } from "./systems/ai";
 import { getImage, isReady } from "./engine/assets";
 import { BUILDING_IMAGES, TILE_IMAGES, CROP_IMAGES } from "./data/assetUrls";
 import CultivationPanel from "./ui/CultivationPanel";
@@ -33,8 +33,8 @@ const fmtDuration = (mins) => {
   return h > 0 ? `${h} 小時 ${m} 分` : `${m} 分鐘`;
 };
 
-// characters / onAiReact 由 MaliPhone 注入（唯讀角色清單 + AI 能力）；不傳也能完整遊玩
-export default function YunyinGame({ onBack, characters = [], onAiReact = null }) {
+// characters / onAiGenerate 由 MaliPhone 注入（唯讀角色清單 + 句庫生成能力）；不傳也能完整遊玩
+export default function YunyinGame({ onBack, characters = [], onAiGenerate = null }) {
   const wrapRef = useRef(null);
   const canvasRef = useRef(null);
   const [panel, setPanel] = useState(null); // { type, title, ... }
@@ -78,10 +78,12 @@ export default function YunyinGame({ onBack, characters = [], onAiReact = null }
   const markDirtyRef = useRef(null);
   markDirtyRef.current = markDirty;
 
-  // 同伴台詞：面板與農務觸發點共用。回傳 { name, text } 或 null。
-  const onCompanion = (opts) => companionReact({ save: gameSave, characters, onAiReact, ...opts });
+  // 同伴台詞：面板與農務觸發點共用（從個人句庫/通用句庫抽，零 token）。回傳 { name, text } 或 null。
+  const onCompanion = (opts) => companionReact({ save: gameSave, characters, ...opts });
   // 效果層提供的「讓綁定角色的 NPC 冒泡泡」能力（角色不在場回傳 false）
   const npcBubbleRef = useRef(() => false);
+  // 效果層提供的「即時更新在場 NPC 外觀」能力（設定面板編輯後立刻反映在地圖上）
+  const npcAppearanceRef = useRef(() => {});
 
   useEffect(() => {
     const wrap = wrapRef.current, canvas = canvasRef.current;
@@ -112,6 +114,10 @@ export default function YunyinGame({ onBack, characters = [], onAiReact = null }
       npc.bubble = { text, until: performance.now() + 3500 };
       npc.path = [];
       return true;
+    };
+    npcAppearanceRef.current = (seed, appearance) => {
+      const npc = npcs.find((n) => n.seed === seed);
+      if (npc) npc.appearance = appearance;
     };
     let pendingAction = null;                     // 抵達路徑終點後要做的事
     if (import.meta.env.DEV) window.__yy = { player, map, cam, save: gameSave, npcs, open: (type, title) => panelRef.current({ type, title }) }; // 開發用
@@ -203,9 +209,14 @@ export default function YunyinGame({ onBack, characters = [], onAiReact = null }
         const wx = cam.x + sx / SCALE, wy = cam.y + sy / SCALE;
         const tx = Math.floor(wx / TILE), ty = Math.floor(wy / TILE);
         ripple = { wx, wy, t0: performance.now() };
-        // 點到 NPC → 冒一句話
+        // 點到 NPC → 冒一句話（入駐角色開著角色回覆時用個人句庫的閒聊池）
         const npc = npcAtTile(npcs, tx, ty);
-        if (npc) { talkToNpc(npc, performance.now()); return; }
+        if (npc) {
+          const charId = gameSave.settings.bindings[npc.seed];
+          const chatLines = charId ? activePackLines(gameSave, charId)?.chat : null;
+          talkToNpc(npc, performance.now(), chatLines);
+          return;
+        }
         // 點到自己 → 捏角
         if (tx === player.x && ty === player.y && !player.moving) {
           panelRef.current({ type: "character", title: "外觀" });
@@ -374,7 +385,7 @@ export default function YunyinGame({ onBack, characters = [], onAiReact = null }
     const drawBubble = (npc) => {
       const ts = TILE * SCALE;
       const cx = (npc.px - cam.x) * SCALE + ts / 2;
-      const topY = (npc.py - cam.y) * SCALE - ts * 0.15;
+      const topY = (npc.py - cam.y) * SCALE - ts * 1.1; // 角色圖高兩格，泡泡抬到頭頂上方
       ctx.font = `${10 * SCALE}px sans-serif`;
       const w = ctx.measureText(npc.bubble.text).width + 16;
       const h = 15 * SCALE;
@@ -434,7 +445,7 @@ export default function YunyinGame({ onBack, characters = [], onAiReact = null }
             ctx.fillStyle = "rgba(255,255,255,.95)";
             ctx.strokeStyle = "rgba(0,0,0,.5)";
             ctx.lineWidth = 3;
-            const nx = (n.px - cam.x) * SCALE + ts / 2, ny = (n.py - cam.y) * SCALE - ts * 0.02;
+            const nx = (n.px - cam.x) * SCALE + ts / 2, ny = (n.py - cam.y) * SCALE - ts * 1.05; // 名牌抬到兩格高的頭頂
             ctx.strokeText(boundName, nx, ny);
             ctx.fillText(boundName, nx, ny);
           }
@@ -520,7 +531,7 @@ export default function YunyinGame({ onBack, characters = [], onAiReact = null }
       </div>
       {panel && (
         <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.45)", display: "grid", placeItems: "center", zIndex: 5 }} onClick={() => setPanel(null)}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: "#fffaf3", borderRadius: 18, padding: "20px 22px", width: "min(84%, 330px)", boxShadow: "0 10px 30px rgba(0,0,0,.35)" }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "#fffaf3", borderRadius: 18, padding: "20px 22px", width: "min(84%, 330px)", maxHeight: "84%", overflowY: "auto", boxShadow: "0 10px 30px rgba(0,0,0,.35)" }}>
             <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 10, textAlign: "center" }}>{panel.title}</div>
             {panel.type === "cultivation" ? (
               <CultivationPanel save={gameSave} onDirty={markDirty} onCompanion={onCompanion} onClose={() => setPanel(null)} />
@@ -529,9 +540,39 @@ export default function YunyinGame({ onBack, characters = [], onAiReact = null }
             ) : panel.type === "dungeon" ? (
               <DungeonPanel save={gameSave} onDirty={markDirty} onToast={showToast} onCompanion={onCompanion} onClose={() => setPanel(null)} />
             ) : panel.type === "settings" ? (
-              <GameSettingsPanel save={gameSave} characters={characters} onDirty={markDirty} onClose={() => setPanel(null)} />
+              <GameSettingsPanel
+                save={gameSave} characters={characters} onDirty={markDirty}
+                onGenerateLines={onAiGenerate ? async (charId) => {
+                  const lines = await onAiGenerate(charId, PACK_POOLS);
+                  if (!lines) return "生成失敗（檢查 API 設定）";
+                  addPackVersion(gameSave, charId, lines);
+                  markDirty();
+                  return null;
+                } : null}
+                onEditAppearance={(npcIdx) => setPanel({
+                  type: "character", npcIdx,
+                  title: `${gameSave.npcs[npcIdx]?.name || "居民"}的外觀`,
+                  returnTo: { type: "settings", title: "遊戲設定" },
+                })}
+                onClose={() => setPanel(null)}
+              />
             ) : panel.type === "character" ? (
-              <CharacterPanel save={gameSave} onDirty={markDirty} onClose={() => setPanel(null)} />
+              <CharacterPanel
+                key={panel.npcIdx ?? "player"}
+                value={panel.npcIdx != null
+                  ? (gameSave.npcs[panel.npcIdx].appearance || randomAppearance(gameSave.npcs[panel.npcIdx].seed))
+                  : gameSave.player.appearance}
+                onSave={(appearance) => {
+                  if (panel.npcIdx != null) {
+                    gameSave.npcs[panel.npcIdx].appearance = appearance;
+                    npcAppearanceRef.current(gameSave.npcs[panel.npcIdx].seed, appearance);
+                  } else {
+                    gameSave.player.appearance = appearance;
+                  }
+                  markDirty();
+                }}
+                onClose={() => setPanel(panel.returnTo || null)}
+              />
             ) : panel.type === "plant" ? (
               <div>
                 {CROPS.map((c) => {

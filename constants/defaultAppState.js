@@ -1,5 +1,5 @@
 export const DEFAULT_APP_STATE = {
-  characters: [], activeCharId: null, chatHistory: {}, chatModes: {}, chatBackgrounds: {}, groupChats: [], chatScenes: {}, groupScenes: {},
+  characters: [], activeCharId: null, chatHistory: {}, chatModes: {}, chatBackgrounds: {}, groupChats: [], chatScenes: {}, groupScenes: {}, chatTimeSettings: {},
   innerThoughtSettings: {}, proactiveSettings: {}, proactiveUnread: {}, posts: [], socialSettings: { autoPost: false }, memories: {}, lorebooks: [],
   chatLorebookBindings: {}, phoneInboxCache: {}, phoneAppCache: {}, wallet: { balance: 500, transactions: [], assets: [] }, characterWallets: {},
   apiPresets: [

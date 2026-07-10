@@ -2,7 +2,7 @@ import React, { Suspense, lazy } from "react";
 import PetHome from "../../PetHome";
 import GameCenter from "./GameCenter";
 import AnswerBookApp from "./AnswerBookApp";
-import { yunyinAiReact } from "../../services/yunyinAiBridge";
+import { yunyinGenerateLinePack } from "../../services/yunyinAiBridge";
 
 // 雲隱山莊：lazy load，不進主 bundle
 const YunyinGame = lazy(() => import("../../yunyin/YunyinGame"));
@@ -22,7 +22,7 @@ export default function AppRouter({ currentApp, renderers, game, closeApp, t, tr
       <YunyinGame
         onBack={closeApp}
         characters={yunyin?.characters || []}
-        onAiReact={yunyin ? (ctx) => yunyinAiReact(ctx, yunyin.apiConfig, yunyin.characters) : null}
+        onAiGenerate={yunyin ? (charId, poolSpec) => yunyinGenerateLinePack(charId, poolSpec, yunyin.apiConfig, yunyin.characters) : null}
       />
     </Suspense>;
     case "lbook": return <AnswerBookApp closeApp={closeApp} title={t("answerBook")} />;
