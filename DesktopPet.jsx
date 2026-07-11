@@ -9,11 +9,9 @@ import "./styles/desktopPetHomeTarget.css";
 import "./styles/desktopPetBubble.css";
 import "./styles/desktopPetBubbleText.css";
 import "./styles/desktopPetFocus.css";
+import { DEFAULT_PET_SETTINGS, loadPetStorage, savePetSettingsPatch } from "./services/pet/petStorage";
 
-const readPetSettings = () => {
-  try { const value = JSON.parse(localStorage.getItem("maliphone-pet-settings") || "{}"); return { enabled: Boolean(value.desktopPet), returnMinutes: Number(value.desktopPetReturnMinutes) || 5 }; }
-  catch { return { enabled: false, returnMinutes: 5 }; }
-};
+const toDesktopSettings = (value) => ({ enabled: Boolean(value?.desktopPet), returnMinutes: Number(value?.desktopPetReturnMinutes) || 5 });
 
 const DESKTOP_PET_LINES = [
   "主人，要不要陪我玩？", "我把球球帶來了～", "看看我嘛！", "摸摸頭，可以嗎？",
@@ -23,20 +21,21 @@ const DESKTOP_PET_LINES = [
 const randomDesktopLine = () => DESKTOP_PET_LINES[Math.floor(Math.random() * DESKTOP_PET_LINES.length)];
 
 export default function DesktopPet({ currentApp }) {
-  const [petSettings, setPetSettings] = useState(readPetSettings);
+  const [petSettings, setPetSettings] = useState(() => toDesktopSettings(DEFAULT_PET_SETTINGS));
   const [visit, setVisit] = useState(null);
   const [position, setPosition] = useState(null);
   const [dragging, setDragging] = useState(false);
   const [walkFrame, setWalkFrame] = useState(1);
   const [walking, setWalking] = useState(false);
   const [overHome, setOverHome] = useState(false);
-  const [cooldownUntil, setCooldownUntil] = useState(() => Number(localStorage.getItem("maliphone-pet-cooldown-until")) || 0);
+  const [cooldownUntil, setCooldownUntil] = useState(0);
   const dragRef = useRef(null);
   const longPressRef = useRef(null);
   const walkStopRef = useRef(null);
 
   useEffect(() => {
-    const sync = () => setPetSettings(readPetSettings());
+    const sync = () => loadPetStorage({}).then(({ settings }) => { setPetSettings(toDesktopSettings(settings)); setCooldownUntil(Number(settings.cooldownUntil) || 0); }).catch(() => {});
+    sync();
     window.addEventListener("pet-settings-changed", sync);
     window.addEventListener("storage", sync);
     return () => { window.removeEventListener("pet-settings-changed", sync); window.removeEventListener("storage", sync); };
@@ -120,7 +119,7 @@ export default function DesktopPet({ currentApp }) {
     if (dragging) {
       if (overHome) {
         const until = Date.now() + petSettings.returnMinutes * 60 * 1000;
-        localStorage.setItem("maliphone-pet-cooldown-until", String(until));
+        savePetSettingsPatch({ cooldownUntil: until }).catch((error) => console.error("[pet] 冷卻時間保存失敗", error));
         setCooldownUntil(until); setVisit(null); setPosition(null); setDragging(false); setOverHome(false); dragRef.current = null;
         return;
       }

@@ -1,5 +1,8 @@
+import { loadFeatureEntity, saveFeatureEntity } from "../../utils/indexedDbStorage";
+
 // 存檔：永遠不存進度百分比，只存時間戳＋參數，開場用公式回算離線進度。
 const KEY = "mali_yunyin_save_v1";
+const DB_KEY = "ent_yunyinSave";
 
 export const defaultSave = () => ({
   ver: 1,
@@ -28,12 +31,10 @@ export const defaultSave = () => ({
 });
 
 // 淺層依 section merge：舊檔缺欄位自動補 default（版本遷移先用這招，夠用）
-export function loadSave() {
-  try {
-    const raw = JSON.parse(localStorage.getItem(KEY) || "null");
-    if (!raw) return defaultSave();
-    const d = defaultSave();
-    return {
+const normalizeSave = (raw) => {
+  const d = defaultSave();
+  if (!raw || typeof raw !== "object") return d;
+  const normalized = {
       ...d, ...raw,
       cultivation: { ...d.cultivation, ...(raw.cultivation || {}) },
       farm: { plots: d.farm.plots.map((p, i) => ({ ...p, ...(raw.farm?.plots?.[i] || {}) })) },
@@ -52,11 +53,38 @@ export function loadSave() {
         bindings: { ...(raw.settings?.bindings || {}) },
       },
       linePacks: { ...(raw.linePacks || {}) },
-    };
-  } catch { return defaultSave(); }
+  };
+  normalized.farm.plots.forEach((plot) => {
+    if (plot.cropId === "test_sprout") {
+      plot.cropId = null;
+      plot.plantedAt = null;
+    }
+  });
+  normalized.shop.shelves.forEach((shelf) => {
+    if (shelf.itemId === "test_sprout") Object.assign(shelf, { itemId: null, stock: 0, soldUpdatedAt: null });
+  });
+  delete normalized.inventory.test_sprout;
+  delete normalized.inventory.test_sprout_seed;
+  return normalized;
+};
+
+export async function loadSave() {
+  try {
+    const stored = await loadFeatureEntity(DB_KEY, null);
+    if (stored) return normalizeSave(stored);
+    let legacy = null;
+    try { legacy = JSON.parse(localStorage.getItem(KEY) || "null"); } catch (_) {}
+    const migrated = normalizeSave(legacy);
+    await saveFeatureEntity(DB_KEY, migrated);
+    try { localStorage.removeItem(KEY); } catch (_) {}
+    return migrated;
+  } catch (error) {
+    console.warn("[yunyin] 存檔載入失敗，使用新存檔", error);
+    return defaultSave();
+  }
 }
 
 export function persistSave(s) {
   s.lastSeenAt = Date.now();
-  try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* 容量滿等罕見狀況，下次再存 */ }
+  return saveFeatureEntity(DB_KEY, structuredClone(s)).catch((error) => console.error("[yunyin] 存檔失敗", error));
 }

@@ -36,12 +36,18 @@ export default function PhoneApp({
     ];
     const activeThread = allThreads.find((t) => t.id === phoneActiveThreadId) || allThreads[0] || null;
     const openDesktop = (charId) => {
-    setPhoneViewCharId(charId);
-    setPhoneActiveThreadId("player");
-    setDiaryPage(0);
-    armAppClickSuppression();
-    setPhonePage("desktop");
-  };
+      setPhoneViewCharId(charId);
+      setPhoneActiveThreadId("player");
+      setDiaryPage(0);
+      setPhonePage("desktop");
+    };
+    const openPicker = (event) => {
+      event?.stopPropagation();
+      setPhoneViewCharId(null);
+      setPhoneActiveThreadId("player");
+      setDiaryPage(0);
+      setPhonePage("picker");
+    };
     const phoneWallet = selectedChar ? characterWallets[selectedChar.id] : null;
     // 共用主題：聊天列表/對話串/錢包頁的桌布與狀態列也跟著角色主題走
     const phTh = selectedChar ? sanitizePhoneTheme(phoneAppCache[selectedChar.id]?.theme?.data) : null;
@@ -64,7 +70,7 @@ export default function PhoneApp({
               <div style={{fontWeight:700,fontSize:14,marginBottom:8}}>{t("contactsHint")}</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr",gap:8}}>
                 {characters.map((c) => (
-                  <button key={c.id} className="mp-cc" style={{textAlign:"left",background:"#fff"}} onClick={(e) => { e.stopPropagation(); armAppClickSuppression(); openDesktop(c.id); }}>
+                  <button key={c.id} className="mp-cc" style={{textAlign:"left",background:"#fff"}} onClick={(e) => { e.stopPropagation(); openDesktop(c.id); }}>
                     <div style={{display:"flex",alignItems:"center",gap:10}}>
                       <div className="mp-av">{sanitizeUserImageUrl(c.avatar)?<img src={sanitizeUserImageUrl(c.avatar)} alt=""/>:"🦊"}</div>
                       <div style={{flex:1}}>
@@ -91,7 +97,7 @@ export default function PhoneApp({
             );
             return (
               <div style={{ position: "relative", height: "100%", minHeight: 640, background: phoneWallpaperCss(th), padding: "14px 14px 24px", display: "flex", flexDirection: "column", gap: 12 }}>
-                <button className="mp-back" style={{ position: "absolute", left: 12, top: 12, zIndex: 5 }} onClick={closeApp}>←</button>
+                <button className="mp-back" style={{ position: "absolute", left: 12, top: 12, zIndex: 5 }} onClick={openPicker}>←</button>
                 <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, color: th.textSub, fontSize: 13, padding: "2px 8px 0 56px" }}>
                   <span>{phoneTime}</span><span>{phoneDate}</span>
                 </div>
@@ -158,7 +164,7 @@ export default function PhoneApp({
 
                 {/* 底部操作列 */}
                 <div style={{ marginTop: "auto", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                  <button className="mp-ibtn" onClick={openApp("picker")}>{t("switchRole")}</button>
+                  <button className="mp-ibtn" onClick={openPicker}>{t("switchRole")}</button>
                   <button className="mp-ibtn" disabled={phoneAppGenLoading === "theme"} onClick={() => generatePhoneApp(selectedChar, "theme")}>
                     {phoneAppGenLoading === "theme" ? t("loading") : (phoneAppCache[selectedChar.id]?.theme ? tr("刷新主題", "Refresh theme", "テーマ更新", "테마 새로고침") : tr("✦ 生成主題", "✦ Generate theme", "✦ テーマ生成", "✦ 테마 생성"))}
                   </button>

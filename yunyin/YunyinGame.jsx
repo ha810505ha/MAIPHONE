@@ -20,11 +20,10 @@ import ShopPanel from "./ui/ShopPanel";
 import DungeonPanel from "./ui/DungeonPanel";
 import CharacterPanel from "./ui/CharacterPanel";
 import GameSettingsPanel from "./ui/GameSettingsPanel";
+import { useGacha } from "../contexts/GachaContext";
 
 const MAPS = { gate: gateDef, farm: farmDef };
 
-// 💎 與 GachaGame 共用同一顆貨幣（雲隱的訂單獎勵之後直接寫這顆 key）
-const CRYSTAL_KEY = "sakura-gacha-crystals-v1";
 const SCALE = 2;            // 邏輯 32px tile、顯示 64px
 const STEP_MS = 200;        // 走一格的時間
 
@@ -34,22 +33,26 @@ const fmtDuration = (mins) => {
 };
 
 // characters / onAiGenerate 由 MaliPhone 注入（唯讀角色清單 + 句庫生成能力）；不傳也能完整遊玩
-export default function YunyinGame({ onBack, characters = [], onAiGenerate = null }) {
+function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSave }) {
+  const { crystals, changeCrystals } = useGacha();
   const wrapRef = useRef(null);
   const canvasRef = useRef(null);
   const [panel, setPanel] = useState(null); // { type, title, ... }
-  const [crystals, setCrystals] = useState(() => Number(localStorage.getItem(CRYSTAL_KEY)) || 0);
-  const addCrystals = (n) => setCrystals((v) => {
-    const next = v + n;
-    localStorage.setItem(CRYSTAL_KEY, String(next));
-    return next;
-  });
+  const addCrystals = (amount) => changeCrystals(amount);
   const [toast, setToast] = useState(null);
+  const [companionNotice, setCompanionNotice] = useState(null);
   const toastTimerRef = useRef(null);
+  const companionTimerRef = useRef(null);
   const showToast = (msg) => {
     clearTimeout(toastTimerRef.current);
     setToast(msg);
     toastTimerRef.current = setTimeout(() => setToast(null), 2200);
+  };
+  const showCompanionNotice = (line) => {
+    clearTimeout(companionTimerRef.current);
+    const character = characters.find((character) => character.id === line?.charId);
+    setCompanionNotice({ ...line, avatar: line?.avatar || character?.avatar || character?.avatarUrl || "" });
+    companionTimerRef.current = setTimeout(() => setCompanionNotice(null), 5200);
   };
   const panelRef = useRef(null);
   panelRef.current = setPanel;
@@ -57,7 +60,7 @@ export default function YunyinGame({ onBack, characters = [], onAiGenerate = nul
   toastRef.current = showToast;
 
   // 存檔載入 + 離線結算（只跑一次）
-  const [gameSave] = useState(() => loadSave());
+  const [gameSave] = useState(() => initialSave);
   const [summary, setSummary] = useState(() => {
     const now = Date.now();
     const offlineMin = Math.max(0, (now - gameSave.lastSeenAt) / 60000);
@@ -102,7 +105,7 @@ export default function YunyinGame({ onBack, characters = [], onAiGenerate = nul
       path: [], stepT: 0, from: null, facing: "down", moving: false,
     };
     const cam = { x: 0, y: 0, follow: true };
-    let npcs = spawnNpcs(gameSave, map);          // 漫遊 NPC（只在安全地圖）
+    let npcs = spawnNpcs(gameSave, map, characters);          // 漫遊 NPC（山門／靈田協助角色）
     // 綁定角色的顯示名（角色入駐後 NPC 掛角色名）
     const npcDisplayName = (npc) => {
       const charId = gameSave.settings.bindings[npc.seed];
@@ -111,7 +114,8 @@ export default function YunyinGame({ onBack, characters = [], onAiGenerate = nul
     npcBubbleRef.current = (charId, text) => {
       const npc = npcs.find((n) => gameSave.settings.bindings[n.seed] === charId);
       if (!npc) return false;
-      npc.bubble = { text, until: performance.now() + 3500 };
+      const length = String(text || "").length;
+      npc.bubble = { text, until: performance.now() + Math.min(6500, 3500 + Math.max(0, length - 24) * 55) };
       npc.path = [];
       return true;
     };
@@ -158,7 +162,7 @@ export default function YunyinGame({ onBack, characters = [], onAiGenerate = nul
     // 切換地圖：玩家瞬移到目標出生點，鏡頭直接對準
     const switchMap = (toId, spawnTile) => {
       map = parseMap(MAPS[toId]);
-      npcs = spawnNpcs(gameSave, map);
+      npcs = spawnNpcs(gameSave, map, characters);
       if (import.meta.env.DEV && window.__yy) { window.__yy.map = map; window.__yy.npcs = npcs; }
       setMapTitle(map.name);
       player.path = []; player.from = null; player.stepT = 0;
@@ -190,7 +194,7 @@ export default function YunyinGame({ onBack, characters = [], onAiGenerate = nul
             prompt: `玩家剛在靈田收成了 ${r.crop.name} ×${r.count}${rare ? "（非常稀有的作物）" : ""}。`,
           }).then((line) => {
             if (!line) return;
-            if (!npcBubbleRef.current(line.charId, line.text)) toastRef.current(`【${line.name}】${line.text}`);
+            if (!npcBubbleRef.current(line.charId, line.text)) showCompanionNotice(line);
           });
         }
       } else {
@@ -212,6 +216,10 @@ export default function YunyinGame({ onBack, characters = [], onAiGenerate = nul
         // 點到 NPC → 冒一句話（入駐角色開著角色回覆時用個人句庫的閒聊池）
         const npc = npcAtTile(npcs, tx, ty);
         if (npc) {
+          if (npc.helper) {
+            panelRef.current({ type: "farmAssist", title: `${npc.name}的靈田協助`, npc });
+            return;
+          }
           const charId = gameSave.settings.bindings[npc.seed];
           const chatLines = charId ? activePackLines(gameSave, charId)?.chat : null;
           talkToNpc(npc, performance.now(), chatLines);
@@ -385,10 +393,28 @@ export default function YunyinGame({ onBack, characters = [], onAiGenerate = nul
     const drawBubble = (npc) => {
       const ts = TILE * SCALE;
       const cx = (npc.px - cam.x) * SCALE + ts / 2;
-      const topY = (npc.py - cam.y) * SCALE - ts * 1.1; // 角色圖高兩格，泡泡抬到頭頂上方
+      const topY = (npc.py - cam.y) * SCALE - ts * 1.4; // 長句氣泡抬高，避免壓住附近角色名牌
       ctx.font = `${10 * SCALE}px sans-serif`;
-      const w = ctx.measureText(npc.bubble.text).width + 16;
-      const h = 15 * SCALE;
+      const maxW = Math.min(220, viewW - 24);
+      const paddingX = 12;
+      const lineH = 13 * SCALE;
+      const source = String(npc.bubble.text || "").replace(/[\r\n]+/g, " ").trim();
+      const lines = [];
+      let line = "";
+      for (const char of source) {
+        const candidate = line + char;
+        if (line && ctx.measureText(candidate).width > maxW - paddingX * 2) { lines.push(line); line = char; }
+        else line = candidate;
+      }
+      if (line) lines.push(line);
+      const visibleLines = lines.slice(0, 3);
+      if (lines.length > 3) {
+        let last = visibleLines[visibleLines.length - 1] || "";
+        while (last && ctx.measureText(`${last}…`).width > maxW - paddingX * 2) last = last.slice(0, -1);
+        visibleLines[visibleLines.length - 1] = `${last}…`;
+      }
+      const w = Math.min(maxW, Math.max(72, ...visibleLines.map((value) => ctx.measureText(value).width + paddingX * 2)));
+      const h = visibleLines.length * lineH + 10;
       const bx = Math.max(4, Math.min(viewW - w - 4, cx - w / 2));
       ctx.fillStyle = "rgba(255,255,255,.94)";
       ctx.beginPath();
@@ -397,7 +423,7 @@ export default function YunyinGame({ onBack, characters = [], onAiGenerate = nul
       ctx.fillStyle = "#4a4038";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(npc.bubble.text, bx + w / 2, topY - h / 2);
+      visibleLines.forEach((value, index) => ctx.fillText(value, bx + w / 2, topY - h / 2 + lineH * (index - (visibleLines.length - 1) / 2)));
       ctx.textBaseline = "alphabetic";
     };
 
@@ -445,7 +471,7 @@ export default function YunyinGame({ onBack, characters = [], onAiGenerate = nul
             ctx.fillStyle = "rgba(255,255,255,.95)";
             ctx.strokeStyle = "rgba(0,0,0,.5)";
             ctx.lineWidth = 3;
-            const nx = (n.px - cam.x) * SCALE + ts / 2, ny = (n.py - cam.y) * SCALE - ts * 1.05; // 名牌抬到兩格高的頭頂
+            const nx = (n.px - cam.x) * SCALE + ts / 2, ny = (n.py - cam.y) * SCALE - ts * 0.9; // 名牌微降，貼近角色頭頂
             ctx.strokeText(boundName, nx, ny);
             ctx.fillText(boundName, nx, ny);
           }
@@ -538,7 +564,13 @@ export default function YunyinGame({ onBack, characters = [], onAiGenerate = nul
             ) : panel.type === "shop" ? (
               <ShopPanel save={gameSave} onDirty={markDirty} onToast={showToast} onCrystals={addCrystals} onClose={() => setPanel(null)} />
             ) : panel.type === "dungeon" ? (
-              <DungeonPanel save={gameSave} onDirty={markDirty} onToast={showToast} onCompanion={onCompanion} onClose={() => setPanel(null)} />
+              <DungeonPanel save={gameSave} onDirty={markDirty} onToast={showToast} onCompanion={onCompanion} onCrystals={addCrystals} onClose={() => setPanel(null)} />
+            ) : panel.type === "farmAssist" ? (
+              <div style={{ textAlign: "center", color: "#5d5147" }}>
+                <div style={{ fontSize: 34, marginBottom: 8 }}>🌱</div>
+                <div style={{ fontSize: 13, lineHeight: 1.8, marginBottom: 14 }}>「讓我來幫你照料植物吧。靈田的靈氣今天很溫柔，應該能讓它們長得更快。」</div>
+                <div style={{ display: "flex", gap: 8 }}><button style={{ flex: 1, border: 0, borderRadius: 12, padding: "10px 8px", background: "linear-gradient(135deg,#7d5a6e,#9c7089)", color: "#fff", fontWeight: 700 }} onClick={() => { const helper = panel.npc; helper.helper = false; helper.waitUntil = performance.now() + 120; helper.path = []; const planted = gameSave.farm.plots.filter((plot) => plot.cropId); if (!planted.length) { showToast("目前沒有正在生長的作物"); setPanel(null); return; } const target = planted[Math.floor(Math.random() * planted.length)]; const crop = cropById(target.cropId); const remain = Math.max(0, (target.plantedAt + crop.growMin * 60000 * 0.9) - Date.now()); target.plantedAt -= Math.floor(remain * 0.25); gameSave.farmAssist = { day: new Date().toISOString().slice(0, 10), used: true }; markDirty(); showToast(`${helper.name}照料了${crop.name}，剩餘時間縮短 25%`); setPanel(null); }}>接受協助</button><button style={{ flex: 1, border: 0, borderRadius: 12, padding: "10px 8px", background: "#e8ddd0", color: "#6b5d4f", fontWeight: 700 }} onClick={() => { panel.npc.helper = false; panel.npc.waitUntil = performance.now() + 120; panel.npc.path = []; setPanel(null); }}>先不用</button></div>
+              </div>
             ) : panel.type === "settings" ? (
               <GameSettingsPanel
                 save={gameSave} characters={characters} onDirty={markDirty}
@@ -622,6 +654,21 @@ export default function YunyinGame({ onBack, characters = [], onAiGenerate = nul
           {toast}
         </div>
       )}
+      {companionNotice && (
+        <div style={{ position: "absolute", left: 12, right: 12, bottom: 72, display: "flex", justifyContent: "center", pointerEvents: "none", zIndex: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, width: "min(92%, 360px)", padding: "9px 13px 9px 9px", border: "1px solid rgba(241,143,157,.45)", borderRadius: 18, background: "rgba(255,250,243,.96)", color: "#4a4038", boxShadow: "0 4px 14px rgba(0,0,0,.22)" }}>
+            {companionNotice.avatar ? (
+              <img src={companionNotice.avatar} alt="" style={{ width: 42, height: 42, flex: "0 0 42px", borderRadius: "50%", objectFit: "cover", border: "2px solid #f5b7c1", background: "#f5e7df" }} />
+            ) : (
+              <div style={{ width: 42, height: 42, flex: "0 0 42px", display: "grid", placeItems: "center", borderRadius: "50%", background: "#f5e7df", color: "#a86b7c", fontSize: 20 }}>✿</div>
+            )}
+            <div style={{ minWidth: 0, fontSize: 13, lineHeight: 1.5 }}>
+              <div style={{ marginBottom: 2, color: "#8b5c70", fontSize: 11, fontWeight: 800 }}>{companionNotice.name}</div>
+              <div style={{ overflow: "hidden", display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: 2 }}>{companionNotice.text}</div>
+            </div>
+          </div>
+        </div>
+      )}
       {summary && (
         <div style={{ position: "absolute", inset: 0, background: "rgba(20,14,26,.6)", display: "grid", placeItems: "center", zIndex: 6 }}>
           <div style={{ background: "#fffaf3", borderRadius: 18, padding: "22px 24px", width: "min(80%, 300px)", textAlign: "center", boxShadow: "0 10px 30px rgba(0,0,0,.4)" }}>
@@ -640,4 +687,20 @@ export default function YunyinGame({ onBack, characters = [], onAiGenerate = nul
       )}
     </div>
   );
+}
+
+export default function YunyinGame(props) {
+  const [initialSave, setInitialSave] = useState(null);
+  const [loadError, setLoadError] = useState("");
+  useEffect(() => {
+    let mounted = true;
+    loadSave().then((save) => { if (mounted) setInitialSave(save); }).catch((error) => {
+      if (!mounted) return;
+      setLoadError(error?.message || "存檔載入失敗");
+    });
+    return () => { mounted = false; };
+  }, []);
+  if (loadError) return <div className="mp-page" style={{ display: "grid", placeItems: "center", background: "#1c2733", color: "#fff", padding: 24, textAlign: "center" }}><div><div>雲隱山莊存檔載入失敗</div><small>{loadError}</small><br/><button onClick={props.onBack} style={{ marginTop: 15 }}>返回</button></div></div>;
+  if (!initialSave) return <div className="mp-page" style={{ display: "grid", placeItems: "center", background: "#1c2733", color: "#fff" }}>正在讀取山莊存檔⋯</div>;
+  return <YunyinRuntime {...props} initialSave={initialSave} />;
 }

@@ -10,6 +10,7 @@ import { buildSystemPrompt } from "./utils/characterParser";
 import { callAI, fetchAvailableModels } from "./services/aiService";
 import { fetchElevenLabsDefaultVoices, synthesizeSpeech } from "./services/ttsService";
 import { loadAppState, saveAppState } from "./utils/indexedDbStorage";
+import { loadFeatureBackup, restoreFeatureBackup, summarizeFeatureBackup } from "./services/featureBackupService";
 import { syncOnBoot, schedulePush } from "./services/syncService";
 import { createDefaultVoiceSettings, normalizeCharacterVoiceSettings } from "./utils/voiceSettings";
 import { sanitizeCustomCss } from "./utils/customCss";
@@ -729,7 +730,8 @@ export default function MaliPhone() {
       setChatListTab("friends");
     }
     if (id === "phone") {
-      setPhonePage(phoneViewCharId ? "desktop" : "picker");
+      setPhoneViewCharId(null);
+      setPhonePage("picker");
       setPhoneActiveThreadId("player");
     }
     setCurrentApp(id);
@@ -1485,7 +1487,7 @@ export default function MaliPhone() {
     });
     try { window.dispatchEvent(new Event("pet-settings-changed")); } catch {}
   };
-  const getExportableAppState = () => ({
+  const getExportableAppState = async () => ({
     version: VERSION,
     exportedAt: new Date().toISOString(),
     format: "maliphone-app-state",
@@ -1523,6 +1525,7 @@ export default function MaliPhone() {
       homeSlots,
       dockOrder,
       localAppData: getLocalAppDataSnapshot(),
+      featureData: await loadFeatureBackup(),
     },
   });
   const downloadJsonFile = (payload, filename) => {
@@ -1549,8 +1552,7 @@ export default function MaliPhone() {
       posts: Array.isArray(src?.posts) ? src.posts.length : 0,
       lorebooks: Array.isArray(src?.lorebooks) ? src.lorebooks.length : 0,
       playerProfile: !!src?.playerProfile,
-      petHome: !!src?.localAppData?.["maliphone-pet-home"],
-      yunyin: !!src?.localAppData?.["mali_yunyin_save_v1"],
+      ...summarizeFeatureBackup(src),
     };
   };
   const applyImportedAppState = async (incoming) => {
@@ -1628,6 +1630,7 @@ export default function MaliPhone() {
     setHomeSlots(nextState.homeSlots);
     setDockOrder(nextState.dockOrder);
     applyLocalAppDataSnapshot(nextState.localAppData);
+    await restoreFeatureBackup(src);
     setActiveLorebookId(nextState.lorebooks[0]?.id || null);
     setCurrentChatChar(null);
     setCurrentChatGroup(null);
@@ -1864,7 +1867,7 @@ export default function MaliPhone() {
 
     // ---- Status (RPG) ----
   const renderStatus = () => <StatusApp
-    closeApp={closeApp} t={t} tr={tr} characters={characters} chatHistory={chatHistory} memories={memories} posts={posts}
+    closeApp={closeApp} t={t} tr={tr} characters={sortDisplayCharacters(characters)} chatHistory={chatHistory} memories={memories} posts={posts}
     sanitizeUserImageUrl={sanitizeUserImageUrl} statusExpandedCharId={statusExpandedCharId} setStatusExpandedCharId={setStatusExpandedCharId}
     statusMemoryExpandedCharId={statusMemoryExpandedCharId} setStatusMemoryExpandedCharId={setStatusMemoryExpandedCharId}
     refreshCharacterStatus={refreshCharacterStatus} statusRefreshingIds={statusRefreshingIds} activeMemoryId={activeMemoryId} setActiveMemoryId={setActiveMemoryId}
@@ -1879,12 +1882,16 @@ export default function MaliPhone() {
     const lastMsg = msgs[msgs.length - 1] || null;
     const lastAt = Number(lastMsg?.time || 0);
     const pinned = !!char?.pinned || !!char?.chatPinned;
-    return { pinned, lastAt, name: String(char?.name || "") };
+    return { pinned, lastAt, openedAt: Number(char?.chatOpenedAt || 0), name: String(char?.name || "") };
   };
   const sortChatThreads = (list) => [...list].sort((a, b) => {
     const am = getChatThreadSortMeta(a);
     const bm = getChatThreadSortMeta(b);
     if (am.pinned !== bm.pinned) return am.pinned ? -1 : 1;
+    const aNew = !am.lastAt && !!am.openedAt;
+    const bNew = !bm.lastAt && !!bm.openedAt;
+    if (aNew !== bNew) return aNew ? -1 : 1;
+    if (aNew && bNew && am.openedAt !== bm.openedAt) return bm.openedAt - am.openedAt;
     if (am.lastAt !== bm.lastAt) return bm.lastAt - am.lastAt;
     return am.name.localeCompare(bm.name, "zh-Hant");
   });
@@ -1892,11 +1899,28 @@ export default function MaliPhone() {
     const am = !!a?.pinned;
     const bm = !!b?.pinned;
     if (am !== bm) return am ? -1 : 1;
-    const at = Number(a?.updatedAt || a?.lastAt || (a?.messages || [])[((a?.messages || []).length - 1)]?.time || 0);
-    const bt = Number(b?.updatedAt || b?.lastAt || (b?.messages || [])[((b?.messages || []).length - 1)]?.time || 0);
+    const ao = Number.isFinite(Number(a?.displayOrder)) ? Number(a.displayOrder) : null;
+    const bo = Number.isFinite(Number(b?.displayOrder)) ? Number(b.displayOrder) : null;
+    if (ao !== null || bo !== null) { if (ao === null) return 1; if (bo === null) return -1; if (ao !== bo) return ao - bo; }
+    const at = Number(a?.createdAt || 0), bt = Number(b?.createdAt || 0);
     if (at !== bt) return bt - at;
     return String(a?.name || "").localeCompare(String(b?.name || ""), "zh-Hant");
   });
+  const sortDisplayCharacters = (list) => [...list].sort((a, b) => {
+    if (!!a.displayPinned !== !!b.displayPinned) return a.displayPinned ? -1 : 1;
+    const ao = Number.isFinite(Number(a.displayOrder)) ? Number(a.displayOrder) : Number.MAX_SAFE_INTEGER;
+    const bo = Number.isFinite(Number(b.displayOrder)) ? Number(b.displayOrder) : Number.MAX_SAFE_INTEGER;
+    if (ao !== bo) return ao - bo;
+    return characters.indexOf(a) - characters.indexOf(b);
+  });
+  const moveDisplayCharacter = (charId, direction) => {
+    const ordered = sortDisplayCharacters(characters), index = ordered.findIndex((item) => item.id === charId), target = index + direction;
+    if (index < 0 || target < 0 || target >= ordered.length) return;
+    [ordered[index], ordered[target]] = [ordered[target], ordered[index]];
+    const order = new Map(ordered.map((item, position) => [item.id, position]));
+    setCharacters((items) => items.map((item) => ({ ...item, displayOrder: order.get(item.id) })));
+  };
+  const markChatOpened = (character) => setCharacters((items) => items.map((item) => item.id === character.id ? { ...item, chatOpenedAt: Date.now() } : item));
   // Pinning is a pure local UI/state action only. It must never trigger AI calls or alter prompt content.
   const toggleChatPin = (charId) => {
     setCharacters((prev) => {
@@ -2022,12 +2046,13 @@ export default function MaliPhone() {
         onOpenCharacter: (character, unread) => {
           if (Date.now() <= suppressAppClickUntilRef.current) return;
           if (unread) setProactiveUnread((previous) => { const next = { ...previous }; delete next[character.id]; return next; });
+          markChatOpened(character);
           setCurrentChatChar(character);
         },
         onOpenGroup: (group) => {
           if (Date.now() > suppressAppClickUntilRef.current) setCurrentChatGroup(group);
         },
-        getGroupMembers, t,
+        getGroupMembers, apiConfig, playerProfile, t,
       }} />;
     }
     if (currentChatChar) {
@@ -2164,6 +2189,7 @@ export default function MaliPhone() {
           image: chatImage, onClearImage: () => setChatImage(null), actionPanelOpen: chatActionPanelOpen,
           setActionPanelOpen: setChatActionPanelOpen, allowTransfer: selectedMode !== "reality",
           onOpenTransfer: () => setTransferModalOpen(true), fileInputRef, onImageUpload: handleImgUp,
+          character: currentChatChar, onGiftEpisodeStarted: () => { setCurrentChatChar(null); setChatListTab("episodes"); },
           value: chatInput, setValue: setChatInput, textLimit: inputTextLimit, onSend: sendMessage,
         }}
       />} />;
@@ -2198,11 +2224,16 @@ export default function MaliPhone() {
     sanitizeText={sanitizeText} downloadJsonFile={downloadJsonFile} showToast={showToast} gid={gid} notify={notify} ask={ask}
   />;
   const renderCharacters = () => <ContactsApp
-    t={t} closeApp={closeApp} characters={characters} activeCharId={activeCharId} sanitizeImage={sanitizeUserImageUrl}
+    t={t} closeApp={closeApp} characters={sortDisplayCharacters(characters)} activeCharId={activeCharId} sanitizeImage={sanitizeUserImageUrl}
     onAdd={() => { setEditingCharacter(null); setModal("addChar"); }}
     onSetActive={(character) => { setActiveCharId(character.id); showToast(`${character.name} ${t("setAsMainCharacter")}`); }}
-    onChat={(character) => { setCurrentChatChar(character); openApp("chat"); }}
+    onChat={(character) => { markChatOpened(character); setCurrentChatChar(character); openApp("chat"); }}
     onView={(character) => { setEditingCharacter(character); setModal("addChar"); }}
+    onSaveDisplayOrder={(draft) => {
+      const meta = new Map(draft.map((item, index) => [item.id, { displayOrder: index, displayPinned: !!item.pinned }]));
+      setCharacters((items) => items.map((item) => ({ ...item, ...(meta.get(item.id) || {}) })));
+      showToast("角色順序已儲存");
+    }}
   />;
   const beginHeroEdit = (src = sanitizeUserImageUrl(activeChar?.heroImage || activeChar?.avatarOriginal || activeChar?.avatar), sourceType = activeChar?.heroImage ? "hero" : "avatar") => {
     if (!activeChar) return;
@@ -2477,7 +2508,7 @@ export default function MaliPhone() {
   const renderPhone = () => <PhoneApp
     phoneViewCharId={phoneViewCharId} setPhoneViewCharId={setPhoneViewCharId} phonePage={phonePage} setPhonePage={setPhonePage}
     phoneActiveThreadId={phoneActiveThreadId} setPhoneActiveThreadId={setPhoneActiveThreadId}
-    characters={characters} chatHistory={chatHistory} phoneInboxCache={phoneInboxCache} characterWallets={characterWallets} playerProfile={playerProfile}
+    characters={sortDisplayCharacters(characters)} chatHistory={chatHistory} phoneInboxCache={phoneInboxCache} characterWallets={characterWallets} playerProfile={playerProfile}
     closeApp={closeApp} t={t} tr={tr} sanitizeUserImageUrl={sanitizeUserImageUrl} renderAppIcon={renderAppIcon}
     phoneGenLoading={phoneGenLoading} generatePhoneNpcChats={generatePhoneNpcChats} phonePlayerContactLoading={phonePlayerContactLoading} refreshPhonePlayerContact={refreshPhonePlayerContact}
     phoneAppCache={phoneAppCache} phoneAppGenLoading={phoneAppGenLoading} generatePhoneApp={generatePhoneApp}
@@ -2521,7 +2552,7 @@ export default function MaliPhone() {
       onOpenApp={(appId) => { if (Date.now() > suppressAppClickUntilRef.current) openApp(appId); }}
       onOpenFromTouch={openAppFromTouch} onPointerDragStart={onPointerDragStartApp}
     />
-    <AppRouter currentApp={currentApp} closeApp={closeApp} t={t} tr={tr} game={{ page: gamePage, setPage: setGamePage }} yunyin={{ characters, apiConfig }} renderers={{
+    <AppRouter currentApp={currentApp} closeApp={closeApp} t={t} tr={tr} game={{ page: gamePage, setPage: setGamePage, characters, onOpenChat: () => { setCurrentApp("chat"); setCurrentChatChar(null); setCurrentChatGroup(null); setChatListTab("episodes"); } }} yunyin={{ characters, apiConfig }} apiConfig={apiConfig} renderers={{
       chat: renderChat,
       status: renderStatus,
       social: renderSocial,
