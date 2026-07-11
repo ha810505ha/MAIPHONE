@@ -372,9 +372,14 @@ async function applyRemoteEntities(list) {
     // 這台裝置自己推上去又被拉回來的版本（echo）：本地已有，跳過，
     // 免得呼叫端誤判「雲端有新資料」而觸發不必要的重載
     if (e.deviceId === myDeviceId && (Number(e.rev) || 0) <= (mem.lastRevs.get(e.key) || 0)) continue;
+    const local = await readKv(e.key);
+    const remoteUpdatedAt = Number(e.updatedAt) || 0;
+    const localUpdatedAt = Number(local?.updatedAt) || 0;
+    // 游標重置或重新登入可能再次拉到舊的雲端快照；較舊版本不得覆蓋本機資料。
+    if (local && (localUpdatedAt > remoteUpdatedAt || (localUpdatedAt === remoteUpdatedAt && (Number(local.rev) || 0) >= (Number(e.rev) || 0)))) continue;
     writes.push([e.key, {
       data: e.deleted ? null : (e.data ?? null),
-      updatedAt: Number(e.updatedAt) || Date.now(),
+      updatedAt: remoteUpdatedAt || Date.now(),
       rev: Number(e.rev) || 1,
       deviceId: e.deviceId || null,
       deleted: !!e.deleted,

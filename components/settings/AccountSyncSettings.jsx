@@ -6,6 +6,7 @@ import {
   getServerUrl, setServerUrl, getPendingSyncCount, OFFICIAL_SERVER_URL,
 } from "../../services/syncService";
 import { getDeviceId as getLocalDeviceId } from "../../utils/indexedDbStorage";
+import { SYNC_ENABLED } from "../../config/featureFlags";
 
 const fieldStyle = {
   width: "100%",
@@ -25,7 +26,7 @@ const iconFieldStyle = {
 };
 
 // 帳號/同步系統還在調整中：先鎖住整個區塊不讓玩家展開，改好後把這個旗標改回 false
-const ACCOUNT_SECTION_LOCKED = true;
+const ACCOUNT_SECTION_LOCKED = !SYNC_ENABLED;
 
 export default function AccountSyncSettings({ tr, notify }) {
   const text = (zh, en, ja = en, ko = en) => tr(zh, en, ja, ko);
