@@ -10,7 +10,7 @@ backend/public/
 .pglite-dev/
 
 # Local prototypes that are not wired into the production app yet
-GachaGame.jsx
+/GachaGame.jsx
 card/
 chat-layout-preview.html
 chat-layout-preview.css
