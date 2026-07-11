@@ -89,25 +89,25 @@ export default function CharacterPanel({ value, onSave, onClose }) {
     },
   ].filter(Boolean);
 
-  const arrowBtn = { border: 0, borderRadius: 8, width: 28, height: 28, fontSize: 14, fontWeight: 700, cursor: "pointer", background: "#e8ddd0", color: "#6b5d4f", flexShrink: 0 };
+  const arrowBtn = { border: 0, borderRadius: 8, width: 24, height: 28, padding: 0, fontSize: 14, fontWeight: 700, cursor: "pointer", background: "#e8ddd0", color: "#6b5d4f", flexShrink: 0 };
 
   return (
     <div style={{ textAlign: "left" }}>
-      <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
         {/* 預覽 */}
-        <div style={{ textAlign: "center", flexShrink: 0 }}>
-          <canvas ref={canvasRef} width={140} height={190} style={{ borderRadius: 12, display: "block", imageRendering: "pixelated" }} />
+        <div style={{ textAlign: "center", width: 120, flex: "0 0 120px" }}>
+          <canvas ref={canvasRef} width={140} height={190} style={{ width: 120, height: 163, borderRadius: 12, display: "block", imageRendering: "pixelated" }} />
           <button onClick={() => setFacing(FACINGS[(FACINGS.indexOf(facing) + 1) % 4])} style={{ ...arrowBtn, width: "100%", marginTop: 6, fontSize: 12 }}>
             轉身 ↻
           </button>
         </div>
         {/* 部位調整 */}
-        <div style={{ flex: 1, display: "grid", gap: 6, maxHeight: 250, overflowY: "auto" }}>
+        <div style={{ flex: 1, minWidth: 0, display: "grid", gap: 6, maxHeight: 264, overflowY: "auto", overflowX: "hidden", paddingRight: 4, boxSizing: "border-box" }}>
           {rows.map((r) => (
-            <div key={r.label} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: "#6b5d4f", width: 32 }}>{r.label}</span>
+            <div key={r.label} style={{ display: "grid", gridTemplateColumns: "30px 24px minmax(38px,1fr) 24px", alignItems: "center", gap: 3, width: "100%", minWidth: 0 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#6b5d4f", width: 30 }}>{r.label}</span>
               <button style={arrowBtn} onClick={() => r.cycle(-1)}>‹</button>
-              <span style={{ flex: 1, textAlign: "center", fontSize: 11, color: "#4a4038", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.value}</span>
+              <span style={{ minWidth: 38, maxWidth: "100%", textAlign: "center", fontSize: 10.5, color: "#4a4038", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.value}</span>
               <button style={arrowBtn} onClick={() => r.cycle(1)}>›</button>
             </div>
           ))}

@@ -1,4 +1,5 @@
 // 雲端同步引擎（M3）：消化 indexedDbStorage 的 outbox，接後端 /api/sync
+import { SYNC_ENABLED } from "../config/featureFlags";
 // 設計原則：後端不在（本地純前端開發、離線）時全部靜默跳過，App 照常運作。
 import {
   getSyncOutbox, readEntity, ackSynced, applyRemoteEntities, clearSyncOutbox, resetLocalEntities, getDeviceId,
@@ -208,6 +209,7 @@ let syncPromise = null;
 // 注意：pull 只把資料寫進本地儲存，執行中的 App 畫面不會自動更新——
 // 開機時（載入 state 前）呼叫沒問題；營運中呼叫後若 pulled > 0，呼叫端應重新載入。
 export async function syncNow({ pull = true } = {}) {
+  if (!SYNC_ENABLED) return { pushed: 0, pulled: 0, appliedRemote: 0, disabled: true };
   // React StrictMode 在開發環境會重跑初始化 effect。第二次呼叫必須等待
   // 已在進行的同步，否則會先載入尚未套用遠端資料的 IndexedDB。
   if (syncPromise) return syncPromise;
@@ -226,6 +228,7 @@ export async function syncNow({ pull = true } = {}) {
 
 // App 啟動時呼叫：伺服器不在就靜默跳過
 export async function syncOnBoot() {
+  if (!SYNC_ENABLED) return { pushed: 0, pulled: 0, appliedRemote: 0, disabled: true };
   if (!(await isServerReachable())) return null;
   try {
     const pendingReset = isPendingReset();
@@ -256,6 +259,7 @@ export async function syncOnBoot() {
 // 存檔後排程 push-only 同步（debounce 5 秒），離線/無後端一律靜默
 let pushTimer = null;
 export function schedulePush() {
+  if (!SYNC_ENABLED) return;
   if (pushTimer) clearTimeout(pushTimer);
   pushTimer = setTimeout(async () => {
     pushTimer = null;
