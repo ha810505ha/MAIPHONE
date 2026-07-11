@@ -20,6 +20,7 @@ const APP_STATE_KEY = "app_state";
 const ENT_PREFIX = "ent_";
 const CORE_KEY = "ent_core";
 const OUTBOX_KEY = "sync_outbox";
+const FEATURE_KEYS = new Set(["ent_gachaInventory", "ent_gachaEpisodes", "ent_gachaCurrency", "ent_yunyinSave", "ent_petHome", "ent_petSettings", "ent_loginReward", "ent_notes"]);
 const charKey = (id) => `ent_char_${id}`;
 const chatKey = (id) => `ent_chat_${id}`;
 const chatBgKey = (id) => `ent_chatbg_${id}`;
@@ -414,4 +415,27 @@ async function ackSynced(keys) {
   await writeEntries([...deletes, [OUTBOX_KEY, { ...mem.outbox }]]);
 }
 
-export { loadAppState, saveAppState, getSyncOutbox, readEntity, ackSynced, applyRemoteEntities, clearSyncOutbox, resetLocalEntities, getDeviceId };
+// 獨立功能可直接使用既有 maliphone_db 實體與同步 outbox，避免各自建立資料庫。
+async function loadFeatureEntity(key, fallback = null) {
+  if (!FEATURE_KEYS.has(key)) throw new Error(`Unknown feature entity: ${key}`);
+  const wrapped = await readKv(key);
+  return wrapped && !wrapped.deleted ? wrapped.data : fallback;
+}
+
+async function saveFeatureEntity(key, data) {
+  if (!FEATURE_KEYS.has(key)) throw new Error(`Unknown feature entity: ${key}`);
+  const previous = await readKv(key);
+  const updatedAt = Date.now();
+  const wrapped = {
+    data,
+    updatedAt,
+    rev: (Number(previous?.rev) || 0) + 1,
+    deviceId: getDeviceId(),
+    deleted: false,
+  };
+  const latestOutbox = (await readKv(OUTBOX_KEY)) || {};
+  mem.outbox = { ...latestOutbox, ...mem.outbox, [key]: updatedAt };
+  await writeEntries([[key, wrapped], [OUTBOX_KEY, { ...mem.outbox }]]);
+}
+
+export { loadAppState, saveAppState, getSyncOutbox, readEntity, ackSynced, applyRemoteEntities, clearSyncOutbox, resetLocalEntities, getDeviceId, loadFeatureEntity, saveFeatureEntity };

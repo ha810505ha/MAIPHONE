@@ -112,7 +112,7 @@ export default function ShopPanel({ save, onDirty, onToast, onCrystals, onClose 
               <span style={{ flex: 1 }}>
                 <b style={{ fontSize: 14 }}>{m.name} ×{sh.stock}</b>
                 <span style={{ display: "block", fontSize: 11, color: "#8a7a6a" }}>
-                  🪙{m.sellPrice}/件・下一件約 {nextSec} 秒
+                  🪙{m.sellPrice}/件・下一件約 {nextSec >= 60 ? `${Math.ceil(nextSec / 60)} 分鐘` : `${nextSec} 秒`}
                 </span>
               </span>
               <button style={btnStyle(false)} onClick={() => { unstockShelf(save, idx); onDirty(); setTick((t) => t + 1); }}>收回</button>
@@ -141,7 +141,7 @@ export default function ShopPanel({ save, onDirty, onToast, onCrystals, onClose 
           </div>
         );
       })}
-      <div style={{ fontSize: 11, color: "#8a7a6a" }}>貨架每 {SELL_INTERVAL_SEC} 秒自動賣出 1 件，離線也照賣。</div>
+      <div style={{ fontSize: 11, color: "#8a7a6a" }}>貨架每 {Math.round(SELL_INTERVAL_SEC / 60)} 分鐘自動賣出 1 件，離線也照賣；貨架不產出結晶。</div>
     </div>
   );
 
@@ -155,7 +155,7 @@ export default function ShopPanel({ save, onDirty, onToast, onCrystals, onClose 
           <div key={o.id} style={{ ...rowStyle, opacity: o.done ? 0.5 : 1 }}>
             <span style={{ fontSize: 22 }}>{m.icon}</span>
             <span style={{ flex: 1 }}>
-              <b style={{ fontSize: 14 }}>{m.name} ×{o.count}</b>
+              <b style={{ fontSize: 14 }}>{o.tier ? `【${o.tier}】` : ""}{m.name} ×{o.count}</b>
               <span style={{ display: "block", fontSize: 11, color: "#8a7a6a" }}>
                 報酬 🪙{o.rewardCoins} + 💎{o.rewardCrystals}（持有 {inv[o.itemId] || 0}）
               </span>

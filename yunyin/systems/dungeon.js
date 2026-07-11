@@ -6,6 +6,7 @@ import { hasUnlock } from "./cultivation";
 import { REALMS } from "../data/realms";
 
 import { roll } from "../engine/rng";
+import { taiwanDayKey } from "../../utils/taiwanDayKey";
 
 const BASE_HP = 10;
 const BASE_FLOORS = 5;
@@ -29,12 +30,12 @@ export function runModEffects(run) {
 }
 
 // ---- 每日次數 ----
-const dayStr = (now = Date.now()) => new Date(now).toISOString().slice(0, 10);
-export const maxRunsOf = (cultivation) => BASE_RUNS_PER_DAY + (hasUnlock(cultivation, "dungeon_depth_3") ? 1 : 0);
+export const maxRunsOf = () => BASE_RUNS_PER_DAY;
 
 export function resetDungeonDaily(save, now = Date.now()) {
-  if (save.dungeon.lastResetDay !== dayStr(now)) {
-    save.dungeon.lastResetDay = dayStr(now);
+  const day = taiwanDayKey(now);
+  if (save.dungeon.lastResetDay !== day) {
+    save.dungeon.lastResetDay = day;
     save.dungeon.runsToday = maxRunsOf(save.cultivation);
   }
 }
@@ -133,6 +134,7 @@ export function finishRun(save, mode /* "cleared" | "retreat" | "dead" */) {
     floor: run.floor, totalFloors: run.totalFloors,
     exp: Math.floor(run.exp * keep),
     coins: Math.floor(run.coins * keep),
+    crystals: mode === "cleared" ? Math.min(15, 10 + Math.floor(run.totalFloors / 2)) : mode === "retreat" ? Math.min(10, 5 + Math.floor(run.floor / 2)) : 3,
     items: Object.entries(run.loot)
       .map(([id, n]) => ({ id, n: Math.floor(n * keep) }))
       .filter((it) => it.n > 0),

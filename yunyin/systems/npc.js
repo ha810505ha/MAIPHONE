@@ -25,7 +25,17 @@ export function ensureNpcSeeds(save) {
 }
 
 // 進入地圖時把 seeds 實體化成 runtime actor（只在安全地圖：山門）
-export function spawnNpcs(save, map) {
+export function spawnNpcs(save, map, characters = []) {
+  if (map.id === "farm") {
+    const today = new Date().toISOString().slice(0, 10);
+    if (save.farmAssist?.day === today && save.farmAssist.used) return [];
+    const bound = ensureNpcSeeds(save).find((def) => save.settings?.bindings?.[def.seed]);
+    if (!bound) return [];
+    const charId = save.settings.bindings[bound.seed];
+    const character = characters.find((item) => item.id === charId);
+    const spot = map.spawn || [3, 3];
+    return [{ seed: bound.seed, charId, helper: true, name: character?.name || bound.name, appearance: bound.appearance ? sanitizeAppearance(bound.appearance) : randomAppearance(bound.seed), x: spot[0] + 2, y: spot[1] + 1, px: (spot[0] + 2) * TILE, py: (spot[1] + 1) * TILE, path: [], stepT: 0, facing: "down", moving: false, waitUntil: Infinity, bubble: null, rand: rngOf(`${bound.seed}:farm-helper:${today}`) }];
+  }
   if (map.id !== "gate") return [];
   return ensureNpcSeeds(save).map((def, i) => {
     const rand = rngOf(`${def.seed}:spawn:${Date.now()}`);
@@ -101,7 +111,8 @@ export function talkToNpc(npc, now, chatLines = null) {
   const text = chatLines?.length
     ? chatLines[Math.floor(npc.rand() * chatLines.length)]
     : pickLine(npc.rand);
-  npc.bubble = { text, until: now + 2800 };
+  const duration = Math.min(6500, 2800 + Math.max(0, String(text || "").length - 24) * 55);
+  npc.bubble = { text, until: now + duration };
   npc.path = []; // 停下來面對玩家
   return text;
 }

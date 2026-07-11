@@ -5,10 +5,14 @@ export default function useDataImportExport({ getExportableState, downloadJsonFi
   const [importing, setImporting] = useState(false);
   const [preview, setPreview] = useState(null);
 
-  const exportAllData = useCallback(() => {
-    downloadJsonFile(getExportableState(), `maliphone-backup-${new Date().toISOString().slice(0, 10)}.json`);
-    showToast(tr("資料已匯出", "Data exported", "データを書き出しました", "데이터를 내보냈습니다"));
-  }, [downloadJsonFile, getExportableState, showToast, tr]);
+  const exportAllData = useCallback(async () => {
+    try {
+      downloadJsonFile(await getExportableState(), `maliphone-backup-${new Date().toISOString().slice(0, 10)}.json`);
+      showToast(tr("資料已匯出", "Data exported", "データを書き出しました", "데이터를 내보냈습니다"));
+    } catch (error) {
+      showToast(`${tr("匯出失敗", "Export failed", "書き出しに失敗しました", "내보내기 실패")}：${sanitizeText(error?.message || "Unknown error", 80)}`);
+    }
+  }, [downloadJsonFile, getExportableState, showToast, tr, sanitizeText]);
 
   const importAllData = useCallback(async (event) => {
     const file = event.target.files?.[0];

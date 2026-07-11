@@ -3,7 +3,7 @@ import { CROPS } from "../data/crops";
 import { RECIPES } from "../data/recipes";
 import { hasUnlock } from "./cultivation";
 
-export const SELL_INTERVAL_SEC = 75; // 貨架每 75 秒自動賣出 1 件
+export const SELL_INTERVAL_SEC = 1200; // 貨架每 20 分鐘自動賣出 1 件
 
 // 物品目錄：作物 + 種子 + 丹藥
 const ITEMS = {};
@@ -89,26 +89,19 @@ export function settleShelves(save, now = Date.now()) {
   return { sold, earned };
 }
 
-// ---- 行商訂單（每日刷新 2~3 張）----
+// ---- 行商訂單（每日固定 3 張：普通／進階／稀有）----
 const dayStr = (now = Date.now()) => new Date(now).toISOString().slice(0, 10);
 
 export function refreshOrders(save, now = Date.now()) {
   const s = save.shop;
   if (s.lastOrderDay === dayStr(now)) return false;
-  const pool = ["qingling", "yuehua", "huiqi"];
-  if (hasUnlock(save.cultivation, "recipe_ningshen")) pool.push("ningshen");
-  const n = 2 + Math.floor(Math.random() * 2);
-  s.orders = Array.from({ length: n }, (_, i) => {
-    const itemId = pool[Math.floor(Math.random() * pool.length)];
-    const count = 2 + Math.floor(Math.random() * 4);
-    return {
-      id: `${dayStr(now)}-${i}`,
-      itemId, count,
-      rewardCoins: Math.ceil(itemMeta(itemId).sellPrice * count * 1.5),
-      rewardCrystals: 8 + Math.floor(Math.random() * 13),
-      done: false,
-    };
-  });
+  const rareItem = hasUnlock(save.cultivation, "recipe_ningshen") ? "ningshen" : "huiqi";
+  const specs = [
+    { tier: "普通", itemId: "qingling", count: 4 + Math.floor(Math.random() * 3), rewardCoins: 55, rewardCrystals: 8 },
+    { tier: "進階", itemId: "yuehua", count: 3 + Math.floor(Math.random() * 3), rewardCoins: 120, rewardCrystals: 15 },
+    { tier: "稀有", itemId: rareItem, count: 2 + Math.floor(Math.random() * 2), rewardCoins: 230, rewardCrystals: 27 },
+  ];
+  s.orders = specs.map((spec, i) => ({ id: `${dayStr(now)}-${i}`, ...spec, done: false }));
   s.lastOrderDay = dayStr(now);
   return true;
 }

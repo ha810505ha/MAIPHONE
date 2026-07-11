@@ -2,6 +2,7 @@ import React, { Suspense, lazy } from "react";
 import PetHome from "../../PetHome";
 import GameCenter from "./GameCenter";
 import AnswerBookApp from "./AnswerBookApp";
+import NotesApp from "./NotesApp";
 import { yunyinGenerateLinePack } from "../../services/yunyinAiBridge";
 
 // 雲隱山莊：lazy load，不進主 bundle
@@ -11,13 +12,13 @@ function PlaceholderApp({ icon, title, closeApp, t }) {
   return <div className="mp-page"><div className="mp-hdr"><div className="mp-back" onClick={closeApp}>←</div><div className="mp-htitle">{icon} {title}</div></div><div className="mp-empty" style={{ flex: 1 }}><div className="mp-empty-i">{icon}</div><div className="mp-empty-t">{t("comingSoon")}<br />{t("stayTuned")}</div></div></div>;
 }
 
-export default function AppRouter({ currentApp, renderers, game, closeApp, t, tr, yunyin }) {
+export default function AppRouter({ currentApp, renderers, game, closeApp, t, tr, yunyin, apiConfig }) {
   if (!currentApp) return null;
   if (renderers[currentApp]) return renderers[currentApp]();
   switch (currentApp) {
     case "gallery": return <PlaceholderApp icon="🖼️" title={t("gallery")} closeApp={closeApp} t={t} />;
-    case "game": return <GameCenter page={game.page} setPage={game.setPage} closeApp={closeApp} t={t} tr={tr} />;
-    case "petHome": return <PetHome onClose={closeApp} />;
+    case "game": return <GameCenter page={game.page} setPage={game.setPage} closeApp={closeApp} t={t} tr={tr} characters={game.characters} onOpenChat={game.onOpenChat} />;
+    case "petHome": return <PetHome onClose={closeApp} apiConfig={apiConfig} />;
     case "yunyin": return <Suspense fallback={<div className="mp-page" style={{ display: "grid", placeItems: "center", background: "#1c2733", color: "#fff" }}>載入中⋯</div>}>
       <YunyinGame
         onBack={closeApp}
@@ -26,7 +27,7 @@ export default function AppRouter({ currentApp, renderers, game, closeApp, t, tr
       />
     </Suspense>;
     case "lbook": return <AnswerBookApp closeApp={closeApp} title={t("answerBook")} />;
-    case "notebook": return <PlaceholderApp icon="📒" title={t("notebook")} closeApp={closeApp} t={t} />;
+    case "notebook": return <NotesApp onBack={closeApp} />;
     default: return null;
   }
 }

@@ -21,7 +21,7 @@ const fxText = (fx) => {
   return parts.join("・");
 };
 
-export default function DungeonPanel({ save, onDirty, onToast, onCompanion, onClose }) {
+export default function DungeonPanel({ save, onDirty, onToast, onCompanion, onCrystals, onClose }) {
   const [, setTick] = useState(0);
   const [summary, setSummary] = useState(null);
   const [companionLine, setCompanionLine] = useState(null);
@@ -47,6 +47,7 @@ export default function DungeonPanel({ save, onDirty, onToast, onCompanion, onCl
 
   const doFinish = (mode) => {
     const s = finishRun(save, mode);
+    if (s?.crystals) onCrystals?.(s.crystals);
     setSummary(s);
     onDirty();
   };
@@ -64,6 +65,7 @@ export default function DungeonPanel({ save, onDirty, onToast, onCompanion, onCl
         <div style={{ margin: "14px 0", padding: "12px 14px", background: "#f3ece2", borderRadius: 12, fontSize: 13, lineHeight: 2, textAlign: "left" }}>
           <div>修為 <b style={{ color: "#3d7a5c" }}>+{summary.exp}</b></div>
           <div>靈石 <b style={{ color: "#b8860b" }}>🪙+{summary.coins}</b></div>
+          <div>靈魂結晶 <b style={{ color: "#b05f88" }}>💎+{summary.crystals}</b></div>
           {summary.items.map((it) => (
             <div key={it.id}>{itemMeta(it.id).icon} {itemMeta(it.id).name} <b>×{it.n}</b></div>
           ))}
