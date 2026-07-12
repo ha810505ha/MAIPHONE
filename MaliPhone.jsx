@@ -145,7 +145,7 @@ export default function MaliPhone() {
   const [walletGenLoading, setWalletGenLoading] = useState(false);
   const [apiPresets, setApiPresets] = useState(defaultAppState.apiPresets);
   const [playerProfile, setPlayerProfile] = useState(defaultAppState.playerProfile);
-  const { themeName, setThemeName, fontName, setFontName, uiLanguage, setUiLanguage, themeEffectsEnabled, setThemeEffectsEnabled, customCssEnabled, setCustomCssEnabled, customCss, setCustomCss, customCssDraft, setCustomCssDraft, customCssNotice, setCustomCssNotice, customCssGuideOpen, setCustomCssGuideOpen, settingsAppearanceOpen, setSettingsAppearanceOpen, scopedCustomCss } = useAppearanceSettings(defaultAppState);
+  const { themeName, setThemeName, fontName, setFontName, fontSizeScale, setFontSizeScale, uiLanguage, setUiLanguage, themeEffectsEnabled, setThemeEffectsEnabled, customCssEnabled, setCustomCssEnabled, customCss, setCustomCss, customCssDraft, setCustomCssDraft, customCssNotice, setCustomCssNotice, customCssGuideOpen, setCustomCssGuideOpen, settingsAppearanceOpen, setSettingsAppearanceOpen, scopedCustomCss } = useAppearanceSettings(defaultAppState);
   const [playerAvatarCrop, setPlayerAvatarCrop] = useState(null);
   const [screenLockTimeout, setScreenLockTimeout] = useState(defaultAppState.screenLockTimeout);
   const [phoneViewCharId, setPhoneViewCharId] = useState(null);
@@ -313,6 +313,7 @@ export default function MaliPhone() {
   } : defaultAppState.ttsConfig);
   setThemeName(data.themeName || defaultAppState.themeName);
   setFontName(FONT_PRESETS[data.fontName] ? data.fontName : defaultAppState.fontName);
+  setFontSizeScale(["normal", "large", "xlarge", "xxlarge"].includes(data.fontSizeScale) ? data.fontSizeScale : defaultAppState.fontSizeScale);
   setUiLanguage(data.uiLanguage || defaultAppState.uiLanguage);
   const initialDock = (data.dockOrder && Array.isArray(data.dockOrder)) ? data.dockOrder : DOCK_APPS;
   setDockOrder(initialDock);
@@ -331,7 +332,7 @@ export default function MaliPhone() {
   }
 
   };
-  const persistenceSnapshot = { characters, activeCharId, chatHistory, chatModes, chatBackgrounds, groupChats, chatScenes, groupScenes, chatTimeSettings, innerThoughtSettings, proactiveSettings, proactiveUnread, posts, socialSettings, memories, lorebooks, chatLorebookBindings, phoneInboxCache, phoneAppCache, wallet, characterWallets, screenLockTimeout, apiPresets, playerProfile, apiConfig, ttsConfig, themeName, fontName, uiLanguage, homeSlots, dockOrder };
+  const persistenceSnapshot = { characters, activeCharId, chatHistory, chatModes, chatBackgrounds, groupChats, chatScenes, groupScenes, chatTimeSettings, innerThoughtSettings, proactiveSettings, proactiveUnread, posts, socialSettings, memories, lorebooks, chatLorebookBindings, phoneInboxCache, phoneAppCache, wallet, characterWallets, screenLockTimeout, apiPresets, playerProfile, apiConfig, ttsConfig, themeName, fontName, fontSizeScale, uiLanguage, homeSlots, dockOrder };
   const { hydrated } = useAppPersistence({
     defaults: defaultAppState,
     snapshot: persistenceSnapshot,
@@ -1593,6 +1594,7 @@ export default function MaliPhone() {
       } : defaultAppState.ttsConfig,
       themeName: src.themeName || defaultAppState.themeName,
       fontName: FONT_PRESETS[src.fontName] ? src.fontName : defaultAppState.fontName,
+      fontSizeScale: ["normal", "large", "xlarge", "xxlarge"].includes(src.fontSizeScale) ? src.fontSizeScale : defaultAppState.fontSizeScale,
       uiLanguage: src.uiLanguage || defaultAppState.uiLanguage,
       homeSlots: Array.isArray(src.homeSlots) && src.homeSlots.length === HOME_SLOT_COUNT ? src.homeSlots : Array.from({ length: HOME_SLOT_COUNT }, () => null),
       dockOrder: Array.isArray(src.dockOrder) && src.dockOrder.length ? src.dockOrder : DOCK_APPS,
@@ -1626,6 +1628,7 @@ export default function MaliPhone() {
     setTtsConfig(nextState.ttsConfig);
     setThemeName(nextState.themeName);
     setFontName(nextState.fontName);
+    setFontSizeScale(nextState.fontSizeScale || defaultAppState.fontSizeScale);
     setUiLanguage(nextState.uiLanguage);
     setHomeSlots(nextState.homeSlots);
     setDockOrder(nextState.dockOrder);
@@ -1781,6 +1784,7 @@ export default function MaliPhone() {
   const { isNightTheme, isPeachTheme, themeCss } = useThemeRuntime({
     themeName,
     fontName,
+    fontSizeScale,
     currentApp,
     themeEffectsEnabled,
     scopedCustomCss,
@@ -2446,7 +2450,7 @@ export default function MaliPhone() {
     const settingsAppearance = {
       open: settingsAppearanceOpen,
       toggleOpen: () => setSettingsAppearanceOpen((value) => !value),
-      themeProps: { t, tr, themeName, setThemeName, fontName, setFontName, effectsEnabled: themeEffectsEnabled, setEffectsEnabled: setThemeEffectsEnabled },
+      themeProps: { t, tr, themeName, setThemeName, fontName, setFontName, fontSizeScale, setFontSizeScale, effectsEnabled: themeEffectsEnabled, setEffectsEnabled: setThemeEffectsEnabled },
       cssProps: {
         tr, enabled: customCssEnabled, setEnabled: setCustomCssEnabled, draft: customCssDraft, setDraft: setCustomCssDraft,
         notice: customCssNotice, setNotice: setCustomCssNotice, sanitize: sanitizeCustomCss,
@@ -2459,7 +2463,7 @@ export default function MaliPhone() {
         removeHero: () => setCharacters((list) => list.map((item) => item.id === activeChar.id ? { ...item, heroImage: "", heroView: null } : item)),
         startDrag: startHeroSettingDrag, moveDrag: moveHeroSettingDrag, endDrag: endHeroSettingDrag, heroImgStyle, saveDraft: saveHeroDraft,
       },
-      interfaceProps: { t, tr, uiLanguage, setUiLanguage, screenLockTimeout, setScreenLockTimeout },
+      interfaceProps: { t, tr, uiLanguage, setUiLanguage, fontSizeScale, setFontSizeScale, screenLockTimeout, setScreenLockTimeout },
     };
     const settingsApi = {
       presetProps: { tr, activePresetIndex, config: tc, onApplyPreset: applyApiPreset },
