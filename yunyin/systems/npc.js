@@ -10,6 +10,11 @@ const NPC_COUNT = 6;
 const WANDER_RADIUS = 6;
 const STEP_MS = 260; // NPC 走得比玩家慢一點
 
+// 傳送點要保持清空，避免 NPC 站在入口上阻擋玩家互動。
+const npcBlocked = (map, x, y) => map.isBlocked(x, y)
+  || (map.portals || []).some((portal) => portal.x === x && portal.y === y)
+  || (map.id === "farm" && (map.plots || []).some((plot) => plot.x === x && plot.y === y));
+
 // 存檔裡只放 seeds；第一次進遊戲時生成
 export function ensureNpcSeeds(save) {
   if (!save.npcs || save.npcs.length === 0) {
@@ -28,13 +33,26 @@ export function ensureNpcSeeds(save) {
 export function spawnNpcs(save, map, characters = []) {
   if (map.id === "farm") {
     const today = new Date().toISOString().slice(0, 10);
-    if (save.farmAssist?.day === today && save.farmAssist.used) return [];
-    const bound = ensureNpcSeeds(save).find((def) => save.settings?.bindings?.[def.seed]);
-    if (!bound) return [];
-    const charId = save.settings.bindings[bound.seed];
-    const character = characters.find((item) => item.id === charId);
-    const spot = map.spawn || [3, 3];
-    return [{ seed: bound.seed, charId, helper: true, name: character?.name || bound.name, appearance: bound.appearance ? sanitizeAppearance(bound.appearance) : randomAppearance(bound.seed), x: spot[0] + 2, y: spot[1] + 1, px: (spot[0] + 2) * TILE, py: (spot[1] + 1) * TILE, path: [], stepT: 0, facing: "down", moving: false, waitUntil: Infinity, bubble: null, rand: rngOf(`${bound.seed}:farm-helper:${today}`) }];
+    const seeds = ensureNpcSeeds(save);
+    const assistUsed = save.farmAssist?.day === today && save.farmAssist.used;
+    const bound = !assistUsed ? seeds.find((def) => save.settings?.bindings?.[def.seed]) : null;
+    const spawn = map.spawn || [3, 3];
+    const actors = [];
+    if (bound) {
+      const charId = save.settings.bindings[bound.seed];
+      const character = characters.find((item) => item.id === charId);
+      const helperSpot = map.plots?.[0] || { x: spawn[0] + 1, y: spawn[1] };
+      actors.push({ seed: bound.seed, charId, helper: true, name: character?.name || bound.name, appearance: bound.appearance ? sanitizeAppearance(bound.appearance) : randomAppearance(bound.seed), x: helperSpot.x, y: helperSpot.y, px: helperSpot.x * TILE, py: helperSpot.y * TILE, path: [], stepT: 0, facing: "down", moving: false, waitUntil: Infinity, bubble: null, rand: rngOf(`${bound.seed}:farm-helper:${today}`) });
+    }
+    const idleCount = Math.floor(roll(`${save.createdAt}:${today}`, "farm-idle-count") * 3); // 0～2
+    const idleSeeds = seeds.filter((def) => def !== bound).slice(0, idleCount);
+    idleSeeds.forEach((def, index) => {
+      const rand = rngOf(`${def.seed}:farm-idle:${today}`);
+      const start = { x: spawn[0] + 1 + index, y: spawn[1] + 1 };
+      const spot = nearestWalkable(start.x, start.y, map.w, map.h, (x, y) => npcBlocked(map, x, y)) || { x: spawn[0] + index, y: spawn[1] };
+      actors.push({ seed: def.seed, name: def.name, appearance: def.appearance ? sanitizeAppearance(def.appearance) : randomAppearance(def.seed), x: spot.x, y: spot.y, px: spot.x * TILE, py: spot.y * TILE, path: [], stepT: 0, facing: "down", moving: false, waitUntil: performance.now() + 1000 + rand() * 4000, bubble: null, rand });
+    });
+    return actors;
   }
   if (map.id !== "gate") return [];
   return ensureNpcSeeds(save).map((def, i) => {
@@ -43,9 +61,9 @@ export function spawnNpcs(save, map, characters = []) {
     for (let tries = 0; tries < 40; tries++) {
       x = Math.floor(rand() * map.w);
       y = Math.floor(rand() * map.h);
-      if (!map.isBlocked(x, y)) break;
+      if (!npcBlocked(map, x, y)) break;
     }
-    const spot = nearestWalkable(x, y, map.w, map.h, map.isBlocked) || { x: map.spawn[0], y: map.spawn[1] };
+    const spot = nearestWalkable(x, y, map.w, map.h, (tx, ty) => npcBlocked(map, tx, ty)) || { x: map.spawn[0], y: map.spawn[1] };
     return {
       seed: def.seed, name: def.name,
       // 玩家在設定裡編輯過的外觀優先，否則用 seed 隨機（同一 NPC 每次進場長一樣）
@@ -64,8 +82,8 @@ function pickWanderTarget(npc, map) {
     const tx = npc.x + Math.floor(npc.rand() * (WANDER_RADIUS * 2 + 1)) - WANDER_RADIUS;
     const ty = npc.y + Math.floor(npc.rand() * (WANDER_RADIUS * 2 + 1)) - WANDER_RADIUS;
     if (tx === npc.x && ty === npc.y) continue;
-    if (map.isBlocked(tx, ty)) continue;
-    const path = astar(npc.x, npc.y, tx, ty, map.w, map.h, map.isBlocked);
+    if (npcBlocked(map, tx, ty)) continue;
+    const path = astar(npc.x, npc.y, tx, ty, map.w, map.h, (x, y) => npcBlocked(map, x, y));
     if (path && path.length) return path;
   }
   return null;

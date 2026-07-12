@@ -19,6 +19,10 @@ chat-layout-preview.css
 
 # Private Yunyin assets stay out of Git
 yunyin/assets/
+# Local-only content editors and their drafts
+tools/gacha-card-editor/
+# Local-only assets destined for the separate private asset repository
+private-assets/
 
 # Local developer config / internal planning docs
 .claude/

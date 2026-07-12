@@ -1,7 +1,7 @@
 import { FONT_PRESETS, THEME_PRESETS } from "../../styles/maliPhoneCss";
 import { buildThemeCss } from "../../styles/themeCss";
 
-export default function useThemeRuntime({ themeName, fontName, currentApp, themeEffectsEnabled, scopedCustomCss }) {
+export default function useThemeRuntime({ themeName, fontName, fontSizeScale, currentApp, themeEffectsEnabled, scopedCustomCss }) {
   const normalizedThemeName = themeName === "湖水藍"
     ? "海鹽汽水"
     : themeName === "蜜桃手帳"
@@ -17,6 +17,7 @@ export default function useThemeRuntime({ themeName, fontName, currentApp, theme
   const themeCss = buildThemeCss({
     activeTheme,
     activeFontStack,
+    fontSizeScale,
     isNightTheme,
     isPeachTheme,
     hasPeachEffects,

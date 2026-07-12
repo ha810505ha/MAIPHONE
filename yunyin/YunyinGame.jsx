@@ -474,6 +474,13 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
             const nx = (n.px - cam.x) * SCALE + ts / 2, ny = (n.py - cam.y) * SCALE - ts * 0.9; // 名牌微降，貼近角色頭頂
             ctx.strokeText(boundName, nx, ny);
             ctx.fillText(boundName, nx, ny);
+            if (n.helper) {
+              ctx.font = `${6.5 * SCALE}px sans-serif`;
+              ctx.fillStyle = "rgba(255,239,180,.98)";
+              ctx.strokeStyle = "rgba(70,45,35,.72)";
+              ctx.lineWidth = 2;
+              ctx.fillText("照料中", nx, ny + 8 * SCALE);
+            }
           }
         } })),
         { y: player.py + TILE, draw: () => drawCharacter(player, gameSave.player.appearance, now) },
@@ -533,7 +540,7 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
   }, []);
 
   return (
-    <div ref={wrapRef} className="mp-page" style={{ background: "#1c2733", overflow: "hidden", touchAction: "none" }}>
+    <div ref={wrapRef} className="mp-page yunyin-game-page" data-yunyin-root="1" style={{ background: "#1c2733", overflow: "hidden", touchAction: "none" }}>
       {/* touchAction 要直接放在 canvas 上（不會繼承）：否則手機瀏覽器會把拖曳當成捲動手勢
           搶走 pointer 事件（pointercancel），玩起來就是「點了沒反應、卡住」 */}
       <canvas ref={canvasRef} style={{ display: "block", imageRendering: "pixelated", touchAction: "none" }} />
@@ -557,7 +564,7 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
       </div>
       {panel && (
         <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.45)", display: "grid", placeItems: "center", zIndex: 5 }} onClick={() => setPanel(null)}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: "#fffaf3", borderRadius: 18, padding: "20px 22px", width: "min(84%, 330px)", maxHeight: "84%", overflowY: "auto", boxShadow: "0 10px 30px rgba(0,0,0,.35)" }}>
+          <div data-yunyin-panel="1" onClick={(e) => e.stopPropagation()} style={{ background: "#fffaf3", borderRadius: 18, padding: "20px 22px", width: "min(84%, 330px)", maxHeight: "84%", overflowY: "auto", boxShadow: "0 10px 30px rgba(0,0,0,.35)" }}>
             <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 10, textAlign: "center" }}>{panel.title}</div>
             {panel.type === "cultivation" ? (
               <CultivationPanel save={gameSave} onDirty={markDirty} onCompanion={onCompanion} onClose={() => setPanel(null)} />
@@ -671,7 +678,7 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
       )}
       {summary && (
         <div style={{ position: "absolute", inset: 0, background: "rgba(20,14,26,.6)", display: "grid", placeItems: "center", zIndex: 6 }}>
-          <div style={{ background: "#fffaf3", borderRadius: 18, padding: "22px 24px", width: "min(80%, 300px)", textAlign: "center", boxShadow: "0 10px 30px rgba(0,0,0,.4)" }}>
+          <div data-yunyin-panel="1" style={{ background: "#fffaf3", borderRadius: 18, padding: "22px 24px", width: "min(80%, 300px)", textAlign: "center", boxShadow: "0 10px 30px rgba(0,0,0,.4)" }}>
             <div style={{ fontSize: 28 }}>⛰️</div>
             <div style={{ fontSize: 17, fontWeight: 800, marginTop: 6 }}>閉關歸來</div>
             <div style={{ fontSize: 13, color: "#6b5d4f", marginTop: 10, lineHeight: 1.8 }}>

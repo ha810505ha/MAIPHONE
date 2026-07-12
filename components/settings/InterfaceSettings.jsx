@@ -1,6 +1,6 @@
 import React from "react";
 
-export default function InterfaceSettings({ t, tr, uiLanguage, setUiLanguage, screenLockTimeout, setScreenLockTimeout }) {
+export default function InterfaceSettings({ t, tr, uiLanguage, setUiLanguage, fontSizeScale, setFontSizeScale, screenLockTimeout, setScreenLockTimeout }) {
   return <>
     <div className="mp-sg">
       <div className="mp-sg-t">{tr("介面語言", "Interface language", "表示言語", "인터페이스 언어")}</div>

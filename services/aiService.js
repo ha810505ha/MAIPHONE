@@ -8,6 +8,8 @@ async function callAI(messages, apiConfig, sysPrompt) {
   const sys = sysPrompt || "你是一位自然、友善、穩定的 AI 角色助理。";
   const maxTokens = Number(apiConfig.maxTokens) > 0 ? Number(apiConfig.maxTokens) : 4000;
   const hasImageInput = messages.some((m) => !!m.image);
+  const temperature = apiConfig.temperatureEnabled && Number.isFinite(Number(apiConfig.temperature))
+    ? Math.max(0, Math.min(2, Number(apiConfig.temperature))) : null;
 
   if (hasImageInput && provider === "openrouter" && String(model || "").toLowerCase() === "auto") {
     throw new Error("OpenRouter 的 auto 可能會選到不支援圖片的模型，請改成可視覺模型（例如 openai/gpt-4o-mini、anthropic/claude-3.5-sonnet）。");
@@ -24,6 +26,7 @@ async function callAI(messages, apiConfig, sysPrompt) {
       body: JSON.stringify({
         model,
         max_tokens: maxTokens,
+        ...(temperature == null ? {} : { temperature }),
         system: sys,
         messages: messages
           .filter((m) => m.role !== "system")
@@ -63,7 +66,7 @@ async function callAI(messages, apiConfig, sysPrompt) {
     return {
       systemInstruction: { parts: [{ text: sys }] },
       contents,
-      generationConfig: { maxOutputTokens: maxTokens },
+      generationConfig: { maxOutputTokens: maxTokens, ...(temperature == null ? {} : { temperature }) },
     };
   };
 
@@ -160,7 +163,7 @@ async function callAI(messages, apiConfig, sysPrompt) {
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ model, messages: apiMsgs, ...completionLimit }),
+    body: JSON.stringify({ model, messages: apiMsgs, ...completionLimit, ...(temperature == null ? {} : { temperature }) }),
   });
 
   let data = null;

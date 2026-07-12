@@ -257,7 +257,7 @@ export default function NotesApp({ onBack }) {
               border: draft.privacy === "private" ? "1px solid #b9a9bc" : "1px solid #f0d5dc",
               position: "relative",
               zIndex: 10,
-              order: 3,
+              order: 1,
               boxShadow: "0 8px 24px rgba(87,67,75,.14)",
             }}
           >
@@ -385,6 +385,10 @@ export default function NotesApp({ onBack }) {
         background: "linear-gradient(180deg,#fffaf8,#fdecef)",
         color: "#57434b",
         overflowY: "auto",
+        position: "relative",
+        height: "100%",
+        minHeight: 0,
+        boxSizing: "border-box",
       }}
     >
       <div className="mp-hdr">
@@ -431,7 +435,7 @@ export default function NotesApp({ onBack }) {
         </div>
         {visible.length === 0 ? (
           <div style={{ textAlign: "center", color: "#9a7f88", padding: 50 }}>
-            還沒有筆記，按右上角 ＋ 開始記錄
+            還沒有筆記，點擊右下角鉛筆開始記錄
           </div>
         ) : (
           visible.map((note) => (
@@ -506,11 +510,12 @@ export default function NotesApp({ onBack }) {
       </div>
       <button
         type="button"
+        className="notes-add-button"
         aria-label="新增筆記"
         onClick={() => open()}
         style={{
-          position: "fixed",
-          right: 24,
+          position: "absolute",
+          right: 16,
           bottom: "max(26px, env(safe-area-inset-bottom))",
           zIndex: 20,
           width: 58,

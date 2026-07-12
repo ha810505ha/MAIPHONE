@@ -1,6 +1,7 @@
 export function buildThemeCss({
   activeTheme,
   activeFontStack,
+  fontSizeScale = "normal",
   isNightTheme,
   isPeachTheme,
   hasPeachEffects,
@@ -9,13 +10,17 @@ export function buildThemeCss({
   normalizedThemeName,
   scopedCustomCss,
 }) {
+  const fontScale = { normal: 1, large: 1.1, xlarge: 1.2, xxlarge: 1.3 }[fontSizeScale] || 1;
   return `
     :root{
       ${Object.entries(activeTheme?.vars || {}).map(([k, v]) => `${k}:${v};`).join("")}
       --mp-font:${activeFontStack};
+      --mp-font-scale:${fontScale};
     }
     .mp-wrap{background:${activeTheme?.surfaces?.wrapBg || "linear-gradient(135deg,#fce4ec 0%,#e8eaf6 50%,#e1f5fe 100%)"};}
-    .mp-phone{background:${activeTheme?.surfaces?.phoneBg || "linear-gradient(160deg,#fce4ec 0%,#f8bbd0 25%,#e1f5fe 50%,#b3e5fc 75%,#f3e5f5 100%)"};}
+    .mp-phone{background:${activeTheme?.surfaces?.phoneBg || "linear-gradient(160deg,#fce4ec 0%,#f8bbd0 25%,#e1f5fe 50%,#b3e5fc 75%,#f3e5f5 100%)"};font-size:calc(16px * var(--mp-font-scale));-webkit-text-size-adjust:calc(100% * var(--mp-font-scale));text-size-adjust:calc(100% * var(--mp-font-scale));}
+    @media (min-width:700px){.mp-phone{zoom:var(--mp-font-scale);}}
+    @media (min-width:700px){.notes-add-button{right:64px !important;}}
     .mp-lock{background:${activeTheme?.surfaces?.lockBg || "linear-gradient(160deg,#fce4ec 0%,#f8bbd0 30%,#e8eaf6 60%,#b3e5fc 100%)"};}
     .mp-lock-hint{max-width:min(82vw,320px);padding:0 12px;text-align:center;line-height:1.4;word-break:keep-all;overflow-wrap:anywhere;font-size:12px;}
     .mp-page{background:${activeTheme?.surfaces?.pageBg || "linear-gradient(180deg,#fce4ec 0%,#fff 30%)"};}
@@ -24,6 +29,10 @@ export function buildThemeCss({
       .mp-cr{background:linear-gradient(180deg,rgba(36,27,51,.97),rgba(26,22,37,.99));}
       .mp-bar,.mp-hdr,.mp-inp-bar,.mp-dock{background:rgba(26,22,37,.95);border-color:#3a2d4f;}
       .mp-modal,.mp-sg,.mp-cc,.mp-post,.mp-sc,.mp-cw,.mp-transfer-card{background:rgba(36,27,51,.95);border-color:#3a2d4f;box-shadow:0 8px 24px rgba(7,4,12,.26);}
+      .game-center-page .mp-cw-name,.game-center-page .mp-cw div{color:#4a3c48 !important;}
+      .game-center-page .mp-cw div[style*="var(--mp-txt-l)"]{color:#8d7485 !important;}
+      .yunyin-game-page [data-yunyin-panel="1"]{color:#4a4038 !important;}
+      .yunyin-game-page [data-yunyin-panel="1"] div,.yunyin-game-page [data-yunyin-panel="1"] span,.yunyin-game-page [data-yunyin-panel="1"] b,.yunyin-game-page [data-yunyin-panel="1"] small{color:#4a4038 !important;}
       .mp-icon-c,.mp-dock-i,.mp-back{background:rgba(47,36,64,.9);border-color:#3a2d4f;box-shadow:0 3px 12px rgba(7,4,12,.24);}
       .mp-icon-c:hover,.mp-dock-i:hover,.mp-cw:hover{background:rgba(58,45,79,.96);box-shadow:0 5px 16px rgba(7,4,12,.3);}
       .mp-chat-switch,.mp-mode-tabs{background:rgba(47,36,64,.72);border-color:#3a2d4f;box-shadow:none;}
@@ -176,4 +185,3 @@ export function buildThemeCss({
     ${scopedCustomCss}
   `;
 }
-
