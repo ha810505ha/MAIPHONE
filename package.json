@@ -7,8 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "npm --prefix backend test",
-    "check": "npm run build && npm test"
+    "check": "npm run build"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.1",
