@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">MaliPhone</string>
-    <string name="title_activity_main">MaliPhone</string>
-    <string name="package_name">com.ha810505ha.maliphone</string>
-    <string name="custom_url_scheme">com.ha810505ha.maliphone</string>
-</resources>
