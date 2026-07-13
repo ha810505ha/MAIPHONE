@@ -1,10 +1,22 @@
 import { useCallback, useState } from "react";
-import { generateGachaEpisodeReply } from "../../services/gacha/gachaEpisodeService";
+import { generateGachaEpisodeOpening, generateGachaEpisodeReply } from "../../services/gacha/gachaEpisodeService";
 
-export default function useGachaEpisodeAI({ episode, character, playerProfile, apiConfig, sendUserMessage, appendAssistantMessage }) {
+export default function useGachaEpisodeAI({ episode, character, playerProfile, apiConfig, recentMessages = [], sendUserMessage, appendAssistantMessage, setEpisodeOpening }) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState("");
   const [streamingText, setStreamingText] = useState("");
+  const prepareOpening = useCallback(async () => {
+    if (episode.openingStatus !== "pending" || isGenerating) return false;
+    setError(""); setIsGenerating(true);
+    try {
+      const opening = await generateGachaEpisodeOpening({ episode, character, playerProfile, apiConfig, recentMessages });
+      setEpisodeOpening?.(episode.id, opening);
+      return true;
+    } catch (reason) {
+      setError(reason?.message || "開場生成失敗，請稍後重試");
+      return false;
+    } finally { setIsGenerating(false); }
+  }, [apiConfig, character, episode, isGenerating, playerProfile, recentMessages, setEpisodeOpening]);
   const send = useCallback(async (content) => {
     const text = String(content || "").trim();
     if (!text || isGenerating || episode.playerMessageCount >= 20) return false;
@@ -37,5 +49,5 @@ export default function useGachaEpisodeAI({ episode, character, playerProfile, a
       return false;
     } finally { setIsGenerating(false); }
   }, [apiConfig, appendAssistantMessage, character, episode, isGenerating, playerProfile]);
-  return { send, finishEarly, isGenerating, streamingText, error, clearError: () => setError("") };
+  return { send, finishEarly, prepareOpening, isGenerating, streamingText, error, clearError: () => setError("") };
 }

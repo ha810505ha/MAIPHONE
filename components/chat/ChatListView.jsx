@@ -50,7 +50,7 @@ export default function ChatListView({
 }) {
   const { episodes, selectedEpisodeId, setSelectedEpisodeId } = useGacha();
   const selectedEpisode = episodes.find((episode) => episode.id === selectedEpisodeId);
-  if (selectedEpisode) return <EpisodeRoom episode={selectedEpisode} character={characters.find((character) => String(character.id) === String(selectedEpisode.characterId))} playerProfile={playerProfile} apiConfig={apiConfig} onBack={() => setSelectedEpisodeId(null)} />;
+  if (selectedEpisode) return <EpisodeRoom episode={selectedEpisode} character={characters.find((character) => String(character.id) === String(selectedEpisode.characterId))} playerProfile={playerProfile} apiConfig={apiConfig} recentMessages={chatHistory[selectedEpisode.characterId] || []} onBack={() => setSelectedEpisodeId(null)} />;
   return (
     <div className="mp-page">
       <div className="mp-hdr">

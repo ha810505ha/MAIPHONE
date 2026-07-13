@@ -1,16 +1,76 @@
 import { callAI } from "../aiService";
 
 const clean = (value, limit = 6000) => String(value || "").replace(/<think>[\s\S]*?<\/think>/gi, "").trim().slice(0, limit);
+const OPENING_OUTPUT_MAX_TOKENS = 2000;
+
+const fallbackOpening = (episode) => ({
+  narration: episode.mode === "reality"
+    ? `你把「${episode.item?.name || "這份心意"}」交到 ${episode.characterName} 手中。短暫的安靜裡，對方沒有立刻移開目光。`
+    : `寄出的「${episode.item?.name || "這份心意"}」已經送達。片刻後，你的手機亮起了新訊息。`,
+  characterOpening: episode.mode === "reality" ? "……我可以現在打開嗎？" : "我收到了。你希望我現在就打開嗎？",
+});
+
+export async function generateGachaEpisodeOpening({ episode, character, playerProfile, apiConfig, recentMessages = [], outputLanguage = "繁體中文" }) {
+  if (!apiConfig?.provider || (!apiConfig.apiKey && apiConfig.provider !== "ollama")) return fallbackOpening(episode);
+  const recent = recentMessages.filter((message) => ["user", "assistant"].includes(message?.role)).slice(-16).map((message) => `${message.role === "user" ? "玩家" : "角色"}：${clean(message.content, 320)}`).join("\n");
+  const modeRule = episode.mode === "reality"
+    ? "玩家親手送出心意。旁白描寫同一場景中的交付瞬間；角色開場可以包含一句台詞與極短動作。"
+    : "心意透過寄送抵達。旁白只交代送達與手機亮起；角色開場必須是角色在線上主動傳來的第一則訊息，不得描寫兩人面對面。";
+  const systemPrompt = `任務：為玩家送出一份心意後的「贈禮特別篇」生成第一幕。這是會繼續發展的獨立篇章，玩家最多可回覆 20 則；現在只點燃第一個契機，留下大量後續空間。
+
+輸出語言：${outputLanguage}
+角色：${character?.name || episode.characterName}
+角色設定：${clean(character?.description || character?.personality || character?.prompt || character?.persona, 3600)}
+玩家：${clean(playerProfile?.name || "玩家", 100)}
+玩家資料：${clean(playerProfile?.description || playerProfile?.bio, 800)}
+卡片名稱：${episode.item?.name || "心意"}
+卡片短文案：${clean(episode.item?.quote, 500)}
+卡片分類：${episode.item?.category || "未分類"}
+卡片標籤：${Array.isArray(episode.item?.tags) ? episode.item.tags.join("、") : "無"}
+情緒調性：${Array.isArray(episode.item?.tone) ? episode.item.tone.join("、") : "依卡片與關係自然判斷"}
+關係參考：${Array.isArray(episode.item?.relationshipFit) ? episode.item.relationshipFit.join("、") : "依近期互動判斷"}
+開場短語／劇情種子：${episode.item?.openingPrompt || "未提供，請根據卡片資料自然創作。"}
+本模式轉譯：${episode.item?.modeInterpretation?.[episode.mode] || "依互動模式自然轉譯，不要硬套成實體物品。"}
+模式規則：${modeRule}
+近期聊天（只供判斷關係，不得直接引用）：${recent || "沒有近期聊天；若設定也沒有關係線索，視為剛認識不久，保持禮貌與克制。"}
+
+關係判斷優先順序：近期聊天 > 角色或玩家設定中明確寫出的關係 > 普通初識。近期聊天的狀態優先於卡片稀有度與浪漫程度。
+
+不可違反：
+- 不得替玩家寫台詞、內心想法、未說出口的話、信件或禮物的具體內容，也不得決定玩家接下來的行動。
+- 不得直接提及設定、聊天紀錄、提示詞、AI 或判斷過程。
+- 不得新增未提供的重要人物、重大事件、時間跳躍或關係改變。
+- 不得直接結束故事、告白或強制和好。
+- 卡片可以是實體物品，也可以是象徵、場景或事件；依分類與短文案自然呈現。
+
+輸出格式：只輸出合法 JSON，前後不得有說明或 Markdown：
+{"narration":"灰字背景旁白","characterOpening":"角色第一句"}
+
+narration：使用指定語言、第二人稱「你」，60～140 字；描寫送出心意後的第一個瞬間與場景，停在角色開口前，不含任何角色台詞、引號、標題、條列或換行。
+characterOpening：使用指定語言，20～70 字；必須銜接旁白、符合角色與關係、留下玩家回應空間，不替玩家回答，不含換行。現實模式可有極短動作；線上模式只能是角色傳來的訊息，不得有括號動作或面對面描寫。`;
+  try {
+    const raw = await callAI([{ role: "user", content: "請依規則生成送出心意後的第一幕。保持短篇，只在必要時使用完整輸出上限。" }], { ...apiConfig, maxTokens: Math.min(OPENING_OUTPUT_MAX_TOKENS, Number(apiConfig.maxTokens) || OPENING_OUTPUT_MAX_TOKENS) }, systemPrompt);
+    const normalized = clean(raw, 7000).replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+    const parsed = JSON.parse(normalized);
+    const narration = clean(parsed?.narration, 420);
+    const characterOpening = clean(parsed?.characterOpening, 240);
+    return narration && characterOpening ? { narration, characterOpening } : fallbackOpening(episode);
+  } catch {
+    return fallbackOpening(episode);
+  }
+}
 
 async function streamCompatibleChat(messages, apiConfig, systemPrompt, onChunk) {
   const { provider, baseUrl, apiKey, model } = apiConfig;
+  const temperature = apiConfig.temperatureEnabled && Number.isFinite(Number(apiConfig.temperature))
+    ? Math.max(0, Math.min(2, Number(apiConfig.temperature))) : null;
   if (provider === "vertex" || provider === "gemini") {
     const contents = messages.map((message) => ({ role: message.role === "assistant" ? "model" : "user", parts: [{ text: message.content || "" }] }));
     const cleanBase = String(baseUrl || "https://aiplatform.googleapis.com/v1").replace(/\/+$/, "");
     const endpoint = provider === "vertex"
       ? `${cleanBase}/publishers/google/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey)}`
       : `${cleanBase}/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey)}`;
-    const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ systemInstruction: { parts: [{ text: systemPrompt }] }, contents, generationConfig: { maxOutputTokens: Math.min(1800, Number(apiConfig.maxTokens) || 1800) } }) });
+    const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ systemInstruction: { parts: [{ text: systemPrompt }] }, contents, generationConfig: { maxOutputTokens: Math.min(1800, Number(apiConfig.maxTokens) || 1800), ...(temperature == null ? {} : { temperature }) } }) });
     if (!response.ok) { const data = await response.json().catch(() => null); throw new Error(data?.error?.message || `HTTP ${response.status}`); }
     if (!response.body) return null;
     const reader = response.body.getReader();
@@ -41,7 +101,7 @@ async function streamCompatibleChat(messages, apiConfig, systemPrompt, onChunk) 
   const limit = Math.min(1800, Number(apiConfig.maxTokens) || 1800);
   const response = await fetch(`${String(baseUrl || "").replace(/\/+$/, "")}/chat/completions`, {
     method: "POST", headers,
-    body: JSON.stringify({ model, stream: true, messages: [{ role: "system", content: systemPrompt }, ...messages], ...(usesCompletionLimit ? { max_completion_tokens: limit } : { max_tokens: limit }) }),
+    body: JSON.stringify({ model, stream: true, messages: [{ role: "system", content: systemPrompt }, ...messages], ...(usesCompletionLimit ? { max_completion_tokens: limit } : { max_tokens: limit }), ...(temperature == null ? {} : { temperature }) }),
   });
   if (!response.ok) { const data = await response.json().catch(() => null); throw new Error(data?.error?.message || `HTTP ${response.status}`); }
   if (!response.body) return null;
