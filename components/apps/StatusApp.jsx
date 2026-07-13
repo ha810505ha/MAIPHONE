@@ -2,6 +2,7 @@ import React from "react";
 
 export default function StatusApp({
   closeApp, t, tr, characters, chatHistory, memories, posts, sanitizeUserImageUrl,
+  statusMemoryPages = {}, setStatusMemoryPages,
   statusExpandedCharId, setStatusExpandedCharId, statusMemoryExpandedCharId, setStatusMemoryExpandedCharId,
   refreshCharacterStatus, statusRefreshingIds, activeMemoryId, setActiveMemoryId, setMemoryEditor,
   togglePinMemory, deleteMemory, generateMemory, genLoading, applyUserPlaceholder,
@@ -67,10 +68,17 @@ export default function StatusApp({
                     {memoryExpanded && (
                       <>
                         {mems.length === 0 ? <div style={{fontSize:11,color:"var(--mp-txt-l)",textAlign:"center",padding:6}}>{tr("目前尚無記憶，點擊下方按鈕可生成", "No memories yet. Tap the button below to generate one.", "まだ記憶がありません。下のボタンで生成できます。", "아직 기억이 없습니다. 아래 버튼을 눌러 생성할 수 있습니다.")}</div>
-                    : <div className="mp-tl">{[...mems].sort((a, b) => {
+                    : <div className="mp-tl">{(() => {
+                      const sortedMems = [...mems].sort((a, b) => {
                       if (!!b.pinned !== !!a.pinned) return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0);
                       return (b.date || 0) - (a.date || 0);
-                    }).slice(0, 5).map((m,i) => (
+                      });
+                      const pageSize = 5;
+                      const pageCount = Math.max(1, Math.ceil(sortedMems.length / pageSize));
+                      const page = Math.min(Math.max(0, Number(statusMemoryPages[c.id]) || 0), pageCount - 1);
+                      const pageMems = sortedMems.slice(page * pageSize, (page + 1) * pageSize);
+                      return <>
+                      {pageMems.map((m,i) => (
                       <div key={m.id || i} className="mp-tl-item">
                         <div className="mp-tl-dot" style={{top:6}} />
                         <div className="mp-mem" onClick={() => setActiveMemoryId((p) => (p === m.id ? null : m.id))}>{applyUserPlaceholder(m.text)}</div>
@@ -83,7 +91,14 @@ export default function StatusApp({
                           </span>
                         </div>
                       </div>
-                    ))}</div>}
+                      ))}
+                      {pageCount > 1 && <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginTop:8}}>
+                        <button type="button" className="mp-ibtn" disabled={page <= 0} onClick={() => setStatusMemoryPages?.((prev) => ({...prev, [c.id]: Math.max(0, page - 1)}))}>‹</button>
+                        <span style={{fontSize:11,color:"var(--mp-txt-l)"}}>{page + 1} / {pageCount}</span>
+                        <button type="button" className="mp-ibtn" disabled={page >= pageCount - 1} onClick={() => setStatusMemoryPages?.((prev) => ({...prev, [c.id]: Math.min(pageCount - 1, page + 1)}))}>›</button>
+                      </div>}
+                      </>;
+                    })()}</div>}
                         <button className="mp-gbtn" onClick={() => generateMemory(c)} disabled={genLoading}>{genLoading ? tr("生成中...", "Generating...", "生成中...", "생성 중...") : tr("生成記憶", "Generate memory", "記憶を生成", "기억 생성")}</button>
                       </>
                     )}

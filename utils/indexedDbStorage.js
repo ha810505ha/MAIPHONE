@@ -20,7 +20,7 @@ const APP_STATE_KEY = "app_state";
 const ENT_PREFIX = "ent_";
 const CORE_KEY = "ent_core";
 const OUTBOX_KEY = "sync_outbox";
-const FEATURE_KEYS = new Set(["ent_gachaInventory", "ent_gachaEpisodes", "ent_gachaCurrency", "ent_yunyinSave", "ent_petHome", "ent_petSettings", "ent_loginReward", "ent_notes"]);
+const FEATURE_KEYS = new Set(["ent_gachaInventory", "ent_gachaEpisodes", "ent_gachaCurrency", "ent_gachaProgress", "ent_yunyinSave", "ent_petHome", "ent_petSettings", "ent_loginReward", "ent_notes"]);
 const charKey = (id) => `ent_char_${id}`;
 const chatKey = (id) => `ent_chat_${id}`;
 const chatBgKey = (id) => `ent_chatbg_${id}`;

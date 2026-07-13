@@ -168,6 +168,7 @@ export default function MaliPhone() {
   const [clearCacheArmed, setClearCacheArmed] = useState(false);
   const [statusExpandedCharId, setStatusExpandedCharId] = useState(null);
   const [statusMemoryExpandedCharId, setStatusMemoryExpandedCharId] = useState(null);
+  const [statusMemoryPages, setStatusMemoryPages] = useState({});
   const [statusRefreshingIds, setStatusRefreshingIds] = useState({});
   const [settingsApiOpen, setSettingsApiOpen] = useState(true);
   const [settingsResetOpen, setSettingsResetOpen] = useState(false);
@@ -885,8 +886,21 @@ export default function MaliPhone() {
   const getSelectedChatMode = (charId) => chatModes?.[charId] || getLastCommittedChatMode(charId);
   const setSelectedChatMode = (charId, mode) => {
     if (!charId || !isChatMode(mode)) return;
+    // Changing the mode changes message styling/layout. Preserve the user's
+    // current position instead of letting the rebuilt list jump to the top.
+    const element = chatMsgsRef.current;
+    const distanceFromBottom = element
+      ? element.scrollHeight - element.scrollTop - element.clientHeight
+      : null;
     setChatModes((prev) => ({ ...(prev || {}), [charId]: mode }));
     setChatInput((value) => sanitizeText(value, getChatTextLimit(mode)));
+    if (element && distanceFromBottom != null) {
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const next = chatMsgsRef.current;
+        if (!next) return;
+        next.scrollTop = Math.max(0, next.scrollHeight - next.clientHeight - distanceFromBottom);
+      }));
+    }
   };
   const getModeLabel = (mode) => (mode === "reality" ? tr("現實模式", "Reality mode", "現実モード", "현실 모드") : tr("線上聊天", "Online chat", "オンラインチャット", "온라인 채팅"));
   const stripModeLabel = (text) => String(text || "")
@@ -1244,7 +1258,12 @@ export default function MaliPhone() {
     applyCharacterTransferToPlayer, isInnerThoughtAutoEnabled, generateInnerThought,
   });
 
-  const PROACTIVE_FREQUENCY_HOURS = { low: [8, 16], normal: [4, 8], high: [1, 3] };
+  const PROACTIVE_FREQUENCY_HOURS = {
+    occasional: [8, 16], normal: [4, 8], active: [2.5, 4], always: [1.5, 2.5],
+    low: [8, 16], high: [2.5, 4],
+  };
+  const PROACTIVE_DAILY_CAP = { off: 0, occasional: 3, normal: 6, active: 10, always: 15, low: 3, high: 10 };
+  const proactiveDayKey = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Taipei" }).format(new Date());
   const getProactiveIdleThresholdMs = (frequency) => {
     const [minH, maxH] = PROACTIVE_FREQUENCY_HOURS[frequency] || PROACTIVE_FREQUENCY_HOURS.normal;
     return (minH + Math.random() * (maxH - minH)) * 60 * 60 * 1000;
@@ -1254,6 +1273,11 @@ export default function MaliPhone() {
     return characters.filter((c) => {
       const settings = proactiveSettings?.[c.id];
       if (!settings?.enabled) return false;
+      const frequency = settings.frequency || "normal";
+      if (frequency === "off") return false;
+      const today = proactiveDayKey();
+      const dailyCount = settings.proactiveDay === today ? Number(settings.proactiveCount) || 0 : 0;
+      if (dailyCount >= (PROACTIVE_DAILY_CAP[frequency] ?? 6)) return false;
       if (proactiveUnread?.[c.id]) return false;
       const list = chatHistory[c.id] || [];
       if (!list.length) return false;
@@ -1303,6 +1327,15 @@ export default function MaliPhone() {
         setChatHistory((h) => ({ ...h, [cid]: [...(h[cid] || []), msg] }));
       }
       if (!firedAny) return;
+      const today = proactiveDayKey();
+      setProactiveSettings((prev) => ({
+        ...prev,
+        [cid]: {
+          ...(prev?.[cid] || {}),
+          proactiveDay: today,
+          proactiveCount: (prev?.[cid]?.proactiveDay === today ? Number(prev?.[cid]?.proactiveCount) || 0 : 0) + 1,
+        },
+      }));
       if (currentChatCharIdRef.current !== cid) {
         setProactiveUnread((prev) => ({ ...prev, [cid]: (Number(prev?.[cid]) || 0) + bubbles.length }));
         showToast(tr(`${char.name} 傳了訊息給你`, `${char.name} sent you a message`, `${char.name} からメッセージが届きました`, `${char.name}님이 메시지를 보냈습니다`));
@@ -1529,8 +1562,43 @@ export default function MaliPhone() {
       featureData: await loadFeatureBackup(),
     },
   });
-  const downloadJsonFile = (payload, filename) => {
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const downloadJsonFile = async (payload, filename) => {
+    const jsonText = JSON.stringify(payload, null, 2);
+    const blob = new Blob([jsonText], { type: "application/json" });
+
+    // On native Android, write directly to the shared Documents directory.
+    // WebView download attributes are not guaranteed to create a visible file.
+    if (window.Capacitor?.isNativePlatform?.()) {
+      try {
+        const { Filesystem, Directory } = await import("@capacitor/filesystem");
+        const safeName = String(filename || "maliphone-export.json").replace(/[^a-zA-Z0-9._-]/g, "_");
+        const data = btoa(unescape(encodeURIComponent(jsonText)));
+        await Filesystem.writeFile({ path: safeName, data, directory: Directory.Documents, recursive: true });
+        return { method: "native-filesystem", path: safeName };
+      } catch (error) {
+        console.warn("[export] native filesystem unavailable, falling back", error);
+      }
+    }
+
+    // Android WebView does not always honor an anchor's `download` attribute.
+    // Prefer the native share/save sheet there so the user can explicitly choose
+    // a destination (Files, Drive, messaging app, etc.). Desktop/mobile browsers
+    // without file sharing continue to use the normal download flow below.
+    const isNativeAndroid = !!window.Capacitor?.isNativePlatform?.() || /Android/i.test(navigator.userAgent || "");
+    if (isNativeAndroid && typeof navigator.share === "function" && typeof File === "function") {
+      try {
+        const file = new File([blob], filename, { type: "application/json" });
+        if (!navigator.canShare || navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: filename });
+          return { method: "share" };
+        }
+      } catch (error) {
+        // Closing the share sheet is not an export failure. For unsupported or
+        // rejected shares, fall through to the regular browser download.
+        if (error?.name === "AbortError") return { method: "cancelled" };
+      }
+    }
+
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -1539,6 +1607,7 @@ export default function MaliPhone() {
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 0);
+    return { method: "download" };
   };
   const summarizeImportedData = (incoming) => {
     const src = incoming?.state && incoming?.format === "maliphone-app-state" ? incoming.state : incoming;
@@ -1574,7 +1643,7 @@ export default function MaliPhone() {
       proactiveSettings: src.proactiveSettings && typeof src.proactiveSettings === "object" ? src.proactiveSettings : {},
       proactiveUnread: src.proactiveUnread && typeof src.proactiveUnread === "object" ? src.proactiveUnread : {},
       posts: Array.isArray(src.posts) ? src.posts : [],
-      socialSettings: src.socialSettings && typeof src.socialSettings === "object" ? src.socialSettings : { autoPost: false },
+      socialSettings: src.socialSettings && typeof src.socialSettings === "object" ? { autoPost: false, enabledCharacterIds: null, frequency: "normal", frequencyByCharacter: {}, ...src.socialSettings } : { autoPost: false, enabledCharacterIds: null, frequency: "normal", frequencyByCharacter: {} },
       memories: src.memories && typeof src.memories === "object" ? src.memories : {},
       lorebooks: Array.isArray(src.lorebooks) ? src.lorebooks : [],
       chatLorebookBindings: src.chatLorebookBindings && typeof src.chatLorebookBindings === "object" ? src.chatLorebookBindings : {},
@@ -1873,7 +1942,7 @@ export default function MaliPhone() {
   const renderStatus = () => <StatusApp
     closeApp={closeApp} t={t} tr={tr} characters={sortDisplayCharacters(characters)} chatHistory={chatHistory} memories={memories} posts={posts}
     sanitizeUserImageUrl={sanitizeUserImageUrl} statusExpandedCharId={statusExpandedCharId} setStatusExpandedCharId={setStatusExpandedCharId}
-    statusMemoryExpandedCharId={statusMemoryExpandedCharId} setStatusMemoryExpandedCharId={setStatusMemoryExpandedCharId}
+    statusMemoryExpandedCharId={statusMemoryExpandedCharId} setStatusMemoryExpandedCharId={setStatusMemoryExpandedCharId} statusMemoryPages={statusMemoryPages} setStatusMemoryPages={setStatusMemoryPages}
     refreshCharacterStatus={refreshCharacterStatus} statusRefreshingIds={statusRefreshingIds} activeMemoryId={activeMemoryId} setActiveMemoryId={setActiveMemoryId}
     setMemoryEditor={setMemoryEditor} togglePinMemory={togglePinMemory} deleteMemory={deleteMemory}
     generateMemory={generateMemory} genLoading={genLoading} applyUserPlaceholder={applyUserPlaceholder}

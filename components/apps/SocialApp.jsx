@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 
 export default function SocialApp({
   socialSettingsOpen, setSocialSettingsOpen, socialSettings, setSocialSettings, posts, setPosts,
@@ -11,6 +11,8 @@ export default function SocialApp({
   formatSocialCount, getPostLikeCount, getCommentDepth, getCommentAuthorName,
   postCommentInputs, setPostCommentInputs, addPostComment,
 }) {
+  const [characterSearch, setCharacterSearch] = useState("");
+  const [characterPostingOpen, setCharacterPostingOpen] = useState(true);
   return (
     socialSettingsOpen ? (
       <div className="mp-page">
@@ -38,6 +40,44 @@ export default function SocialApp({
                 <span />
               </button>
             </div>
+          </div>
+          <div className="mp-sg">
+            <div className="mp-sg-t" onClick={() => setCharacterPostingOpen((open) => !open)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}><span>{tr("角色發文設定", "Character posting", "キャラ投稿設定", "캐릭터 게시 설정")}</span><span style={{ fontSize: 11, color: "var(--mp-pink-dk)", fontWeight: 700 }}>{characterPostingOpen ? tr("收合", "Collapse", "折りたたむ", "접기") : tr("展開", "Expand", "展開", "펼치기")}</span></div>
+            {characterPostingOpen && <>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <span style={{ fontSize: 11, color: "var(--mp-txt-l)" }}>{tr("允許哪些角色自動發文", "Choose which characters may post automatically", "自動投稿するキャラを選択", "자동 게시 캐릭터 선택")}</span>
+              <button type="button" className="mp-ibtn" onClick={() => setSocialSettings((prev) => {
+                const current = Array.isArray(prev?.enabledCharacterIds) ? prev.enabledCharacterIds : characters.map((c) => c.id);
+                const allSelected = characters.length > 0 && current.length === characters.length && characters.every((c) => current.includes(c.id));
+                return { ...(prev || {}), enabledCharacterIds: allSelected ? [] : characters.map((c) => c.id) };
+              })}>{(() => { const ids = Array.isArray(socialSettings?.enabledCharacterIds) ? socialSettings.enabledCharacterIds : characters.map((c) => c.id); const all = characters.length > 0 && ids.length === characters.length && characters.every((c) => ids.includes(c.id)); return all ? tr("全不選", "None", "なし", "없음") : tr("全選", "All", "全選", "전체"); })()}</button>
+            </div>
+            <input className="mp-input" value={characterSearch} onChange={(e) => setCharacterSearch(e.target.value)} placeholder={tr("搜尋角色名稱", "Search characters", "キャラを検索", "캐릭터 검색")} style={{ marginBottom: 8 }} />
+            <div style={{ fontSize: 10, color: "var(--mp-txt-l)", marginBottom: 6 }}>{tr(`已選 ${Array.isArray(socialSettings?.enabledCharacterIds) ? socialSettings.enabledCharacterIds.length : characters.length} 位`, `${Array.isArray(socialSettings?.enabledCharacterIds) ? socialSettings.enabledCharacterIds.length : characters.length} selected`, `${Array.isArray(socialSettings?.enabledCharacterIds) ? socialSettings.enabledCharacterIds.length : characters.length}人選択`, `${Array.isArray(socialSettings?.enabledCharacterIds) ? socialSettings.enabledCharacterIds.length : characters.length}명 선택`)}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, maxHeight: 390, overflowY: "auto", overscrollBehavior: "contain", padding: "2px 2px 8px" }}>
+              {characters.filter((char) => !characterSearch.trim() || String(char.name || "").toLowerCase().includes(characterSearch.trim().toLowerCase())).map((char) => {
+                const enabledIds = Array.isArray(socialSettings?.enabledCharacterIds) ? socialSettings.enabledCharacterIds : characters.map((c) => c.id);
+                const checked = enabledIds.includes(char.id);
+                const avatar = sanitizeUserImageUrl(char.avatar);
+                return <div key={char.id} style={{ position: "relative", minWidth: 0 }}>
+                  <button type="button" onClick={() => setSocialSettings((prev) => {
+                    const current = Array.isArray(prev?.enabledCharacterIds) ? prev.enabledCharacterIds : characters.map((c) => c.id);
+                    return { ...(prev || {}), enabledCharacterIds: checked ? current.filter((id) => id !== char.id) : [...new Set([...current, char.id])] };
+                  })} style={{ width: "100%", aspectRatio: "1", borderRadius: 14, border: checked ? "2px solid var(--mp-pink-dk)" : "1px solid var(--mp-glass-b)", background: avatar ? `linear-gradient(180deg, transparent 55%, rgba(0,0,0,.62)), url(${avatar}) center/cover` : "var(--mp-glass)", color: avatar ? "#fff" : "var(--mp-txt)", fontWeight: 700, fontSize: 10, padding: 4, display: "flex", alignItems: "flex-end", justifyContent: "center", textAlign: "center", overflow: "hidden" }} title={char.name}>{avatar ? "" : char.name}</button>
+                  <div style={{ fontSize: 11, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "center", marginTop: 4, lineHeight: 1.25 }}>{char.name}</div>
+                  <select style={{ display: "none" }} defaultValue="normal">
+                    <option value="occasional">偶爾</option><option value="normal">一般</option><option value="active">活躍</option>
+                  </select>
+                </div>;
+              })}
+            </div>
+            <div style={{ marginTop: 12, fontSize: 11, fontWeight: 700 }}>{tr("預設發文頻率", "Default posting frequency", "投稿頻度", "기본 게시 빈도")}</div>
+            <select className="mp-input" value="normal" disabled style={{ marginTop: 6 }}>
+              <option value="occasional">{tr("偶爾：每天最多 1 篇", "Occasional: up to 1/day", "時々：1日最大1件", "가끔: 하루 최대 1개")}</option>
+              <option value="normal">{tr("一般：每天最多 2～3 篇", "Normal: up to 2–3/day", "通常：1日最大2～3件", "일반: 하루 최대 2~3개")}</option>
+              <option value="active">{tr("活躍：每天最多 4～5 篇", "Active: up to 4–5/day", "活発：1日最大4～5件", "활발: 하루 최대 4~5개")}</option>
+            </select>
+            </>}
           </div>
           <div className="mp-sg">
             <div className="mp-sg-t">{tr("珍藏的貼文", "Saved posts", "保存した投稿", "저장한 게시물")}</div>

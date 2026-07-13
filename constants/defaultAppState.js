@@ -1,6 +1,6 @@
 export const DEFAULT_APP_STATE = {
   characters: [], activeCharId: null, chatHistory: {}, chatModes: {}, chatBackgrounds: {}, groupChats: [], chatScenes: {}, groupScenes: {}, chatTimeSettings: {},
-  innerThoughtSettings: {}, proactiveSettings: {}, proactiveUnread: {}, posts: [], socialSettings: { autoPost: false }, memories: {}, lorebooks: [],
+  innerThoughtSettings: {}, proactiveSettings: {}, proactiveUnread: {}, posts: [], socialSettings: { autoPost: false, enabledCharacterIds: null, frequency: "normal", frequencyByCharacter: {} }, memories: {}, lorebooks: [],
   chatLorebookBindings: {}, phoneInboxCache: {}, phoneAppCache: {}, wallet: { balance: 500, transactions: [], assets: [] }, characterWallets: {},
   apiPresets: [
     { id: "preset-1", name: "預設 1", provider: "openai", baseUrl: "https://api.openai.com/v1", apiKey: "", model: "gpt-4o-mini" },

@@ -100,10 +100,14 @@ export default function useSocialFeed({
   };
   const pickRandomSocialCharacter = () => {
     if (!Array.isArray(characters) || characters.length === 0) return null;
-    if (characters.length === 1) return characters[0];
+    const allowedIds = Array.isArray(socialSettings?.enabledCharacterIds)
+      ? new Set(socialSettings.enabledCharacterIds) : new Set(characters.map((c) => c.id));
+    const allowed = characters.filter((c) => allowedIds.has(c.id));
+    if (!allowed.length) return null;
+    if (allowed.length === 1) return allowed[0];
     const lastCharId = posts?.[0]?.charId || null;
-    const pool = characters.filter((c) => c.id !== lastCharId);
-    const list = pool.length ? pool : characters;
+    const pool = allowed.filter((c) => c.id !== lastCharId);
+    const list = pool.length ? pool : allowed;
     return list[Math.floor(Math.random() * list.length)] || null;
   };
   const generatePlayerPostReplies = async (post, responders) => {
@@ -261,9 +265,14 @@ export default function useSocialFeed({
     showToast(approxTokens <= SHARE_RAW_TOKEN_LIMIT ? "已分享到聊天室（原文）" : "已分享到聊天室（摘要）");
   };
 
-  const SOCIAL_AUTO_POST_GAP_RANGE_MS = [40 * 60 * 1000, 90 * 60 * 1000];
-  const rollSocialAutoPostGap = () => {
-    const [minMs, maxMs] = SOCIAL_AUTO_POST_GAP_RANGE_MS;
+  const rollSocialAutoPostGap = (char = null) => {
+    const ranges = {
+      occasional: [4 * 60 * 60 * 1000, 6 * 60 * 60 * 1000],
+      normal: [2 * 60 * 60 * 1000, 4 * 60 * 60 * 1000],
+      active: [60 * 60 * 1000, 2 * 60 * 60 * 1000],
+    };
+    const frequency = char ? (socialSettings?.frequencyByCharacter?.[char.id] || socialSettings?.frequency) : socialSettings?.frequency;
+    const [minMs, maxMs] = ranges[frequency] || ranges.normal;
     return minMs + Math.random() * (maxMs - minMs);
   };
   const runSocialAutoPostSweep = () => {
@@ -278,7 +287,7 @@ export default function useSocialFeed({
     socialAutoPostingRef.current = true;
     socialLastGlobalPostAtRef.current = Date.now();
     socialLastPostByCharRef.current = { ...(socialLastPostByCharRef.current || {}), [c.id]: Date.now() };
-    socialAutoPostGapRef.current = rollSocialAutoPostGap();
+    socialAutoPostGapRef.current = rollSocialAutoPostGap(c);
     generatePost(c).finally(() => { socialAutoPostingRef.current = false; });
   };
   useEffect(() => {
