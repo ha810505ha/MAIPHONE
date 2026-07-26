@@ -25,6 +25,7 @@ export const PACK_POOLS = {
   dungeon: 4, dungeonBoss: 4,
   harvest: 4, rareHarvest: 4,
   chat: 6,
+  home: 6, // 住客日常（好感 close 以上會自己冒泡；不分階段共用同一池）
 };
 export const MAX_PACK_VERSIONS = 3;
 

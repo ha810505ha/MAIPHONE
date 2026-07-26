@@ -127,6 +127,19 @@ export const EVENTS = [
     ],
   },
   {
+    id: "quarry", weight: 9, icon: "⛏️",
+    text: "霧氣散處露出半面塌方的礦壁，石紋間泛著青光。",
+    choices: [
+      { label: "鑿取青石", hint: "青石 ×2，費點力氣",
+        good: { hp: -1, item: { id: "qingshi", n: 2 } }, goodText: "你敲下兩塊上好的青石。" },
+      { label: "撿拾斷木", hint: "靈木 ×1 穩穩的",
+        good: { item: { id: "lingmu", n: 1 } }, goodText: "塌方壓斷的靈木正好能用。" },
+      { label: "深掘礦脈", hint: "大量青石？當心再塌", risk: 0.45,
+        good: { item: { id: "qingshi", n: 4 } }, goodText: "礦脈深處果然藏著整層青石！",
+        bad: { hp: -3 }, badText: "礦壁再度塌落，你狼狽逃出。" },
+    ],
+  },
+  {
     id: "monk", weight: 7, icon: "🧘",
     text: "一位苦行僧在霧中打坐，眉目安詳，似在等人。",
     choices: [

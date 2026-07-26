@@ -1,4 +1,5 @@
 import React from "react";
+import { exportToastMessage } from "../../utils/exportFile";
 
 export default function LorebookApp({
   lorebooks, setLorebooks, activeLorebookId, setActiveLorebookId,
@@ -10,28 +11,33 @@ export default function LorebookApp({
     const entries = activeBook?.entries || [];
     const sortedEntries = [...entries].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
     const sortedBooks = [...lorebooks].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-    const exportLorebook = (book) => {
+    const exportLorebook = async (book) => {
       if (!book) return;
       const safeName = sanitizeText(book.name || "lorebook", 80)
         .replace(/[\\/:*?"<>|]+/g, "-")
         .trim() || "lorebook";
-      downloadJsonFile({
-        format: "maliphone-lorebook",
-        version: 1,
-        exportedAt: new Date().toISOString(),
-        lorebook: {
-          name: book.name || "",
-          description: book.description || "",
-          enabled: book.enabled !== false,
-          entries: (book.entries || []).map((entry) => ({
-            title: entry.title || "",
-            keywords: Array.isArray(entry.keywords) ? entry.keywords : [],
-            content: entry.content || "",
-            enabled: entry.enabled !== false,
-          })),
-        },
-      }, `${safeName}.malilorebook.json`);
-      showToast(tr("世界書已匯出", "Lorebook exported", "世界観を書き出しました", "월드북을 내보냈습니다"));
+      try {
+        const result = await downloadJsonFile({
+          format: "maliphone-lorebook",
+          version: 1,
+          exportedAt: new Date().toISOString(),
+          lorebook: {
+            name: book.name || "",
+            description: book.description || "",
+            enabled: book.enabled !== false,
+            entries: (book.entries || []).map((entry) => ({
+              title: entry.title || "",
+              keywords: Array.isArray(entry.keywords) ? entry.keywords : [],
+              content: entry.content || "",
+              enabled: entry.enabled !== false,
+            })),
+          },
+        }, `${safeName}.malilorebook.json`);
+        const message = exportToastMessage(result, tr);
+        if (message) showToast(`${tr("世界書", "Lorebook", "世界観", "월드북")}${message}`);
+      } catch (error) {
+        showToast(`${tr("匯出失敗", "Export failed", "書き出しに失敗しました", "내보내기 실패")}：${sanitizeText(error?.message || "Unknown error", 80)}`);
+      }
     };
     const normalizeImportedLorebook = (rawBook, fallbackName) => {
       if (!rawBook || typeof rawBook !== "object") return null;

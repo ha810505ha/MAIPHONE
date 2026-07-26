@@ -12,6 +12,21 @@ function resolveBase() {
 export default defineConfig({
   base: resolveBase(),
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          const normalized = id.replaceAll("\\", "/");
+          if (normalized.includes("/node_modules/react/") || normalized.includes("/node_modules/react-dom/") || normalized.includes("/node_modules/scheduler/")) {
+            return "react-vendor";
+          }
+          if (normalized.includes("/node_modules/lucide-react/")) return "icons-vendor";
+          if (normalized.includes("/node_modules/@capacitor/")) return "capacitor-vendor";
+          return undefined;
+        },
+      },
+    },
+  },
   server: {
     // 本地開發時 /api 轉給後端（backend/ 裡 npm run dev，port 8787）
     proxy: { "/api": "http://localhost:8787" },

@@ -1,3 +1,5 @@
+import { fetchWithTimeout, NETWORK_TIMEOUTS } from "../utils/networkRequest.js";
+
 const clamp = (value, min, max, fallback) => {
   const number = Number(value);
   return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
@@ -20,10 +22,13 @@ const hexToBlob = (hex, mimeType = "audio/mpeg") => {
   return new Blob([bytes], { type: mimeType });
 };
 
-export async function fetchElevenLabsDefaultVoices(apiKey) {
+export async function fetchElevenLabsDefaultVoices(apiKey, options = {}) {
   if (!String(apiKey || "").trim()) throw new Error("Missing TTS API key");
-  const response = await fetch("https://api.elevenlabs.io/v2/voices?page_size=100&include_total_count=true&sort=name&sort_direction=asc", {
+  const response = await fetchWithTimeout("https://api.elevenlabs.io/v2/voices?page_size=100&include_total_count=true&sort=name&sort_direction=asc", {
     headers: { "xi-api-key": String(apiKey).trim() },
+  }, {
+    signal: options.signal,
+    timeoutMs: options.timeoutMs || NETWORK_TIMEOUTS.METADATA,
   });
   if (!response.ok) throw new Error(await readError(response));
   const data = await response.json();
@@ -38,7 +43,7 @@ export async function fetchElevenLabsDefaultVoices(apiKey) {
   });
 }
 
-export async function synthesizeSpeech({ text, config, voiceSettings }) {
+export async function synthesizeSpeech({ text, config, voiceSettings, signal, timeoutMs }) {
   const content = String(text || "").trim();
   if (!content) throw new Error("No text to synthesize");
   const provider = config?.provider || "elevenlabs";
@@ -48,7 +53,7 @@ export async function synthesizeSpeech({ text, config, voiceSettings }) {
   if (!voice.voiceId?.trim()) throw new Error("Missing voice ID");
 
   if (provider === "elevenlabs") {
-    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voice.voiceId.trim())}?output_format=mp3_44100_128`, {
+    const response = await fetchWithTimeout(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voice.voiceId.trim())}?output_format=mp3_44100_128`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "xi-api-key": providerConfig.apiKey },
       body: JSON.stringify({
@@ -62,6 +67,9 @@ export async function synthesizeSpeech({ text, config, voiceSettings }) {
           speed: clamp(voice.speed, 0.7, 1.2, 1),
         },
       }),
+    }, {
+      signal,
+      timeoutMs: timeoutMs || NETWORK_TIMEOUTS.MEDIA,
     });
     if (!response.ok) throw new Error(await readError(response));
     return response.blob();
@@ -69,7 +77,7 @@ export async function synthesizeSpeech({ text, config, voiceSettings }) {
 
   if (provider === "minimax") {
     const baseUrl = String(providerConfig.baseUrl || "https://api.minimax.io").replace(/\/$/, "");
-    const response = await fetch(`${baseUrl}/v1/t2a_v2`, {
+    const response = await fetchWithTimeout(`${baseUrl}/v1/t2a_v2`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${providerConfig.apiKey}` },
       body: JSON.stringify({
@@ -87,6 +95,9 @@ export async function synthesizeSpeech({ text, config, voiceSettings }) {
         },
         audio_setting: { sample_rate: 32000, bitrate: 128000, format: "mp3", channel: 1 },
       }),
+    }, {
+      signal,
+      timeoutMs: timeoutMs || NETWORK_TIMEOUTS.MEDIA,
     });
     if (!response.ok) throw new Error(await readError(response));
     const data = await response.json();

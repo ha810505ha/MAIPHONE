@@ -1,5 +1,6 @@
 // 雲端同步引擎（M3）：消化 indexedDbStorage 的 outbox，接後端 /api/sync
-import { SYNC_ENABLED } from "../config/featureFlags";
+import { SYNC_ENABLED } from "../config/featureFlags.js";
+import { fetchWithTimeout, NETWORK_TIMEOUTS } from "../utils/networkRequest.js";
 // 設計原則：後端不在（本地純前端開發、離線）時全部靜默跳過，App 照常運作。
 import {
   getSyncOutbox, readEntity, ackSynced, applyRemoteEntities, clearSyncOutbox, resetLocalEntities, getDeviceId,
@@ -55,14 +56,17 @@ const setCursor = (seq) => {
   try { localStorage.setItem(CURSOR_KEY, String(seq)); } catch {}
 };
 
-async function api(path, { method = "GET", body, token } = {}) {
-  const res = await fetch(`${getServerBase()}/api${path}`, {
+async function api(path, { method = "GET", body, token, signal, timeoutMs } = {}) {
+  const res = await fetchWithTimeout(`${getServerBase()}/api${path}`, {
     method,
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
+  }, {
+    signal,
+    timeoutMs: timeoutMs || NETWORK_TIMEOUTS.SYNC,
   });
   const data = await res.json().catch(() => null);
   return { status: res.status, data };
@@ -134,8 +138,10 @@ async function authedApi(path, opts = {}) {
 
 export async function isServerReachable(timeoutMs = 2500) {
   try {
-    const res = await fetch(`${getServerBase()}/api/health`, { signal: AbortSignal.timeout(timeoutMs) });
-    return res.ok;
+    const res = await fetchWithTimeout(`${getServerBase()}/api/health`, {}, { timeoutMs });
+    const reachable = res.ok;
+    await res.body?.cancel();
+    return reachable;
   } catch {
     return false;
   }

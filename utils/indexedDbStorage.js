@@ -20,7 +20,7 @@ const APP_STATE_KEY = "app_state";
 const ENT_PREFIX = "ent_";
 const CORE_KEY = "ent_core";
 const OUTBOX_KEY = "sync_outbox";
-const FEATURE_KEYS = new Set(["ent_gachaInventory", "ent_gachaEpisodes", "ent_gachaCurrency", "ent_gachaProgress", "ent_yunyinSave", "ent_petHome", "ent_petSettings", "ent_loginReward", "ent_notes"]);
+const FEATURE_KEYS = new Set(["ent_gachaInventory", "ent_gachaEpisodes", "ent_gachaCurrency", "ent_gachaCrystalLedger", "ent_gachaProgress", "ent_gachaSpecialMemories", "ent_musicPlayer", "ent_coupleDaily", "ent_calendar", "ent_yunyinSave", "ent_petHome", "ent_petSettings", "ent_loginReward", "ent_notes", "ent_systemMailbox", "ent_dating"]);
 const charKey = (id) => `ent_char_${id}`;
 const chatKey = (id) => `ent_chat_${id}`;
 const chatBgKey = (id) => `ent_chatbg_${id}`;
@@ -428,19 +428,35 @@ async function loadFeatureEntity(key, fallback = null) {
 }
 
 async function saveFeatureEntity(key, data) {
-  if (!FEATURE_KEYS.has(key)) throw new Error(`Unknown feature entity: ${key}`);
-  const previous = await readKv(key);
-  const updatedAt = Date.now();
-  const wrapped = {
-    data,
-    updatedAt,
-    rev: (Number(previous?.rev) || 0) + 1,
-    deviceId: getDeviceId(),
-    deleted: false,
-  };
-  const latestOutbox = (await readKv(OUTBOX_KEY)) || {};
-  mem.outbox = { ...latestOutbox, ...mem.outbox, [key]: updatedAt };
-  await writeEntries([[key, wrapped], [OUTBOX_KEY, { ...mem.outbox }]]);
+  await saveFeatureEntities([[key, data]]);
 }
 
-export { loadAppState, saveAppState, getSyncOutbox, readEntity, ackSynced, applyRemoteEntities, clearSyncOutbox, resetLocalEntities, getDeviceId, loadFeatureEntity, saveFeatureEntity };
+// 將一組獨立功能資料放在同一個 IndexedDB transaction 內寫入。
+// 匯入備份時可避免前幾項成功、後幾項失敗而留下混合資料。
+async function saveFeatureEntities(entries) {
+  const normalized = Array.from(entries || []);
+  if (!normalized.length) return;
+  for (const [key] of normalized) {
+    if (!FEATURE_KEYS.has(key)) throw new Error(`Unknown feature entity: ${key}`);
+  }
+  const previousEntries = await Promise.all(normalized.map(async ([key]) => [key, await readKv(key)]));
+  const previousByKey = new Map(previousEntries);
+  const latestOutbox = (await readKv(OUTBOX_KEY)) || {};
+  const updatedAt = Date.now();
+  const deviceId = getDeviceId();
+  const nextOutbox = { ...latestOutbox, ...mem.outbox };
+  const writes = normalized.map(([key, data]) => {
+    nextOutbox[key] = updatedAt;
+    return [key, {
+      data,
+      updatedAt,
+      rev: (Number(previousByKey.get(key)?.rev) || 0) + 1,
+      deviceId,
+      deleted: false,
+    }];
+  });
+  await writeEntries([...writes, [OUTBOX_KEY, nextOutbox]]);
+  mem.outbox = nextOutbox;
+}
+
+export { loadAppState, saveAppState, getSyncOutbox, readEntity, ackSynced, applyRemoteEntities, clearSyncOutbox, resetLocalEntities, getDeviceId, loadFeatureEntity, saveFeatureEntity, saveFeatureEntities };

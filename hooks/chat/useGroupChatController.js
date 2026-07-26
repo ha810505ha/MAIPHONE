@@ -33,6 +33,7 @@ export default function useGroupChatController({
   setGroupEditSearch,
   setGroupEditOpen,
   setGroupChats,
+  setGroupScenes,
   setCurrentChatGroup,
   sanitizeImageUrl,
   showToast,
@@ -153,6 +154,28 @@ export default function useGroupChatController({
     setGroupEditOpen(false);
     showToast(tr("群組已更新", "Group updated", "グループを更新しました", "그룹이 업데이트되었습니다"));
   };
+  const deleteGroupChat = () => {
+    if (!groupEditGroupId) return;
+    const confirmed = window.confirm(tr(
+      `確定要刪除「${groupEditName || "這個群組"}」嗎？群組內的所有聊天紀錄都會一併刪除，且無法復原。`,
+      `Delete “${groupEditName || "this group"}”? All messages in the group will be permanently deleted.`,
+      `「${groupEditName || "このグループ"}」を削除しますか？グループ内のすべてのメッセージも完全に削除されます。`,
+      `“${groupEditName || "이 그룹"}”을 삭제할까요? 그룹의 모든 메시지도 영구적으로 삭제됩니다.`
+    ));
+    if (!confirmed) return;
+    const deletedId = groupEditGroupId;
+    setGroupChats((previous) => previous.filter((group) => group.id !== deletedId));
+    setGroupScenes?.((previous) => {
+      if (!previous || typeof previous !== "object" || !(deletedId in previous)) return previous;
+      const next = { ...previous };
+      delete next[deletedId];
+      return next;
+    });
+    if (currentChatGroup?.id === deletedId) setCurrentChatGroup(null);
+    setGroupEditOpen(false);
+    setGroupEditGroupId(null);
+    showToast(tr("群組已刪除", "Group deleted", "グループを削除しました", "그룹이 삭제되었습니다"));
+  };
   const createGroupChat = () => {
     if (groupCreateMemberIds.length === 0) {
       showToast(tr("請至少選擇 1 位角色", "Select at least 1 character", "少なくとも1人のキャラを選択してください", "캐릭터를 1명 이상 선택해주세요"));
@@ -187,6 +210,7 @@ export default function useGroupChatController({
     handleGroupCreateCoverUp,
     handleGroupEditCoverUp,
     saveEditGroup,
+    deleteGroupChat,
     createGroupChat,
     applyGroupCoverCrop,
   };

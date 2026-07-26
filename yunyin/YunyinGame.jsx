@@ -1,31 +1,44 @@
 import React, { useEffect, useRef, useState } from "react";
-import { TILE, parseMap, drawMap, drawTree } from "./engine/tilemap";
+import { TILE, drawMap, drawTree } from "./engine/tilemap";
 import { astar, nearestWalkable } from "./engine/pathfind";
+import { createPlayerRuntime, placeActor, updateActorMovement } from "./engine/actorRuntime";
+import { centerCameraOnActor, clampCamera, createCamera, followActor } from "./engine/camera";
 import { createInput } from "./engine/input";
-import gateDef from "./data/maps/gate";
-import farmDef from "./data/maps/farm";
+import { actorReservedSlot, beginActorAction, stopActorAction } from "./engine/actorActions";
+import { createMapRuntime, hasMap } from "./world/mapRegistry";
+import { routeWorldTap } from "./world/interactionRouter";
+import { findInteractionPlan } from "./world/worldInteractions";
 import { loadSave, persistSave } from "./systems/save";
-import { settleExp } from "./systems/cultivation";
-import { plotStage, plotUnlocked, harvestPlot, plantCrop, remainMin, ripenedDuring, cropById } from "./systems/farm";
-import { CROPS } from "./data/crops";
-import { settleShelves, refreshOrders, furnaceDone } from "./systems/shop";
+import { settleExp, meditateDaily } from "./systems/cultivation";
+import { plotStage, harvestPlot, remainMin, ripenedDuring, cropById } from "./systems/farm";
+import { settleShelves, refreshOrders, furnaceDone, itemMeta, recipeById } from "./systems/shop";
 import { resetDungeonDaily } from "./systems/dungeon";
-import { drawActor, randomAppearance } from "./engine/sprite";
-import { spawnNpcs, updateNpcs, talkToNpc, npcAtTile } from "./systems/npc";
-import { companionReact, activePackLines, PACK_POOLS, addPackVersion } from "./systems/ai";
-import { getImage, isReady } from "./engine/assets";
-import { BUILDING_IMAGES, TILE_IMAGES, CROP_IMAGES } from "./data/assetUrls";
-import CultivationPanel from "./ui/CultivationPanel";
-import ShopPanel from "./ui/ShopPanel";
-import DungeonPanel from "./ui/DungeonPanel";
-import CharacterPanel from "./ui/CharacterPanel";
-import GameSettingsPanel from "./ui/GameSettingsPanel";
+import { spawnNpcs, updateNpcs } from "./systems/npc";
+import { companionReact } from "./systems/ai";
+import {
+  drawBuilding as renderBuilding,
+  drawCharacter as renderCharacter,
+  drawFarmPlot,
+  drawFurniture,
+  drawNpcLabel,
+  drawPortal as renderPortal,
+  drawSpeechBubble,
+  drawWorldDecoration,
+} from "./engine/worldRenderer";
 import { useGacha } from "../contexts/GachaContext";
-
-const MAPS = { gate: gateDef, farm: farmDef };
+import YunyinPanelHost from "./ui/YunyinPanelHost";
+import { CameraZoomControl, CompanionNotice, HomeEditorOverlay, OfflineSummary, YunyinHud, YunyinToast, yunyinCameraControlTop } from "./ui/YunyinOverlays";
+import { FURNITURE_CATALOG, furnitureById, furnitureMaxCount } from "./home/furnitureCatalog";
+import { canAddFurnitureInstance } from "./home/furnitureOwnership";
+import { coSleepBonus, choreWorker, markChoreDone, choreBoost, dailyGift } from "./home/homeResidents";
+import { markCompanyAction } from "./home/residentRequests";
+import { createFurnitureInstance } from "./home/homeState";
+import { canPlaceHomeFurniture, furnitureInstanceAt } from "./home/homeEditorRuntime";
+import { furnitureTiles } from "./home/furniturePlacement";
 
 const SCALE = 2;            // 邏輯 32px tile、顯示 64px
-const STEP_MS = 200;        // 走一格的時間
+const STEP_MS = 150;        // 玩家在大型地圖上的逐格移動速度；NPC 維持各自原有設定
+const CAMERA_SCALES = [0.5, 1, 1.5, 2];
 
 const fmtDuration = (mins) => {
   const h = Math.floor(mins / 60), m = Math.round(mins % 60);
@@ -38,7 +51,7 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
   const wrapRef = useRef(null);
   const canvasRef = useRef(null);
   const [panel, setPanel] = useState(null); // { type, title, ... }
-  const addCrystals = (amount) => changeCrystals(amount);
+  const addCrystals = (amount, details = {}) => changeCrystals(amount, { source: "yunyin", ...details });
   const [toast, setToast] = useState(null);
   const [companionNotice, setCompanionNotice] = useState(null);
   const toastTimerRef = useRef(null);
@@ -67,7 +80,7 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
     const expGained = settleExp(gameSave.cultivation);
     const ripened = ripenedDuring(gameSave, gameSave.lastSeenAt, now);
     const shopRes = settleShelves(gameSave, now);      // 貨架離線照賣
-    const crafted = furnaceDone(gameSave.shop.furnace, now); // 已煉好待收數（不自動收）
+    const crafted = gameSave.shop.furnaces.reduce((sum, f) => sum + furnaceDone(f, now), 0); // 兩爐已煉好待收數（不自動收）
     refreshOrders(gameSave, now);                      // 跨日刷新行商訂單
     resetDungeonDaily(gameSave, now);                  // 跨日重置秘境次數
     if (offlineMin >= 1 && (expGained >= 1 || ripened > 0 || shopRes.sold > 0 || crafted > 0)) {
@@ -77,6 +90,14 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
   });
   const [coins, setCoins] = useState(gameSave.coins);
   const [mapTitle, setMapTitle] = useState("");
+  const [homeContext, setHomeContext] = useState(null);
+  const [cameraScale, setCameraScale] = useState(SCALE);
+  const [homeEditor, setHomeEditor] = useState({ active: false, furnitureId: null, selectedUid: null, preview: null });
+  const homeEditorRef = useRef(homeEditor);
+  const homeEditorActionsRef = useRef({});
+  const homePreviewControlsRef = useRef(null);
+  const cameraZoomActionsRef = useRef({});
+  homeEditorRef.current = homeEditor;
   const markDirty = () => { setCoins(gameSave.coins); persistSave(gameSave); };
   const markDirtyRef = useRef(null);
   markDirtyRef.current = markDirty;
@@ -93,21 +114,60 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
     if (!wrap || !canvas) return;
     const ctx = canvas.getContext("2d");
     const savedPos = gameSave.player.pos;
-    let map = parseMap(MAPS[savedPos.map] || gateDef);
+    let map = createMapRuntime(savedPos.map, { instanceId: savedPos.instanceId, homeState: gameSave.home });
+    const scaleForMap = (targetMap) => {
+      const savedScale = Number(gameSave.settings.cameraScale);
+      return CAMERA_SCALES.includes(savedScale) ? savedScale : (targetMap.viewScale || SCALE);
+    };
+    let viewScale = scaleForMap(map);
     setMapTitle(map.name);
+    setHomeContext(map.instanceId || null);
+    setCameraScale(viewScale);
+
+    const updateHomeEditor = (patch) => {
+      const next = { ...homeEditorRef.current, ...patch };
+      homeEditorRef.current = next;
+      setHomeEditor(next);
+    };
+
+    const cloneFurniture = (items) => (items || []).map((item) => ({
+      ...item,
+      ownership: item.ownership ? { ...item.ownership } : item.ownership,
+    }));
+    let homeEditorSession = null;
+
+    const homeStateForRuntime = () => {
+      if (!homeEditorSession || homeEditorSession.homeId !== map.instanceId) return gameSave.home;
+      const sourceHome = gameSave.home.homes[homeEditorSession.homeId];
+      return {
+        ...gameSave.home,
+        homes: {
+          ...gameSave.home.homes,
+          [homeEditorSession.homeId]: { ...sourceHome, furniture: homeEditorSession.furniture },
+        },
+      };
+    };
+
+    const beginHomeEditorSession = () => {
+      if (!map.instanceId || !gameSave.home.homes[map.instanceId]) return false;
+      if (!homeEditorSession || homeEditorSession.homeId !== map.instanceId) {
+        homeEditorSession = {
+          homeId: map.instanceId,
+          furniture: cloneFurniture(gameSave.home.homes[map.instanceId].furniture),
+        };
+      }
+      return true;
+    };
 
     // ---- 遊戲狀態（不進 React state，rAF 直接讀寫）----
     const spawn = savedPos.map === map.id && !map.isBlocked(savedPos.x, savedPos.y)
       ? [savedPos.x, savedPos.y] : map.spawn;
-    const player = {
-      x: spawn[0], y: spawn[1],                   // 目前所在格
-      px: spawn[0] * TILE, py: spawn[1] * TILE,   // 世界像素座標
-      path: [], stepT: 0, from: null, facing: "down", moving: false,
-    };
-    const cam = { x: 0, y: 0, follow: true };
+    const player = createPlayerRuntime(spawn);
+    const cam = createCamera();
     let npcs = spawnNpcs(gameSave, map, characters);          // 漫遊 NPC（山門／靈田協助角色）
     // 綁定角色的顯示名（角色入駐後 NPC 掛角色名）
     const npcDisplayName = (npc) => {
+      if (npc.charId) return characters.find((c) => c.id === npc.charId)?.name || npc.name; // 住客直接掛名
       const charId = gameSave.settings.bindings[npc.seed];
       return charId ? (characters.find((c) => c.id === charId)?.name || npc.name) : null;
     };
@@ -124,6 +184,7 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
       if (npc) npc.appearance = appearance;
     };
     let pendingAction = null;                     // 抵達路徑終點後要做的事
+    let pendingInteraction = null;                // 行走中的家具席位預約
     if (import.meta.env.DEV) window.__yy = { player, map, cam, save: gameSave, npcs, open: (type, title) => panelRef.current({ type, title }) }; // 開發用
     let ripple = null;                            // 點擊漣漪 { wx, wy, t0 }
     let viewW = 0, viewH = 0, dpr = 1, raf = 0, lastT = 0;
@@ -140,14 +201,22 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
     const ro = new ResizeObserver(resize);
     ro.observe(wrap);
 
-    const clampCam = () => {
-      const worldW = map.w * TILE, worldH = map.h * TILE;
-      const vw = viewW / SCALE, vh = viewH / SCALE;
-      cam.x = worldW <= vw ? (worldW - vw) / 2 : Math.max(0, Math.min(worldW - vw, cam.x));
-      cam.y = worldH <= vh ? (worldH - vh) / 2 : Math.max(0, Math.min(worldH - vh, cam.y));
+    const clampCam = () => clampCamera(cam, map, { width: viewW, height: viewH }, viewScale);
+
+    cameraZoomActionsRef.current = {
+      set: (nextScale) => {
+        if (!CAMERA_SCALES.includes(nextScale)) return;
+        viewScale = nextScale;
+        gameSave.settings.cameraScale = nextScale;
+        setCameraScale(nextScale);
+        centerCameraOnActor(cam, player, { width: viewW, height: viewH }, viewScale);
+        clampCam();
+        persistSave(gameSave);
+      },
     };
 
     const walkTo = (tx, ty, action) => {
+      stopActorAction(player);
       const target = nearestWalkable(tx, ty, map.w, map.h, map.isBlocked);
       if (!target) return;
       const path = astar(player.x, player.y, target.x, target.y, map.w, map.h, map.isBlocked);
@@ -159,21 +228,275 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
       if (!path.length && pendingAction) { const a = pendingAction; pendingAction = null; a(); }
     };
 
+    const reservedInteractionSlots = () => {
+      const reserved = new Set();
+      const playerSlot = actorReservedSlot(player);
+      if (playerSlot) reserved.add(playerSlot);
+      if (pendingInteraction?.slotKey) reserved.add(pendingInteraction.slotKey);
+      for (const npc of npcs) {
+        const slotKey = actorReservedSlot(npc);
+        if (slotKey) reserved.add(slotKey);
+      }
+      return reserved;
+    };
+
+    const onWorldInteraction = (target) => {
+      const plan = findInteractionPlan(player, map, target, reservedInteractionSlots());
+      if (!plan) {
+        toastRef.current("目前沒有可使用的位置");
+        return;
+      }
+      pendingInteraction = plan;
+      walkTo(plan.x, plan.y, () => {
+        if (pendingInteraction?.slotKey !== plan.slotKey) return;
+        pendingInteraction = null;
+        beginActorAction(player, plan, performance.now());
+        // 陪伴請求：玩家與住客在同一件家具上做同一件事（用餐/閱讀等）即達成
+        for (const npc of npcs) {
+          if (!npc.charId || npc.action?.sourceId !== plan.sourceId || npc.action?.id !== plan.action) continue;
+          if (markCompanyAction(gameSave.home, npc.charId, plan.action)) {
+            markDirtyRef.current();
+            toastRef.current(`${npc.name} 的請求達成了，去入住面板領取`);
+          }
+        }
+        // 雙人床：玩家躺下時，邀在場住客睡另一側（每日首次同床 +2 好感）
+        if (plan.action === "sleep" && furnitureById(target?.source?.furnitureId)?.doubleBed) {
+          const partner = npcs.find((npc) => npc.charId && !npc.action && !npc.interactionPlan);
+          if (partner) {
+            const partnerPlan = findInteractionPlan(partner, map, target, reservedInteractionSlots());
+            if (partnerPlan) {
+              partner.path = partnerPlan.path;
+              partner.stepT = 0;
+              partner.interactionPlan = partnerPlan;
+              partner.waitUntil = performance.now() + 8000;
+              if (!partner.path.length) {
+                partner.interactionPlan = null;
+                beginActorAction(partner, partnerPlan, performance.now(), plan.maxDurationMs);
+              }
+              if (markCompanyAction(gameSave.home, partner.charId, "sleep")) {
+                markDirtyRef.current();
+                toastRef.current(`${partner.name} 的請求達成了，去入住面板領取`);
+              }
+              const bonus = coSleepBonus(gameSave.home, partner.charId);
+              if (bonus?.gain > 0) {
+                markDirtyRef.current();
+                toastRef.current(`與 ${partner.name} 同床共枕，好感 +${bonus.gain}`);
+                return;
+              }
+            }
+          }
+        }
+        // 修煉堂蒲團：每日首次打坐送隨機修為（順路看等級的小獎勵）
+        if (plan.sourceId.includes("hall_cushion")) {
+          const meditation = meditateDaily(gameSave);
+          if (meditation) {
+            markDirtyRef.current();
+            toastRef.current(meditation.gain > 0 ? `打坐入定，修為 +${meditation.gain}` : "修為已滿，前往祭壇突破吧");
+            return;
+          }
+        }
+        toastRef.current(`${plan.label}中，再點地面即可停止`);
+      });
+    };
+
     // 切換地圖：玩家瞬移到目標出生點，鏡頭直接對準
-    const switchMap = (toId, spawnTile) => {
-      map = parseMap(MAPS[toId]);
+    const switchMap = (toId, spawnTile, options = {}) => {
+      homeEditorSession = null;
+      map = createMapRuntime(toId, { instanceId: options.instanceId, homeState: gameSave.home });
+      viewScale = scaleForMap(map);
       npcs = spawnNpcs(gameSave, map, characters);
       if (import.meta.env.DEV && window.__yy) { window.__yy.map = map; window.__yy.npcs = npcs; }
       setMapTitle(map.name);
-      player.path = []; player.from = null; player.stepT = 0;
+      setHomeContext(map.instanceId || null);
+      setCameraScale(viewScale);
+      updateHomeEditor({ active: false, furnitureId: null, selectedUid: null, preview: null });
       pendingAction = null;
-      player.x = spawnTile[0]; player.y = spawnTile[1];
-      player.px = player.x * TILE; player.py = player.y * TILE;
+      pendingInteraction = null;
+      stopActorAction(player);
+      placeActor(player, spawnTile || map.spawn);
       cam.follow = true;
-      cam.x = player.px + TILE / 2 - viewW / SCALE / 2;
-      cam.y = player.py + TILE / 2 - viewH / SCALE / 2;
+      centerCameraOnActor(cam, player, { width: viewW, height: viewH }, viewScale);
       clampCam();
+      gameSave.player.pos = {
+        map: map.id, x: player.x, y: player.y,
+        ...(map.instanceId ? { instanceId: map.instanceId } : {}),
+      };
       persistSave(gameSave);
+      runResidentChores(map);
+    };
+
+    // 住客雜務：進到對應地圖時結算，三項各自獨立每日額度。
+    const characterName = (charId) => characters.find((item) => item.id === charId)?.name || "住客";
+    const runResidentChores = (currentMap) => {
+      const homeState = gameSave.home;
+      const notes = [];
+
+      if (currentMap.instanceId === "player_home") {
+        const cleaner = choreWorker(homeState, "clean");
+        if (cleaner) {
+          const coins = Math.round((30 + Math.floor(Math.random() * 31)) * choreBoost(homeState, cleaner));
+          gameSave.coins += coins;
+          markChoreDone(homeState, "clean");
+          notes.push(`${characterName(cleaner)} 打掃了小屋，撿到 🪙+${coins}`);
+        }
+        for (const charId of currentMap.home?.residents || []) {
+          const gift = dailyGift(gameSave, charId);
+          if (gift?.material) notes.push(`${characterName(charId)} 留了 ${itemMeta(gift.material.id).icon}${itemMeta(gift.material.id).name}×${gift.material.n} 給你`);
+          else if (gift?.blueprint) notes.push(`${characterName(charId)} 送了 📜${gift.blueprint.name}圖紙！`);
+        }
+      }
+
+      if (currentMap.id === "farm") {
+        const waterer = choreWorker(homeState, "water");
+        const planted = gameSave.farm.plots.filter((plot) => plot.cropId);
+        if (waterer && planted.length) {
+          const target = planted[Math.floor(Math.random() * planted.length)];
+          const crop = cropById(target.cropId);
+          const remain = Math.max(0, (target.plantedAt + crop.growMin * 60000 * 0.9) - Date.now());
+          target.plantedAt -= Math.floor(remain * 0.25 * choreBoost(homeState, waterer));
+          markChoreDone(homeState, "water");
+          notes.push(`${characterName(waterer)} 幫忙澆了 ${crop.name}`);
+        }
+      }
+
+      if (currentMap.id === "danfang_interior") {
+        const keeper = choreWorker(homeState, "furnace");
+        const busy = gameSave.shop.furnaces.filter((f) => f.recipeId);
+        if (keeper && busy.length) {
+          for (const f of busy) {
+            const recipe = recipeById(f.recipeId);
+            f.startedAt -= Math.floor(recipe.craftMin * 60000 * 0.2 * choreBoost(homeState, keeper));
+          }
+          markChoreDone(homeState, "furnace");
+          notes.push(`${characterName(keeper)} 顧了丹爐，煉製進度推進`);
+        }
+      }
+
+      if (notes.length) {
+        markDirtyRef.current();
+        toastRef.current(notes.join("　"));
+      }
+    };
+
+    const refreshHomeMap = () => {
+      map = createMapRuntime(map.id, { instanceId: map.instanceId, homeState: homeStateForRuntime() });
+      player.path = [];
+      pendingAction = null;
+      pendingInteraction = null;
+      stopActorAction(player);
+      if (import.meta.env.DEV && window.__yy) window.__yy.map = map;
+    };
+
+    // 家具先進入半透明預覽；位置可以反覆點選，直到使用旁邊的 ✓/✕。
+    const handleFurnitureTap = (screenX, screenY) => {
+      const home = map.home;
+      if (!home) return;
+      const tileX = Math.floor((cam.x + screenX / viewScale) / TILE);
+      const tileY = Math.floor((cam.y + screenY / viewScale) / TILE);
+      const editor = homeEditorRef.current;
+      const selected = editor.selectedUid ? home.furniture.find((item) => item.uid === editor.selectedUid) : null;
+
+      // 沒在放置/移動流程中：點到家具 = 選取準備移動
+      if (!editor.furnitureId && !selected) {
+        const tapped = furnitureInstanceAt(home.furniture, tileX, tileY);
+        if (tapped) {
+          updateHomeEditor({
+            selectedUid: tapped.uid,
+            furnitureId: null,
+            preview: { x: tapped.x, y: tapped.y, valid: true, mode: "existing" },
+          });
+          return;
+        }
+      }
+
+      const furnitureId = selected?.furnitureId || editor.furnitureId;
+      const definition = furnitureById(furnitureId);
+      if (!definition) {
+        toastRef.current("請先選擇家具，或點一下屋內家具");
+        return;
+      }
+
+      const onPlayer = furnitureTiles(definition, tileX, tileY).some((tile) => tile.x === player.x && tile.y === player.y);
+      const placeable = !onPlayer && canPlaceHomeFurniture({ map, home, definition, x: tileX, y: tileY, excludeUid: selected?.uid || null });
+      const capOk = selected || canAddFurnitureInstance(home, furnitureId);
+      const valid = placeable && capOk;
+
+      updateHomeEditor({ preview: { x: tileX, y: tileY, valid, mode: selected ? "existing" : "new" } });
+      if (!valid) {
+        toastRef.current(onPlayer ? "不能把家具放在角色所在的位置"
+          : !capOk ? `${definition.name} 已達擺放上限（${furnitureMaxCount(definition, home)} 件，擴建房間可提高）`
+          : "這裡不能放置，請換一個位置");
+      }
+    };
+
+    homeEditorActionsRef.current = {
+      refreshHome: refreshHomeMap,
+      toggle: () => {
+        if (homeEditorRef.current.active) {
+          toastRef.current("請按右下角「完成」儲存並離開佈置模式");
+          return;
+        }
+        if (!beginHomeEditorSession()) return;
+        refreshHomeMap();
+        updateHomeEditor({ active: true, furnitureId: null, selectedUid: null, preview: null });
+      },
+      select: (furnitureId) => updateHomeEditor({ active: true, furnitureId, selectedUid: null, preview: null }),
+      confirmPreview: () => {
+        const home = map.home;
+        const editor = homeEditorRef.current;
+        const preview = editor.preview;
+        if (!home || !preview) return;
+        if (!preview.valid) {
+          toastRef.current("紅色位置不能放置，請先移到其他位置");
+          return;
+        }
+        const selected = editor.selectedUid ? home.furniture.find((item) => item.uid === editor.selectedUid) : null;
+        const furnitureId = selected?.furnitureId || editor.furnitureId;
+        if (selected) {
+          selected.x = preview.x;
+          selected.y = preview.y;
+        } else if (furnitureId) {
+          const uid = globalThis.crypto?.randomUUID?.() || `furniture-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          home.furniture.push(createFurnitureInstance({ uid, furnitureId, x: preview.x, y: preview.y }));
+        }
+        // 一次只放置一件；確認後取消底部品項選取，要再放同款需重新點選。
+        updateHomeEditor({ furnitureId: null, selectedUid: null, preview: null });
+        refreshHomeMap();
+      },
+      cancelPreview: () => {
+        const home = map.home;
+        const editor = homeEditorRef.current;
+        if (!home || !editor.preview) return;
+        if (editor.selectedUid) {
+          const index = home.furniture.findIndex((item) => item.uid === editor.selectedUid);
+          if (index >= 0) {
+            const instance = home.furniture[index];
+            if (instance.locked || instance.ownership?.type === "character") {
+              toastRef.current("這件家具受到保護，不能由玩家收起");
+              return;
+            }
+            home.furniture.splice(index, 1);
+          }
+        }
+        // 取消預覽同樣結束本次放置，避免下一次點地板又自動生成同款家具。
+        updateHomeEditor({ furnitureId: null, selectedUid: null, preview: null });
+        refreshHomeMap();
+      },
+      close: () => {
+        if (homeEditorRef.current.preview) {
+          toastRef.current("請先按 ✓ 確認，或按 ✕ 取消目前的家具預覽");
+          return;
+        }
+        if (homeEditorSession) {
+          const targetHome = gameSave.home.homes[homeEditorSession.homeId];
+          if (targetHome) targetHome.furniture = cloneFurniture(homeEditorSession.furniture);
+        }
+        homeEditorSession = null;
+        updateHomeEditor({ active: false, furnitureId: null, selectedUid: null, preview: null });
+        refreshHomeMap();
+        markDirtyRef.current();
+        toastRef.current("佈置已儲存");
+      },
     };
 
     // 靈田地塊：抵達後依狀態種植/收成/查看
@@ -206,226 +529,61 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
     const detachInput = createInput(canvas, {
       onDrag: (dx, dy) => {
         cam.follow = false;
-        cam.x -= dx / SCALE; cam.y -= dy / SCALE;
+        cam.x -= dx / viewScale; cam.y -= dy / viewScale;
         clampCam();
       },
       onTap: (sx, sy) => {
-        const wx = cam.x + sx / SCALE, wy = cam.y + sy / SCALE;
-        const tx = Math.floor(wx / TILE), ty = Math.floor(wy / TILE);
-        ripple = { wx, wy, t0: performance.now() };
-        // 點到 NPC → 冒一句話（入駐角色開著角色回覆時用個人句庫的閒聊池）
-        const npc = npcAtTile(npcs, tx, ty);
-        if (npc) {
-          if (npc.helper) {
-            panelRef.current({ type: "farmAssist", title: `${npc.name}的靈田協助`, npc });
-            return;
-          }
-          const charId = gameSave.settings.bindings[npc.seed];
-          const chatLines = charId ? activePackLines(gameSave, charId)?.chat : null;
-          talkToNpc(npc, performance.now(), chatLines);
+        if (homeEditorRef.current.active && map.home) {
+          handleFurnitureTap(sx, sy);
           return;
         }
-        // 點到自己 → 捏角
-        if (tx === player.x && ty === player.y && !player.moving) {
-          panelRef.current({ type: "character", title: "外觀" });
-          return;
-        }
-        // 點到建築 → 走到門口開面板
-        const b = map.buildings.find((b) => tx >= b.x && tx < b.x + b.w && ty >= b.y && ty < b.y + b.h);
-        if (b) {
-          walkTo(b.door[0], b.door[1], () => panelRef.current({ type: b.opens, title: b.label }));
-          return;
-        }
-        const p = map.portals.find((p) => p.x === tx && p.y === ty);
-        if (p) {
-          walkTo(p.x, p.y, () => {
-            if (MAPS[p.to]) switchMap(p.to, p.spawn);
-            else if (p.to === "dungeon") panelRef.current({ type: "dungeon", title: "🌫️ 秘境" });
-            else panelRef.current({ type: "portal", title: `${p.icon} ${p.label}` });
-          });
-          return;
-        }
-        // 靈田地塊
-        const plotIdx = (map.plots || []).findIndex((pl) => pl.x === tx && pl.y === ty);
-        if (plotIdx >= 0) {
-          if (!plotUnlocked(plotIdx, gameSave.cultivation)) {
-            toastRef.current("🔒 境界不足，尚未開墾");
-            return;
-          }
-          walkTo(tx, ty, () => onPlotArrive(plotIdx));
-          return;
-        }
-        walkTo(tx, ty, null);
+        // Any new world tap cancels the current/pending action before routing
+        // the tap to another chair, NPC, portal, or walking destination.
+        player.path = [];
+        player.moving = false;
+        pendingAction = null;
+        pendingInteraction = null;
+        stopActorAction(player);
+        const point = routeWorldTap({
+          screenX: sx, screenY: sy, camera: cam, scale: viewScale, map, player, npcs,
+          save: gameSave, hasMap, walkTo, switchMap, openPanel: panelRef.current,
+          showToast: toastRef.current, onPlotArrive, onWorldInteraction,
+        });
+        ripple = { wx: point.worldX, wy: point.worldY, t0: performance.now() };
       },
     });
 
-    const updatePlayer = (dt) => {
-      if (!player.path.length) { player.moving = false; return; }
-      player.moving = true;
-      player.stepT += dt;
-      // 一幀可跨多格：分頁被節流（rAF 一秒一幀）或卡頓時，用大 dt 一次補完該走的格數
-      while (player.path.length && player.stepT >= STEP_MS) {
-        const next = player.path.shift();
-        player.x = next.x; player.y = next.y;
-        player.stepT -= STEP_MS;
-        if (!player.path.length && pendingAction) { const a = pendingAction; pendingAction = null; a(); }
-      }
-      if (player.path.length) {
-        const next = player.path[0];
-        player.facing = next.x > player.x ? "right" : next.x < player.x ? "left" : next.y > player.y ? "down" : "up";
-        const t = player.stepT / STEP_MS;
-        player.px = (player.x + (next.x - player.x) * t) * TILE;
-        player.py = (player.y + (next.y - player.y) * t) * TILE;
-      } else {
-        player.px = player.x * TILE; player.py = player.y * TILE;
-        player.stepT = 0;
-      }
-    };
-
-    const drawBuilding = (b) => {
-      const sx = (b.x * TILE - cam.x) * SCALE, sy = (b.y * TILE - cam.y) * SCALE;
-      const w = b.w * TILE * SCALE, h = b.h * TILE * SCALE;
-      const img = b.img && getImage(BUILDING_IMAGES[b.img]);
-      if (img && isReady(img)) {
-        // 素材圖通常比地面「占地」footprint 高很多（有屋頂/樓層），寬度對齊 footprint、
-        // 高度依圖片原生比例延伸，錨點對齊 footprint 底部（門口那一排）往上長
-        const drawW = w, drawH = w * (img.naturalHeight / img.naturalWidth);
-        ctx.drawImage(img, sx, sy + h - drawH, drawW, drawH);
-      } else {
-        // 素材載入前 / 沒有素材：色塊占位
-        ctx.fillStyle = b.color;
-        ctx.fillRect(sx, sy + h * 0.3, w, h * 0.7);
-        ctx.fillStyle = b.roof;
-        ctx.beginPath();
-        ctx.moveTo(sx - w * 0.06, sy + h * 0.34);
-        ctx.lineTo(sx + w / 2, sy - h * 0.08);
-        ctx.lineTo(sx + w + w * 0.06, sy + h * 0.34);
-        ctx.closePath();
-        ctx.fill();
-        const doorSx = (b.door[0] * TILE - cam.x) * SCALE, doorW = TILE * SCALE * 0.5;
-        ctx.fillStyle = "#3a2c22";
-        ctx.fillRect(doorSx + TILE * SCALE * 0.25, sy + h - TILE * SCALE * 0.7, doorW, TILE * SCALE * 0.7);
-      }
-      ctx.fillStyle = "rgba(255,255,255,.92)";
-      ctx.font = `${12 * SCALE}px sans-serif`;
-      ctx.textAlign = "center";
-      ctx.shadowColor = "rgba(0,0,0,.6)"; ctx.shadowBlur = 4;
-      ctx.fillText(b.label, sx + w / 2, sy + h * 0.98);
-      ctx.shadowBlur = 0;
-    };
-
-    const drawPortal = (p, now) => {
-      const sx = (p.x * TILE + TILE / 2 - cam.x) * SCALE, sy = (p.y * TILE + TILE / 2 - cam.y) * SCALE;
-      const pulse = 1 + Math.sin(now / 400) * 0.08;
-      ctx.fillStyle = "rgba(255,255,255,.25)";
-      ctx.beginPath();
-      ctx.arc(sx, sy, TILE * SCALE * 0.42 * pulse, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.font = `${16 * SCALE}px sans-serif`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(p.icon, sx, sy - 2);
-      ctx.textBaseline = "alphabetic";
-      ctx.font = `${9 * SCALE}px sans-serif`;
-      ctx.fillStyle = "rgba(255,255,255,.9)";
-      ctx.fillText(p.label, sx, sy + TILE * SCALE * 0.62);
-    };
-
-    // 靈田地塊：土壤素材 + 作物階段圖（無素材時退回色塊/emoji）
-    const soilImg = getImage(TILE_IMAGES.soil);
-    const drawPlot = (pl, idx, now) => {
-      const ts = TILE * SCALE;
-      const sx = (pl.x * TILE - cam.x) * SCALE, sy = (pl.y * TILE - cam.y) * SCALE;
-      const unlocked = plotUnlocked(idx, gameSave.cultivation);
-      if (isReady(soilImg)) {
-        ctx.drawImage(soilImg, sx, sy, ts, ts);
-        if (!unlocked) { ctx.fillStyle = "rgba(20,18,15,.55)"; ctx.fillRect(sx, sy, ts, ts); }
-      } else {
-        ctx.fillStyle = unlocked ? "#6e5137" : "#5a5248";
-        ctx.fillRect(sx + ts * 0.06, sy + ts * 0.06, ts * 0.88, ts * 0.88);
-        ctx.fillStyle = unlocked ? "#83644a" : "#6b6357";
-        ctx.fillRect(sx + ts * 0.14, sy + ts * 0.14, ts * 0.72, ts * 0.72);
-      }
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      if (!unlocked) {
-        ctx.font = `${11 * SCALE}px sans-serif`;
-        ctx.fillText("🔒", sx + ts / 2, sy + ts / 2);
-      } else {
-        const plot = gameSave.farm.plots[idx];
-        const stage = plotStage(plot, Date.now());
-        if (stage !== null) {
-          const crop = cropById(plot.cropId);
-          const cropImg = CROP_IMAGES[crop.id] && getImage(CROP_IMAGES[crop.id][stage]);
-          if (stage === 3) {
-            // 熟成：金色呼吸圈提示可收（圖片和 emoji 版都疊這個）
-            const pulse = 1 + Math.sin(now / 300) * 0.1;
-            ctx.strokeStyle = "rgba(255, 205, 90, .9)";
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.arc(sx + ts / 2, sy + ts / 2, ts * 0.4 * pulse, 0, Math.PI * 2);
-            ctx.stroke();
-          }
-          if (cropImg && isReady(cropImg)) {
-            ctx.drawImage(cropImg, sx + ts * 0.05, sy + ts * 0.05, ts * 0.9, ts * 0.9);
-          } else if (stage === 0) {
-            ctx.fillStyle = "#4a3826";
-            ctx.fillRect(sx + ts * 0.34, sy + ts * 0.46, ts * 0.08, ts * 0.08);
-            ctx.fillRect(sx + ts * 0.58, sy + ts * 0.46, ts * 0.08, ts * 0.08);
-          } else {
-            ctx.font = `${(stage === 1 ? 9 : stage === 2 ? 11 : 14) * SCALE}px sans-serif`;
-            ctx.fillText(stage === 1 ? "🌱" : crop.icon, sx + ts / 2, sy + ts * 0.5);
-          }
+    // 貨架站上疊畫玩家實際上架的商品：有貨顯示 icon+庫存，空的顯示淡淡「空」提示
+    const drawShelfStock = (ctx2, building, camera, scale) => {
+      const shelves = gameSave.shop.shelves;
+      const ts = TILE * scale;
+      const topY = (building.y - 0.15) * TILE - camera.y;
+      const slotW = (building.w * TILE) / shelves.length;
+      ctx2.font = `${11 * scale}px sans-serif`;
+      ctx2.textAlign = "center";
+      shelves.forEach((sh, i) => {
+        const cx = (building.x * TILE + slotW * (i + 0.5) - camera.x) * scale;
+        const cy = topY * scale;
+        if (sh.itemId && sh.stock > 0) {
+          const meta = itemMeta(sh.itemId);
+          ctx2.fillStyle = "rgba(0,0,0,.5)";
+          ctx2.beginPath(); ctx2.roundRect(cx - 14 * scale, cy - 12 * scale, 28 * scale, 16 * scale, 5 * scale); ctx2.fill();
+          ctx2.fillStyle = "#fff";
+          ctx2.fillText(`${meta.icon}${sh.stock}`, cx, cy);
+        } else {
+          ctx2.fillStyle = "rgba(255,255,255,.35)";
+          ctx2.fillText("空", cx, cy);
         }
-      }
-      ctx.textBaseline = "alphabetic";
-    };
-
-    // 玩家與 NPC 都走同一顆 drawActor（紙娃娃入口，素材接入時只換它的內部）
-    const drawCharacter = (actor, appearance, now) => {
-      drawActor(ctx, appearance, {
-        sx: (actor.px - cam.x) * SCALE, sy: (actor.py - cam.y) * SCALE,
-        ts: TILE * SCALE, facing: actor.facing, moving: actor.moving, now,
       });
+      ctx2.textAlign = "left";
     };
 
-    // NPC 頭上對話泡泡（畫在最上層）
-    const drawBubble = (npc) => {
-      const ts = TILE * SCALE;
-      const cx = (npc.px - cam.x) * SCALE + ts / 2;
-      const topY = (npc.py - cam.y) * SCALE - ts * 1.4; // 長句氣泡抬高，避免壓住附近角色名牌
-      ctx.font = `${10 * SCALE}px sans-serif`;
-      const maxW = Math.min(220, viewW - 24);
-      const paddingX = 12;
-      const lineH = 13 * SCALE;
-      const source = String(npc.bubble.text || "").replace(/[\r\n]+/g, " ").trim();
-      const lines = [];
-      let line = "";
-      for (const char of source) {
-        const candidate = line + char;
-        if (line && ctx.measureText(candidate).width > maxW - paddingX * 2) { lines.push(line); line = char; }
-        else line = candidate;
-      }
-      if (line) lines.push(line);
-      const visibleLines = lines.slice(0, 3);
-      if (lines.length > 3) {
-        let last = visibleLines[visibleLines.length - 1] || "";
-        while (last && ctx.measureText(`${last}…`).width > maxW - paddingX * 2) last = last.slice(0, -1);
-        visibleLines[visibleLines.length - 1] = `${last}…`;
-      }
-      const w = Math.min(maxW, Math.max(72, ...visibleLines.map((value) => ctx.measureText(value).width + paddingX * 2)));
-      const h = visibleLines.length * lineH + 10;
-      const bx = Math.max(4, Math.min(viewW - w - 4, cx - w / 2));
-      ctx.fillStyle = "rgba(255,255,255,.94)";
-      ctx.beginPath();
-      ctx.roundRect(bx, topY - h, w, h, 8);
-      ctx.fill();
-      ctx.fillStyle = "#4a4038";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      visibleLines.forEach((value, index) => ctx.fillText(value, bx + w / 2, topY - h / 2 + lineH * (index - (visibleLines.length - 1) / 2)));
-      ctx.textBaseline = "alphabetic";
-    };
+    const updatePlayer = (dt) => updateActorMovement(player, dt, STEP_MS, () => {
+      if (!pendingAction) return;
+      const action = pendingAction;
+      pendingAction = null;
+      action();
+    });
 
     // 先排下一幀再畫：畫的過程就算丟出例外，迴圈也不會斷（凍住 = 必須退出重進的元兇）
     let lastFrameAt = 0, frameErrLogged = false;
@@ -442,80 +600,121 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
       const dt = lastT ? Math.min(2000, now - lastT) : 16;
       lastT = now;
       updatePlayer(dt);
-      updateNpcs(npcs, map, dt, now);
+      const playerReserved = actorReservedSlot(player) || pendingInteraction?.slotKey;
+      updateNpcs(npcs, map, dt, now, { reservedSlots: playerReserved ? [playerReserved] : [] });
       if (cam.follow) {
-        const targetX = player.px + TILE / 2 - viewW / SCALE / 2;
-        const targetY = player.py + TILE / 2 - viewH / SCALE / 2;
-        cam.x += (targetX - cam.x) * 0.12;
-        cam.y += (targetY - cam.y) * 0.12;
+        followActor(cam, player, { width: viewW, height: viewH }, viewScale);
         clampCam();
       }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.imageSmoothingEnabled = false;
       ctx.fillStyle = "#1c2733";
       ctx.fillRect(0, 0, viewW, viewH);
-      drawMap(ctx, map, cam, SCALE, viewW, viewH);
-      map.plots.forEach((pl, idx) => drawPlot(pl, idx, now));
-      for (const p of map.portals) drawPortal(p, now);
+      drawMap(ctx, map, cam, viewScale, viewW, viewH);
+      map.plots.forEach((pl, idx) => drawFarmPlot(ctx, pl, idx, now, { camera: cam, scale: viewScale, save: gameSave }));
+      const editorState = homeEditorRef.current;
+      const previewedUid = editorState.active && editorState.preview ? editorState.selectedUid : null;
+      for (const item of map.home?.furniture || []) {
+        if (item.uid === previewedUid) continue;
+        const definition = furnitureById(item.furnitureId);
+        if (definition?.placement === "rug") drawFurniture(ctx, item, cam, viewScale, homeEditorRef.current.selectedUid === item.uid);
+      }
+      // 平面裝飾（地墊/榻榻米）畫在地面層：跟角色一起排序會在人物走上去時蓋住人
+      for (const d of map.decorations) if (d.flat) drawWorldDecoration(ctx, d, cam, viewScale);
       // 2.5D 遮擋：建築與所有角色按 y 排序後一起畫
       const drawables = [
-        ...map.buildings.map((b) => ({ y: (b.y + b.h) * TILE, draw: () => drawBuilding(b) })),
-        ...map.trees.map((t) => ({ y: (t.y + 1) * TILE, draw: () => drawTree(ctx, t, cam, SCALE) })),
-        ...npcs.map((n) => ({ y: n.py + TILE, draw: () => {
-          drawCharacter(n, n.appearance, now);
+        ...map.buildings.map((b) => ({ y: (b.y + b.h) * TILE, draw: () => {
+          renderBuilding(ctx, b, cam, viewScale);
+          // 丹房貨架：畫出玩家實際上架的商品，遠遠一看就知道還有沒有貨、賣完了沒
+          if (b.id === "danfang_shelf") drawShelfStock(ctx, b, cam, viewScale);
+        } })),
+        ...map.decorations.filter((d) => !d.flat).map((d) => ({ y: (d.y + (d.h || 1)) * TILE, draw: () => drawWorldDecoration(ctx, d, cam, viewScale) })),
+        ...map.trees.map((t) => ({ y: (t.y + 1) * TILE, draw: () => drawTree(ctx, t, cam, viewScale) })),
+        ...(map.home?.furniture || []).filter((item) => item.uid !== previewedUid && furnitureById(item.furnitureId)?.placement !== "rug").map((item) => ({ y: (item.y + (furnitureById(item.furnitureId)?.footprint?.h || 1)) * TILE, draw: () => drawFurniture(ctx, item, cam, viewScale, homeEditorRef.current.selectedUid === item.uid) })),
+        ...npcs.map((n) => ({ y: n.py + (n.action?.renderOffset?.y || 0) * TILE + TILE, draw: () => {
+          renderCharacter(ctx, n, n.appearance, cam, viewScale, now);
           const boundName = npcDisplayName(n);
           if (boundName) {
-            const ts = TILE * SCALE;
-            ctx.font = `${8 * SCALE}px sans-serif`;
-            ctx.textAlign = "center";
-            ctx.fillStyle = "rgba(255,255,255,.95)";
-            ctx.strokeStyle = "rgba(0,0,0,.5)";
-            ctx.lineWidth = 3;
-            const nx = (n.px - cam.x) * SCALE + ts / 2, ny = (n.py - cam.y) * SCALE - ts * 0.9; // 名牌微降，貼近角色頭頂
-            ctx.strokeText(boundName, nx, ny);
-            ctx.fillText(boundName, nx, ny);
-            if (n.helper) {
-              ctx.font = `${6.5 * SCALE}px sans-serif`;
-              ctx.fillStyle = "rgba(255,239,180,.98)";
-              ctx.strokeStyle = "rgba(70,45,35,.72)";
-              ctx.lineWidth = 2;
-              ctx.fillText("照料中", nx, ny + 8 * SCALE);
-            }
+            drawNpcLabel(ctx, n, boundName, cam, viewScale);
           }
         } })),
-        { y: player.py + TILE, draw: () => drawCharacter(player, gameSave.player.appearance, now) },
+        { y: player.py + (player.action?.renderOffset?.y || 0) * TILE + TILE, draw: () => renderCharacter(ctx, player, gameSave.player.appearance, cam, viewScale, now) },
       ].sort((a, b) => a.y - b.y);
       for (const d of drawables) d.draw();
+      // 傳送點畫在遮擋層之上：被樹冠/建築蓋住就等於找不到路（玩家反映過）
+      for (const p of map.portals) renderPortal(ctx, p, cam, viewScale, now);
+      // 放置預覽：綠/紅占地標示 + 半透明家具影像（永遠畫在最上層）
+      if (editorState.active && editorState.preview && map.home) {
+        const previewId = (editorState.selectedUid ? map.home.furniture.find((item) => item.uid === editorState.selectedUid)?.furnitureId : null) || editorState.furnitureId;
+        const previewDef = furnitureById(previewId);
+        if (previewDef) {
+          const ts = TILE * viewScale;
+          ctx.fillStyle = editorState.preview.valid ? "rgba(120, 220, 130, .32)" : "rgba(230, 90, 80, .38)";
+          for (const tile of furnitureTiles(previewDef, editorState.preview.x, editorState.preview.y)) {
+            ctx.fillRect((tile.x * TILE - cam.x) * viewScale, (tile.y * TILE - cam.y) * viewScale, ts, ts);
+          }
+          ctx.globalAlpha = 0.65;
+          drawFurniture(ctx, { furnitureId: previewId, x: editorState.preview.x, y: editorState.preview.y }, cam, viewScale, false);
+          ctx.globalAlpha = 1;
+
+          const controls = homePreviewControlsRef.current;
+          if (controls) {
+            const footprintW = Math.max(1, previewDef.footprint?.w || 1);
+            const anchorX = ((editorState.preview.x + footprintW / 2) * TILE - cam.x) * viewScale;
+            const anchorY = (editorState.preview.y * TILE - cam.y) * viewScale;
+            controls.style.display = "flex";
+            controls.style.left = `${Math.max(50, Math.min(viewW - 50, anchorX))}px`;
+            controls.style.top = `${Math.max(72, Math.min(viewH - 118, anchorY - 6))}px`;
+          }
+        }
+      } else if (homePreviewControlsRef.current) {
+        homePreviewControlsRef.current.style.display = "none";
+      }
       // 對話泡泡永遠在最上層
-      for (const n of npcs) if (n.bubble) drawBubble(n);
+      for (const n of npcs) if (n.bubble) drawSpeechBubble(ctx, n, cam, viewScale, viewW);
       // 點擊漣漪（age 夾 0：rAF 的 now 是幀起始時間戳，可能比剛記下的 t0 早一點點，
       // 負值會讓 arc() 收到負半徑直接丟例外）
       if (ripple) {
         const age = Math.max(0, now - ripple.t0);
         if (age > 450) ripple = null;
         else {
-          const r = (age / 450) * TILE * SCALE * 0.6;
+          const r = (age / 450) * TILE * viewScale * 0.6;
           ctx.strokeStyle = `rgba(255, 224, 130, ${1 - age / 450})`;
           ctx.lineWidth = 2;
           ctx.beginPath();
-          ctx.arc((ripple.wx - cam.x) * SCALE, (ripple.wy - cam.y) * SCALE, r, 0, Math.PI * 2);
+          ctx.arc((ripple.wx - cam.x) * viewScale, (ripple.wy - cam.y) * viewScale, r, 0, Math.PI * 2);
           ctx.stroke();
         }
       }
     };
     // 首幀就對準玩家，避免鏡頭從 (0,0) 滑過去
-    cam.x = player.px + TILE / 2 - viewW / SCALE / 2;
-    cam.y = player.py + TILE / 2 - viewH / SCALE / 2;
+    centerCameraOnActor(cam, player, { width: viewW, height: viewH }, viewScale);
     clampCam();
     raf = requestAnimationFrame(frame);
+    runResidentChores(map); // 直接讀檔進場（非切地圖）也結算一次住客雜務
 
     // 位置寫進存檔；離開頁面/切背景時也存一次
     const persistPos = () => {
-      gameSave.player.pos = { map: map.id, x: player.x, y: player.y };
+      gameSave.player.pos = {
+        map: map.id, x: player.x, y: player.y,
+        ...(map.instanceId ? { instanceId: map.instanceId } : {}),
+      };
       persistSave(gameSave);
     };
-    const onHide = () => { if (document.visibilityState === "hidden") persistPos(); };
-    document.addEventListener("visibilitychange", onHide);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        persistPos();
+        cancelAnimationFrame(raf);
+        raf = 0;
+        lastT = 0;
+        return;
+      }
+      if (!raf) {
+        lastFrameAt = performance.now();
+        raf = requestAnimationFrame(frame);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
     const persistTimer = setInterval(persistPos, 30000);
 
     // 看門狗：頁面可見卻超過 1.5 秒沒有新幀（rAF 鏈因任何原因斷掉）就重啟迴圈
@@ -532,7 +731,7 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
       cancelAnimationFrame(raf);
       detachInput();
       ro.disconnect();
-      document.removeEventListener("visibilitychange", onHide);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       clearInterval(persistTimer);
       clearInterval(watchdog);
       persistPos();
@@ -544,154 +743,18 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
       {/* touchAction 要直接放在 canvas 上（不會繼承）：否則手機瀏覽器會把拖曳當成捲動手勢
           搶走 pointer 事件（pointercancel），玩起來就是「點了沒反應、卡住」 */}
       <canvas ref={canvasRef} style={{ display: "block", imageRendering: "pixelated", touchAction: "none" }} />
-      {/* HUD：HTML 疊在 canvas 上 */}
-      <div style={{ position: "absolute", top: 0, left: 0, right: 0, display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", pointerEvents: "none" }}>
-        <button onClick={onBack} style={{ pointerEvents: "auto", border: 0, borderRadius: 12, padding: "6px 12px", background: "rgba(0,0,0,.45)", color: "#fff", fontSize: 15, cursor: "pointer" }}>←</button>
-        <div style={{ color: "#fff", fontWeight: 700, textShadow: "0 1px 3px rgba(0,0,0,.6)" }}>雲隱山莊 · {mapTitle}</div>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 8, color: "#fff", fontSize: 13, background: "rgba(0,0,0,.45)", borderRadius: 12, padding: "5px 10px" }}>
-          <span>🪙 {coins}</span>
-          <span>💎 {crystals}</span>
-        </div>
-      </div>
-      {/* 右側按鈕欄（仿手遊：之後加背包/任務就是往下疊按鈕） */}
-      <div style={{ position: "absolute", top: 56, right: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-        {[["settings", "⚙️", "遊戲設定"]].map(([type, icon, title]) => (
-          <button key={type} onClick={() => setPanel({ type, title })} style={{
-            width: 40, height: 40, borderRadius: 14, border: 0, cursor: "pointer",
-            background: "rgba(0,0,0,.45)", fontSize: 18, display: "grid", placeItems: "center",
-          }}>{icon}</button>
-        ))}
-      </div>
-      {panel && (
-        <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.45)", display: "grid", placeItems: "center", zIndex: 5 }} onClick={() => setPanel(null)}>
-          <div data-yunyin-panel="1" onClick={(e) => e.stopPropagation()} style={{ background: "#fffaf3", borderRadius: 18, padding: "20px 22px", width: "min(84%, 330px)", maxHeight: "84%", overflowY: "auto", boxShadow: "0 10px 30px rgba(0,0,0,.35)" }}>
-            <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 10, textAlign: "center" }}>{panel.title}</div>
-            {panel.type === "cultivation" ? (
-              <CultivationPanel save={gameSave} onDirty={markDirty} onCompanion={onCompanion} onClose={() => setPanel(null)} />
-            ) : panel.type === "shop" ? (
-              <ShopPanel save={gameSave} onDirty={markDirty} onToast={showToast} onCrystals={addCrystals} onClose={() => setPanel(null)} />
-            ) : panel.type === "dungeon" ? (
-              <DungeonPanel save={gameSave} onDirty={markDirty} onToast={showToast} onCompanion={onCompanion} onCrystals={addCrystals} onClose={() => setPanel(null)} />
-            ) : panel.type === "farmAssist" ? (
-              <div style={{ textAlign: "center", color: "#5d5147" }}>
-                <div style={{ fontSize: 34, marginBottom: 8 }}>🌱</div>
-                <div style={{ fontSize: 13, lineHeight: 1.8, marginBottom: 14 }}>「讓我來幫你照料植物吧。靈田的靈氣今天很溫柔，應該能讓它們長得更快。」</div>
-                <div style={{ display: "flex", gap: 8 }}><button style={{ flex: 1, border: 0, borderRadius: 12, padding: "10px 8px", background: "linear-gradient(135deg,#7d5a6e,#9c7089)", color: "#fff", fontWeight: 700 }} onClick={() => { const helper = panel.npc; helper.helper = false; helper.waitUntil = performance.now() + 120; helper.path = []; const planted = gameSave.farm.plots.filter((plot) => plot.cropId); if (!planted.length) { showToast("目前沒有正在生長的作物"); setPanel(null); return; } const target = planted[Math.floor(Math.random() * planted.length)]; const crop = cropById(target.cropId); const remain = Math.max(0, (target.plantedAt + crop.growMin * 60000 * 0.9) - Date.now()); target.plantedAt -= Math.floor(remain * 0.25); gameSave.farmAssist = { day: new Date().toISOString().slice(0, 10), used: true }; markDirty(); showToast(`${helper.name}照料了${crop.name}，剩餘時間縮短 25%`); setPanel(null); }}>接受協助</button><button style={{ flex: 1, border: 0, borderRadius: 12, padding: "10px 8px", background: "#e8ddd0", color: "#6b5d4f", fontWeight: 700 }} onClick={() => { panel.npc.helper = false; panel.npc.waitUntil = performance.now() + 120; panel.npc.path = []; setPanel(null); }}>先不用</button></div>
-              </div>
-            ) : panel.type === "settings" ? (
-              <GameSettingsPanel
-                save={gameSave} characters={characters} onDirty={markDirty}
-                onGenerateLines={onAiGenerate ? async (charId) => {
-                  const lines = await onAiGenerate(charId, PACK_POOLS);
-                  if (!lines) return "生成失敗（檢查 API 設定）";
-                  addPackVersion(gameSave, charId, lines);
-                  markDirty();
-                  return null;
-                } : null}
-                onEditAppearance={(npcIdx) => setPanel({
-                  type: "character", npcIdx,
-                  title: `${gameSave.npcs[npcIdx]?.name || "居民"}的外觀`,
-                  returnTo: { type: "settings", title: "遊戲設定" },
-                })}
-                onClose={() => setPanel(null)}
-              />
-            ) : panel.type === "character" ? (
-              <CharacterPanel
-                key={panel.npcIdx ?? "player"}
-                value={panel.npcIdx != null
-                  ? (gameSave.npcs[panel.npcIdx].appearance || randomAppearance(gameSave.npcs[panel.npcIdx].seed))
-                  : gameSave.player.appearance}
-                onSave={(appearance) => {
-                  if (panel.npcIdx != null) {
-                    gameSave.npcs[panel.npcIdx].appearance = appearance;
-                    npcAppearanceRef.current(gameSave.npcs[panel.npcIdx].seed, appearance);
-                  } else {
-                    gameSave.player.appearance = appearance;
-                  }
-                  markDirty();
-                }}
-                onClose={() => setPanel(panel.returnTo || null)}
-              />
-            ) : panel.type === "plant" ? (
-              <div>
-                {CROPS.map((c) => {
-                  const seedKey = `${c.id}_seed`;
-                  const affordable = c.source === "shop" ? coins >= c.seedCost : (gameSave.inventory[seedKey] || 0) > 0;
-                  return (
-                    <button
-                      key={c.id}
-                      disabled={!affordable}
-                      onClick={() => {
-                        const err = plantCrop(gameSave, panel.plotIdx, c.id);
-                        if (err) { showToast(err); return; }
-                        markDirty();
-                        setPanel(null);
-                        showToast(`${c.icon} ${c.name} 已下種`);
-                      }}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 10, width: "100%", marginBottom: 8,
-                        border: "1px solid #e2d6c6", borderRadius: 12, padding: "10px 12px", textAlign: "left",
-                        background: affordable ? "#fff" : "#f1ebe2", cursor: affordable ? "pointer" : "default", opacity: affordable ? 1 : 0.6,
-                      }}
-                    >
-                      <span style={{ fontSize: 22 }}>{c.icon}</span>
-                      <span style={{ flex: 1 }}>
-                        <b style={{ fontSize: 14 }}>{c.name}</b>
-                        <span style={{ display: "block", fontSize: 11, color: "#8a7a6a" }}>約 {c.growMin} 分鐘 · 賣 🪙{c.sellPrice}</span>
-                      </span>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "#6b5d4f" }}>
-                        {c.source === "shop" ? `🪙 ${c.seedCost}` : `種子 ×${gameSave.inventory[seedKey] || 0}`}
-                      </span>
-                    </button>
-                  );
-                })}
-                <button onClick={() => setPanel(null)} style={{ width: "100%", border: 0, borderRadius: 12, padding: "9px 0", background: "#e8ddd0", color: "#6b5d4f", fontSize: 14, cursor: "pointer" }}>取消</button>
-              </div>
-            ) : (
-              <>
-                <div style={{ fontSize: 13, color: "#8a7a6a", lineHeight: 1.6, textAlign: "center" }}>（此區域尚未開放，接下來的步驟會實作）</div>
-                <button onClick={() => setPanel(null)} style={{ marginTop: 14, border: 0, borderRadius: 12, padding: "8px 22px", background: "#7d5a6e", color: "#fff", fontSize: 14, cursor: "pointer", display: "block", margin: "14px auto 0" }}>關閉</button>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-      {toast && (
-        <div style={{ position: "absolute", bottom: 24, left: "50%", transform: "translateX(-50%)", background: "rgba(0,0,0,.72)", color: "#fff", fontSize: 13, borderRadius: 14, padding: "8px 16px", whiteSpace: "nowrap", zIndex: 7, pointerEvents: "none" }}>
-          {toast}
-        </div>
-      )}
-      {companionNotice && (
-        <div style={{ position: "absolute", left: 12, right: 12, bottom: 72, display: "flex", justifyContent: "center", pointerEvents: "none", zIndex: 4 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, width: "min(92%, 360px)", padding: "9px 13px 9px 9px", border: "1px solid rgba(241,143,157,.45)", borderRadius: 18, background: "rgba(255,250,243,.96)", color: "#4a4038", boxShadow: "0 4px 14px rgba(0,0,0,.22)" }}>
-            {companionNotice.avatar ? (
-              <img src={companionNotice.avatar} alt="" style={{ width: 42, height: 42, flex: "0 0 42px", borderRadius: "50%", objectFit: "cover", border: "2px solid #f5b7c1", background: "#f5e7df" }} />
-            ) : (
-              <div style={{ width: 42, height: 42, flex: "0 0 42px", display: "grid", placeItems: "center", borderRadius: "50%", background: "#f5e7df", color: "#a86b7c", fontSize: 20 }}>✿</div>
-            )}
-            <div style={{ minWidth: 0, fontSize: 13, lineHeight: 1.5 }}>
-              <div style={{ marginBottom: 2, color: "#8b5c70", fontSize: 11, fontWeight: 800 }}>{companionNotice.name}</div>
-              <div style={{ overflow: "hidden", display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: 2 }}>{companionNotice.text}</div>
-            </div>
-          </div>
-        </div>
-      )}
-      {summary && (
-        <div style={{ position: "absolute", inset: 0, background: "rgba(20,14,26,.6)", display: "grid", placeItems: "center", zIndex: 6 }}>
-          <div data-yunyin-panel="1" style={{ background: "#fffaf3", borderRadius: 18, padding: "22px 24px", width: "min(80%, 300px)", textAlign: "center", boxShadow: "0 10px 30px rgba(0,0,0,.4)" }}>
-            <div style={{ fontSize: 28 }}>⛰️</div>
-            <div style={{ fontSize: 17, fontWeight: 800, marginTop: 6 }}>閉關歸來</div>
-            <div style={{ fontSize: 13, color: "#6b5d4f", marginTop: 10, lineHeight: 1.8 }}>
-              你潛修了 <b>{fmtDuration(summary.mins)}</b><br />
-              修為 <b style={{ color: "#3d7a5c" }}>+{summary.expGained}</b>
-              {summary.ripened > 0 && <><br />靈田熟了 <b style={{ color: "#3d7a5c" }}>{summary.ripened}</b> 格</>}
-              {summary.sold > 0 && <><br />貨架賣出 <b>{summary.sold}</b> 件，進帳 <b style={{ color: "#b8860b" }}>🪙{summary.earned}</b></>}
-              {summary.crafted > 0 && <><br />丹爐煉好 <b style={{ color: "#3d7a5c" }}>{summary.crafted}</b> 爐待收</>}
-            </div>
-            <button onClick={() => { setSummary(null); markDirty(); }} style={{ marginTop: 16, border: 0, borderRadius: 12, padding: "9px 30px", background: "linear-gradient(135deg,#7d5a6e,#9c7089)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>收取</button>
-          </div>
-        </div>
-      )}
+      <YunyinHud onBack={onBack} mapTitle={mapTitle} coins={coins} crystals={crystals} onOpenSettings={() => setPanel({ type: "settings", title: "遊戲設定" })} onOpenInventory={() => setPanel({ type: "inventory", title: "🎒 背包" })} canDecorate={!!homeContext} decorating={homeEditor.active} onToggleDecorating={() => homeEditorActionsRef.current.toggle?.()} />
+      <CameraZoomControl value={cameraScale} top={yunyinCameraControlTop(!!homeContext)} onChange={(scale) => cameraZoomActionsRef.current.set?.(scale)} />
+      <YunyinPanelHost
+        panel={panel} setPanel={setPanel} gameSave={gameSave} markDirty={markDirty}
+        onCompanion={onCompanion} showToast={showToast} addCrystals={addCrystals} crystals={crystals}
+        characters={characters} onAiGenerate={onAiGenerate} npcAppearanceRef={npcAppearanceRef} coins={coins}
+        onHomeRefresh={() => homeEditorActionsRef.current.refreshHome?.()}
+      />
+      <YunyinToast message={toast} />
+      <HomeEditorOverlay editor={homeEditor} catalog={Object.values(FURNITURE_CATALOG).filter((item) => gameSave.home.furnitureUnlocks[item.id])} previewControlsRef={homePreviewControlsRef} onSelect={(id) => homeEditorActionsRef.current.select?.(id)} onConfirmPreview={() => homeEditorActionsRef.current.confirmPreview?.()} onCancelPreview={() => homeEditorActionsRef.current.cancelPreview?.()} onClose={() => homeEditorActionsRef.current.close?.()} onExpand={() => setPanel({ type: "homeExpand", title: "擴建居所" })} onResidents={() => setPanel({ type: "homeResidents", title: "入住管理" })} />
+      <CompanionNotice notice={companionNotice} />
+      <OfflineSummary summary={summary} formatDuration={fmtDuration} onCollect={() => { setSummary(null); markDirty(); }} />
     </div>
   );
 }

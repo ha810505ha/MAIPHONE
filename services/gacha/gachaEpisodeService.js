@@ -1,4 +1,5 @@
 import { callAI } from "../aiService";
+import { fetchWithTimeout, isRequestCancelled, NETWORK_TIMEOUTS } from "../../utils/networkRequest.js";
 
 const clean = (value, limit = 6000) => String(value || "").replace(/<think>[\s\S]*?<\/think>/gi, "").trim().slice(0, limit);
 const OPENING_OUTPUT_MAX_TOKENS = 2000;
@@ -10,7 +11,7 @@ const fallbackOpening = (episode) => ({
   characterOpening: episode.mode === "reality" ? "……我可以現在打開嗎？" : "我收到了。你希望我現在就打開嗎？",
 });
 
-export async function generateGachaEpisodeOpening({ episode, character, playerProfile, apiConfig, recentMessages = [], outputLanguage = "繁體中文" }) {
+export async function generateGachaEpisodeOpening({ episode, character, playerProfile, apiConfig, recentMessages = [], outputLanguage = "繁體中文", signal }) {
   if (!apiConfig?.provider || (!apiConfig.apiKey && apiConfig.provider !== "ollama")) return fallbackOpening(episode);
   const recent = recentMessages.filter((message) => ["user", "assistant"].includes(message?.role)).slice(-16).map((message) => `${message.role === "user" ? "玩家" : "角色"}：${clean(message.content, 320)}`).join("\n");
   const modeRule = episode.mode === "reality"
@@ -49,18 +50,19 @@ export async function generateGachaEpisodeOpening({ episode, character, playerPr
 narration：使用指定語言、第二人稱「你」，60～140 字；描寫送出心意後的第一個瞬間與場景，停在角色開口前，不含任何角色台詞、引號、標題、條列或換行。
 characterOpening：使用指定語言，20～70 字；必須銜接旁白、符合角色與關係、留下玩家回應空間，不替玩家回答，不含換行。現實模式可有極短動作；線上模式只能是角色傳來的訊息，不得有括號動作或面對面描寫。`;
   try {
-    const raw = await callAI([{ role: "user", content: "請依規則生成送出心意後的第一幕。保持短篇，只在必要時使用完整輸出上限。" }], { ...apiConfig, maxTokens: Math.min(OPENING_OUTPUT_MAX_TOKENS, Number(apiConfig.maxTokens) || OPENING_OUTPUT_MAX_TOKENS) }, systemPrompt);
+    const raw = await callAI([{ role: "user", content: "請依規則生成送出心意後的第一幕。保持短篇，只在必要時使用完整輸出上限。" }], { ...apiConfig, maxTokens: Math.min(OPENING_OUTPUT_MAX_TOKENS, Number(apiConfig.maxTokens) || OPENING_OUTPUT_MAX_TOKENS) }, systemPrompt, { signal });
     const normalized = clean(raw, 7000).replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
     const parsed = JSON.parse(normalized);
     const narration = clean(parsed?.narration, 420);
     const characterOpening = clean(parsed?.characterOpening, 240);
     return narration && characterOpening ? { narration, characterOpening } : fallbackOpening(episode);
-  } catch {
+  } catch (error) {
+    if (isRequestCancelled(error)) throw error;
     return fallbackOpening(episode);
   }
 }
 
-async function streamCompatibleChat(messages, apiConfig, systemPrompt, onChunk) {
+async function streamCompatibleChat(messages, apiConfig, systemPrompt, onChunk, signal) {
   const { provider, baseUrl, apiKey, model } = apiConfig;
   const temperature = apiConfig.temperatureEnabled && Number.isFinite(Number(apiConfig.temperature))
     ? Math.max(0, Math.min(2, Number(apiConfig.temperature))) : null;
@@ -70,7 +72,7 @@ async function streamCompatibleChat(messages, apiConfig, systemPrompt, onChunk) 
     const endpoint = provider === "vertex"
       ? `${cleanBase}/publishers/google/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey)}`
       : `${cleanBase}/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey)}`;
-    const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ systemInstruction: { parts: [{ text: systemPrompt }] }, contents, generationConfig: { maxOutputTokens: Math.min(1800, Number(apiConfig.maxTokens) || 1800), ...(temperature == null ? {} : { temperature }) } }) });
+    const response = await fetchWithTimeout(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ systemInstruction: { parts: [{ text: systemPrompt }] }, contents, generationConfig: { maxOutputTokens: Math.min(1800, Number(apiConfig.maxTokens) || 1800), ...(temperature == null ? {} : { temperature }) } }) }, { signal, timeoutMs: NETWORK_TIMEOUTS.AI });
     if (!response.ok) { const data = await response.json().catch(() => null); throw new Error(data?.error?.message || `HTTP ${response.status}`); }
     if (!response.body) return null;
     const reader = response.body.getReader();
@@ -99,10 +101,10 @@ async function streamCompatibleChat(messages, apiConfig, systemPrompt, onChunk) 
   if (provider === "openrouter") headers["HTTP-Referer"] = "https://maliphone.app";
   const usesCompletionLimit = provider === "openai" || /^o\d/i.test(String(model || "")) || /^gpt-5/i.test(String(model || ""));
   const limit = Math.min(1800, Number(apiConfig.maxTokens) || 1800);
-  const response = await fetch(`${String(baseUrl || "").replace(/\/+$/, "")}/chat/completions`, {
+  const response = await fetchWithTimeout(`${String(baseUrl || "").replace(/\/+$/, "")}/chat/completions`, {
     method: "POST", headers,
     body: JSON.stringify({ model, stream: true, messages: [{ role: "system", content: systemPrompt }, ...messages], ...(usesCompletionLimit ? { max_completion_tokens: limit } : { max_tokens: limit }), ...(temperature == null ? {} : { temperature }) }),
-  });
+  }, { signal, timeoutMs: NETWORK_TIMEOUTS.AI });
   if (!response.ok) { const data = await response.json().catch(() => null); throw new Error(data?.error?.message || `HTTP ${response.status}`); }
   if (!response.body) return null;
   const reader = response.body.getReader();
@@ -122,7 +124,7 @@ async function streamCompatibleChat(messages, apiConfig, systemPrompt, onChunk) 
   return output.trim();
 }
 
-export async function generateGachaEpisodeReply({ episode, character, playerProfile, apiConfig, nextUserMessage, onChunk, forceEnding = false }) {
+export async function generateGachaEpisodeReply({ episode, character, playerProfile, apiConfig, nextUserMessage, onChunk, forceEnding = false, signal }) {
   if (!apiConfig?.provider || (!apiConfig.apiKey && apiConfig.provider !== "ollama")) throw new Error("請先在設定中完成 AI API 設定");
   const modeLabel = episode.mode === "reality" ? "現實見面" : "線上聊天／寄送禮物";
   const currentTurn = Math.min(20, Math.max(1, Number(episode.playerMessageCount || 0) + 1));
@@ -159,8 +161,8 @@ ${clean(playerProfile?.name ? `姓名：${playerProfile.name}\n${playerProfile.d
 5. 回覆使用繁體中文。內容應有足夠的情緒、反應與互動細節，通常約 250 至 600 個中文字、2 至 5 個自然段落；不要只用一兩句話草率帶過。`;
   const history = (episode.messages || []).filter((message) => message.role !== "system").slice(-30).map((message) => ({ role: message.role === "user" ? "user" : "assistant", content: clean(message.content, 4000) }));
   history.push({ role: "user", content: forceEnding ? "（請依照目前劇情自然完成這段特別篇，這是角色的最後一則回覆。）" : clean(nextUserMessage, 4000) });
-  const streamed = await streamCompatibleChat(history, apiConfig, systemPrompt, onChunk);
-  const raw = streamed ?? await callAI(history, { ...apiConfig, maxTokens: Math.min(1800, Number(apiConfig.maxTokens) || 1800) }, systemPrompt);
+  const streamed = await streamCompatibleChat(history, apiConfig, systemPrompt, onChunk, signal);
+  const raw = streamed ?? await callAI(history, { ...apiConfig, maxTokens: Math.min(1800, Number(apiConfig.maxTokens) || 1800) }, systemPrompt, { signal });
   const reply = clean(raw, 5000);
   if (!reply) throw new Error("AI 沒有回傳內容，請重試");
   if (streamed == null) onChunk?.(reply);

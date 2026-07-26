@@ -1,6 +1,26 @@
 node_modules
 dist
 .DS_Store
+Thumbs.db
+Desktop.ini
+*.log
+logs/
+coverage/
+.vite/
+.cache/
+*.tsbuildinfo
+
+# Environment files and local credentials (examples remain shareable)
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+
+# Local Codex/editor workspace state
+.local/
+.codex-remote-attachments/
 android/.idea/
 /android/
 /backend/
@@ -21,12 +41,27 @@ chat-layout-preview.css
 yunyin/assets/
 # Local-only content editors and their drafts
 tools/gacha-card-editor/
-# Local-only assets destined for the separate private asset repository
+tools/dating-profile-editor/
+tools/dating-profile-editor.zip
+# Local-only assets destined for separate private asset repositories.
+# Normal product UI assets such as public/app-icons/ remain tracked by MAIP.
 private-assets/
+
+# Local image-generation working files and exports
+/output/imagegen/
+/tmp/imagegen/
+/public/gacha/
+/assets/card-frames/
+/assets/cards/preview/
 
 # Local developer config / internal planning docs
 .claude/
 backend/docs/plan.md
+/docs/
+/tmp/
+
+# 資安檢查紀錄：記載尚未修復的弱點，repo 是 public 的，外流等於給攻擊者地圖
+# Covered by /docs/ above.
 
 # 付費素材原始檔：授權禁止散布，repo 是 public 的所以不能進 git（build 產物 dist/ 已排除，不受影響）
 yunyin/assets/

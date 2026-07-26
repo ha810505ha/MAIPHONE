@@ -1,5 +1,11 @@
-async function callAI(messages, apiConfig, sysPrompt) {
+import { fetchWithTimeout, NETWORK_TIMEOUTS } from "../utils/networkRequest.js";
+
+async function callAI(messages, apiConfig, sysPrompt, options = {}) {
   const { provider, baseUrl, apiKey, model } = apiConfig;
+  const request = (url, init) => fetchWithTimeout(url, init, {
+    signal: options.signal,
+    timeoutMs: options.timeoutMs || NETWORK_TIMEOUTS.AI,
+  });
   const cleanBaseUrl = (baseUrl || "https://aiplatform.googleapis.com/v1").replace(/\/+$/, "");
   const isOllamaLocal = provider === "ollama" && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(baseUrl || "");
   const providerNeedsApiKey = !(provider === "ollama" && isOllamaLocal);
@@ -16,7 +22,7 @@ async function callAI(messages, apiConfig, sysPrompt) {
   }
 
   if (provider === "claude") {
-    const res = await fetch(`${baseUrl}/messages`, {
+    const res = await request(`${baseUrl}/messages`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -71,7 +77,7 @@ async function callAI(messages, apiConfig, sysPrompt) {
   };
 
   if (provider === "gemini") {
-    const res = await fetch(`${baseUrl}/models/${model}:generateContent?key=${apiKey}`, {
+    const res = await request(`${baseUrl}/models/${model}:generateContent?key=${apiKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(buildGeminiBody()),
@@ -84,7 +90,7 @@ async function callAI(messages, apiConfig, sysPrompt) {
 
   if (provider === "vertex") {
     const endpoint = `${cleanBaseUrl}/publishers/google/models/${encodeURIComponent(model)}:streamGenerateContent?key=${encodeURIComponent(apiKey)}`;
-    const res = await fetch(endpoint, {
+    const res = await request(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -108,25 +114,24 @@ async function callAI(messages, apiConfig, sysPrompt) {
       "";
 
     let out = "";
-    const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-    for (const line of lines) {
-      const payload = line.startsWith("data:") ? line.slice(5).trim() : line;
-      if (!payload || payload === "[DONE]") continue;
-      try {
-        const chunk = JSON.parse(payload);
-        out += tryExtractText(chunk);
-      } catch (_) {}
-    }
-
-    if (!out.trim()) {
-      try {
-        const parsed = JSON.parse(text);
-        if (Array.isArray(parsed)) {
-          out = parsed.map(tryExtractText).join("");
-        } else {
-          out = tryExtractText(parsed);
-        }
-      } catch (_) {}
+    // Vertex streamGenerateContent commonly returns one complete JSON array.
+    // Parse that first; line-by-line parsing of pretty-printed arrays can
+    // accidentally accept only one chunk and leave the reply truncated.
+    try {
+      const parsed = JSON.parse(text);
+      out = Array.isArray(parsed)
+        ? parsed.map(tryExtractText).join("")
+        : tryExtractText(parsed);
+    } catch (_) {
+      const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      for (const line of lines) {
+        const payload = line.startsWith("data:") ? line.slice(5).trim() : line;
+        if (!payload || payload === "[DONE]") continue;
+        try {
+          const chunk = JSON.parse(payload);
+          out += tryExtractText(chunk);
+        } catch (_) {}
+      }
     }
 
     const finalText = out.trim();
@@ -160,7 +165,7 @@ async function callAI(messages, apiConfig, sysPrompt) {
     ? { max_completion_tokens: maxTokens }
     : { max_tokens: maxTokens };
 
-  const res = await fetch(`${baseUrl}/chat/completions`, {
+  const res = await request(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers,
     body: JSON.stringify({ model, messages: apiMsgs, ...completionLimit, ...(temperature == null ? {} : { temperature }) }),
@@ -186,8 +191,12 @@ async function callAI(messages, apiConfig, sysPrompt) {
   return data?.choices?.[0]?.message?.content || "";
 }
 
-async function fetchAvailableModels(apiConfig) {
+async function fetchAvailableModels(apiConfig, options = {}) {
   const { provider, baseUrl, apiKey } = apiConfig;
+  const request = (url, init) => fetchWithTimeout(url, init, {
+    signal: options.signal,
+    timeoutMs: options.timeoutMs || NETWORK_TIMEOUTS.METADATA,
+  });
   const cleanBaseUrl = (baseUrl || "https://aiplatform.googleapis.com/v1").replace(/\/+$/, "");
   const isOllamaLocal = provider === "ollama" && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(baseUrl || "");
   const providerNeedsApiKey = !(provider === "ollama" && isOllamaLocal);
@@ -201,7 +210,7 @@ async function fetchAvailableModels(apiConfig) {
     ];
     for (const url of candidates) {
       try {
-        const res = await fetch(url, {
+        const res = await request(url, {
           headers: { Authorization: `Bearer ${apiKey}` },
         });
         const data = await res.json();
@@ -214,14 +223,14 @@ async function fetchAvailableModels(apiConfig) {
   }
 
   if (provider === "gemini") {
-    const res = await fetch(`${baseUrl}/models?key=${apiKey}`);
+    const res = await request(`${baseUrl}/models?key=${apiKey}`);
     const data = await res.json();
     if (!res.ok) throw new Error(data?.error?.message || `HTTP ${res.status}`);
     return (data.models || []).map((m) => (m.name || "").replace(/^models\//, "")).filter(Boolean);
   }
 
   if (provider === "vertex") {
-    const res = await fetch(`${cleanBaseUrl}/publishers/google/models?key=${encodeURIComponent(apiKey)}`);
+    const res = await request(`${cleanBaseUrl}/publishers/google/models?key=${encodeURIComponent(apiKey)}`);
     const data = await res.json();
     if (!res.ok) {
       const errMsg = data?.error?.message || `HTTP ${res.status}`;
@@ -234,7 +243,7 @@ async function fetchAvailableModels(apiConfig) {
   }
 
   if (provider === "claude") {
-    const res = await fetch(`${baseUrl}/models`, {
+    const res = await request(`${baseUrl}/models`, {
       headers: {
         "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
@@ -250,7 +259,7 @@ async function fetchAvailableModels(apiConfig) {
     if (providerNeedsApiKey) headers.Authorization = `Bearer ${apiKey}`;
     const fallbackModels = ["kayra", "erato", "clio"];
     try {
-      const res = await fetch(`${baseUrl}/models`, { headers });
+      const res = await request(`${baseUrl}/models`, { headers });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error?.message || `HTTP ${res.status}`);
       const list = (data.data || []).map((m) => m.id).filter(Boolean);
@@ -263,7 +272,7 @@ async function fetchAvailableModels(apiConfig) {
   const headers = {};
   if (providerNeedsApiKey) headers.Authorization = `Bearer ${apiKey}`;
   if (provider === "openrouter") headers["HTTP-Referer"] = "https://maliphone.app";
-  const res = await fetch(`${baseUrl}/models`, { headers });
+  const res = await request(`${baseUrl}/models`, { headers });
   const data = await res.json();
   if (!res.ok) throw new Error(data?.error?.message || `HTTP ${res.status}`);
   return (data.data || []).map((m) => m.id).filter(Boolean);

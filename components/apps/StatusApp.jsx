@@ -1,12 +1,33 @@
-import React from "react";
+import React, { useRef, useState } from "react";
+import { useGacha } from "../../contexts/GachaContext";
+import { SpecialMemoryModal } from "../gacha/SpecialMemoryCard";
+
+const SPECIAL_MEMORY_FRAME = { SSR: "#c99a4b", SR: "#8f6cc9", R: "#6f9cc9" };
 
 export default function StatusApp({
   closeApp, t, tr, characters, chatHistory, memories, posts, sanitizeUserImageUrl,
   statusMemoryPages = {}, setStatusMemoryPages,
   statusExpandedCharId, setStatusExpandedCharId, statusMemoryExpandedCharId, setStatusMemoryExpandedCharId,
   refreshCharacterStatus, statusRefreshingIds, activeMemoryId, setActiveMemoryId, setMemoryEditor,
-  togglePinMemory, deleteMemory, generateMemory, genLoading, applyUserPlaceholder,
+  togglePinMemory, deleteMemory, generateMemory, genLoading, applyUserPlaceholder, playerProfile,
 }) {
+  const { specialMemories } = useGacha();
+  const [viewingSpecialMemory, setViewingSpecialMemory] = useState(null);
+  // 桌面滑鼠不會拖動 overflow 容器、滾輪只捲垂直，所以縮圖列自己接手；觸控維持原生捲動
+  const specialDragRef = useRef(null);
+  const specialDragHandlers = {
+    onWheel: (e) => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) e.currentTarget.scrollLeft += e.deltaY; },
+    onPointerDown: (e) => { if (e.pointerType !== "mouse") return; specialDragRef.current = { x: e.clientX, left: e.currentTarget.scrollLeft, moved: false }; },
+    onPointerMove: (e) => {
+      const drag = specialDragRef.current;
+      if (!drag || e.pointerType !== "mouse") return;
+      const dx = e.clientX - drag.x;
+      if (Math.abs(dx) > 4) drag.moved = true;
+      e.currentTarget.scrollLeft = drag.left - dx;
+    },
+    onPointerUp: () => { setTimeout(() => { specialDragRef.current = null; }, 0); },
+    onPointerLeave: () => { specialDragRef.current = null; },
+  };
   return (
       <div className="mp-page">
         <div className="mp-hdr"><div className="mp-back" onClick={closeApp}>←</div><div className="mp-htitle">{t("status")}</div></div>
@@ -29,6 +50,7 @@ export default function StatusApp({
             const days = msgs.length > 0 ? Math.max(1, Math.ceil((Date.now() - msgs[0].time) / 86400000)) : 0;
             const exp = statusExpandedCharId === c.id;
             const memoryExpanded = statusMemoryExpandedCharId === c.id;
+            const specials = specialMemories.filter((m) => String(m.characterId) === String(c.id));
             return (
               <div key={c.id} className="mp-sc">
                 <div className="mp-sc-ban" />
@@ -46,6 +68,7 @@ export default function StatusApp({
                     <div className="mp-stat"><div className="mp-stat-v">{conversationCount}</div><div className="mp-stat-lb">{tr("訊息", "Messages", "メッセージ", "메시지")}</div></div>
                     <div className="mp-stat"><div className="mp-stat-v">{days}</div><div className="mp-stat-lb">{tr("互動天數", "Days", "日数", "일수")}</div></div>
                     <div className="mp-stat"><div className="mp-stat-v">{mems.length}</div><div className="mp-stat-lb">{tr("記憶", "Memories", "記憶", "기억")}</div></div>
+                    <div className="mp-stat"><div className="mp-stat-v">{specials.length}</div><div className="mp-stat-lb">{tr("特別記憶", "Special", "特別な記憶", "특별한 기억")}</div></div>
                     <div className="mp-stat"><div className="mp-stat-v">{posts.filter(p=>p.charId===c.id).length}</div><div className="mp-stat-lb">{tr("貼文", "Posts", "投稿", "게시물")}</div></div>
                   </div>
                   <div className="mp-sec">
@@ -103,6 +126,21 @@ export default function StatusApp({
                       </>
                     )}
                   </div>
+                  {specials.length > 0 && <div className="mp-sec">
+                    <div className="mp-sec-t">✦ {tr("特別記憶", "Special memories", "特別な記憶", "특별한 기억")}</div>
+                    <div style={{display:"flex",gap:8,overflowX:"auto",padding:"6px 2px 4px",scrollbarWidth:"none",cursor:"grab",touchAction:"pan-x"}} {...specialDragHandlers}>
+                      {specials.map((m) => (
+                        <button key={m.id} type="button"
+                          style={{flex:"0 0 auto",width:76,position:"relative",border:`1.5px solid ${SPECIAL_MEMORY_FRAME[m.itemRarity] || SPECIAL_MEMORY_FRAME.R}`,borderRadius:12,background:"var(--mp-surface)",padding:"9px 5px 7px",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}
+                          onClick={() => { if (specialDragRef.current?.moved) return; setViewingSpecialMemory({ memory: m, character: c }); }}>
+                          {m.pinned && <span style={{position:"absolute",top:-7,right:-6,width:17,height:17,borderRadius:"50%",display:"grid",placeItems:"center",fontSize:10,lineHeight:1,color:"#fff",background:"radial-gradient(circle at 35% 30%,#eed49a,#c99a4b)",border:"1px solid #b8894040",boxShadow:"0 2px 5px rgba(160,115,40,.45)"}}>✦</span>}
+                          <span style={{fontSize:22,lineHeight:1}}>{m.itemIcon || "🌸"}</span>
+                          <span style={{fontSize:9.5,fontWeight:700,color:"var(--mp-txt)",width:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textAlign:"center"}}>{m.title}</span>
+                          <span style={{fontSize:8.5,fontWeight:800,color:SPECIAL_MEMORY_FRAME[m.itemRarity] || SPECIAL_MEMORY_FRAME.R}}>{m.itemRarity}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>}
                   <div className="mp-sec">
                     <div className="mp-sec-t" style={{cursor:"pointer"}} onClick={() => setStatusExpandedCharId(exp ? null : c.id)}>
                       {tr("角色設定", "Character settings", "キャラ設定", "캐릭터 설정")} {exp ? tr("收起", "Collapse", "折りたたむ", "접기") : tr("展開", "Expand", "展開", "펼치기")}
@@ -124,6 +162,13 @@ export default function StatusApp({
             );
           })}
         </div>
+        {viewingSpecialMemory && <SpecialMemoryModal
+          memory={viewingSpecialMemory.memory}
+          characterAvatar={sanitizeUserImageUrl(viewingSpecialMemory.character?.avatar)}
+          playerAvatar={sanitizeUserImageUrl(playerProfile?.avatar)}
+          playerName={String(playerProfile?.name || "").trim() || "你"}
+          onClose={() => setViewingSpecialMemory(null)}
+        />}
       </div>
   );
 }

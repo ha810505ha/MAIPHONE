@@ -1,9 +1,12 @@
 import React, { useState } from "react";
 import { gid } from "../../utils/coreUtils";
+import { useGacha } from "../../contexts/GachaContext";
 
 export default function WalletLedgerView({ wallet, setWallet, characters, closeApp, openSettings, tr, formatMoney, displayWalletText, sanitizeUserImageUrl }) {
+  const { crystals, crystalLedger, crystalLedgerReady } = useGacha();
   const [tab, setTab] = useState("ledger");
   const [filter, setFilter] = useState(null);
+  const [crystalFilter, setCrystalFilter] = useState("all");
   const [monthOffset, setMonthOffset] = useState(0);
   const [visible, setVisible] = useState(80);
   const txCharId = (tx) => {
@@ -12,6 +15,8 @@ export default function WalletLedgerView({ wallet, setWallet, characters, closeA
     return [...characters].sort((a,b)=>(b.name||"").length-(a.name||"").length).find((c) => c.name && note.includes(c.name))?.id || null;
   };
   const txs = [...(wallet?.transactions || [])].filter((t) => !filter || txCharId(t) === filter).sort((a,b)=>(b.time||0)-(a.time||0));
+  const crystalTransactions = [...(crystalLedger || [])].filter((entry) => crystalFilter === "all" || entry.type === crystalFilter);
+  const crystalSourceIcon = { system: "💎", yunyin: "🏔️", couple: "💞", gacha: "🌸", furniture: "🪑", mailbox: "✉️", login: "🎁", other: "💎" };
   const dayKey = (time) => { const d=new Date(time); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
   const groups = txs.slice(0, visible).reduce((out,t) => { const key=dayKey(t.time); let g=out[out.length-1]; if(!g||g.key!==key){const d=new Date(t.time),now=new Date(); const label=key===dayKey(Date.now())?tr("今天","Today","今日","오늘"):key===dayKey(Date.now()-864e5)?tr("昨天","Yesterday","昨日","어제"):`${d.getMonth()+1}/${d.getDate()}`; g={key,label,items:[]};out.push(g);} g.items.push(t);return out; },[]);
   const now=new Date(), mDate=new Date(now.getFullYear(),now.getMonth()+monthOffset,1);
@@ -34,8 +39,36 @@ export default function WalletLedgerView({ wallet, setWallet, characters, closeA
     {memorials.length>0&&<div className="mp-wmem-shelf"><span>{tr("本月珍藏","Saved this month","今月の保存","이달의 소장")}</span>{memorials.map(t=><button key={t.id} className="mp-wmem-chip" onClick={()=>toggleMemorial(t)}>✦ {t.memorial.label}</button>)}</div>}
   </div></div>;
   return <div className="mp-page"><div className="mp-hdr"><div className="mp-back" onClick={closeApp}>←</div><div><div className="mp-htitle">{tr("錢包","Wallet","ウォレット","지갑")}</div><div style={{font:"10px var(--mp-hand,var(--mp-font))",color:"var(--mp-txt-l)"}}>{tr("我們的小帳本","Our little ledger","ふたりの家計簿","우리의 가계부")}</div></div><button className="mp-ibtn" style={{marginLeft:"auto"}} onClick={openSettings}>⚙</button></div>
-  <div className="mp-cm"><div className="mp-bank"><div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><span className="mp-bank-label">{tr("我的小金庫","My little vault","わたしの金庫","나의 금고")}</span><button className="mp-bank-edit" onClick={setBalance}>✎ {tr("設定餘額","Set balance","残高設定","잔액 설정")}</button></div><div className="mp-bank-amt">${formatMoney(wallet?.balance||0)}</div><div className="mp-bank-sum" onClick={()=>setTab("month")}>{mDate.getMonth()+1}{tr("月","","月","월")}・{tr("送出","Sent","送った","보냄")} ${formatMoney(expense)} ↔ {tr("收到","Received","もらった","받음")} ${formatMoney(income)}</div></div>
-  <div className="mp-wtabs" style={{margin:"11px 0 8px"}}><button className={`mp-wtab ${tab==="ledger"?"active":""}`} onClick={()=>setTab("ledger")}>{tr("流水帳","Ledger","履歴","내역")}</button><button className={`mp-wtab ${tab==="month"?"active":""}`} onClick={()=>setTab("month")}>{tr("月結","Monthly","月まとめ","월결산")}</button></div>
-  <div className="mp-wfilter" style={{marginBottom:10}}><button className={`mp-wchip ${!filter?"active":""}`} onClick={()=>setFilter(null)}>{tr("全部","All","すべて","전체")}</button>{characters.map(c=><button key={c.id} className={`mp-wchip ${filter===c.id?"active":""}`} onClick={()=>{setFilter(c.id);setVisible(80);}}>{c.name}</button>)}</div>
-  {tab==="ledger"?(txs.length? <>{groups.map(g=><div key={g.key}><div className="mp-wday">{g.label}</div>{g.items.map(t=>{const c=characters.find(x=>x.id===t.charId);return <div key={t.id} className={`mp-wrow ${t.memorial?"memorial":""}`}>{t.memorial&&<span className="mp-wmem-tag">✦ {t.memorial.label}</span>}<div className="mp-wrow-av">{c&&sanitizeUserImageUrl(c.avatar)?<img src={sanitizeUserImageUrl(c.avatar)} alt=""/>:"💼"}</div><div style={{flex:1,minWidth:0}}><div className="mp-wrow-note">{displayWalletText(t.note)}</div><div className="mp-wrow-meta">{new Date(t.time).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"})}{t.source==="chat"?` · ${tr("來自聊天室","from chat","チャットから","채팅에서")}`:""}</div></div><span className={`mp-wamt ${t.type==="expense"?"out":"in"}`}>{t.type==="expense"?"-":"+"}{formatMoney(t.amount)}</span><button className="mp-wmem-btn" onClick={()=>toggleMemorial(t)}>{t.memorial?"🔖":"♡"}</button></div>})}</div>)}{visible<txs.length&&<button className="mp-save" onClick={()=>setVisible(v=>v+80)}>{tr("載入更多","Load more","もっと見る","더 보기")}</button>}</>:<div className="mp-empty"><div className="mp-empty-i">🧾</div><div className="mp-empty-t">{tr("還沒有往來紀錄","No transactions yet","まだ記録がありません","아직 기록이 없어요")}</div></div>):<div style={{display:"grid",gap:11}}><div className="mp-wmonth-nav"><button onClick={()=>setMonthOffset(v=>v-1)}>‹</button><span>{mDate.getFullYear()} · {mDate.getMonth()+1}{tr("月","","月","월")}</span><button disabled={monthOffset>=0} onClick={()=>setMonthOffset(v=>v+1)}>›</button></div><div className="mp-wcard"><div className="mp-wcomp-row"><span>{tr("送出","Sent","送った","보냄")}</span><b>${formatMoney(expense)}</b></div><div className="mp-wbar"><i style={{width:`${expense+income?expense/(expense+income)*100:0}%`}}/></div><div className="mp-wcomp-row"><span>{tr("收到","Received","もらった","받음")}</span><b>${formatMoney(income)}</b></div><div className="mp-wbar gold"><i style={{width:`${expense+income?income/(expense+income)*100:0}%`}}/></div></div><div className="mp-wcard"><div className="mp-wweeks">{weeks.map((w,i)=><div className="mp-wweek" key={i}><i style={{height:`${w/maxWeek*100}%`}}/><small>W{i+1}</small></div>)}</div></div><div className="mp-wnote">{monthTx.length?tr(`本月共 ${monthTx.length} 筆往來${biggest?`，最大一筆 $${formatMoney(biggest.amount)}`:""}。`,`There were ${monthTx.length} exchanges this month.`,`今月は ${monthTx.length} 件のやり取り。`,`이번 달 ${monthTx.length}건의 거래가 있었어요.`):tr("這個月還沒有金錢往來。","No transactions this month.","今月はまだやり取りがありません。","이번 달은 아직 거래가 없어요.")}</div></div>}</div></div>;
+  <div className="mp-cm">
+    <div className="mp-bank">
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <span className="mp-bank-label">{tr("我的小金庫","My little vault","わたしの金庫","나의 금고")}</span>
+        <button className="mp-bank-edit" onClick={setBalance}>✎ {tr("設定餘額","Set balance","残高設定","잔액 설정")}</button>
+      </div>
+      <div className="mp-bank-amt">${formatMoney(wallet?.balance||0)}</div>
+      <div className="mp-bank-sum" onClick={()=>setTab("month")}>{mDate.getMonth()+1}{tr("月","","月","월")}・{tr("送出","Sent","送った","보냄")} ${formatMoney(expense)} ↔ {tr("收到","Received","もらった","받음")} ${formatMoney(income)}</div>
+    </div>
+    <button type="button" className={`mp-crystal-account ${tab==="crystals"?"active":""}`} onClick={()=>setTab("crystals")}>
+      <span className="mp-crystal-icon">💎</span>
+      <span className="mp-crystal-copy"><small>{tr("靈魂結晶","Soul crystals","ソウルクリスタル","영혼 결정")}</small><b>{Number(crystals || 0).toLocaleString()}</b></span>
+      <span className="mp-crystal-link">{tr("查看紀錄","View history","履歴を見る","기록 보기")} ›</span>
+    </button>
+    <div className="mp-wtabs" style={{margin:"11px 0 8px"}}>
+      <button className={`mp-wtab ${tab==="ledger"?"active":""}`} onClick={()=>setTab("ledger")}>{tr("流水帳","Ledger","履歴","내역")}</button>
+      <button className={`mp-wtab ${tab==="month"?"active":""}`} onClick={()=>setTab("month")}>{tr("月結","Monthly","月まとめ","월결산")}</button>
+      <button className={`mp-wtab ${tab==="crystals"?"active":""}`} onClick={()=>setTab("crystals")}>{tr("結晶","Crystals","結晶","결정")}</button>
+    </div>
+    {tab === "ledger" && <div className="mp-wfilter" style={{marginBottom:10}}><button className={`mp-wchip ${!filter?"active":""}`} onClick={()=>setFilter(null)}>{tr("全部","All","すべて","전체")}</button>{characters.map(c=><button key={c.id} className={`mp-wchip ${filter===c.id?"active":""}`} onClick={()=>{setFilter(c.id);setVisible(80);}}>{c.name}</button>)}</div>}
+    {tab === "crystals" && <div className="mp-wfilter mp-crystal-filter" style={{marginBottom:10}}>
+      {[["all",tr("全部","All","すべて","전체")],["income",tr("獲得","Received","獲得","획득")],["expense",tr("消耗","Spent","使用","사용")]].map(([key,label])=><button key={key} className={`mp-wchip ${crystalFilter===key?"active":""}`} onClick={()=>setCrystalFilter(key)}>{label}</button>)}
+      <span>{tr("最多保留 30 筆","Latest 30","最新30件","최근 30건")}</span>
+    </div>}
+    {tab === "ledger" ? (txs.length ? <>{groups.map(g=><div key={g.key}><div className="mp-wday">{g.label}</div>{g.items.map(t=>{const c=characters.find(x=>x.id===t.charId);return <div key={t.id} className={`mp-wrow ${t.memorial?"memorial":""}`}>{t.memorial&&<span className="mp-wmem-tag">✦ {t.memorial.label}</span>}<div className="mp-wrow-av">{c&&sanitizeUserImageUrl(c.avatar)?<img src={sanitizeUserImageUrl(c.avatar)} alt=""/>:"💼"}</div><div style={{flex:1,minWidth:0}}><div className="mp-wrow-note">{displayWalletText(t.note)}</div><div className="mp-wrow-meta">{new Date(t.time).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"})}{t.source==="chat"?` · ${tr("來自聊天室","from chat","チャットから","채팅에서")}`:""}</div></div><span className={`mp-wamt ${t.type==="expense"?"out":"in"}`}>{t.type==="expense"?"-":"+"}{formatMoney(t.amount)}</span><button className="mp-wmem-btn" onClick={()=>toggleMemorial(t)}>{t.memorial?"🔖":"♡"}</button></div>})}</div>)}{visible<txs.length&&<button className="mp-save" onClick={()=>setVisible(v=>v+80)}>{tr("載入更多","Load more","もっと見る","더 보기")}</button>}</> : <div className="mp-empty"><div className="mp-empty-i">🧾</div><div className="mp-empty-t">{tr("還沒有往來紀錄","No transactions yet","まだ記録がありません","아직 기록이 없어요")}</div></div>) : (
+      crystalTransactions.length ? <div className="mp-crystal-ledger">{crystalTransactions.map((entry)=><div key={entry.id} className={`mp-wrow mp-crystal-row ${entry.type}`}>
+        <div className="mp-wrow-av">{crystalSourceIcon[entry.source] || crystalSourceIcon.other}</div>
+        <div style={{flex:1,minWidth:0}}><div className="mp-wrow-note">{entry.note}</div><div className="mp-wrow-meta">{new Date(entry.time).toLocaleString("zh-TW",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})} · {tr("餘額","Balance","残高","잔액")} {Number(entry.balanceAfter || 0).toLocaleString()}</div></div>
+        <span className={`mp-wamt ${entry.type==="expense"?"out":"in"}`}>{entry.type==="initial"?tr("起始","Start","開始","시작"):`${entry.type==="expense"?"-":"+"}${Number(entry.amount || 0).toLocaleString()}`}</span>
+      </div>)}</div> : <div className="mp-empty"><div className="mp-empty-i">💎</div><div className="mp-empty-t">{crystalLedgerReady ? tr("這個分類還沒有結晶紀錄","No crystal history in this category","この分類にはまだ記録がありません","이 분류에는 기록이 없어요") : tr("正在建立結晶帳本…","Preparing crystal history…","結晶履歴を準備中…","결정 기록 준비 중…")}</div></div>
+    )}
+  </div></div>;
 }

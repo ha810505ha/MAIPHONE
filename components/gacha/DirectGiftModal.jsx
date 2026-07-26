@@ -17,7 +17,7 @@ export default function DirectGiftModal({ character, onClose, onStarted }) {
   const selected = gifts.find((item) => item.uid === selectedUid);
   const confirmGift = () => {
     if (!selected || !character) return;
-    const episode = startEpisode({ itemUid: selected.uid, characterId: character.id, characterName: character.name, characterAvatar: character.avatar, mode });
+    const episode = startEpisode({ itemUid: selected.uid, characterId: character.id, characterName: character.name, mode });
     if (episode) onStarted?.(episode);
   };
   return <div className="mp-overlay" onClick={onClose}>

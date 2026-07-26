@@ -1,3 +1,5 @@
+import { messagePlainText } from "../../utils/pseudoImage";
+
 export function createSocialFeedHelpers({
   chatHistory,
   getModeLabel,
@@ -23,7 +25,7 @@ export function createSocialFeedHelpers({
       .map((m) => {
         const speaker = m.role === "user" ? "{{user}}" : char.name;
         const mode = getModeLabel(getMessageMode(m));
-        const body = sanitizeText(m.content || (m.image ? "[圖片]" : ""), 180).replace(/\s+/g, " ").trim();
+        const body = sanitizeText(messagePlainText(m, "[圖片]"), 180).replace(/\s+/g, " ").trim();
         return body ? `[${mode}] ${speaker}：${body}` : "";
       })
       .filter(Boolean);
@@ -78,7 +80,7 @@ ${recentPosts || "（無）"}`;
     : (post?.authorName || post?.charName || tr("未知", "Unknown", "不明", "알 수 없음"));
   const getPostAuthorAvatar = (post) => getPostAuthorType(post) === "player"
     ? getPlayerAvatar()
-    : (post?.authorAvatar || post?.charAvatar || null);
+    : (sanitizeUserImageUrl(characters.find((character) => String(character.id) === String(post?.charId))?.avatar) || post?.authorAvatar || post?.charAvatar || null);
   const getConnectionErrorPrefix = () => tr("連線錯誤：", "Connection error: ", "接続エラー: ", "연결 오류: ");
   const isConnectionErrorNotice = (content) => {
     const text = String(content || "");
@@ -225,7 +227,6 @@ ${targetComment ? `你上一則留言：「${targetComment.content}」\n` : ""}{
         return {
         charId: x.char.id,
         charName: x.char.name,
-        charAvatar: x.char.avatar,
         time: nowMs + delay,
         };
       });

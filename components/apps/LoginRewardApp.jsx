@@ -28,7 +28,7 @@ export default function LoginRewardApp({ onBack }) {
     const reward = REWARDS[nextDay - 1];
     const next = { ...progress, day: nextDay >= 7 ? 0 : nextDay, cycle: nextDay >= 7 ? progress.cycle + 1 : progress.cycle, lastClaimDate: today, claimedDates: [...(progress.claimedDates || []).slice(-20), today] };
     setProgress(next);
-    changeCrystals(reward);
+    changeCrystals(reward, { source: "login", note: `登入獎勵・第 ${nextDay} 天` });
     await saveFeatureEntity("ent_loginReward", next);
     setNotice(`已領取第 ${nextDay} 天獎勵：💎 ${reward}`);
   };

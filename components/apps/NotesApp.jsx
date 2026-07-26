@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import DOMPurify from "dompurify";
 import {
   loadFeatureEntity,
   saveFeatureEntity,
@@ -41,9 +42,19 @@ const textOf = (html = "") =>
     .replace(/&nbsp;/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+const SANITIZE_CONFIG = {
+  USE_PROFILES: { html: true },
+  // 禁止事件屬性 / javascript: 等危險載體,保留 rich-text 需要的樣式
+  FORBID_ATTR: ["srcset"],
+  ALLOW_DATA_ATTR: false,
+};
+const sanitizeHtml = (value = "") =>
+  typeof DOMPurify.sanitize === "function"
+    ? DOMPurify.sanitize(String(value), SANITIZE_CONFIG)
+    : "";
 const htmlOf = (value = "") =>
   /<\/?[a-z][\s\S]*>/i.test(value)
-    ? value
+    ? sanitizeHtml(value)
     : String(value)
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
