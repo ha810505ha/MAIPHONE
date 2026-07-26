@@ -3,8 +3,13 @@
 import { astar, nearestWalkable } from "../engine/pathfind";
 import { randomAppearance, sanitizeAppearance } from "../engine/sprite";
 import { roll, rngOf } from "../engine/rng";
-import { NPC_NAMES, pickLine } from "../data/lines";
+import { NPC_NAMES, pickLine, COMPANION_LINES } from "../data/lines";
+import { activePackLines } from "./ai";
 import { TILE } from "../engine/tilemap";
+import { actorReservedSlot, beginActorAction, stopActorAction } from "../engine/actorActions";
+import { findInteractionPlan } from "../world/worldInteractions";
+import { addHomeAffinity } from "../home/homeRelationships";
+import { createHomeRelationship } from "../home/homeState";
 
 const NPC_COUNT = 6;
 const WANDER_RADIUS = 6;
@@ -54,6 +59,39 @@ export function spawnNpcs(save, map, characters = []) {
     });
     return actors;
   }
+  // 玩家小屋：入住角色在家活動（自動用家具坐/睡），每日首次進家門結算住客好感 +1
+  if (map.instanceId === "player_home" && map.home) {
+    const today = new Date().toISOString().slice(0, 10);
+    const residents = (map.home.residents || []).slice(0, 4);
+    if (residents.length && map.home.lastResidentAffinityDay !== today) {
+      map.home.lastResidentAffinityDay = today;
+      for (const charId of residents) {
+        const relation = save.home.relationships[charId] || (save.home.relationships[charId] = createHomeRelationship(charId));
+        addHomeAffinity(relation, 1, { dayKey: today });
+      }
+    }
+    return residents.map((charId, index) => {
+      const character = characters.find((item) => item.id === charId);
+      const boundSeed = Object.entries(save.settings?.bindings || {}).find(([, id]) => id === charId)?.[0];
+      const def = (save.npcs || []).find((item) => item.seed === boundSeed);
+      const rand = rngOf(`resident:${charId}:${Date.now()}`);
+      const start = { x: map.spawn[0] - 2 + index * 3, y: map.spawn[1] - 2 };
+      const spot = nearestWalkable(start.x, start.y, map.w, map.h, (x, y) => npcBlocked(map, x, y)) || { x: map.spawn[0], y: map.spawn[1] };
+      // 好感 close(60) 以上才會自己開口說話；低於此只有玩家點擊才回應
+      const affinity = save.home.relationships?.[charId]?.affinity || 0;
+      return {
+        seed: `resident-${charId}`, charId, name: character?.name || def?.name || "住客",
+        appearance: def?.appearance ? sanitizeAppearance(def.appearance) : randomAppearance(boundSeed || `resident-${charId}`),
+        x: spot.x, y: spot.y, px: spot.x * TILE, py: spot.y * TILE,
+        path: [], stepT: 0, facing: "down", moving: false,
+        waitUntil: performance.now() + 1500 + rand() * 3500,
+        bubble: null, rand,
+        chatty: affinity >= 60,                       // 主動說話開關
+        homeLines: activePackLines(save, charId)?.home || null, // 角色個人句庫的 home 池（沒有就用通用）
+        nextIdleTalkAt: performance.now() + 20000 + rand() * 40000,
+      };
+    });
+  }
   if (map.id !== "gate") return [];
   return ensureNpcSeeds(save).map((def, i) => {
     const rand = rngOf(`${def.seed}:spawn:${Date.now()}`);
@@ -90,13 +128,57 @@ function pickWanderTarget(npc, map) {
 }
 
 // 每幀更新全部 NPC（與玩家一樣：一幀可跨多格，分頁節流不會卡在半路）
-export function updateNpcs(npcs, map, dt, now) {
+export function updateNpcs(npcs, map, dt, now, options = {}) {
   for (const npc of npcs) {
     if (npc.bubble && now > npc.bubble.until) npc.bubble = null;
+    // 親近以上的住客會自己找話說（20~60 秒挑一次，不打斷正在進行的動作）
+    if (npc.chatty && !npc.bubble && !npc.action && now >= npc.nextIdleTalkAt) {
+      const pool = npc.homeLines?.length ? npc.homeLines : COMPANION_LINES.home;
+      const text = pool[Math.floor(npc.rand() * pool.length)];
+      npc.bubble = { text, until: now + Math.min(6000, 3000 + text.length * 55) };
+      npc.nextIdleTalkAt = now + 25000 + npc.rand() * 45000;
+    }
+    if (npc.action) {
+      npc.moving = false;
+      npc.px = npc.x * TILE; npc.py = npc.y * TILE;
+      if (now < npc.action.until) continue;
+      stopActorAction(npc);
+      npc.waitUntil = now + 2500 + npc.rand() * 4500;
+    }
     if (!npc.path.length) {
       npc.moving = false;
       npc.px = npc.x * TILE; npc.py = npc.y * TILE;
+      if (npc.interactionPlan) {
+        const plan = npc.interactionPlan;
+        npc.interactionPlan = null;
+        const duration = plan.minDurationMs + npc.rand() * Math.max(0, plan.maxDurationMs - plan.minDurationMs);
+        beginActorAction(npc, plan, now, duration);
+        continue;
+      }
       if (now >= npc.waitUntil) {
+        // Active and pending seats are reserved so autonomous NPC actions do
+        // not stack multiple characters on the same furniture slot.
+        if (!npc.helper && npc.rand() < 0.28) {
+          const reserved = new Set(options.reservedSlots || []);
+          for (const other of npcs) {
+            if (other === npc) continue;
+            const slotKey = actorReservedSlot(other);
+            if (slotKey) reserved.add(slotKey);
+          }
+          const plan = findInteractionPlan(npc, map, null, reserved, npc.rand);
+          if (plan) {
+            npc.path = plan.path;
+            npc.stepT = 0;
+            npc.interactionPlan = plan;
+            npc.waitUntil = now + 8000;
+            if (!npc.path.length) {
+              npc.interactionPlan = null;
+              const duration = plan.minDurationMs + npc.rand() * Math.max(0, plan.maxDurationMs - plan.minDurationMs);
+              beginActorAction(npc, plan, now, duration);
+            }
+            continue;
+          }
+        }
         const path = pickWanderTarget(npc, map);
         if (path) { npc.path = path; npc.stepT = 0; }
         npc.waitUntil = now + 3000 + npc.rand() * 5000;
@@ -132,9 +214,12 @@ export function talkToNpc(npc, now, chatLines = null) {
   const duration = Math.min(6500, 2800 + Math.max(0, String(text || "").length - 24) * 55);
   npc.bubble = { text, until: now + duration };
   npc.path = []; // 停下來面對玩家
+  npc.interactionPlan = null;
+  stopActorAction(npc);
   return text;
 }
 
 // 行走中也點得到：邏輯格或視覺位置任一命中都算
 export const npcAtTile = (npcs, tx, ty) => npcs.find((n) => n.x === tx && n.y === ty)
+  || npcs.find((n) => n.x + (n.action?.renderOffset?.x || 0) === tx && n.y + (n.action?.renderOffset?.y || 0) === ty)
   || npcs.find((n) => Math.round(n.px / TILE) === tx && Math.round(n.py / TILE) === ty);

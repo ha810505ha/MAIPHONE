@@ -47,15 +47,17 @@ export function InnerThoughtPanel({ thought, expanded, loading, unseen, onToggle
   );
 }
 
-export function SceneBar({ title, scene, editor, onStartEditing, onChange, onSave, tr }) {
+export function SceneBar({ title, scene, editor, onStartEditing, onChange, onSave, action, tr }) {
   const label = [scene.location, scene.note].filter(Boolean).join(" · ");
   return (
-    <div style={{ margin: "0 14px 6px", padding: "0 2px" }}>
+    <div style={{ margin: "6px 14px", padding: "0 2px" }}>
       {!editor ? (
-        <div style={{ fontSize: 11, color: "var(--mp-txt-l)", cursor: "pointer", lineHeight: 1.35, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} onClick={onStartEditing}>
-          <span style={{ flexShrink: 0 }}>⌁</span>
-          <span style={{ fontWeight: 800, color: "var(--mp-txt)", flexShrink: 0 }}>{title}：</span>
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{label || tr("點擊設定", "Tap to set", "タップして設定", "탭하여 설정")}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ flex: 1, minWidth: 0, fontSize: 11, color: "var(--mp-txt-l)", cursor: "pointer", lineHeight: 1.35, display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} onClick={onStartEditing}>
+            <span style={{ fontWeight: 800, color: "var(--mp-txt)", flexShrink: 0 }}>{title}：</span>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{label || tr("點擊設定", "Tap to set", "タップして設定", "탭하여 설정")}</span>
+          </div>
+          {action}
         </div>
       ) : (
         <div style={{ display: "grid", gap: 8 }}>

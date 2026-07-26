@@ -7,7 +7,17 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "check": "npm run build"
+    "check": "npm run test:regression && npm run build && npm run check:bundle",
+    "check:bundle": "node tools/check-build-performance.mjs",
+    "test:home-gesture": "node tools/test-home-gesture-safety.mjs",
+    "test:import-transaction": "node tools/test-feature-import-transaction.mjs",
+    "test:message-state": "node tools/test-message-state-safety.mjs",
+    "test:character-status": "node tools/test-character-status-safety.mjs",
+    "test:crystal-ledger": "node tools/test-crystal-ledger-safety.mjs",
+    "test:settings-mailbox-badge": "node tools/test-settings-mailbox-badge-safety.mjs",
+    "test:network": "node tools/test-network-request-safety.mjs",
+    "test:performance": "node tools/test-performance-safety.mjs",
+    "test:regression": "npm run test:import-transaction && npm run test:message-state && npm run test:character-status && npm run test:crystal-ledger && npm run test:settings-mailbox-badge && npm run test:network && npm run test:home-gesture && npm run test:performance"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.1",
@@ -15,6 +25,8 @@
     "@capacitor/device": "^8.0.0",
     "@capacitor/filesystem": "^8.1.2",
     "@capacitor/local-notifications": "^8.2.0",
+    "dompurify": "^3.4.12",
+    "html2canvas": "^1.4.1",
     "lucide-react": "^1.21.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

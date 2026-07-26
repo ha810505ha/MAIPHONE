@@ -1,5 +1,6 @@
 // 角色手機 AI App：預設主題、驗證工具、各 App prompt 與資料淨化
 import { gid, sanitizeText } from "./coreUtils";
+import { messagePlainText } from "./pseudoImage";
 
 export const DEFAULT_PHONE_THEME = {
   themeName: "預設",
@@ -35,6 +36,7 @@ const relLuminance = (hex) => {
   const [r, g, b] = hexToRgb(hex);
   return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
 };
+export const getReadableTextColor = (background) => isHex6(background) && relLuminance(background) > 0.48 ? "#18202A" : "#FFFFFF";
 const contrastRatio = (hexA, hexB) => {
   const [l1, l2] = [relLuminance(hexA), relLuminance(hexB)].sort((a, b) => b - a);
   return (l1 + 0.05) / (l2 + 0.05);
@@ -95,7 +97,7 @@ export const PHONE_APP_META = {
 // 共用上下文（角色資料 + 最近 10 句對話）
 export const buildPhonePromptContext = (char, chatHistory) => {
   const recent = ((chatHistory || {})[char.id] || []).slice(-10)
-    .map((m) => `${m.role === "user" ? "{{user}}" : char.name}: ${m.content || "[圖片]"}`).join("\n");
+    .map((m) => `${m.role === "user" ? "{{user}}" : char.name}: ${messagePlainText(m)}`).join("\n");
   const roleProfile = [char.description, char.personality, char.scenario].filter(Boolean).join("\n");
   return `角色：${char.name}\n角色設定：\n${roleProfile || "（無）"}\n\n最近對話（只供參考語氣與近況，不要複述）：\n${recent || "（尚無）"}`;
 };
@@ -148,7 +150,8 @@ ${ctx}`;
 
 請以角色第一人稱寫一篇日記，輸出 JSON 且只能輸出 JSON。
 格式：{"title":"7月6日 週一 晴","body":"日記內文，120~200字，可用\\n\\n分段"}
-規則：口吻完全符合角色；寫日常細節與真實情緒，可呼應最近對話但不要直接複述；不要 markdown。
+現實日期基準：${extra.dateContext || "以使用者所在地的今天為準"}。
+規則：口吻完全符合角色；寫日常細節與真實情緒，可呼應最近對話但不要直接複述；日記日期只能是今天或前兩天，並且日期與星期必須正確；不可把未來事件寫成已經發生；不要 markdown。
 ${extra.prevTitles?.length ? `已寫過的日記標題（避免重複內容）：${extra.prevTitles.join("、")}` : ""}
 
 ${ctx}`;
@@ -208,7 +211,7 @@ export const sanitizePhoneAppData = (appId, parsed, prevData) => {
     const body = sanitizeText(parsed?.body || "", 400);
     if (!title || !body) return null;
     const prev = Array.isArray(prevData?.entries) ? prevData.entries : [];
-    return { entries: [{ id: gid(), title, body, time: Date.now() }, ...prev].slice(0, 5) };
+    return { entries: [{ id: gid(), title, body, time: Date.now() }, ...prev].slice(0, 20) };
   }
   if (appId === "browser") {
     const searches = (Array.isArray(parsed?.searches) ? parsed.searches : []).slice(0, 7).map((s) => ({

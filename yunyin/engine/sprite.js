@@ -76,14 +76,20 @@ export function appearanceLayers(a) {
 
 // 畫一個角色。(sx, sy) 是角色所在 tile 的螢幕左上角，ts 是 tile 的螢幕尺寸。
 // 角色圖高兩格：腳踩在 tile 底部、身體往上一格延伸（y-排序遮擋因此自然成立）。
-export function drawActor(ctx, appearance, { sx, sy, ts, facing = "down", moving = false, now = 0 }) {
+export function drawActor(ctx, appearance, { sx, sy, ts, facing = "down", moving = false, action = null, now = 0 }) {
   const a = sanitizeAppearance(appearance);
   const layers = appearanceLayers(a).map((rel) => getImage(sheetUrl(rel)));
 
   if (layers.every((img) => isReady(img))) {
-    const row = moving ? ROW_WALK : ROW_IDLE;
-    const frame = Math.floor(now / (moving ? 110 : 220)) % FRAMES_PER_DIR;
-    const col = DIR_BLOCK[facing] * FRAMES_PER_DIR + frame;
+    const animation = !moving ? action?.animation : null;
+    const row = animation?.row ?? (moving ? ROW_WALK : ROW_IDLE);
+    const frames = animation?.frames || FRAMES_PER_DIR;
+    const frameMs = animation?.frameMs || (moving ? 110 : 220);
+    const frame = Math.floor((now - (action?.startedAt || 0)) / frameMs) % frames;
+    let directionBlock = DIR_BLOCK[facing] || 0;
+    if (animation?.directions === "horizontal") directionBlock = facing === "left" ? 1 : 0;
+    else if (animation?.directions === "none") directionBlock = 0;
+    const col = directionBlock * frames + frame;
     // 影子
     ctx.fillStyle = "rgba(0,0,0,.22)";
     ctx.beginPath();

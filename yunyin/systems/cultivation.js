@@ -1,5 +1,6 @@
 // 修仙：修為掛機（時間戳回算）、突破、境界解鎖樹。
 import { REALMS, BREAKTHROUGH_BASE_RATE, BREAKTHROUGH_FAIL_LOSS, BREAKTHROUGH_COOLDOWN_MS } from "../data/realms";
+import { taiwanDayKey } from "../../utils/taiwanDayKey";
 
 export const realmOf = (c) => REALMS[c.realmIdx];
 export const isMaxRealm = (c) => c.realmIdx >= REALMS.length - 1;
@@ -31,6 +32,20 @@ export function attemptBreakthrough(c, now = Date.now()) {
   }
   c.expUpdatedAt = now;
   return { ok, realmName: realmOf(c).name };
+}
+
+// 修煉堂每日打坐：首次打坐給隨機修為（相當於 30~90 分鐘掛機量），當日已打坐回傳 null。
+// 修為照樣夾在境界上限；gain 可能是 0（已滿級待突破），仍算用掉當日次數。
+export function meditateDaily(save, now = Date.now()) {
+  const day = taiwanDayKey(now);
+  if (save.hall.lastMeditateDay === day) return null;
+  const c = save.cultivation;
+  settleExp(c, now);
+  const realm = realmOf(c);
+  const gain = Math.min(realm.expMax - c.exp, Math.round(realm.ratePerMin * (30 + Math.random() * 60)));
+  c.exp += gain;
+  save.hall.lastMeditateDay = day;
+  return { gain: Math.floor(gain) };
 }
 
 // 目前境界（含）以下累積解鎖的 key

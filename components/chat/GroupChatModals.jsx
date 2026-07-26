@@ -37,6 +37,7 @@ function GroupFormModal({
   onCoverUpload,
   onClose,
   onSubmit,
+  onDelete,
   tr,
   showToast,
 }) {
@@ -120,6 +121,16 @@ function GroupFormModal({
               <button type="button" role="switch" aria-checked={useRealTime} className={`mp-switch ${useRealTime ? "active" : ""}`} onClick={() => setUseRealTime((value) => !value)}><span /></button>
             </div>
           </div>
+        )}
+        {editing && (
+          <button
+            type="button"
+            className="mp-ibtn-r"
+            style={{ width: "100%", marginTop: 12, padding: "10px 12px", fontWeight: 800 }}
+            onClick={onDelete}
+          >
+            {tr("刪除群組", "Delete group", "グループを削除", "그룹 삭제")}
+          </button>
         )}
         <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
           <button className="mp-save" style={{ flex: 1, background: "linear-gradient(135deg,#b0bec5,#90a4ae)" }} onClick={onClose}>

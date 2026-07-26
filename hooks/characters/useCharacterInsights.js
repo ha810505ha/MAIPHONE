@@ -1,4 +1,11 @@
 import { useRef } from "react";
+import {
+  buildCharacterStatusConversation,
+  buildCharacterStatusPrompt,
+  CHARACTER_STATUS_SYSTEM_PROMPT,
+  normalizeCharacterStatusOutput,
+} from "../../utils/characterStatus.js";
+import { messagePlainText } from "../../utils/pseudoImage";
 
 export default function useCharacterInsights({
   characters, chatHistory, memories, apiConfig, setCharacters, setMemories,
@@ -33,8 +40,7 @@ export default function useCharacterInsights({
     if (!force && nowTs - (statusAutoRefreshAttemptRef.current.get(charId) || 0) < autoRetryCooldown) return;
     if (!force && char.statusUpdatedAt && nowTs - char.statusUpdatedAt < fourHours) return;
     const msgs = (chatHistory[charId] || [])
-      .filter((m) => m.role === "user" || m.role === "assistant")
-      .slice(-12);
+      .filter((m) => m.role === "user" || m.role === "assistant");
     if (!force && msgs.length === 0) return;
     if (!canUseCurrentProvider()) { showToast(tr("請先完成 AI 連線設定（API Key）", "Please finish AI connection setup (API key) first", "先にAI接続設定（APIキー）を完了してください", "먼저 AI 연결 설정(API 키)을 완료해주세요")); return; }
     if (!force) statusAutoRefreshAttemptRef.current.set(charId, nowTs);
@@ -47,12 +53,26 @@ export default function useCharacterInsights({
         char.scenario ? `情境：${sanitizeText(char.scenario, 200)}` : "",
         char.systemPrompt ? `補充規則：${sanitizeText(char.systemPrompt, 240)}` : "",
       ].filter(Boolean).join("\n");
-      const mems = (memories[charId] || []).filter((m) => m.pinned).slice(0, 2).map((m) => `- ${m.text}`).join("\n");
-      const conv = msgs.map((m) => `${m.role === "user" ? "{{user}}" : char.name}: ${m.content || "[圖片]"}`).join("\n");
-      const statusPrompt = isGemmaModel(apiConfig.model)
-        ? `${getOutputLanguageDirective()}\n\n請只輸出 1 句手機狀態文字，20~40 字，自然像角色正在發狀態。\n不要輸出角色設定摘要、年齡、職業、人格標籤、草稿、規則文字、Markdown 或解釋。\n\n角色：${char.name}\n${roleProfile ? `角色背景（只供參考，不要複述）：\n${roleProfile}\n\n` : ""}最近對話：\n${conv}\n${mems ? `\n參考記憶：\n${mems}\n` : ""}`
-        : `${getOutputLanguageDirective()}\n\n請根據以下資訊，生成一則「符合角色人設」的手機狀態文字。\n規則：僅輸出 1 句，20~40 字，口語自然、對外可見，不要內心獨白、不要動作描述、不要引號包整句。\n\n角色：${char.name}\n${roleProfile ? `角色資料：\n${roleProfile}\n\n` : ""}最近對話：\n${conv}\n${mems ? `\n參考記憶：\n${mems}\n` : ""}`;
-      const status = sanitizeText(stripInternalBlocks(await callAI([{ role: "user", content: statusPrompt }], apiConfig, "你是狀態文字助理。")), 80);
+      const mems = (memories[charId] || [])
+        .filter((memory) => memory.pinned)
+        .slice(0, 2)
+        .map((memory) => `- ${sanitizeText(memory.text, 180)}`)
+        .join("\n");
+      const conv = buildCharacterStatusConversation(msgs, char.name);
+      const statusPrompt = buildCharacterStatusPrompt({
+        languageDirective: getOutputLanguageDirective({ includePlayerContext: false }),
+        characterName: char.name,
+        roleProfile,
+        conversation: conv,
+        memories: mems,
+        gemma: isGemmaModel(apiConfig.model),
+      });
+      const rawStatus = await callAI(
+        [{ role: "user", content: statusPrompt }],
+        apiConfig,
+        CHARACTER_STATUS_SYSTEM_PROMPT,
+      );
+      const status = normalizeCharacterStatusOutput(stripInternalBlocks(rawStatus));
       if (!status) { showToast("未取得狀態內容"); return; }
       setCharacters((prev) => prev.map((c) => c.id === charId ? { ...c, statusText: status, statusUpdatedAt: Date.now() } : c));
       showToast("狀態已更新");
@@ -83,19 +103,22 @@ export default function useCharacterInsights({
     setMemories((prev) => ({ ...prev, [charId]: (prev[charId] || []).filter((x) => x.id !== memoryId) }));
     showToast(tr("記憶已刪除", "Memory deleted", "メモリを削除しました", "기억이 삭제되었습니다"));
   };
-  const generateMemory = async (char) => {
+  // options.silent：從聊天室呼叫時吞掉 toast，改由呼叫端依回傳結果彈聊天室小卡。
+  const generateMemory = async (char, options = {}) => {
+    const silent = options.silent === true;
+    const notify = (message) => { if (!silent) showToast(message); };
     const msgs = chatHistory[char.id] || [];
-    if (msgs.length < 4) { showToast("對話太少，先多聊幾句再生成記憶"); return; }
+    if (msgs.length < 4) { const m = "對話太少，先多聊幾句再生成記憶"; notify(m); return { status: "too_few", message: m }; }
     const existing = memories[char.id] || [];
-    if (existing.length >= 30) { showToast("記憶已滿 30 條，請先刪除後再生成"); return; }
+    if (existing.length >= 30) { const m = "記憶已滿 30 條，請先刪除後再生成"; notify(m); return { status: "full", message: m }; }
     const isOllamaLocal = apiConfig.provider === "ollama" && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(apiConfig.baseUrl || "");
     const providerNeedsApiKey = !(apiConfig.provider === "ollama" && isOllamaLocal);
-    if (providerNeedsApiKey && !apiConfig.apiKey) { showToast("請先設定 API Key"); return; }
+    if (providerNeedsApiKey && !apiConfig.apiKey) { const m = "請先設定 API Key"; notify(m); return { status: "no_api_key", message: m }; }
     setGenLoading(true);
     try {
       const recent = msgs
         .slice(-30)
-        .map((m) => `${m.role === "user" ? "{{user}}" : char.name}: ${m.content || "[圖片]"}`)
+        .map((m) => `${m.role === "user" ? "{{user}}" : char.name}: ${messagePlainText(m)}`)
         .join("\n");
       const roleProfile = [
         char.description ? `角色描述：${sanitizeText(char.description, 320)}` : "",
@@ -131,17 +154,19 @@ ${recent}`,
       if (!safeText || safeText.length < 8) throw new Error(tr("模型未產生有效記憶", "The model did not generate a valid memory", "モデルが有効なメモリを生成しませんでした", "모델이 유효한 기억을 생성하지 않았습니다"));
       const duplicated = existing.some((mem) => memorySimilarity(mem.text, safeText) >= 0.78);
       if (duplicated) {
-        showToast("記憶過於相似，已略過新增");
-      } else {
-        setMemories(m => ({ ...m, [char.id]: [...(m[char.id] || []), { id: gid(), text: safeText, date: Date.now(), pinned: false }] }));
-        showToast("記憶生成成功");
+        notify("記憶過於相似，已略過新增");
+        return { status: "duplicate", text: safeText };
       }
+      setMemories(m => ({ ...m, [char.id]: [...(m[char.id] || []), { id: gid(), text: safeText, date: Date.now(), pinned: false }] }));
+      notify("記憶生成成功");
+      return { status: "added", text: safeText };
     } catch (err) {
-      showToast(`記憶生成失敗：${err.message}`);
+      notify(`記憶生成失敗：${err.message}`);
+      return { status: "error", message: err.message };
+    } finally {
+      setGenLoading(false);
     }
-    setGenLoading(false);
   };
 
   return { refreshCharacterStatus, togglePinMemory, deleteMemory, generateMemory };
 }
-

@@ -1,4 +1,9 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+
+const SOCIAL_PAGE_SIZE = 5;
+const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
+  "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;",
+}[char]));
 
 export default function SocialApp({
   socialSettingsOpen, setSocialSettingsOpen, socialSettings, setSocialSettings, posts, setPosts,
@@ -10,9 +15,92 @@ export default function SocialApp({
   highlightedPostId, activePostMenuId, setActivePostMenuId, showToast, sharePostToChat,
   formatSocialCount, getPostLikeCount, getCommentDepth, getCommentAuthorName,
   postCommentInputs, setPostCommentInputs, addPostComment,
+  postLimit = 100, downloadTextFile, exportToastMessage,
 }) {
   const [characterSearch, setCharacterSearch] = useState("");
   const [characterPostingOpen, setCharacterPostingOpen] = useState(true);
+  const [feedPage, setFeedPage] = useState(1);
+  const totalFeedPages = Math.max(1, Math.ceil(posts.length / SOCIAL_PAGE_SIZE));
+  const visiblePosts = posts.slice((feedPage - 1) * SOCIAL_PAGE_SIZE, feedPage * SOCIAL_PAGE_SIZE);
+  useEffect(() => setFeedPage((page) => Math.min(page, totalFeedPages)), [totalFeedPages]);
+  useEffect(() => setFeedPage(1), [posts[0]?.id]);
+
+  const goToFeedPage = (page) => {
+    setFeedPage(Math.max(1, Math.min(totalFeedPages, page)));
+    requestAnimationFrame(() => {
+      if (socialFeedRef.current) socialFeedRef.current.scrollTop = 0;
+    });
+  };
+
+  const exportSocialArchive = async (bookmarkedOnly = false) => {
+    if (typeof downloadTextFile !== "function") return;
+    const exportedPosts = bookmarkedOnly ? posts.filter((post) => post.bookmarked) : posts;
+    if (!exportedPosts.length) {
+      showToast(bookmarkedOnly ? "目前沒有珍藏貼文" : "目前沒有可匯出的貼文");
+      return;
+    }
+    const avatarAssets = {};
+    const avatarIdByData = new Map();
+    const registerAvatar = (value) => {
+      const data = String(value || "");
+      if (!data.startsWith("data:image/")) return null;
+      if (avatarIdByData.has(data)) return avatarIdByData.get(data);
+      const id = `avatar_${avatarIdByData.size + 1}`;
+      avatarIdByData.set(data, id);
+      avatarAssets[id] = data;
+      return id;
+    };
+    const compactAvatarFields = (record, fallbackAvatar = "") => {
+      if (!record || typeof record !== "object") return record;
+      const avatarAssetId = registerAvatar(record.authorAvatar || record.charAvatar || fallbackAvatar);
+      const compacted = { ...record };
+      delete compacted.authorAvatar;
+      delete compacted.charAvatar;
+      return avatarAssetId ? { ...compacted, avatarAssetId } : compacted;
+    };
+    const archivePosts = exportedPosts.map((post) => {
+      const authorAvatar = getPostAuthorAvatar(post);
+      const compactedPost = compactAvatarFields(post, authorAvatar);
+      return {
+        ...compactedPost,
+        comments: (post.comments || []).map((comment) => compactAvatarFields(comment)),
+        ...(Array.isArray(post.likedBy) ? { likedBy: post.likedBy.map((reaction) => compactAvatarFields(reaction)) } : {}),
+      };
+    });
+    const cards = exportedPosts.map((post) => {
+      const authorName = getPostAuthorName(post);
+      const comments = (post.comments || []).map((comment) => {
+        const commentAuthor = getCommentAuthorName(comment, post.charName || authorName);
+        return `<li><b>${escapeHtml(commentAuthor)}</b><span>${escapeHtml(new Date(comment.time || post.time || Date.now()).toLocaleString("zh-TW"))}</span><p>${escapeHtml(comment.content)}</p></li>`;
+      }).join("");
+      return `<article>
+        <header><div><b>${escapeHtml(authorName)}</b>${post.bookmarked ? "<em>珍藏</em>" : ""}</div><time>${escapeHtml(new Date(post.time || Date.now()).toLocaleString("zh-TW"))}</time></header>
+        <div class="content">${escapeHtml(post.content)}</div>
+        <div class="meta">❤️ ${escapeHtml(getPostLikeCount(post))}　💬 ${(post.comments || []).length}</div>
+        ${comments ? `<details><summary>查看留言</summary><ol>${comments}</ol></details>` : ""}
+      </article>`;
+    }).join("\n");
+    const sourceJson = JSON.stringify({
+      format: "maliphone-social-archive",
+      version: 1,
+      exportedAt: Date.now(),
+      bookmarkedOnly,
+      avatarAssets,
+      posts: archivePosts,
+    }).replace(/</g, "\\u003c");
+    const html = `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MaliPhone 社群紀錄</title><style>
+      :root{color-scheme:light}*{box-sizing:border-box}body{margin:0;background:#fff1f6;color:#5f3948;font-family:system-ui,-apple-system,"Noto Sans TC",sans-serif}main{width:min(760px,100%);margin:auto;padding:28px 16px 60px}h1{margin:0;font-size:24px}header.top{margin-bottom:20px}.sub{color:#a56d82;font-size:13px;margin-top:6px}article{background:#fff;border:1px solid #f0cbd8;border-radius:18px;padding:16px;margin:12px 0;box-shadow:0 7px 20px #b45b7b18}article header{display:flex;justify-content:space-between;gap:12px}article header div{display:flex;align-items:center;gap:8px}time,li span{color:#ad7c8f;font-size:12px}em{font-style:normal;background:#ef6998;color:#fff;border-radius:99px;padding:2px 7px;font-size:10px}.content{white-space:pre-wrap;line-height:1.75;margin:13px 0}.meta{font-size:12px;color:#a56d82}details{margin-top:12px;border-top:1px solid #f3d9e2;padding-top:9px}summary{cursor:pointer;font-weight:700}ol{padding-left:22px}li{margin:10px 0}li b{margin-right:8px}li p{white-space:pre-wrap;margin:4px 0;line-height:1.55}@media print{body{background:#fff}article{break-inside:avoid;box-shadow:none}}
+    </style></head><body><main><header class="top"><h1>💞 MaliPhone 社群紀錄</h1><div class="sub">匯出時間：${escapeHtml(new Date().toLocaleString("zh-TW"))} · 共 ${exportedPosts.length} 則貼文${bookmarkedOnly ? " · 僅珍藏" : ""}</div></header>${cards}</main><script id="maliphone-social-data" type="application/json">${sourceJson}</script></body></html>`;
+    try {
+      const date = new Date().toISOString().slice(0, 10);
+      const result = await downloadTextFile(html, `maliphone-social-${bookmarkedOnly ? "saved-" : ""}${date}.html`, "text/html;charset=utf-8");
+      const message = exportToastMessage?.(result, tr);
+      if (message) showToast(message);
+    } catch (error) {
+      showToast(`匯出失敗：${error?.message || "未知錯誤"}`);
+    }
+  };
+
   return (
     socialSettingsOpen ? (
       <div className="mp-page">
@@ -91,6 +179,8 @@ export default function SocialApp({
                   key={p.id}
                   style={{ padding: "8px 0", borderBottom: "1px solid rgba(128,128,128,.14)", cursor: "pointer" }}
                   onClick={() => {
+                    const targetIndex = posts.findIndex((post) => post.id === p.id);
+                    if (targetIndex >= 0) setFeedPage(Math.floor(targetIndex / SOCIAL_PAGE_SIZE) + 1);
                     setSocialSettingsOpen(false);
                     setPendingPostScrollId(p.id);
                   }}
@@ -117,6 +207,24 @@ export default function SocialApp({
               ))
             )}
           </div>
+          <div className="mp-sg">
+            <div className="mp-sg-t">{tr("社群資料", "Social data", "ソーシャルデータ", "소셜 데이터")}</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 800 }}>{tr(`已保存 ${posts.length} / ${postLimit} 則`, `${posts.length} / ${postLimit} posts saved`, `${posts.length} / ${postLimit}件保存`, `${posts.length} / ${postLimit}개 저장됨`)}</div>
+                <div style={{ fontSize: 10, color: posts.length >= Math.floor(postLimit * .8) ? "#b45f3c" : "var(--mp-txt-l)", marginTop: 4, lineHeight: 1.55 }}>
+                  {posts.length >= Math.floor(postLimit * .8)
+                    ? tr("貼文即將達到上限，建議先匯出保存。珍藏貼文不會自動刪除。", "The limit is near. Export a copy first. Saved posts are never auto-deleted.", "上限が近づいています。先に書き出してください。保存済み投稿は自動削除されません。", "한도에 가까워졌습니다. 먼저 내보내세요. 저장한 게시물은 자동 삭제되지 않습니다.")
+                    : tr("超過上限後會從最舊、未珍藏的貼文開始清除。", "Past the limit, the oldest unsaved posts are removed first.", "上限を超えると、古い未保存投稿から削除されます。", "한도를 넘으면 오래된 미저장 게시물부터 삭제됩니다.")}
+                </div>
+              </div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
+              <button type="button" className="mp-save" onClick={() => exportSocialArchive(false)}>{tr("匯出全部貼文", "Export all", "すべて書き出す", "전체 내보내기")}</button>
+              <button type="button" className="mp-save" onClick={() => exportSocialArchive(true)}>{tr("匯出珍藏貼文", "Export saved", "保存済みを書き出す", "저장 게시물 내보내기")}</button>
+            </div>
+            <div style={{ fontSize: 9.5, color: "var(--mp-txt-l)", marginTop: 8, lineHeight: 1.5 }}>{tr("將匯出成可直接閱讀的單一 HTML 紀錄檔，內含完整貼文資料。", "Exports one readable HTML archive containing the complete post data.", "完全な投稿データを含む、閲覧可能な単一HTMLとして書き出します。", "전체 게시물 데이터가 포함된 읽기 가능한 단일 HTML로 내보냅니다.")}</div>
+          </div>
         </div>
       </div>
     ) : (
@@ -138,7 +246,8 @@ export default function SocialApp({
             <div className="mp-empty-i">📰</div>
             <div className="mp-empty-t">{tr("目前還沒有貼文", "No posts yet", "まだ投稿はありません", "아직 게시물이 없습니다")}<br/>{tr("發一則動態試試吧", "Try posting an update", "投稿してみましょう", "게시물을 올려보세요")}</div>
           </div>
-        ) : posts.map((p) => {
+        ) : <>
+          {visiblePosts.map((p) => {
           const authorName = getPostAuthorName(p);
           const authorAvatar = sanitizeUserImageUrl(getPostAuthorAvatar(p));
           const isPlayerPost = getPostAuthorType(p) === "player";
@@ -284,7 +393,15 @@ export default function SocialApp({
               )}
             </div>
           );
-        })}
+          })}
+          {totalFeedPages > 1 && (
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 14, padding: "8px 0 20px" }}>
+              <button type="button" className="mp-ibtn" disabled={feedPage <= 1} onClick={() => goToFeedPage(feedPage - 1)}>‹</button>
+              <span style={{ minWidth: 54, textAlign: "center", fontSize: 11, fontWeight: 800, color: "var(--mp-txt-l)" }}>{feedPage}/{totalFeedPages}</span>
+              <button type="button" className="mp-ibtn" disabled={feedPage >= totalFeedPages} onClick={() => goToFeedPage(feedPage + 1)}>›</button>
+            </div>
+          )}
+        </>}
       </div>
     </div>
     )

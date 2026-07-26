@@ -47,12 +47,28 @@ export const GACHA_CARD_CATALOG = Object.freeze([
     rarity: "SSR",
     category: GACHA_CARD_CATEGORIES.ITEM,
     icon: "📿",
+    art: "/gacha/cards/pearl-of-sakura.png",
     quote: "這個要一直戴著喔。",
     tags: ["飾品", "櫻花", "珍藏", "心意"],
     modeInterpretation: {
       reality: "玩家親手交付項鍊，聚焦角色接過或試戴時的反應。",
       online: "項鍊以包裹寄達，角色透過訊息分享拆封或試戴時的反應。",
     },
+  },
+  {
+    id: "dream-invitation",
+    name: "夢的邀請函",
+    rarity: "SSR",
+    category: GACHA_CARD_CATEGORIES.DREAM,
+    icon: "💌",
+    art: "/gacha/cards/dream-invitation.png",
+    quote: "今晚，來我的夢裡好嗎？",
+    tags: ["夢境", "邀請函", "月夜", "浪漫", "相會"],
+    modeInterpretation: {
+      reality: "玩家親手交出夢境邀請函，從角色讀到邀請內容後的反應展開。",
+      online: "邀請函以照片或電子信件送達，角色讀完後透過訊息回應這場夢中邀約。",
+    },
+    openingPrompt: "把夢境視為浪漫邀約與故事意象，不要宣稱超自然事件必然成真。",
   },
   {
     id: "afternoon-latte",

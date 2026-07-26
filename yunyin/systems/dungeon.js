@@ -4,6 +4,7 @@
 import { EVENTS, BOSS_EVENT, MODIFIERS } from "../data/events";
 import { hasUnlock } from "./cultivation";
 import { REALMS } from "../data/realms";
+import { BLUEPRINT_FURNITURE_IDS, furnitureById } from "../home/furnitureCatalog";
 
 import { roll } from "../engine/rng";
 import { taiwanDayKey } from "../../utils/taiwanDayKey";
@@ -14,9 +15,28 @@ const BASE_RUNS_PER_DAY = 2;
 
 export const eventById = (id) => (id === "boss" ? BOSS_EVENT : EVENTS.find((e) => e.id === id));
 
+// ---- 難度分級：境界解鎖，越深掉落越好（材料/金幣/結晶/圖紙率）----
+export const DIFFICULTIES = [
+  { id: 1, name: "迷霧淺境", icon: "🌫️", desc: "標準報酬", unlock: null,
+    floorPlus: 0, lootMul: 1, coinMul: 1, riskPlus: 0, crystalBonus: 0, blueprintChance: 0.3,
+    clearMaterials: [{ id: "qingshi", n: 1 }] },
+  { id: 2, name: "迷霧深境", icon: "🌁", desc: "掉落×1.5・建材更多", unlock: "dungeon_depth_2",
+    floorPlus: 2, lootMul: 1.5, coinMul: 1.5, riskPlus: 0.05, crystalBonus: 5, blueprintChance: 0.4,
+    clearMaterials: [{ id: "qingshi", n: 2 }, { id: "lingmu", n: 1 }] },
+  { id: 3, name: "霧核秘窟", icon: "🕳️", desc: "掉落×2・圖紙率最高", unlock: "dungeon_depth_3",
+    floorPlus: 4, lootMul: 2, coinMul: 2, riskPlus: 0.1, crystalBonus: 10, blueprintChance: 0.5,
+    clearMaterials: [{ id: "qingshi", n: 4 }, { id: "lingmu", n: 2 }] },
+];
+export const difficultyById = (id) => DIFFICULTIES.find((d) => d.id === id) || DIFFICULTIES[0];
+export const difficultyUnlocked = (d, cultivation) => !d.unlock || hasUnlock(cultivation, d.unlock);
+
 // 詞條效果加總
 export function runModEffects(run) {
   const eff = { dropMul: 1, expMul: 1, floorMinus: 0, hpPlus: 0, riskPlus: 0 };
+  // 難度加成先入帳，再疊詞條
+  const difficulty = difficultyById(run.difficulty);
+  eff.dropMul *= difficulty.lootMul;
+  eff.riskPlus += difficulty.riskPlus;
   for (const mid of run.modifiers) {
     const m = MODIFIERS.find((m) => m.id === mid);
     if (!m) continue;
@@ -51,10 +71,12 @@ function drawEvent(run) {
 }
 
 // ---- 開始一輪 ----
-export function startRun(save) {
+export function startRun(save, difficultyId = 1) {
   const d = save.dungeon;
   if (d.activeRun) return "已有進行中的探索";
   if (d.runsToday < 1) return "今日探索次數已用盡";
+  const difficulty = difficultyById(difficultyId);
+  if (!difficultyUnlocked(difficulty, save.cultivation)) return "境界不足，無法踏入此層迷霧";
   d.runsToday -= 1;
 
   const seed = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
@@ -67,7 +89,7 @@ export function startRun(save) {
   }
 
   const run = {
-    seed, modifiers,
+    seed, modifiers, difficulty: difficulty.id,
     floor: 1, totalFloors: 0,
     hp: 0, hpMax: 0,
     exp: 0, coins: 0, loot: {},
@@ -76,9 +98,7 @@ export function startRun(save) {
     outcome: null,
   };
   const eff = runModEffects(run);
-  const depthBonus = (hasUnlock(save.cultivation, "dungeon_depth_2") ? 1 : 0)
-    + (hasUnlock(save.cultivation, "dungeon_depth_3") ? 2 : 0);
-  run.totalFloors = Math.max(3, BASE_FLOORS + depthBonus + Math.floor(roll(seed, "floors") * 2) - eff.floorMinus);
+  run.totalFloors = Math.max(3, BASE_FLOORS + difficulty.floorPlus + Math.floor(roll(seed, "floors") * 2) - eff.floorMinus);
   run.hpMax = BASE_HP + eff.hpPlus;
   run.hp = run.hpMax;
   run.eventId = drawEvent(run);
@@ -105,7 +125,7 @@ export function chooseOption(save, choiceIdx) {
   const fx = (ok ? ch.good : ch.bad) || {};
   if (fx.hp) run.hp = Math.max(0, Math.min(run.hpMax, run.hp + fx.hp));
   if (fx.exp) run.exp += Math.round(fx.exp * eff.expMul);
-  if (fx.coins) run.coins += fx.coins;
+  if (fx.coins) run.coins += Math.round(fx.coins * difficultyById(run.difficulty).coinMul);
   if (fx.item) run.loot[fx.item.id] = (run.loot[fx.item.id] || 0) + fx.item.n * eff.dropMul;
 
   run.usedEvents.push(ev.id);
@@ -129,16 +149,35 @@ export function finishRun(save, mode /* "cleared" | "retreat" | "dead" */) {
   const run = save.dungeon.activeRun;
   if (!run) return null;
   const keep = mode === "dead" ? 0.5 : 1;
+  const difficulty = difficultyById(run.difficulty);
   const summary = {
     mode,
+    difficultyName: difficulty.name,
     floor: run.floor, totalFloors: run.totalFloors,
     exp: Math.floor(run.exp * keep),
     coins: Math.floor(run.coins * keep),
-    crystals: mode === "cleared" ? Math.min(15, 10 + Math.floor(run.totalFloors / 2)) : mode === "retreat" ? Math.min(10, 5 + Math.floor(run.floor / 2)) : 3,
+    crystals: (mode === "cleared" ? Math.min(15, 10 + Math.floor(run.totalFloors / 2)) + difficulty.crystalBonus : mode === "retreat" ? Math.min(10, 5 + Math.floor(run.floor / 2)) : 3),
     items: Object.entries(run.loot)
       .map(([id, n]) => ({ id, n: Math.floor(n * keep) }))
       .filter((it) => it.n > 0),
   };
+  // 通關保底建材（難度越高越多），與袋中戰利品合併入帳
+  if (mode === "cleared") {
+    for (const material of difficulty.clearMaterials) {
+      const existing = summary.items.find((it) => it.id === material.id);
+      if (existing) existing.n += material.n;
+      else summary.items.push({ ...material });
+    }
+  }
+  // 通關獎勵：機率掉一張還沒拿過的家具圖紙（稀有家具的購買資格；難度越高機率越高）
+  if (mode === "cleared") {
+    const pool = BLUEPRINT_FURNITURE_IDS.filter((id) => !save.blueprints?.[id] && !save.home?.furnitureUnlocks?.[id]);
+    if (pool.length && roll(run.seed, "blueprint") < difficulty.blueprintChance) {
+      const furnitureId = pool[Math.floor(roll(run.seed, "blueprintPick") * pool.length)];
+      save.blueprints[furnitureId] = true;
+      summary.blueprint = { furnitureId, name: furnitureById(furnitureId)?.name || furnitureId };
+    }
+  }
   // 修為進帳夾在當前境界上限（跟掛機一樣不能溢出）
   const realm = REALMS[save.cultivation.realmIdx];
   save.cultivation.exp = Math.min(realm.expMax, save.cultivation.exp + summary.exp);

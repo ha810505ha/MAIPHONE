@@ -1,11 +1,16 @@
+import { useRef } from "react";
 import { gid, sanitizeText } from "../../utils/coreUtils";
 import { callAI } from "../../services/aiService";
 
 export default function useWalletController({
   wallet,
   setWallet,
+  chatHistory,
   characterWallets,
   setCharacterWallets,
+  characterBlockStates,
+  transfers,
+  setTransfers,
   currentChatChar,
   transferSubmitting,
   transferAmount,
@@ -30,6 +35,8 @@ export default function useWalletController({
   getOutputLanguageDirective,
   getWalletTimeSlot,
 }) {
+  const transferExpiryMs = 24 * 60 * 60 * 1000;
+  const settlingTransferIdsRef = useRef(new Set());
   // 商店 → 錢包同步：先清舊 shop 流水（餘額加回），再寫新流水（餘額扣掉）。刷新不會重複扣款。
   const syncShopOrdersToWallet = (charId, orders) => {
     setCharacterWallets((prev) => {
@@ -83,7 +90,101 @@ export default function useWalletController({
       return { ...prev, assets: list.slice(0, 120) };
     });
   };
-  const transferToCurrentChar = () => {
+  const updateTransfer = (transferId, patch) => {
+    setTransfers((items) => (items || []).map((item) => item.id === transferId && item.status === "pending"
+      ? { ...item, ...patch }
+      : item));
+  };
+  const appendPlayerWalletTx = (type, amount, note, transfer, time = Date.now()) => {
+    setWallet((current) => ({
+      ...(current || { balance: 0, transactions: [], assets: [] }),
+      balance: Math.max(0, Number(current?.balance || 0) + (type === "income" ? amount : -amount)),
+      transactions: [{ id: gid(), type, amount, note, time, charId: transfer.characterId, source: "chat_transfer", transferId: transfer.id }, ...(current?.transactions || [])].slice(0, 1000),
+    }));
+  };
+  const appendCharacterWalletTx = (type, amount, note, transfer, time = Date.now()) => {
+    setCharacterWallets((current) => {
+      const existing = current[transfer.characterId] || { balance: 0, transactions: [], summary: "", generatedAt: Date.now() };
+      return {
+        ...current,
+        [transfer.characterId]: {
+          ...existing,
+          balance: Math.max(0, Number(existing.balance || 0) + (type === "income" ? amount : -amount)),
+          transactions: [{ id: gid(), type, amount, note, time, source: "chat_transfer", transferId: transfer.id }, ...(existing.transactions || [])].slice(0, characterWalletTxLimit),
+        },
+      };
+    });
+  };
+  const resolveTransfer = (transferOrId, decision, resolutionSource = "manual") => {
+    const transfer = typeof transferOrId === "object" ? transferOrId : (transfers || []).find((item) => item.id === transferOrId);
+    if (!transfer || transfer.status !== "pending" || !["accepted", "returned", "expired"].includes(decision)) return false;
+    if (settlingTransferIdsRef.current.has(transfer.id)) return false;
+    settlingTransferIdsRef.current.add(transfer.id);
+    const now = Date.now();
+    updateTransfer(transfer.id, { status: decision, resolvedAt: now, resolutionSource });
+    if (decision === "accepted") {
+      if (transfer.receiverType === "player") {
+        appendPlayerWalletTx("income", transfer.amount, transfer.note ? stripUserPlaceholder(`收到${transfer.characterName}轉帳｜${transfer.note}`) : `收到${transfer.characterName}轉帳`, transfer, now);
+      } else {
+        appendCharacterWalletTx("income", transfer.amount, transfer.note ? stripUserPlaceholder(`收到玩家轉帳｜${transfer.note}`) : "收到玩家轉帳", transfer, now);
+      }
+    } else if (transfer.senderType === "player") {
+      appendPlayerWalletTx("income", transfer.amount, decision === "expired" ? `逾期退回｜轉帳給${transfer.characterName}` : `退回｜轉帳給${transfer.characterName}`, transfer, now);
+    } else {
+      appendCharacterWalletTx("income", transfer.amount, decision === "expired" ? "逾期退回｜轉帳給玩家" : "玩家退回轉帳", transfer, now);
+    }
+    return true;
+  };
+  const handleCharacterTransferDecision = (transferOrId, decision) => {
+    const transfer = typeof transferOrId === "object" ? transferOrId : (transfers || []).find((item) => item.id === transferOrId);
+    if (!transfer || transfer.status !== "pending" || transfer.receiverType !== "character") return false;
+    if (decision === "accept") return resolveTransfer(transfer, "accepted", "character");
+    if (decision === "return") return resolveTransfer(transfer, "returned", "character");
+    if (decision === "pending") {
+      const nextCount = Math.min(2, Number(transfer.pendingCount || 0) + 1);
+      updateTransfer(transfer.id, { pendingCount: nextCount, lastDecisionAt: Date.now() });
+      return true;
+    }
+    return false;
+  };
+  const decideIncomingTransferForCharacter = async (transfer, char) => {
+    if (!canUseCurrentProvider()) return;
+    const recent = (chatHistory?.[char.id] || []).slice(-8).map((message) => {
+      if (message.role === "transfer") return `[轉帳] 玩家轉給你 ${formatMoney(message.amount || 0)}${message.note ? `，備註：${message.note}` : ""}`;
+      if (message.role === "user") return `玩家：${sanitizeText(message.content || "", 240)}`;
+      if (message.role === "assistant") return `${char.name}：${sanitizeText(message.content || "", 240)}`;
+      return "";
+    }).filter(Boolean).join("\n");
+    const prompt = `${getOutputLanguageDirective()}
+
+你是角色「${char.name}」，請依角色設定、與玩家的關係、最近對話、轉帳金額與備註，判斷是否收下玩家的轉帳。
+大部分情況應當場選擇 accept 或 return；只有缺少關鍵資訊、確實需要先詢問玩家，或角色當下無法決定時才能選 pending。
+decision 只能是 accept、return、pending。reply 是角色對玩家說的自然回覆，可以為空字串。只輸出有效 JSON。
+
+角色描述：${sanitizeText(char.description || char.personality || char.systemPrompt || "（無）", 1200)}
+與玩家關係：${sanitizeText(char.relationshipToUser || "（無）", 200)}
+目前角色餘額：${formatMoney(characterWallets[char.id]?.balance || 0)}
+線上封鎖狀態：${characterBlockStates?.[char.id]?.playerBlocksCharacter || characterBlockStates?.[char.id]?.blocked ? "玩家目前已封鎖你的線上聯絡方式；你知道自己被封鎖，回覆仍會被攔截且無法確認送達。" : "玩家沒有封鎖你"}${characterBlockStates?.[char.id]?.characterBlocksPlayer ? "；你目前也封鎖了玩家，但仍能看到這筆轉帳與玩家訊息。" : ""}
+玩家轉帳：${formatMoney(transfer.amount)}
+備註：${transfer.note || "（無）"}
+最近對話：
+${recent || "（無）"}
+
+格式：{"decision":"accept","reply":"謝謝，那我就收下了。"}`;
+    try {
+      const raw = await callAI([{ role: "user", content: prompt }], apiConfig, "你是角色轉帳處理器，只能輸出有效 JSON。");
+      const match = String(raw || "").match(/\{[\s\S]*\}/);
+      if (!match) return;
+      const parsed = JSON.parse(match[0]);
+      const decision = ["accept", "return", "pending"].includes(parsed.decision) ? parsed.decision : "return";
+      handleCharacterTransferDecision(transfer, decision);
+      const reply = sanitizeText(parsed.reply || "", 800).trim();
+      if (reply) setChatHistory((history) => ({ ...history, [char.id]: [...(history[char.id] || []), { id: gid(), role: "assistant", content: reply, mode: "online", interceptedByBlock: characterBlockStates?.[char.id]?.playerBlocksCharacter === true || characterBlockStates?.[char.id]?.blocked === true, time: Date.now() }] }));
+    } catch (error) {
+      showToast(`${tr("角色暫時無法處理轉帳", "The character cannot process the transfer right now", "キャラクターは現在送金を処理できません", "캐릭터가 지금 이체를 처리할 수 없습니다")}：${sanitizeText(error?.message || "", 100)}`);
+    }
+  };
+  const transferToCurrentChar = async () => {
     if (!currentChatChar || transferSubmitting) return;
     const amount = Math.max(0, Math.round(Number(transferAmount) || 0));
     if (!amount) { showToast(tr("請輸入轉帳金額", "Please enter a transfer amount", "振込金額を入力してください", "송금 금액을 입력해주세요")); return; }
@@ -92,9 +193,11 @@ export default function useWalletController({
     const cid = currentChatChar.id;
     const note = sanitizeText(transferNote, 60);
     const now = Date.now();
+    const transferId = gid();
     const transferMsg = {
       id: gid(),
       role: "transfer",
+      transferId,
       fromType: "player",
       fromName: getPlayerDisplayName(),
       toType: "character",
@@ -105,43 +208,21 @@ export default function useWalletController({
       content: note ? `轉帳 $${formatMoney(amount)}｜${note}` : `轉帳 $${formatMoney(amount)}`,
       time: now,
     };
+    const transfer = {
+      id: transferId, messageId: transferMsg.id, characterId: cid, characterName: currentChatChar.name,
+      senderType: "player", receiverType: "character", amount, note, status: "pending",
+      pendingCount: 0, createdAt: now, expiresAt: now + transferExpiryMs, resolvedAt: null,
+    };
     setTransferSubmitting(true);
     try {
-      setWallet((w) => ({
-        ...(w || { balance: 0, transactions: [], assets: [] }),
-        balance: Math.max(0, (w?.balance || 0) - amount),
-        transactions: [{
-          id: gid(),
-          type: "expense",
-          amount,
-          note: note ? stripUserPlaceholder(`轉帳給${currentChatChar.name}｜${note}`) : `轉帳給${currentChatChar.name}`,
-          time: now,
-          charId: cid,
-          source: "chat",
-        }, ...(w?.transactions || [])].slice(0, 1000),
-      }));
-      setCharacterWallets((prev) => {
-        const cw = prev[cid] || { balance: 0, transactions: [], summary: "", generatedAt: Date.now() };
-        return {
-          ...prev,
-          [cid]: {
-            ...cw,
-            balance: Math.max(0, (cw.balance || 0) + amount),
-            transactions: [{
-              id: gid(),
-              type: "income",
-              amount,
-            note: note ? stripUserPlaceholder(`收到玩家轉帳｜${note}`) : "收到玩家轉帳",
-              time: now,
-            }, ...(cw.transactions || [])].slice(0, characterWalletTxLimit),
-          },
-        };
-      });
+      appendPlayerWalletTx("expense", amount, note ? stripUserPlaceholder(`轉帳給${currentChatChar.name}（待收下）｜${note}`) : `轉帳給${currentChatChar.name}（待收下）`, transfer, now);
+      setTransfers((items) => [transfer, ...(items || [])]);
       setChatHistory((h) => ({ ...h, [cid]: [...(h[cid] || []), transferMsg] }));
       setTransferAmount("");
       setTransferNote("");
       setTransferModalOpen(false);
-      showToast(tr("已完成轉帳", "Transfer completed", "振込が完了しました", "송금이 완료되었습니다"));
+      showToast(tr("轉帳已送出，等待對方處理", "Transfer sent and awaiting a response", "送金しました。相手の処理を待っています", "이체를 보냈으며 상대방의 처리를 기다리는 중입니다"));
+      await decideIncomingTransferForCharacter(transfer, currentChatChar);
     } finally {
       setTransferSubmitting(false);
     }
@@ -151,9 +232,11 @@ export default function useWalletController({
     if (!cid || !char || !safeAmount) return null;
     const safeNote = sanitizeText(note || "", 60);
     const now = Number(time) || Date.now();
+    const transferId = gid();
     const transferMsg = {
       id: gid(),
       role: "transfer",
+      transferId,
       fromType: "character",
       fromId: cid,
       fromName: char.name || "角色",
@@ -164,36 +247,13 @@ export default function useWalletController({
       content: safeNote ? `轉帳 $${formatMoney(safeAmount)}｜${safeNote}` : `轉帳 $${formatMoney(safeAmount)}`,
       time: now,
     };
-    setWallet((w) => ({
-      ...(w || { balance: 0, transactions: [], assets: [] }),
-      balance: Math.max(0, (w?.balance || 0) + safeAmount),
-      transactions: [{
-        id: gid(),
-        type: "income",
-        amount: safeAmount,
-        note: safeNote ? stripUserPlaceholder(`收到${char.name || "角色"}轉帳｜${safeNote}`) : `收到${char.name || "角色"}轉帳`,
-        time: now,
-        charId: cid,
-        source: "chat",
-      }, ...(w?.transactions || [])].slice(0, 1000),
-    }));
-    setCharacterWallets((prev) => {
-      const cw = prev[cid] || { balance: 0, transactions: [], summary: "", generatedAt: Date.now() };
-      return {
-        ...prev,
-        [cid]: {
-          ...cw,
-          balance: Math.max(0, (cw.balance || 0) - safeAmount),
-          transactions: [{
-            id: gid(),
-            type: "expense",
-            amount: safeAmount,
-            note: safeNote ? stripUserPlaceholder(`轉帳給玩家｜${safeNote}`) : "轉帳給玩家",
-            time: now,
-          }, ...(cw.transactions || [])].slice(0, characterWalletTxLimit),
-        },
-      };
-    });
+    const transfer = {
+      id: transferId, messageId: transferMsg.id, characterId: cid, characterName: char.name || "角色",
+      senderType: "character", receiverType: "player", amount: safeAmount, note: safeNote, status: "pending",
+      pendingCount: 0, createdAt: now, expiresAt: now + transferExpiryMs, resolvedAt: null,
+    };
+    appendCharacterWalletTx("expense", safeAmount, safeNote ? stripUserPlaceholder(`轉帳給玩家（待收下）｜${safeNote}`) : "轉帳給玩家（待收下）", transfer, now);
+    setTransfers((items) => [transfer, ...(items || [])]);
     setChatHistory((h) => {
       const next = [...(h[cid] || []), transferMsg];
       return { ...h, [cid]: displayAtEnd ? next : next };
@@ -259,6 +319,10 @@ export default function useWalletController({
     .join("\n");
   const generateCharacterWallet = async (char, { mode = "initial" } = {}) => {
     if (!char) return;
+    if (mode === "refresh" && (transfers || []).some((item) => item.status === "pending" && item.characterId === char.id)) {
+      showToast(tr("此角色目前有尚未完成的轉帳，暫時不能刷新錢包", "This character has a pending transfer, so the wallet cannot be refreshed yet", "このキャラクターには未処理の送金があるため、ウォレットを更新できません", "이 캐릭터에게 처리되지 않은 이체가 있어 지갑을 새로고침할 수 없습니다"));
+      return;
+    }
     if (!canUseCurrentProvider()) { showToast(tr("請先完成 AI 連線設定（API Key）", "Please finish AI connection setup (API key) first", "先にAI接続設定（APIキー）を完了してください", "먼저 AI 연결 설정(API 키)을 완료해주세요")); return; }
     setWalletGenLoading(true);
     try {
@@ -266,19 +330,37 @@ export default function useWalletController({
       const walletProfile = currentWallet?.walletProfile || currentWallet?.summary || "";
       const refreshHistory = buildWalletRefreshHistory(currentWallet);
       const isRefresh = mode === "refresh";
+      const refreshRequestedAt = Date.now();
+      const refreshFrom = Number(currentWallet?.refreshedAt || currentWallet?.generatedAt || refreshRequestedAt);
+      const currentWalletBalance = Math.max(0, Math.round(Number(currentWallet?.balance) || 0));
+      const refreshElapsedDays = Math.max(0, (refreshRequestedAt - refreshFrom) / 86400000);
+      const refreshTransactionLimit = refreshElapsedDays <= 2 ? 3
+        : refreshElapsedDays <= 7 ? 5
+          : refreshElapsedDays <= 31 ? 8
+            : 10;
+      const refreshTransactionRange = refreshElapsedDays <= 2 ? "0~3"
+        : refreshElapsedDays <= 7 ? "1~5"
+          : refreshElapsedDays <= 31 ? "2~8"
+            : "3~10";
       const roleProfile = isRefresh ? "" : buildWalletRoleProfile(char);
       const walletPrompt = isRefresh
-        ? `請根據角色的錢包摘要，補充角色「${char.name}」在當前時段的新流水，只輸出有效 JSON。
+        ? `請根據角色的錢包摘要，補充角色「${char.name}」自上次刷新至今可能發生、但尚未記錄的生活流水，只輸出有效 JSON。
 規則：
-1) 只生成 1~3 筆新的 transactions，內容必須是日常收入或日常支出。
+1) 本次補完區間約 ${refreshElapsedDays.toFixed(1)} 天，請依期間長短生成 ${refreshTransactionRange} 筆 transactions；短期間沒有合理事件時可回傳空陣列。
 2) 不要生成轉帳事件，轉帳已由聊天室事件另外處理。
-3) 不要重做整個錢包，也不要清空既有交易；只回傳增量結果。
-4) balance 請回傳本次刷新後、可對帳的整數餘額起點；實際最後餘額會由程式依流水逐筆計算。
-5) summary 與 walletProfile 原樣沿用，不要重寫成全新摘要。
-6) 所有支出必須能被目前餘額支撐，若錢不夠，請改成較小額支出、臨時收入、借貸、預支，或直接不產生支出。
-7) time 使用目前時間附近的毫秒 timestamp，可用 ${Date.now()} 往前推。
+3) 不要生成商店訂單；商店與玩家、角色間的轉帳都由程式直接記帳。
+4) 不要重做整個錢包、不要回傳 balance，也不要清空、複製或改寫既有交易；只回傳這次要補上的增量流水。
+5) 不要改寫 summary 或 walletProfile。
+6) 流水筆數只是顯示上限，收入與支出金額必須涵蓋完整補完期間，不能只生成幾筆單日金額而讓長期間的收入或生活費被低估。
+7) 長期間內重複發生的同類項目請合併成彙總流水，例如「本月薪資」「本月餐飲與交通」「近三月生活支出」；固定薪資、房租與其他週期性收支應依實際跨過的週期合理計算。
+8) 彙總後的所有 transactions 加總必須就是本次完整期間要套用的實際增量，不要另外留下未顯示、未計入的隱藏金額。
+9) 目前可用餘額是 ${currentWalletBalance}；支出總額必須能由目前餘額加上這段期間較早發生的合理收入支撐。錢不夠時請縮小支出，不要為了補足餘額憑空生成收入。
+10) 每筆 time 必須介於 ${refreshFrom} 與 ${refreshRequestedAt} 之間，並使用毫秒 timestamp；彙總流水可使用該期間末端或實際結算日。
 格式：
-{"balance":1200,"summary":"原摘要可沿用","walletProfile":"原摘要可沿用","transactions":[{"type":"income","amount":300,"note":"午班收入","time":1710000000000}]}
+{"transactions":[{"type":"income","amount":300,"note":"午班收入","time":1710000000000}]}
+
+補流水期間：${new Date(refreshFrom).toISOString()} ～ ${new Date(refreshRequestedAt).toISOString()}
+目前可用餘額：${currentWalletBalance}
 
 錢包摘要：
 ${walletProfile || "（無）"}
@@ -316,19 +398,30 @@ ${roleProfile || "（無）"}`;
       const lastRefreshedSlot = getWalletTimeSlot(refreshedAt);
       setCharacterWallets((prev) => {
         const current = prev[char.id] || { balance: 0, transactions: [], summary: "", generatedAt: Date.now() };
-        const mergedTransactions = isRefresh
-          ? [...(next.transactions || []), ...(current.transactions || [])].slice(0, characterWalletTxLimit)
-          : (next.transactions || []).slice(0, characterWalletTxLimit);
-        const orderedTransactions = [...mergedTransactions].sort((a, b) => Number(a?.time || 0) - Number(b?.time || 0));
-        const openingBalance = isRefresh ? (current.balance || 0) : (Number(parsed.balance) || 0);
-        const reconciled = reconcileWalletLedger(openingBalance, orderedTransactions, characterWalletTxLimit);
+        if (isRefresh) {
+          // 目前餘額已經包含舊流水與聊天室轉帳；刷新只能套用 AI 本次補出的增量，
+          // 不可再次重播舊流水，否則每次刷新都會重複加減歷史交易。
+          const incremental = reconcileWalletLedger(current.balance || 0, (next.transactions || []).slice(0, refreshTransactionLimit), refreshTransactionLimit);
+          return {
+            ...prev,
+            [char.id]: {
+              ...current,
+              balance: incremental.balance,
+              transactions: [...incremental.transactions, ...(current.transactions || [])].slice(0, characterWalletTxLimit),
+              refreshedAt,
+              lastRefreshedSlot,
+            },
+          };
+        }
+        const orderedTransactions = [...(next.transactions || [])].sort((a, b) => Number(a?.time || 0) - Number(b?.time || 0));
+        const reconciled = reconcileWalletLedger(Number(parsed.balance) || 0, orderedTransactions, characterWalletTxLimit);
         return {
           ...prev,
           [char.id]: {
             ...current,
             ...next,
             summary: next.summary || current.summary || "",
-            walletProfile: isRefresh ? (current.walletProfile || current.summary || "") : (next.walletProfile || next.summary || current.walletProfile || current.summary || ""),
+            walletProfile: next.walletProfile || next.summary || current.walletProfile || current.summary || "",
             balance: reconciled.balance,
             transactions: reconciled.transactions,
             refreshedAt,
@@ -344,12 +437,20 @@ ${roleProfile || "（無）"}`;
   };
   const regenerateCharacterWallet = async (char) => {
     if (!char) return;
+    if ((transfers || []).some((item) => item.status === "pending" && item.characterId === char.id)) {
+      showToast(tr("此角色目前有尚未完成的轉帳，暫時不能重新生成錢包", "This character has a pending transfer, so the wallet cannot be regenerated yet", "このキャラクターには未処理の送金があるため、ウォレットを再生成できません", "이 캐릭터에게 처리되지 않은 이체가 있어 지갑을 다시 생성할 수 없습니다"));
+      return;
+    }
     const ok = window.confirm(tr("重新生成會清空舊的錢包資料，並重新讀取角色設定建立新錢包，確定要繼續嗎？", "Regenerating will clear the old wallet data and rebuild a new wallet from the character settings. Continue?", "再生成すると古いウォレットデータが消去され、キャラ設定を読み直して新しいウォレットが作成されます。続けますか？", "다시 생성하면 기존 지갑 데이터가 지워지고 캐릭터 설정을 다시 읽어 새 지갑이 만들어집니다. 계속할까요?"));
     if (!ok) return;
     setCharacterWallets((prev) => ({ ...prev, [char.id]: { balance: 0, transactions: [], summary: "", generatedAt: Date.now() } }));
     await generateCharacterWallet(char, { mode: "initial" });
   };
   const clearWalletData = () => {
+    if ((transfers || []).some((item) => item.status === "pending")) {
+      showToast(tr("目前有尚未完成的轉帳，暫時不能清除錢包資料", "Pending transfers must be resolved before wallet data can be cleared", "未処理の送金があるため、ウォレットデータを削除できません", "처리되지 않은 이체가 있어 지갑 데이터를 지울 수 없습니다"));
+      return;
+    }
     if (!window.confirm(tr("確定要清除錢包頁面的資料嗎？", "Clear the wallet page data?", "ウォレットページのデータを消去しますか？", "지갑 페이지 데이터를 지울까요?"))) return;
     if (!window.confirm(tr("請再次確認：這只會清除錢包頁面內容，不會影響聊天室，確定要繼續嗎？", "Please confirm again: this only clears the wallet page content and won't affect chats. Continue?", "再確認してください。これはウォレットページの内容のみを消去し、チャットには影響しません。続けますか？", "다시 확인해주세요. 이것은 지갑 페이지만 지우며 채팅에는 영향을 주지 않습니다. 계속할까요?"))) return;
     setWallet(defaultWallet); setCharacterWallets({}); setWalletSettingsPage("main"); setWalletSettingsOpen(false);
@@ -362,6 +463,8 @@ ${roleProfile || "（無）"}`;
     addWalletAsset,
     transferToCurrentChar,
     applyCharacterTransferToPlayer,
+    resolveTransfer,
+    handleCharacterTransferDecision,
     generateCharacterWallet,
     regenerateCharacterWallet,
     clearWalletData,

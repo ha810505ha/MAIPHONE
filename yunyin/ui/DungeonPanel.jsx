@@ -3,6 +3,7 @@ import { MODIFIERS } from "../data/events";
 import { itemMeta } from "../systems/shop";
 import {
   eventById, startRun, chooseOption, proceed, finishRun, maxRunsOf, runModEffects,
+  DIFFICULTIES, difficultyUnlocked,
 } from "../systems/dungeon";
 
 const btn = (primary, enabled = true) => ({
@@ -25,6 +26,7 @@ export default function DungeonPanel({ save, onDirty, onToast, onCompanion, onCr
   const [, setTick] = useState(0);
   const [summary, setSummary] = useState(null);
   const [companionLine, setCompanionLine] = useState(null);
+  const [difficulty, setDifficulty] = useState(1);
   const rerender = () => setTick((t) => t + 1);
   const run = save.dungeon.activeRun;
 
@@ -47,7 +49,9 @@ export default function DungeonPanel({ save, onDirty, onToast, onCompanion, onCr
 
   const doFinish = (mode) => {
     const s = finishRun(save, mode);
-    if (s?.crystals) onCrystals?.(s.crystals);
+    if (s?.crystals) onCrystals?.(s.crystals, {
+      note: `雲隱山莊・秘境${s.mode === "cleared" ? "通關" : s.mode === "retreat" ? "撤退結算" : "探索結算"}`,
+    });
     setSummary(s);
     onDirty();
   };
@@ -59,13 +63,14 @@ export default function DungeonPanel({ save, onDirty, onToast, onCompanion, onCr
       <div style={{ textAlign: "center" }}>
         <div style={{ fontSize: 18, fontWeight: 800 }}>{title}</div>
         <div style={{ fontSize: 12, color: "#8a7a6a", marginTop: 4 }}>
-          抵達第 {summary.floor} / {summary.totalFloors} 層
+          {summary.difficultyName}・抵達第 {summary.floor} / {summary.totalFloors} 層
           {summary.mode === "dead" && "・戰利品折損一半"}
         </div>
         <div style={{ margin: "14px 0", padding: "12px 14px", background: "#f3ece2", borderRadius: 12, fontSize: 13, lineHeight: 2, textAlign: "left" }}>
           <div>修為 <b style={{ color: "#3d7a5c" }}>+{summary.exp}</b></div>
           <div>靈石 <b style={{ color: "#b8860b" }}>🪙+{summary.coins}</b></div>
-          <div>靈魂結晶 <b style={{ color: "#b05f88" }}>💎+{summary.crystals}</b></div>
+          <div>靈魂結晶 <b style={{ color: "#b05f88" }}>💎 +{summary.crystals}</b></div>
+          {summary.blueprint && <div>📜 {summary.blueprint.name}圖紙 <b style={{ color: "#8a5c9e" }}>（丹房可解鎖購買）</b></div>}
           {summary.items.map((it) => (
             <div key={it.id}>{itemMeta(it.id).icon} {itemMeta(it.id).name} <b>×{it.n}</b></div>
           ))}
@@ -82,16 +87,37 @@ export default function DungeonPanel({ save, onDirty, onToast, onCompanion, onCr
       <div style={{ textAlign: "center" }}>
         <div style={{ fontSize: 32 }}>🌫️</div>
         <div style={{ fontSize: 13, color: "#6b5d4f", lineHeight: 1.8, margin: "10px 0" }}>
-          迷霧深處藏著稀有藥草與星露籽。<br />
+          迷霧深處藏著稀有藥草、建材與星露籽。<br />
           每層一個際遇，體力歸零出局掉一半戰利品，<br />
           隨時撤退可全數帶走。
+        </div>
+        <div style={{ display: "grid", gap: 6, margin: "0 0 12px", textAlign: "left" }}>
+          {DIFFICULTIES.map((d) => {
+            const unlocked = difficultyUnlocked(d, save.cultivation);
+            const active = difficulty === d.id;
+            return (
+              <button key={d.id} disabled={!unlocked} onClick={() => setDifficulty(d.id)} style={{
+                display: "flex", alignItems: "center", gap: 8, border: active ? "2px solid #5a6b8c" : "1px solid #e2d6c6",
+                borderRadius: 12, padding: "8px 10px", background: active ? "#eef1f7" : "#fff",
+                opacity: unlocked ? 1 : 0.5, cursor: unlocked ? "pointer" : "default", textAlign: "left",
+              }}>
+                <span style={{ fontSize: 20 }}>{d.icon}</span>
+                <span style={{ flex: 1 }}>
+                  <b style={{ fontSize: 13, color: "#4e4438" }}>{d.name}{!unlocked && " 🔒"}</b>
+                  <span style={{ display: "block", fontSize: 11, color: "#8a7a6a" }}>
+                    {unlocked ? d.desc : "境界不足（突破後解鎖）"}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
         </div>
         <div style={{ fontSize: 12, color: "#8a7a6a", marginBottom: 14 }}>
           今日剩餘次數：<b>{save.dungeon.runsToday}</b> / {maxRunsOf(save.cultivation)}
         </div>
         <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
           <button style={btn(true, save.dungeon.runsToday > 0)} disabled={save.dungeon.runsToday < 1} onClick={() => {
-            const err = startRun(save);
+            const err = startRun(save, difficulty);
             if (err) { onToast(err); return; }
             onDirty(); rerender();
           }}>踏入迷霧</button>

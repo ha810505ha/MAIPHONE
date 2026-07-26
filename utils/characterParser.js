@@ -6,6 +6,8 @@
     personality: d.personality || json.personality || "",
     scenario: d.scenario || json.scenario || "",
     firstMessage: d.first_mes || json.first_mes || "",
+    initialOnlineMessage: d.first_mes || json.first_mes || "",
+    initialRealityMessage: "",
     messageExamples: d.mes_example || json.mes_example || "",
     systemPrompt: d.system_prompt || json.system_prompt || "",
     creatorNotes: d.creator_notes || json.creator_notes || "",

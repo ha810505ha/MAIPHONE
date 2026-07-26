@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { ensureNpcSeeds } from "../systems/npc";
 import { packOf, setActivePackVersion, MAX_PACK_VERSIONS } from "../systems/ai";
+import { exportYunyinSave, importYunyinSaveFile } from "../systems/backup";
 
 const Toggle = ({ on, onChange }) => (
   <button onClick={() => onChange(!on)} style={{
@@ -27,6 +28,8 @@ export default function GameSettingsPanel({ save, characters, onDirty, onEditApp
   const [genBusy, setGenBusy] = useState(null); // 正在生成句庫的角色 id
   const [genError, setGenError] = useState(null);
   const [expandedChar, setExpandedChar] = useState(null); // 展開查看台詞的角色 id
+  const [backupMessage, setBackupMessage] = useState("");
+  const importRef = useRef(null);
   const rerender = () => setTick((t) => t + 1);
   const ai = save.settings.ai;
   const bindings = save.settings.bindings;
@@ -42,6 +45,18 @@ export default function GameSettingsPanel({ save, characters, onDirty, onEditApp
 
   return (
     <div style={{ textAlign: "left" }}>
+      <div style={{ fontSize: 13, fontWeight: 800, color: "#4a4038" }}>玩家設定</div>
+      <button
+        type="button"
+        data-yunyin-player-appearance="1"
+        onClick={() => onEditAppearance()}
+        style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, margin: "6px 0 16px", padding: "10px 11px", border: "1px solid #ddd0c1", borderRadius: 12, background: "#fff", color: "#4a4038", textAlign: "left", cursor: "pointer" }}
+      >
+        <span aria-hidden="true" style={{ width: 34, height: 34, display: "grid", placeItems: "center", flex: "0 0 34px", borderRadius: 11, background: "#f3ecf1", fontSize: 18 }}>👕</span>
+        <span style={{ flex: 1, minWidth: 0 }}><b style={{ display: "block", fontSize: 13 }}>玩家服裝與外觀</b><small style={{ display: "block", marginTop: 2, color: "#8a7a6a", fontSize: 10 }}>調整山莊角色的服裝、髮型與配飾</small></span>
+        <span style={{ color: "#7d5a6e", fontSize: 11, fontWeight: 800 }}>編輯 ›</span>
+      </button>
+
       {/* 角色入駐 */}
       <div style={{ fontSize: 13, fontWeight: 800, color: "#4a4038" }}>角色入駐</div>
       <div style={{ fontSize: 11, color: "#8a7a6a", margin: "2px 0 4px", lineHeight: 1.6 }}>
@@ -179,6 +194,15 @@ export default function GameSettingsPanel({ save, characters, onDirty, onEditApp
           <Toggle on={ai[key]} onChange={(v) => setAi(key, v)} />
         </div>
       ))}
+
+      <div style={{ fontSize: 13, fontWeight: 800, color: "#4a4038", marginTop: 16 }}>山莊獨立備份</div>
+      <div style={{ fontSize: 11, color: "#8a7a6a", margin: "2px 0 8px", lineHeight: 1.6 }}>只包含雲隱山莊進度、角色句庫與未來的家園資料，不包含聊天、寵物小屋或其他 App 資料。</div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button onClick={async () => { setBackupMessage(""); try { await exportYunyinSave(); setBackupMessage("山莊備份已匯出"); } catch (error) { setBackupMessage(error?.message || "匯出失敗"); } }} style={{ flex: 1, border: 0, borderRadius: 10, padding: "8px 0", background: "#7d5a6e", color: "#fff", cursor: "pointer" }}>匯出山莊</button>
+        <button onClick={() => importRef.current?.click()} style={{ flex: 1, border: "1px solid #d9cdbc", borderRadius: 10, padding: "8px 0", background: "#fff", color: "#4a4038", cursor: "pointer" }}>匯入山莊</button>
+        <input ref={importRef} type="file" accept=".json,application/json" hidden onChange={async (event) => { const file = event.target.files?.[0]; event.target.value = ""; if (!file) return; setBackupMessage(""); try { await importYunyinSaveFile(file); setBackupMessage("匯入完成，重新進入山莊後生效"); } catch (error) { setBackupMessage(error?.message || "匯入失敗"); } }} />
+      </div>
+      {backupMessage && <div style={{ fontSize: 11, color: "#7d5a6e", marginTop: 6 }}>{backupMessage}</div>}
 
       <button onClick={onClose} style={{ width: "100%", marginTop: 14, border: 0, borderRadius: 12, padding: "9px 0", fontSize: 14, background: "#e8ddd0", color: "#6b5d4f", cursor: "pointer" }}>關閉</button>
     </div>

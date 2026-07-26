@@ -1,7 +1,9 @@
 // 丹房坊市：煉製佇列與貨架販售都用時間戳回算，無計時器。
 import { CROPS } from "../data/crops";
 import { RECIPES } from "../data/recipes";
+import { MATERIALS } from "../data/materials";
 import { hasUnlock } from "./cultivation";
+import { BLUEPRINT_FURNITURE_IDS, furnitureById } from "../home/furnitureCatalog";
 
 export const SELL_INTERVAL_SEC = 1200; // 貨架每 20 分鐘自動賣出 1 件
 
@@ -12,6 +14,7 @@ CROPS.forEach((c) => {
   ITEMS[`${c.id}_seed`] = { name: `${c.name}種子`, icon: "🌰", sellPrice: Math.ceil((c.seedCost || 20) / 2) };
 });
 RECIPES.forEach((r) => { ITEMS[r.id] = { name: r.name, icon: r.icon, sellPrice: r.sellPrice }; });
+MATERIALS.forEach((m) => { ITEMS[m.id] = { name: m.name, icon: m.icon, sellPrice: m.sellPrice }; });
 export const itemMeta = (id) => ITEMS[id] || { name: id, icon: "❓", sellPrice: 1 };
 
 export const recipeById = (id) => RECIPES.find((r) => r.id === id);
@@ -19,16 +22,20 @@ export const recipeUnlocked = (r, cultivation) => !r.needUnlock || hasUnlock(cul
 export const maxBatch = (save, r) =>
   Math.min(...Object.entries(r.in).map(([k, n]) => Math.floor((save.inventory[k] || 0) / n)));
 
-// ---- 丹爐 ----
+// ---- 丹爐（兩座；第 2 座築基期 furnace_2 解鎖）----
+export const furnaceCount = (cultivation) => hasUnlock(cultivation, "furnace_2") ? 2 : 1;
+export const activeFurnaces = (save) => save.shop.furnaces.slice(0, furnaceCount(save.cultivation));
+
 export function startCraft(save, recipeId, batch, now = Date.now()) {
-  const f = save.shop.furnace;
   const r = recipeById(recipeId);
-  if (!r || f.recipeId || batch < 1) return "丹爐忙碌中";
+  if (!r || batch < 1) return "無法煉製";
+  const idle = activeFurnaces(save).find((f) => !f.recipeId);
+  if (!idle) return "丹爐都在忙碌中";
   if (maxBatch(save, r) < batch) return "材料不足";
   for (const [k, n] of Object.entries(r.in)) save.inventory[k] -= n * batch;
-  f.recipeId = recipeId;
-  f.startedAt = now;
-  f.batch = batch;
+  idle.recipeId = recipeId;
+  idle.startedAt = now;
+  idle.batch = batch;
   return null;
 }
 
@@ -38,8 +45,9 @@ export function furnaceDone(f, now = Date.now()) {
   return Math.min(f.batch, Math.floor((now - f.startedAt) / (r.craftMin * 60000)));
 }
 
-export function collectFurnace(save, now = Date.now()) {
-  const f = save.shop.furnace;
+export function collectFurnace(save, furnaceIdx = 0, now = Date.now()) {
+  const f = save.shop.furnaces[furnaceIdx];
+  if (!f) return null;
   const done = furnaceDone(f, now);
   if (done < 1) return null;
   const r = recipeById(f.recipeId);
@@ -101,6 +109,17 @@ export function refreshOrders(save, now = Date.now()) {
     { tier: "進階", itemId: "yuehua", count: 3 + Math.floor(Math.random() * 3), rewardCoins: 120, rewardCrystals: 15 },
     { tier: "稀有", itemId: rareItem, count: 2 + Math.floor(Math.random() * 2), rewardCoins: 230, rewardCrystals: 27 },
   ];
+  // 稀有訂單三成機率附贈家具圖紙（限還沒拿過的稀有家具）
+  const blueprintPool = BLUEPRINT_FURNITURE_IDS.filter((id) => !save.blueprints?.[id] && !save.home?.furnitureUnlocks?.[id]);
+  if (blueprintPool.length && Math.random() < 0.3) {
+    specs[2].rewardBlueprint = blueprintPool[Math.floor(Math.random() * blueprintPool.length)];
+  }
+  // 進階/稀有訂單四成機率附贈建材（房屋擴建材料線）
+  for (const spec of [specs[1], specs[2]]) {
+    if (Math.random() < 0.4) {
+      spec.rewardMaterials = Math.random() < 0.5 ? { id: "qingshi", n: 3 } : { id: "lingmu", n: 2 };
+    }
+  }
   s.orders = specs.map((spec, i) => ({ id: `${dayStr(now)}-${i}`, ...spec, done: false }));
   s.lastOrderDay = dayStr(now);
   return true;
@@ -114,5 +133,14 @@ export function deliverOrder(save, orderId) {
   save.inventory[o.itemId] -= o.count;
   save.coins += o.rewardCoins;
   o.done = true;
-  return { rewardCoins: o.rewardCoins, rewardCrystals: o.rewardCrystals };
+  const result = { rewardCoins: o.rewardCoins, rewardCrystals: o.rewardCrystals };
+  if (o.rewardBlueprint && !save.blueprints?.[o.rewardBlueprint]) {
+    save.blueprints[o.rewardBlueprint] = true;
+    result.blueprintName = furnitureById(o.rewardBlueprint)?.name || o.rewardBlueprint;
+  }
+  if (o.rewardMaterials) {
+    save.inventory[o.rewardMaterials.id] = (save.inventory[o.rewardMaterials.id] || 0) + o.rewardMaterials.n;
+    result.materials = o.rewardMaterials;
+  }
+  return result;
 }

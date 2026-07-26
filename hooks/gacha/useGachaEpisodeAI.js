@@ -1,22 +1,43 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { generateGachaEpisodeOpening, generateGachaEpisodeReply } from "../../services/gacha/gachaEpisodeService";
+import { isRequestCancelled } from "../../utils/networkRequest.js";
 
 export default function useGachaEpisodeAI({ episode, character, playerProfile, apiConfig, recentMessages = [], sendUserMessage, appendAssistantMessage, setEpisodeOpening }) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState("");
   const [streamingText, setStreamingText] = useState("");
+  const requestRef = useRef(null);
+  const beginRequest = useCallback(() => {
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
+    return controller;
+  }, []);
+  useEffect(() => {
+    requestRef.current?.abort();
+    return () => requestRef.current?.abort();
+  }, [episode.id]);
+
   const prepareOpening = useCallback(async () => {
     if (episode.openingStatus !== "pending" || isGenerating) return false;
     setError(""); setIsGenerating(true);
+    const controller = beginRequest();
     try {
-      const opening = await generateGachaEpisodeOpening({ episode, character, playerProfile, apiConfig, recentMessages });
+      const opening = await generateGachaEpisodeOpening({ episode, character, playerProfile, apiConfig, recentMessages, signal: controller.signal });
+      if (controller.signal.aborted) return false;
       setEpisodeOpening?.(episode.id, opening);
       return true;
     } catch (reason) {
+      if (isRequestCancelled(reason)) return false;
       setError(reason?.message || "開場生成失敗，請稍後重試");
       return false;
-    } finally { setIsGenerating(false); }
-  }, [apiConfig, character, episode, isGenerating, playerProfile, recentMessages, setEpisodeOpening]);
+    } finally {
+      if (requestRef.current === controller) {
+        requestRef.current = null;
+        setIsGenerating(false);
+      }
+    }
+  }, [apiConfig, beginRequest, character, episode, isGenerating, playerProfile, recentMessages, setEpisodeOpening]);
   const send = useCallback(async (content) => {
     const text = String(content || "").trim();
     if (!text || isGenerating || episode.playerMessageCount >= 20) return false;
@@ -24,30 +45,44 @@ export default function useGachaEpisodeAI({ episode, character, playerProfile, a
     setStreamingText("");
     sendUserMessage(episode.id, text);
     setIsGenerating(true);
+    const controller = beginRequest();
     try {
-      const reply = await generateGachaEpisodeReply({ episode, character, playerProfile, apiConfig, nextUserMessage: text, onChunk: setStreamingText });
+      const reply = await generateGachaEpisodeReply({ episode, character, playerProfile, apiConfig, nextUserMessage: text, onChunk: setStreamingText, signal: controller.signal });
+      if (controller.signal.aborted) return false;
       appendAssistantMessage(episode.id, reply);
       setStreamingText("");
       return true;
     } catch (reason) {
+      if (isRequestCancelled(reason)) return false;
       setError(reason?.message || "角色回覆生成失敗，請稍後重試");
       return false;
     } finally {
-      setIsGenerating(false);
+      if (requestRef.current === controller) {
+        requestRef.current = null;
+        setIsGenerating(false);
+      }
     }
-  }, [apiConfig, appendAssistantMessage, character, episode, isGenerating, playerProfile, sendUserMessage]);
+  }, [apiConfig, appendAssistantMessage, beginRequest, character, episode, isGenerating, playerProfile, sendUserMessage]);
   const finishEarly = useCallback(async () => {
     if (isGenerating || episode.status !== "active") return false;
     setError(""); setStreamingText(""); setIsGenerating(true);
+    const controller = beginRequest();
     try {
-      const reply = await generateGachaEpisodeReply({ episode, character, playerProfile, apiConfig, nextUserMessage: "", onChunk: setStreamingText, forceEnding: true });
+      const reply = await generateGachaEpisodeReply({ episode, character, playerProfile, apiConfig, nextUserMessage: "", onChunk: setStreamingText, forceEnding: true, signal: controller.signal });
+      if (controller.signal.aborted) return false;
       appendAssistantMessage(episode.id, reply);
       setStreamingText("");
       return true;
     } catch (reason) {
+      if (isRequestCancelled(reason)) return false;
       setError(reason?.message || "收尾回覆生成失敗，請稍後重試");
       return false;
-    } finally { setIsGenerating(false); }
-  }, [apiConfig, appendAssistantMessage, character, episode, isGenerating, playerProfile]);
+    } finally {
+      if (requestRef.current === controller) {
+        requestRef.current = null;
+        setIsGenerating(false);
+      }
+    }
+  }, [apiConfig, appendAssistantMessage, beginRequest, character, episode, isGenerating, playerProfile]);
   return { send, finishEarly, prepareOpening, isGenerating, streamingText, error, clearError: () => setError("") };
 }

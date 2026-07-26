@@ -32,6 +32,8 @@ export default function DesktopPet({ currentApp }) {
   const dragRef = useRef(null);
   const longPressRef = useRef(null);
   const walkStopRef = useRef(null);
+  const dragRafRef = useRef(null);
+  const pendingDragPointRef = useRef(null);
 
   useEffect(() => {
     const sync = () => loadPetStorage({}).then(({ settings }) => { setPetSettings(toDesktopSettings(settings)); setCooldownUntil(Number(settings.cooldownUntil) || 0); }).catch(() => {});
@@ -62,11 +64,12 @@ export default function DesktopPet({ currentApp }) {
     return () => { clearTimeout(firstTimer); clearInterval(interval); };
   }, [petSettings.enabled, cooldownUntil, currentApp, visit]);
 
-  useEffect(() => () => { clearTimeout(longPressRef.current); clearTimeout(walkStopRef.current); }, []);
+  useEffect(() => () => { clearTimeout(longPressRef.current); clearTimeout(walkStopRef.current); if (dragRafRef.current) cancelAnimationFrame(dragRafRef.current); }, []);
   useEffect(() => {
+    if (!walking) return undefined;
     const timer = setInterval(() => setWalkFrame((frame) => frame % 3 + 1), 800);
     return () => clearInterval(timer);
-  }, []);
+  }, [walking]);
 
   useEffect(() => {
     if (!visit || currentApp === "petHome" || dragging) return undefined;
@@ -102,19 +105,28 @@ export default function DesktopPet({ currentApp }) {
   const onPointerMove = (event) => {
     if (!dragging || !dragRef.current) return;
     event.preventDefault();
-    const petWidth = 158, petHeight = 174, leftAllowance = 21, rightAllowance = 80, verticalAllowance = 12;
-    const minX = -leftAllowance, maxX = dragRef.current.hostWidth - petWidth + rightAllowance;
-    const minY = -verticalAllowance + 8, maxY = dragRef.current.hostHeight - petHeight + verticalAllowance;
-    const x = Math.max(minX, Math.min(maxX, event.clientX - dragRef.current.hostLeft - dragRef.current.offsetX));
-    const y = Math.max(minY, Math.min(maxY, event.clientY - dragRef.current.hostTop - dragRef.current.offsetY));
-    setPosition({ x, y });
-    const localX = event.clientX - dragRef.current.hostLeft;
-    const localY = event.clientY - dragRef.current.hostTop;
-    setOverHome(localY > dragRef.current.hostHeight - 125 && localX > dragRef.current.hostWidth / 2 - 70 && localX < dragRef.current.hostWidth / 2 + 70);
+    pendingDragPointRef.current = { clientX: event.clientX, clientY: event.clientY };
+    if (dragRafRef.current) return;
+    dragRafRef.current = requestAnimationFrame(() => {
+      dragRafRef.current = null;
+      const point = pendingDragPointRef.current;
+      if (!point || !dragRef.current) return;
+      const petWidth = 158, petHeight = 174, leftAllowance = 21, rightAllowance = 80, verticalAllowance = 12;
+      const minX = -leftAllowance, maxX = dragRef.current.hostWidth - petWidth + rightAllowance;
+      const minY = -verticalAllowance + 8, maxY = dragRef.current.hostHeight - petHeight + verticalAllowance;
+      const x = Math.max(minX, Math.min(maxX, point.clientX - dragRef.current.hostLeft - dragRef.current.offsetX));
+      const y = Math.max(minY, Math.min(maxY, point.clientY - dragRef.current.hostTop - dragRef.current.offsetY));
+      setPosition({ x, y });
+      const localX = point.clientX - dragRef.current.hostLeft;
+      const localY = point.clientY - dragRef.current.hostTop;
+      setOverHome(localY > dragRef.current.hostHeight - 125 && localX > dragRef.current.hostWidth / 2 - 70 && localX < dragRef.current.hostWidth / 2 + 70);
+    });
   };
 
   const onPointerUp = (event) => {
     clearTimeout(longPressRef.current);
+    if (dragRafRef.current) { cancelAnimationFrame(dragRafRef.current); dragRafRef.current = null; }
+    pendingDragPointRef.current = null;
     try { if (event.currentTarget?.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); } catch (_) {}
     if (dragging) {
       if (overHome) {
@@ -136,6 +148,13 @@ export default function DesktopPet({ currentApp }) {
 
   if (!visit) return null;
   const sprite = dragging || visit.action === "grabbed" ? "grabbed" : visit.action === "happy" ? "happy" : walking ? `walk-${walkFrame}` : "idle";
-  const dragStyle = position ? { left: position.x, top: position.y, right: "auto", bottom: "auto", animation: "none" } : undefined;
+  const dragStyle = position ? {
+    left: 0,
+    top: 0,
+    right: "auto",
+    bottom: "auto",
+    translate: `${position.x}px ${position.y}px`,
+    animation: "none",
+  } : undefined;
   return <><button className={`desktop-pet desktop-pet-stay desktop-pet-${visit.side} desktop-pet-level-${visit.level} desktop-pet-${visit.action} ${dragging ? "is-dragging" : ""} ${position && !dragging && currentApp !== "petHome" ? "desktop-pet-roaming" : ""}`} style={dragStyle} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} aria-label="長按拖曳桌面小寵物"><span className="desktop-pet-note">{visit.action === "grabbed" ? "呀！" : visit.action === "happy" ? "最喜歡摸摸了 ♥" : visit.note || "嗨～"}</span><img className="desktop-pet-sprite-image" src={`./pet-assets/${sprite}.png`} alt="麻糬" draggable={false} /></button>{dragging && <div className={`desktop-pet-home-target ${overHome ? "active" : ""}`}><span>🏠</span><b>{overHome ? "放開回小屋" : "拖到這裡回小屋"}</b></div>}</>;
 }

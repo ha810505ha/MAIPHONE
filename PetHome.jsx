@@ -18,6 +18,7 @@ import { loadPetStorage, savePetHome, savePetSettingsPatch, DEFAULT_PET_SETTINGS
 import { MILESTONES, MILESTONE_ORDER, evaluateMilestones, normalizePetHome, companionDays, formatDiaryDate, withDayLog, isDayLogWorthWriting, birthdayLine, bondTier, DAILY_BOND_CAP, afkPenalty, afkGreeting, afkDiaryEntries, AFK_MILESTONES, AFK_MILESTONE_ORDER } from "./services/pet/petDiary";
 import { generateMilestoneTexts, generateLifeDiary, generateBirthdayDiary, generateNoteReply, generateEntryReply } from "./services/pet/petDiaryAiBridge";
 import { petLine } from "./services/pet/petLines";
+import { downloadJsonFile } from "./utils/exportFile";
 
 const ACTIONS = {
   feed: { label: "餵食", icon: "🥕", message: "好好吃！", fullMessage: "肚子已經飽飽的～", stat: "hunger", exp: 5, delta: { hunger: 22, mood: 3 }, coins: 2, duration: 3000 },
@@ -71,6 +72,8 @@ function PetHomeRuntime({ onClose, initialData, initialSettings, apiConfig }) {
   const roomLongPressRef = useRef(null);
   const roomResumeRef = useRef(null);
   const roomWalkStopRef = useRef(null);
+  const roomDragRafRef = useRef(null);
+  const pendingRoomDragPointRef = useRef(null);
   const animTimerRef = useRef(null);
   const petDataImportRef = useRef(null);
   const suppressPetClickRef = useRef(false);
@@ -109,7 +112,13 @@ function PetHomeRuntime({ onClose, initialData, initialSettings, apiConfig }) {
     return () => { clearTimeout(first); clearInterval(timer); };
   }, [tab, scene, anim, roomDragging, roomPetPosition, settings.autoWander]);
 
-  useEffect(() => () => { clearTimeout(roomLongPressRef.current); clearTimeout(roomResumeRef.current); clearTimeout(roomWalkStopRef.current); clearTimeout(animTimerRef.current); }, []);
+  useEffect(() => () => {
+    clearTimeout(roomLongPressRef.current);
+    clearTimeout(roomResumeRef.current);
+    clearTimeout(roomWalkStopRef.current);
+    clearTimeout(animTimerRef.current);
+    if (roomDragRafRef.current) cancelAnimationFrame(roomDragRafRef.current);
+  }, []);
 
   // 開啟小屋時：跨日活動流水歸檔＋久違回歸的冷落扣分與寵物對話
   // 扣分在 updater 內以最新狀態重算（lastCareAt 扣過即重置），StrictMode 重跑或重複開啟都不會多扣
@@ -199,11 +208,26 @@ function PetHomeRuntime({ onClose, initialData, initialSettings, apiConfig }) {
   const onRoomPetPointerMove = (event) => {
     if (!roomDragging || !roomDragRef.current) return;
     event.preventDefault();
-    const info = roomDragRef.current;
-    setRoomPetPosition({ x: Math.max(0, Math.min(info.width - 158, event.clientX - info.left - info.offsetX)), y: Math.max(0, Math.min(info.height - 174, event.clientY - info.top - info.offsetY)) });
+    pendingRoomDragPointRef.current = { clientX: event.clientX, clientY: event.clientY };
+    if (roomDragRafRef.current) return;
+    roomDragRafRef.current = requestAnimationFrame(() => {
+      roomDragRafRef.current = null;
+      const point = pendingRoomDragPointRef.current;
+      const info = roomDragRef.current;
+      if (!point || !info) return;
+      setRoomPetPosition({
+        x: Math.max(0, Math.min(info.width - 158, point.clientX - info.left - info.offsetX)),
+        y: Math.max(0, Math.min(info.height - 174, point.clientY - info.top - info.offsetY)),
+      });
+    });
   };
   const onRoomPetPointerUp = (event) => {
     clearTimeout(roomLongPressRef.current);
+    if (roomDragRafRef.current) {
+      cancelAnimationFrame(roomDragRafRef.current);
+      roomDragRafRef.current = null;
+    }
+    pendingRoomDragPointRef.current = null;
     if (roomDragging) {
       event.currentTarget.releasePointerCapture?.(event.pointerId);
       setRoomDragging(false); playAnim("pet", 1300); setMessage("放在這裡嗎？好呀～");
@@ -308,16 +332,15 @@ function PetHomeRuntime({ onClose, initialData, initialSettings, apiConfig }) {
     if (aiEnabled && note && entry) generateNoteReply(entry, note, data, apiConfig).then((reply) => { if (reply) setData((old) => ({ ...old, diary: (old.diary || []).map((item) => item.id === id && item.note ? { ...item, reply } : item) })); });
   };
   const memoriesCount = (data.diary || []).filter((entry) => entry.type === "auto").length;
-  const exportPetData = () => {
+  const exportPetData = async () => {
     const payload = { type: "maliphone-pet-home", version: 1, exportedAt: new Date().toISOString(), data, settings };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `pet-home-${petName}-${new Date().toISOString().slice(0, 10)}.json`;
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-    setDataNotice("寵物資料已匯出");
+    try {
+      const result = await downloadJsonFile(payload, `pet-home-${petName}-${new Date().toISOString().slice(0, 10)}.json`);
+      if (result.method === "cancelled") return;
+      setDataNotice(result.method === "native-filesystem" ? `寵物資料已匯出到 Documents/${result.path}` : "寵物資料已匯出");
+    } catch (error) {
+      setDataNotice(`匯出失敗：${error?.message || "Unknown error"}`);
+    }
   };
   const importPetData = async (event) => {
     const file = event.target.files?.[0];
@@ -338,7 +361,7 @@ function PetHomeRuntime({ onClose, initialData, initialSettings, apiConfig }) {
   };
   const roomSprite = roomDragging || anim === "grabbed" ? "grabbed" : anim === "pet" ? "happy" : anim === "feed" ? "eat" : anim === "play" ? "play" : anim === "clean" ? "bath" : anim === "sleep" ? "sleep" : roomWalking ? `walk-${walkFrame}` : "idle";
   const bubblePosition = roomPetPosition
-    ? { left: Math.max(72, Math.min(282, roomPetPosition.x + 79)), top: Math.max(8, roomPetPosition.y - 38) }
+    ? { left: 0, top: 0, translate: `${Math.max(72, Math.min(282, roomPetPosition.x + 79))}px ${Math.max(8, roomPetPosition.y - 38)}px` }
     : { left: `${[25, 50, 75][petSpot]}%`, top: 104 };
   return (
     <div className="pet-app" style={{ position: "absolute", inset: 0, zIndex: 40, width: "100%", height: "100%", background: "#fff8ec" }}>
@@ -372,7 +395,7 @@ function PetHomeRuntime({ onClose, initialData, initialSettings, apiConfig }) {
             {placedItem("floor") && <button className="pet-furniture pet-floor-item" onClick={() => buyOrPlace(placedItem("floor"))}>{placedItem("floor").icon}</button>}
             <div className={`pet-bubble ${roomWalking ? "is-following" : ""} ${roomDragging ? "is-dragging" : ""}`} style={bubblePosition}>{message}</div>
             <div className={`pet-scene-decor decor-${scene}`} aria-hidden="true"><span /><i /><b /></div>
-            <button className={`pet-character pet-spot-${petSpot} ${anim ? anim : roomWalking ? "wandering" : "idle"} ${roomDragging ? "room-is-dragging" : ""} ${roomPetPosition ? "pet-manual-position" : ""}`} style={roomPetPosition ? { left: roomPetPosition.x, top: roomPetPosition.y, bottom: "auto", transform: "none", transition: roomDragging ? "none" : undefined, willChange: roomDragging ? "left, top" : undefined } : undefined} onPointerDown={onRoomPetPointerDown} onPointerMove={onRoomPetPointerMove} onPointerUp={onRoomPetPointerUp} onPointerCancel={onRoomPetPointerUp} onClick={() => { if (suppressPetClickRef.current) return; setMessage(petLine("petting", data.petProfile)); playAnim("pet", 2000); }} aria-label="長按拖曳麻糬">
+            <button className={`pet-character pet-spot-${petSpot} ${anim ? anim : roomWalking ? "wandering" : "idle"} ${roomDragging ? "room-is-dragging" : ""} ${roomPetPosition ? "pet-manual-position" : ""}`} style={roomPetPosition ? { left: 0, top: 0, bottom: "auto", translate: `${roomPetPosition.x}px ${roomPetPosition.y}px`, transform: "none", transition: roomDragging ? "none" : undefined, willChange: roomDragging ? "translate" : undefined } : undefined} onPointerDown={onRoomPetPointerDown} onPointerMove={onRoomPetPointerMove} onPointerUp={onRoomPetPointerUp} onPointerCancel={onRoomPetPointerUp} onClick={() => { if (suppressPetClickRef.current) return; setMessage(petLine("petting", data.petProfile)); playAnim("pet", 2000); }} aria-label="長按拖曳麻糬">
               <img className="pet-sprite-image" src={`./pet-assets/${roomSprite}.png`} alt={petName} draggable={false} />
             </button>
             <div className="pet-rug" />

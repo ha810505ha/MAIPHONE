@@ -11,17 +11,35 @@ export function buildThemeCss({
   scopedCustomCss,
 }) {
   const fontScale = { normal: 1, large: 1.1, xlarge: 1.2, xxlarge: 1.3 }[fontSizeScale] || 1;
+  const renderThemeEffects = themeEffectsEnabled && showThemeEffects;
   return `
     :root{
       ${Object.entries(activeTheme?.vars || {}).map(([k, v]) => `${k}:${v};`).join("")}
       --mp-font:${activeFontStack};
       --mp-font-scale:${fontScale};
+      --mp-page-bg:${activeTheme?.surfaces?.pageBg || "linear-gradient(180deg,#fce4ec 0%,#fff 30%)"};
+      --mp-lock-bg:${activeTheme?.surfaces?.lockBg || "linear-gradient(160deg,#fce4ec 0%,#f8bbd0 30%,#e8eaf6 60%,#b3e5fc 100%)"};
+      --mp-card-bg:var(--mp-surface);
+      --mp-card-border:var(--mp-glass-b);
+      --mp-accent:var(--mp-pink-dk);
+      --mp-accent-soft:var(--mp-pink-lt);
+      --mp-on-accent:#fff;
+      --mp-muted:var(--mp-txt-l);
+      --mp-overlay:rgba(20,12,24,.34);
+      --mp-shadow:var(--mp-glass-s);
+      --mp-success:#43a047;
+      --mp-warning:#d9822b;
+      --mp-danger:#d75a5a;
+      --mp-space-xs:4px;
+      --mp-space-sm:8px;
+      --mp-space-md:12px;
+      --mp-space-lg:16px;
     }
     .mp-wrap{background:${activeTheme?.surfaces?.wrapBg || "linear-gradient(135deg,#fce4ec 0%,#e8eaf6 50%,#e1f5fe 100%)"};}
     .mp-phone{background:${activeTheme?.surfaces?.phoneBg || "linear-gradient(160deg,#fce4ec 0%,#f8bbd0 25%,#e1f5fe 50%,#b3e5fc 75%,#f3e5f5 100%)"};font-size:calc(16px * var(--mp-font-scale));-webkit-text-size-adjust:calc(100% * var(--mp-font-scale));text-size-adjust:calc(100% * var(--mp-font-scale));}
     @media (min-width:700px){.mp-phone{zoom:var(--mp-font-scale);}}
     @media (min-width:700px){.notes-add-button{right:64px !important;}}
-    .mp-lock{background:${activeTheme?.surfaces?.lockBg || "linear-gradient(160deg,#fce4ec 0%,#f8bbd0 30%,#e8eaf6 60%,#b3e5fc 100%)"};}
+    .mp-lock{background:var(--mp-lock-bg);}
     .mp-lock-hint{max-width:min(82vw,320px);padding:0 12px;text-align:center;line-height:1.4;word-break:keep-all;overflow-wrap:anywhere;font-size:12px;}
     .mp-page{background:${activeTheme?.surfaces?.pageBg || "linear-gradient(180deg,#fce4ec 0%,#fff 30%)"};}
     ${isNightTheme ? `
@@ -67,6 +85,8 @@ export function buildThemeCss({
       .mp-cw-desc,.mp-ci-prev,.mp-lbl,.mp-mode-hint{color:#b8a8c9;}
       .mp-msg-t,.mp-reality-t,.mp-char-counter{color:#81728f;}
       .mp-htitle,.mp-clock-big,.mp-clock-day,.mp-lock-time,.mp-cw-name,.mp-ctitle,.mp-sec-ct,.mp-persona,.mp-icon-l{color:#f0e6f5;}
+      .mp-page:has(.lr-page)>.mp-hdr .mp-htitle{color:#57434b;}
+      .mp-page:has(.lr-page)>.mp-hdr .mp-back{background:#57434b;border-color:rgba(87,67,75,.22);color:#fff;box-shadow:0 3px 10px rgba(87,67,75,.18);}
       .mp-lock-notif{background:rgba(47,36,64,.72);border-color:rgba(165,201,232,.24);}
       .mp-lock-notif-name{color:#f0e6f5;}
       .mp-ibtn,.mp-ibtn-chat{background:rgba(165,201,232,.1);border-color:rgba(165,201,232,.3);color:#a5c9e8;}
@@ -149,7 +169,7 @@ export function buildThemeCss({
       @media (prefers-reduced-motion:reduce){.mp-phone::before,.mp-phone::after{display:none;}}
     ` : ``}
     ${!hasPeachEffects ? `.mp-cr::before{display:none!important}` : ``}
-    ${!themeEffectsEnabled ? `.mp-phone::before,.mp-phone::after{display:none!important;animation:none!important}` : ``}
+    ${!renderThemeEffects ? `.mp-phone::before,.mp-phone::after{display:none!important;animation:none!important}` : ``}
     ${false && showThemeEffects && normalizedThemeName === "莓果蘇打" ? `
       .mp-phone::before,.mp-phone::after{display:block;content:'○';top:auto;bottom:-30px;color:rgba(255,255,255,.72);font-size:25px;text-shadow:72px -130px 0 rgba(144,202,249,.38),188px -48px 0 rgba(206,147,216,.32),278px -210px 0 rgba(244,143,177,.36);animation:mpBubbleRise 13s ease-in infinite;}
       .mp-phone::after{left:46%;font-size:17px;animation-delay:5s;animation-duration:16s;}
@@ -166,19 +186,19 @@ export function buildThemeCss({
       .mp-phone::before,.mp-phone::after{display:block;content:'';inset:0;top:0;left:0;font-size:0;background-image:radial-gradient(ellipse at 20% 30%,rgba(255,255,255,.22) 0 2px,transparent 3px),radial-gradient(ellipse at 70% 65%,rgba(77,182,172,.16) 0 3px,transparent 4px);background-size:54px 38px,76px 52px;animation:mpWaterShimmer 12s ease-in-out infinite;}
       .mp-phone::after{animation-delay:3s;animation-duration:16s;filter:blur(1px);}
     ` : ``}
-    ${normalizedThemeName === "莓果蘇打" ? `
+    ${renderThemeEffects && normalizedThemeName === "莓果蘇打" ? `
       .mp-phone::before,.mp-phone::after{content:'🫧';top:auto;bottom:-28px;color:rgba(255,255,255,.82);font-family:var(--mp-font);font-size:22px;text-shadow:none;filter:none;animation:mpBubbleRise 13s ease-in infinite;}
       .mp-phone::after{content:'🫧';left:58%;font-size:20px;text-shadow:none;filter:none;animation-name:mpBubbleRiseAlt;animation-delay:3.7s;animation-duration:16.8s;animation-timing-function:ease-in-out;}
     ` : ``}
-    ${normalizedThemeName === "夜色絨幕" ? `
+    ${renderThemeEffects && normalizedThemeName === "夜色絨幕" ? `
       .mp-phone::before,.mp-phone::after{content:'✦';color:#f4dfff;font-size:11px;text-shadow:98px 76px 0 rgba(165,201,232,.78);}
       .mp-phone::after{content:'⋆';font-size:15px;color:#c8a8e0;text-shadow:74px 128px 0 rgba(244,143,177,.72);}
     ` : ``}
-    ${normalizedThemeName === "抹茶檸檬" ? `
+    ${renderThemeEffects && normalizedThemeName === "抹茶檸檬" ? `
       .mp-phone::before,.mp-phone::after{content:'🍃';font-size:13px;text-shadow:98px 76px 0 rgba(124,179,66,.48);}
       .mp-phone::after{content:'•';font-size:18px;color:#e6a817;text-shadow:74px 128px 0 rgba(230,168,23,.42);}
     ` : ``}
-    ${normalizedThemeName === "海鹽汽水" ? `
+    ${renderThemeEffects && normalizedThemeName === "海鹽汽水" ? `
       .mp-phone::before,.mp-phone::after{content:'❄️';top:22%;left:-25px;font-size:14px;text-shadow:78px 34px 0 rgba(79,195,247,.22);animation:mpSaltCrystalDrift 15s ease-in-out infinite;}
       .mp-phone::after{content:'❄️';top:62%;left:auto;right:-25px;font-size:10px;color:rgba(255,255,255,.82);text-shadow:64px -32px 0 rgba(77,182,172,.2);animation:mpSaltCrystalDriftAlt 18s ease-in-out 4s infinite;}
     ` : ``}

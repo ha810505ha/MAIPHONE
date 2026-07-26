@@ -1,5 +1,5 @@
 const MALIPHONE_AI_PROXY = "https://orange-butterfly-8390.d778105.workers.dev";
-const CURRENT_VERSION = "1.2.5";
+const CURRENT_VERSION = "1.2.6";
 
 
 const API_PROVIDERS = [
@@ -24,10 +24,14 @@ const DEFAULT_APPS = [
   { id: "player", name: "玩家", icon: "🪪", iconUrl: "./app-icons/profile.png?v=1.1.5" },
   { id: "wallet", name: "錢包", icon: "💰", iconUrl: "./app-icons/wallet.png?v=1.1.5" },
   { id: "game", name: "遊戲中心", icon: "🎮", iconUrl: "./app-icons/game.png?v=1.1.7" },
-  { id: "petHome", name: "寵物小屋", icon: "🐾" },
-  { id: "yunyin", name: "雲隱山莊", icon: "⛰️" },
+  { id: "petHome", name: "寵物小屋", icon: "🐾", iconUrl: "./app-icons/pet-home.png?v=20260717b", iconSize: 68 },
+  { id: "yunyin", name: "雲隱山莊", icon: "⛰️", iconUrl: "./app-icons/yunyin-villa.png?v=20260723", iconSize: 72 },
   { id: "lbook", name: "解答之書", icon: "📖", iconUrl: "./app-icons/book.png?v=1.1.1" },
   { id: "notebook", name: "筆記", icon: "📒", iconUrl: "./app-icons/notes.png?v=1.1.5" },
+  { id: "music", name: "一起聽歌", icon: "🎧", iconUrl: "./app-icons/listen-together.png?v=20260717" },
+  { id: "dating", name: "信風", icon: "💘", iconUrl: "./app-icons/trade-wind.png?v=20260723b", iconSize: 62 },
+  { id: "couple", name: "情侶空間", icon: "💞", iconUrl: "./app-icons/couple-space.png?v=20260717b", iconSize: 68 },
+  { id: "calendar", name: "日曆", icon: "🗓️", iconUrl: "./app-icons/calendar.png?v=20260724", iconSize: 68 },
   { id: "settings", name: "設定", icon: "⚙️", iconUrl: "./app-icons/settings.png?v=1.1.5" },
   { id: "characters", name: "聯絡人", icon: "👥", iconUrl: "./app-icons/contacts.png?v=1.1.5" },
   { id: "phone", name: "手機", icon: "📱", iconUrl: "./app-icons/phone.png?v=1.1.5" },

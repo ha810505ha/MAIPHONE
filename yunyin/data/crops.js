@@ -3,4 +3,6 @@ export const CROPS = [
   { id: "qingling", name: "青靈草", icon: "🌿", growMin: 30,  seedCost: 8,    sellPrice: 8,   yield: 2, source: "shop" },
   { id: "yuehua",   name: "月華菇", icon: "🍄", growMin: 120, seedCost: 25,   sellPrice: 30,  yield: 2, source: "shop" },
   { id: "xinglu",   name: "星露籽", icon: "✨", growMin: 480, seedCost: null, sellPrice: 120, yield: 1, source: "dungeon" },
+  // 建材作物：收成即是建材「靈木」，供房屋擴建與丹房煉製靈木樑
+  { id: "lingmu",   name: "靈木",   icon: "🪵", growMin: 480, seedCost: 60,   sellPrice: 20,  yield: 2, source: "shop" },
 ];

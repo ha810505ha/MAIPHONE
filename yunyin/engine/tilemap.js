@@ -1,7 +1,7 @@
 // Tilemap：地圖用「字元圖例字串」定義，這裡解析成地形/碰撞，並負責繪製。
 // 素材到位前全部畫色塊；素材到位後這裡改畫圖片，資料格式（ASCII 地圖）完全不動。
 import { getImage, isReady } from "./assets";
-import { TERRAIN_SHEET, TERRAIN_RECTS, PATH_BLOB, TREE_IMAGES, GRASS_TUFTS } from "../data/assetUrls";
+import { TERRAIN_SHEET, TERRAIN_RECTS, PATH_BLOB, TREE_IMAGES, GRASS_TUFTS, INTERIOR_SHEETS, INTERIOR_RECTS } from "../data/assetUrls";
 
 export const TILE = 32;
 
@@ -11,10 +11,16 @@ const TERRAIN = {
   "~": { base: "#4f86b8", walk: false },  // 水
   "T": { base: "#79b25e", walk: false },  // 樹（草地底 + 樹冠）
   "#": { base: "#8a8f98", walk: false },  // 山石
+  ":": { base: "#92704d", walk: true },   // 田區預留地
+  "f": { base: "#b98b5f", walk: true },   // 室內木地板
+  "W": { base: "#d8c8ac", walk: false },  // 室內牆面
+  "R": { base: "#6b6055", walk: false },  // 待擴建區（塵封的隔間，擴建後變地板）
+  "_": { base: "#1c2733", walk: false },  // 室內畫布外圍留白（跟畫面底色同色，看起來是虛空）
 };
 
 export function parseMap(def) {
-  const rows = def.tiles;
+  const rows = def.layers?.ground || def.tiles;
+  if (!rows?.length) throw new Error(`Map ${def.id || "unknown"} has no ground layer`);
   const h = rows.length, w = rows[0].length;
   const cells = [];
   const collision = new Uint8Array(w * h);
@@ -25,23 +31,42 @@ export function parseMap(def) {
       if (!TERRAIN[ch]?.walk) collision[y * w + x] = 1;
     }
   }
-  // 建築占地整塊不可走（door 是建築「前方」的走道格，不在占地內）
+  // 建築占地整塊不可走。放大的建築可以額外宣告視覺碰撞邊界，
+  // 避免角色走進圖片延伸出的屋頂或側牆；門口格永遠保持可走。
   for (const b of def.buildings || []) {
-    for (let y = b.y; y < b.y + b.h; y++)
-      for (let x = b.x; x < b.x + b.w; x++)
+    const padding = b.collisionPadding || {};
+    const left = Math.max(0, padding.left || 0), right = Math.max(0, padding.right || 0);
+    const top = Math.max(0, padding.top || 0), bottom = Math.max(0, padding.bottom || 0);
+    for (let y = b.y - top; y < b.y + b.h + bottom; y++) {
+      for (let x = b.x - left; x < b.x + b.w + right; x++) {
+        if (b.door?.[0] === x && b.door?.[1] === y) continue;
+        if (x >= 0 && y >= 0 && x < w && y < h) collision[y * w + x] = 1;
+      }
+    }
+  }
+  // 廣場與戶外裝飾可有獨立占地；純視覺裝飾可設 blocking: false。
+  for (const decoration of def.decorations || []) {
+    if (decoration.blocking === false) continue;
+    for (let y = decoration.y; y < decoration.y + Math.max(1, decoration.h || 1); y++)
+      for (let x = decoration.x; x < decoration.x + Math.max(1, decoration.w || 1); x++)
         if (x >= 0 && y >= 0 && x < w && y < h) collision[y * w + x] = 1;
   }
   // 樹改成 y-排序層畫（跟建築/角色一起遮擋），不再烘進平面地形；這裡只收集位置。
   // 用座標 hash 挑一棵固定的樹（同一格重繪永遠同一棵，不會每幀跳圖）。
+  // 傳送點周圍一格不長樹：樹冠高兩格，會把入口整個遮死（玩家反映找不到傳送點）
+  const nearPortal = (x, y) => (def.portals || []).some((p) => Math.abs(p.x - x) <= 1 && Math.abs(p.y - y) <= 1);
   const trees = [];
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      if (cells[y * w + x] === "T") trees.push({ x, y, variant: (x * 31 + y * 17) % TREE_IMAGES.length });
+      if (cells[y * w + x] === "T" && !nearPortal(x, y)) trees.push({ x, y, variant: (x * 31 + y * 17) % TREE_IMAGES.length });
     }
   }
   return {
     id: def.id, name: def.name, w, h, cells, collision,
-    buildings: def.buildings || [], portals: def.portals || [], plots: def.plots || [], spawn: def.spawn,
+    buildings: def.buildings || [], decorations: def.decorations || [], portals: def.portals || [], plots: def.plots || [], spawn: def.spawn,
+    kind: def.kind || "outdoor", viewScale: Number(def.viewScale) || null,
+    layers: def.layers || { ground: rows }, zones: def.zones || [], homeLots: def.homeLots || [],
+    fieldZones: def.fieldZones || [], futureZones: def.futureZones || [], cityLots: def.cityLots || [],
     trees,
     isBlocked: (x, y) => x < 0 || y < 0 || x >= w || y >= h || collision[y * w + x] === 1,
   };
@@ -91,6 +116,8 @@ export function drawMap(ctx, map, cam, scale, viewW, viewH) {
   const ts = TILE * scale;
   const sheet = getImage(TERRAIN_SHEET);
   const sheetReady = isReady(sheet);
+  const wallsSheet = getImage(INTERIOR_SHEETS.walls);
+  const floorsSheet = getImage(INTERIOR_SHEETS.floors);
   // 相機先整體取整成螢幕像素，再算每格位置 → 相鄰 tile 不會因各自 rounding 產生接縫
   const camSx = Math.round(cam.x * scale), camSy = Math.round(cam.y * scale);
   const x0 = Math.max(0, Math.floor(cam.x / TILE));
@@ -107,8 +134,19 @@ export function drawMap(ctx, map, cam, scale, viewW, viewH) {
       const rect = (ch === "." || ch === "T") ? TERRAIN_RECTS.grass
         : ch === "=" ? PATH_BLOB[blobPieceKey(pathOpenSides(map, x, y))]
         : null;
+      // 室內牆/地板走 Room_Builder 圖集："W" 依南鄰是否為室內地板選「牆面（帶踢腳）」或「上緣蓋沿」
+      let interiorSheet = null, interiorRect = null;
+      if (ch === "f") { interiorSheet = floorsSheet; interiorRect = INTERIOR_RECTS.floorWood; }
+      else if (ch === "W") {
+        interiorSheet = wallsSheet;
+        const south = map.cells[(y + 1) * map.w + x];
+        interiorRect = (south === "f" || south === "R") ? INTERIOR_RECTS.wallFace : INTERIOR_RECTS.wallTop;
+      }
       let drewImage = false;
-      if (rect && sheetReady) {
+      if (interiorRect && isReady(interiorSheet)) {
+        ctx.drawImage(interiorSheet, interiorRect[0], interiorRect[1], interiorRect[2], interiorRect[3], sx, sy, ts + 1, ts + 1);
+        drewImage = true;
+      } else if (rect && sheetReady) {
         ctx.drawImage(sheet, rect[0], rect[1], rect[2], rect[3], sx, sy, ts + 1, ts + 1);
         drewImage = true;
       } else {
@@ -132,6 +170,22 @@ export function drawMap(ctx, map, cam, scale, viewW, viewH) {
       } else if (ch === "=") {
         ctx.fillStyle = "#bb9a5e";
         if ((x * 3 + y * 5) % 7 === 0) ctx.fillRect(sx + ts * 0.4, sy + ts * 0.4, ts * 0.2, ts * 0.14);
+      } else if (ch === ":") {
+        ctx.fillStyle = "rgba(72, 45, 28, .2)";
+        ctx.fillRect(sx, sy + ts * 0.46, ts + 1, Math.max(1, scale));
+        if ((x + y) % 2 === 0) ctx.fillRect(sx + ts * 0.18, sy + ts * 0.2, ts * 0.12, ts * 0.08);
+      } else if (ch === "f") {
+        ctx.fillStyle = (y % 2 === 0) ? "#c99b6c" : "#c39465";
+        ctx.fillRect(sx, sy, ts + 1, ts + 1);
+        ctx.fillStyle = "rgba(91, 57, 35, .16)";
+        ctx.fillRect(sx, sy + ts * 0.48, ts + 1, Math.max(1, scale));
+        const seam = ((x * 17 + y * 11) % 3) * 0.2;
+        ctx.fillRect(sx + ts * seam, sy, Math.max(1, scale), ts * 0.48);
+      } else if (ch === "W") {
+        ctx.fillStyle = y === 0 ? "#8c6e58" : "#e2d5bd";
+        ctx.fillRect(sx, sy, ts + 1, ts + 1);
+        ctx.fillStyle = "rgba(91, 65, 49, .22)";
+        ctx.fillRect(sx, sy + ts * 0.82, ts + 1, ts * 0.18);
       }
     }
   }

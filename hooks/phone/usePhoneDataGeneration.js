@@ -1,7 +1,8 @@
 import { PHONE_APP_META, sanitizePhoneTheme, buildPhonePromptContext, buildPhoneAppPrompt, sanitizePhoneAppData } from "../../utils/phoneAppGen";
+import { messagePlainText } from "../../utils/pseudoImage";
 
 export default function usePhoneDataGeneration({
-  phoneInboxCache, phoneAppCache, chatHistory, playerProfile, characterWallets, apiConfig,
+  phoneInboxCache, phoneAppCache, chatHistory, memories, playerProfile, characterWallets, apiConfig,
   setPhoneInboxCache, setPhoneAppCache, setPhoneGenLoading, setPhonePlayerContactLoading,
   setPhoneAppGenLoading, setDiaryPage, syncShopOrdersToWallet, canUseCurrentProvider,
   getOutputLanguageDirective, callAI, sanitizeText, gid, showToast, tr,
@@ -25,7 +26,7 @@ export default function usePhoneDataGeneration({
     try {
       const playerFormalName = sanitizeText(playerProfile?.name || "玩家", 40);
       const playerNickname = sanitizeText(playerProfile?.nickname || "", 40);
-      const recent = (chatHistory[char.id] || []).slice(-10).map((m) => `${m.role === "user" ? playerFormalName : char.name}: ${m.content || "[圖片]"}`).join("\n");
+      const recent = (chatHistory[char.id] || []).slice(-10).map((m) => `${m.role === "user" ? playerFormalName : char.name}: ${messagePlainText(m)}`).join("\n");
       const roleProfile = [char.description, char.personality, char.scenario].filter(Boolean).join("\n");
       const prompt = [{
         role: "user",
@@ -45,11 +46,12 @@ export default function usePhoneDataGeneration({
 }
 規則：
 1) 只產生 3~5 個 threads。
-2) 每個 thread 產生 4~8 則短訊息，語氣像通訊軟體。
-3) from 只能是 "char" 或 "other"。
-4) 不要時間戳、不要 markdown、不要多餘欄位。
-5) 玩家正式名稱是「${playerFormalName}」${playerNickname ? `，暱稱是「${playerNickname}」` : "，未設定暱稱"}。暱稱屬於較私密的稱呼，其他 NPC 預設不要使用；只有能從設定合理判斷該 NPC 與玩家很親近、而且知道這個暱稱時，才可以偶爾使用。一般情況請使用正式名稱、代稱或自然省略稱呼。
-6) 不要讓所有 NPC 都認識玩家，也不要讓所有 NPC 都用相同方式稱呼玩家；依每個 NPC 與角色、玩家的關係自然判斷。
+2) 每個 thread 產生 6~12 則訊息，形成一段有起因、來回與自然收尾或懸念的小對話。
+3) 維持通訊軟體節奏：可混合短句與較完整的 1~3 句訊息；不要每則都只有幾個字，也不要寫成長篇小說。
+4) from 只能是 "char" 或 "other"。
+5) 不要時間戳、不要 markdown、不要多餘欄位。
+6) 玩家正式名稱是「${playerFormalName}」${playerNickname ? `，暱稱是「${playerNickname}」` : "，未設定暱稱"}。暱稱屬於較私密的稱呼，其他 NPC 預設不要使用；只有能從設定合理判斷該 NPC 與玩家很親近、而且知道這個暱稱時，才可以偶爾使用。一般情況請使用正式名稱、代稱或自然省略稱呼。
+7) 不要讓所有 NPC 都認識玩家，也不要讓所有 NPC 都用相同方式稱呼玩家；依每個 NPC 與角色、玩家的關係自然判斷。
 
 角色設定：
 ${roleProfile || "（無）"}
@@ -64,6 +66,7 @@ ${recent || "（尚無）"}
       const generatedAt = Date.now();
       const threads = threadsRaw.slice(0, 5).map((t, idx) => {
         const msgs = Array.isArray(t?.messages) ? t.messages : [];
+        const visibleMsgs = msgs.slice(0, 12);
         const lastMessageOffsetMinutes = 3 + idx * 19 + Math.floor(Math.random() * 12);
         const lastMessageTime = generatedAt - lastMessageOffsetMinutes * 60000;
         const messageGapMinutes = 2 + (idx % 4);
@@ -71,11 +74,11 @@ ${recent || "（尚無）"}
           id: `npc-${idx}-${gid()}`,
           name: sanitizeText(t?.name || `聯絡人${idx + 1}`, 24),
           relation: sanitizeText(t?.relation || "", 40),
-          messages: msgs.slice(0, 8).map((m, mi) => ({
+          messages: visibleMsgs.map((m, mi) => ({
             id: `m-${idx}-${mi}-${gid()}`,
             from: m?.from === "char" ? "char" : "other",
-            text: sanitizeText(m?.text || "", 120),
-            time: lastMessageTime - Math.max(0, msgs.length - 1 - mi) * messageGapMinutes * 60000,
+            text: sanitizeText(m?.text || "", 220),
+            time: lastMessageTime - Math.max(0, visibleMsgs.length - 1 - mi) * messageGapMinutes * 60000,
           })).filter((m) => !!m.text),
         };
       }).filter((t) => t.messages.length > 0);
@@ -98,8 +101,29 @@ ${recent || "（尚無）"}
     setPhonePlayerContactLoading(true);
     try {
       const currentPlayerContact = phoneInboxCache[char.id]?.playerContact || {};
-      const recentPlayerChat = (chatHistory[char.id] || []).slice(-6)
-        .map((message) => `${message.role === "user" ? "玩家" : char.name}：${sanitizeText(message.content || "[圖片]", 300)}`)
+      const explicitRelationship = sanitizeText(char.relationshipToUser || "", 120).trim();
+      const longTermMemoryContext = (memories?.[char.id] || [])
+        .filter((memory) => memory?.text)
+        .sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || Number(b.updatedAt || b.time || 0) - Number(a.updatedAt || a.time || 0))
+        .slice(0, 8)
+        .map((memory, index) => `${index + 1}. ${sanitizeText(memory.text, 240)}`)
+        .join("\n");
+      const recentPlayerChat = (chatHistory[char.id] || []).slice(-10)
+        .map((message) => {
+          if (message.role === "user") return `玩家：${sanitizeText(messagePlainText(message, "[圖片]"), 300)}`;
+          if (message.role === "assistant") return `${char.name}：${sanitizeText(messagePlainText(message, "[圖片]"), 300)}`;
+          if (message.role === "transfer") {
+            const sender = message.fromType === "player" ? "玩家" : char.name;
+            const receiver = message.toType === "player" ? "玩家" : char.name;
+            const amount = Math.max(0, Number(message.amount) || 0);
+            return `[轉帳事件] ${sender} 轉帳給 ${receiver} $${amount}${message.note ? `，備註：${sanitizeText(message.note, 60)}` : ""}`;
+          }
+          if (message.role === "mode_transition") return `[系統事件] 互動模式由 ${message.fromMode === "reality" ? "現實" : "線上"} 切換為 ${message.toMode === "reality" ? "現實" : "線上"}`;
+          if (message.role === "system_notice") return `[系統事件] ${sanitizeText(message.content || "系統通知", 300)}`;
+          return "";
+        })
+        .filter(Boolean)
+        .slice(-6)
         .join("\n");
       const prompt = [{
         role: "user",
@@ -109,17 +133,20 @@ ${recent || "（尚無）"}
 {"suffix":"放在玩家名稱括號內的關係稱呼，可空白","note":"角色替玩家設定的短備註名"}
 
 規則：
-1) suffix 放在玩家名稱後方括號內，通常留空；只有角色個性或關係非常適合時才填寫，最多 8 字。
-2) suffix 以雙方關係為主，例如「老婆」「男友」「室友」「青梅竹馬」，最多 8 字；不要填 thought、note、玩家等系統詞。
-3) note 是 ${char.name} 替玩家設定的短備註名，例如「我家那位」「最重要的人」「總忘記帶傘」，2~16 字，不要寫成完整句子，但詞語與語意必須完整，禁止輸出「值得信任的後」這類未完成片段。
-4) suffix 與 note 都必須使用目前介面語言，不要中英混搭，不要輸出 thought、note、memo、remark、角色設定等標籤。
-5) 如果「與玩家關係」未設定，請從角色描述、System prompt、性格、情境與近期互動推斷最自然的稱呼與備註。
-6) 目前備註是「${sanitizeText(currentPlayerContact.note || "尚無", 16)}」。這次刷新請生成不同的新備註，不要原樣重複。
+1) 資訊優先順序固定為：「與玩家關係」> 角色設定 > 長期記憶 > 近期互動。已明確設定關係時，不可被近期一次爭吵、玩笑或短期情緒推翻。
+2) 若「與玩家關係」有內容，suffix 必須優先呈現該關係，但可依角色性格自然變化，不必逐字照抄。例如關係是「情侶」，可寫「寶貝」「親愛的」「戀人」「我家那位」；關係是「青梅竹馬」，可寫「竹馬」「老朋友」等。最多 8 字。
+3) 若「與玩家關係」未設定，才根據角色描述、System prompt、性格、情境、長期記憶與近期聊天推斷最自然的稱呼；證據不足時 suffix 可以留空，不要擅自升級成戀人、夫妻或家人。
+4) suffix 不要填 thought、note、玩家等系統詞。
+5) note 是 ${char.name} 替玩家設定的短備註名，必須符合明確關係與角色口吻，例如「我家那位」「最重要的人」「總忘記帶傘」，2~16 字；可以反映相處細節，但不可違背已設定的關係。
+6) note 不要寫成完整句子，但詞語與語意必須完整，禁止輸出「值得信任的後」這類未完成片段。
+7) suffix 與 note 都必須使用目前介面語言，不要中英混搭，不要輸出 thought、note、memo、remark、角色設定等標籤。
+8) 目前備註是「${sanitizeText(currentPlayerContact.note || "尚無", 16)}」。這次刷新請生成不同的新備註，不要原樣重複。
 
 角色設定：${sanitizeText([char.description, char.systemPrompt, char.personality, char.scenario].filter(Boolean).join("\n") || "未設定", 3200)}
-與玩家關係：${sanitizeText(char.relationshipToUser || "未設定", 120)}
+與玩家關係（最高優先）：${explicitRelationship || "未設定"}
 玩家名稱：${sanitizeText(playerProfile?.name || "玩家", 40)}
 玩家暱稱：${sanitizeText(playerProfile?.nickname || "未設定", 40)}
+長期記憶：\n${longTermMemoryContext || "尚無長期記憶"}
 近期互動：\n${recentPlayerChat || "尚無對話"}`,
       }];
       const raw = await callAI(prompt, { ...apiConfig, maxTokens: 300 }, "你是角色手機聯絡人資料生成器，只能輸出有效 JSON。");
@@ -141,7 +168,7 @@ ${recent || "（尚無）"}
       if (!nextNote || /[a-z]{3,}/i.test(nextNote) || isIncompleteContactNote(nextNote)) {
         const retryRaw = await callAI([{
           role: "user",
-          content: `${getOutputLanguageDirective()}\n請以 ${char.name} 的視角，只輸出一則 2~16 字、詞語完整的玩家聯絡人短備註名，例如「我家那位」或「最重要的人」。不要輸出未完成片段，不要 JSON、英文、標籤、引號或說明。玩家關係：${sanitizeText(char.relationshipToUser || "未設定", 120)}`,
+          content: `${getOutputLanguageDirective()}\n請以 ${char.name} 的視角，只輸出一則 2~16 字、詞語完整的玩家聯絡人短備註名，例如「我家那位」或「最重要的人」。不要輸出未完成片段，不要 JSON、英文、標籤、引號或說明。玩家關係（最高優先）：${explicitRelationship || "未設定"}\n長期記憶：${longTermMemoryContext || "尚無"}\n近期互動：${recentPlayerChat || "尚無"}`,
         }], { ...apiConfig, maxTokens: 100 }, "你只輸出聯絡人備註文字。");
         nextNote = sanitizeText(String(retryRaw || "").replace(/^[「『"']+|[」』"']+$/g, "").trim(), 16)
           .replace(/^\s*(?:thought|note|memo|remark|備註)\s*[:：-]?\s*/i, "").trim();
@@ -149,8 +176,9 @@ ${recent || "（尚無）"}
       if (!nextNote || isIncompleteContactNote(nextNote)) throw new Error("模型沒有產生完整的玩家聯絡人備註");
       const generatedSuffix = sanitizeText(parsedContact.suffix || "", 8)
         .replace(/^\s*(?:thought|note|memo|remark|稱呼)\s*[:：-]?\s*/i, "").trim();
+      const validGeneratedSuffix = !/[a-z]{3,}/i.test(generatedSuffix) ? generatedSuffix : "";
       const playerContact = {
-        suffix: Math.random() < 0.5 && !/[a-z]{3,}/i.test(generatedSuffix) ? generatedSuffix : "",
+        suffix: explicitRelationship ? validGeneratedSuffix : (Math.random() < 0.5 ? validGeneratedSuffix : ""),
         note: nextNote,
       };
       setPhoneInboxCache((prev) => ({
@@ -171,10 +199,25 @@ ${recent || "（尚無）"}
     setPhoneAppGenLoading(appId);
     try {
       const theme = sanitizePhoneTheme(phoneAppCache[char.id]?.theme?.data);
+      const diaryDateContext = () => {
+        const format = (date) => new Intl.DateTimeFormat("zh-TW", {
+          year: "numeric", month: "long", day: "numeric", weekday: "long",
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        }).format(date);
+        const now = new Date();
+        return [0, 1, 2].map((daysAgo) => {
+          const date = new Date(now);
+          date.setDate(date.getDate() - daysAgo);
+          return `${daysAgo === 0 ? "今天" : daysAgo === 1 ? "昨天" : "前天"}：${format(date)}`;
+        }).join("；");
+      };
       const extra = appId === "shop"
         ? { balance: characterWallets[char.id]?.balance }
         : appId === "diary"
-          ? { prevTitles: (phoneAppCache[char.id]?.diary?.data?.entries || []).map((e) => e.title) }
+          ? {
+              prevTitles: (phoneAppCache[char.id]?.diary?.data?.entries || []).map((e) => e.title),
+              dateContext: diaryDateContext(),
+            }
           : { mode: theme.mode };
       const ctx = buildPhonePromptContext(char, chatHistory);
       const prompt = [{ role: "user", content: buildPhoneAppPrompt(appId, getOutputLanguageDirective(), ctx, extra) }];
@@ -196,4 +239,3 @@ ${recent || "（尚無）"}
 
   return { generatePhoneNpcChats, refreshPhonePlayerContact, generatePhoneApp };
 }
-

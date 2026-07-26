@@ -1,5 +1,7 @@
 import React from "react";
 import { InnerThoughtPanel } from "../../components/chat/ChatMessageParts";
+import { pseudoImagePromptLine } from "../../utils/pseudoImage";
+import { pseudoVoicePromptLine } from "../../utils/pseudoVoice";
 
 export default function useInnerThought({
   chatHistory,
@@ -75,7 +77,7 @@ export default function useInnerThought({
     }
     let contextMessages = recentRoundMessages.map((message) => ({
       role: message.role,
-      content: sanitizeText(message.content || (message.image ? "[圖片]" : ""), 1200),
+      content: sanitizeText(`${message.pseudoVoice ? "" : (message.content || "")}${pseudoImagePromptLine(message.pseudoImage, message.role === "user" ? "{{user}}" : "你")}${pseudoVoicePromptLine(message.pseudoVoice, message.role === "user" ? "{{user}}" : "你")}`.trim() || (message.image ? "[圖片]" : ""), 1200),
     }));
     const memoryContext = pickMemoriesForPrompt(char.id, contextMessages).map((memory, index) => `- ${index + 1}. ${memory.text}`).join("\n");
     const scene = chatScenes?.[char.id] || {};
