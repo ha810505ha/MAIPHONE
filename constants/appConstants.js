@@ -11,6 +11,7 @@ const API_PROVIDERS = [
   { id: "grok", name: "Grok", baseUrl: "https://api.x.ai/v1", models: ["grok-3-mini", "grok-3"] },
   { id: "novelai", name: "NovelAI", baseUrl: "https://text.novelai.net/oa/v1", models: ["kayra", "erato", "clio"] },
   { id: "openrouter", name: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1", models: ["auto"] },
+  { id: "nvidia", name: "NVIDIA NIM", baseUrl: "https://integrate.api.nvidia.com/v1", models: ["meta/llama-3.3-70b-instruct", "openai/gpt-oss-20b", "openai/gpt-oss-120b", "deepseek-ai/deepseek-v4-flash", "qwen/qwen3.5-122b-a10b"] },
   { id: "ollama", name: "Ollama", baseUrl: `${MALIPHONE_AI_PROXY}/ollama`, models: ["gpt-oss:20b-cloud", "gpt-oss:120b-cloud", "llama3.1"] },
   { id: "custom", name: "Custom", baseUrl: "", models: [] },
 ];

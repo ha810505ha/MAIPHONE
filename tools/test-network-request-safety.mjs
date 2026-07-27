@@ -7,6 +7,8 @@ import {
   isRequestCancelled,
   NETWORK_TIMEOUTS,
 } from "../utils/networkRequest.js";
+import { API_PROVIDERS } from "../constants/appConstants.js";
+import { callAI, fetchAvailableModels } from "../services/aiService.js";
 
 const originalFetch = globalThis.fetch;
 
@@ -94,6 +96,65 @@ try {
   assert.equal(listenerAdds, 1, "external abort listener must be registered once");
   assert.equal(listenerRemoves, 1, "external abort listener must be removed after body consumption");
   assert.ok(NETWORK_TIMEOUTS.AI > NETWORK_TIMEOUTS.METADATA, "long generation requests need a larger deadline");
+} finally {
+  globalThis.fetch = originalFetch;
+}
+
+const nvidiaProvider = API_PROVIDERS.find((provider) => provider.id === "nvidia");
+assert.equal(nvidiaProvider?.baseUrl, "https://integrate.api.nvidia.com/v1");
+assert.ok(nvidiaProvider.models.length > 0, "NVIDIA must offer fallback models");
+
+try {
+  let requestUrl = "";
+  let requestInit = null;
+  globalThis.fetch = async (input, init) => {
+    requestUrl = String(input);
+    requestInit = init;
+    return Response.json({ choices: [{ message: { content: "ok" } }] });
+  };
+  const output = await callAI(
+    [{ role: "user", content: "hello" }],
+    {
+      provider: "nvidia",
+      baseUrl: "https://integrate.api.nvidia.com/v1",
+      apiKey: "nvapi-test",
+      model: nvidiaProvider.models[0],
+      maxTokens: 500,
+    },
+    "system",
+  );
+  assert.equal(output, "ok");
+  assert.equal(requestUrl, "https://orange-butterfly-8390.d778105.workers.dev/nvidia/chat/completions");
+  assert.equal(requestInit.headers.Authorization, "Bearer nvapi-test");
+  assert.equal(JSON.parse(requestInit.body).max_tokens, 500);
+
+  globalThis.fetch = async () => Response.json(
+    { error: { message: "models unavailable" } },
+    { status: 404 },
+  );
+  assert.deepEqual(
+    await fetchAvailableModels({
+      provider: "nvidia",
+      baseUrl: "https://integrate.api.nvidia.com/v1",
+      apiKey: "nvapi-test",
+    }),
+    nvidiaProvider.models,
+    "NVIDIA model lookup failures must fall back to bundled models",
+  );
+
+  globalThis.fetch = async () => Response.json(
+    { detail: "Unauthorized" },
+    { status: 401 },
+  );
+  await assert.rejects(
+    fetchAvailableModels({
+      provider: "nvidia",
+      baseUrl: "https://integrate.api.nvidia.com/v1",
+      apiKey: "invalid-key",
+    }),
+    /Unauthorized/,
+    "NVIDIA authentication failures must not be hidden by fallback models",
+  );
 } finally {
   globalThis.fetch = originalFetch;
 }

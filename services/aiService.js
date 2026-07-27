@@ -1,7 +1,14 @@
 import { fetchWithTimeout, NETWORK_TIMEOUTS } from "../utils/networkRequest.js";
 
+const NVIDIA_PROXY_BASE_URL = "https://orange-butterfly-8390.d778105.workers.dev/nvidia";
+
+const resolveRequestBaseUrl = (provider, configuredBaseUrl) => (
+  provider === "nvidia" ? NVIDIA_PROXY_BASE_URL : configuredBaseUrl
+);
+
 async function callAI(messages, apiConfig, sysPrompt, options = {}) {
-  const { provider, baseUrl, apiKey, model } = apiConfig;
+  const { provider, baseUrl: configuredBaseUrl, apiKey, model } = apiConfig;
+  const baseUrl = resolveRequestBaseUrl(provider, configuredBaseUrl);
   const request = (url, init) => fetchWithTimeout(url, init, {
     signal: options.signal,
     timeoutMs: options.timeoutMs || NETWORK_TIMEOUTS.AI,
@@ -192,7 +199,8 @@ async function callAI(messages, apiConfig, sysPrompt, options = {}) {
 }
 
 async function fetchAvailableModels(apiConfig, options = {}) {
-  const { provider, baseUrl, apiKey } = apiConfig;
+  const { provider, baseUrl: configuredBaseUrl, apiKey } = apiConfig;
+  const baseUrl = resolveRequestBaseUrl(provider, configuredBaseUrl);
   const request = (url, init) => fetchWithTimeout(url, init, {
     signal: options.signal,
     timeoutMs: options.timeoutMs || NETWORK_TIMEOUTS.METADATA,
@@ -272,10 +280,27 @@ async function fetchAvailableModels(apiConfig, options = {}) {
   const headers = {};
   if (providerNeedsApiKey) headers.Authorization = `Bearer ${apiKey}`;
   if (provider === "openrouter") headers["HTTP-Referer"] = "https://maliphone.app";
-  const res = await request(`${baseUrl}/models`, { headers });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.error?.message || `HTTP ${res.status}`);
-  return (data.data || []).map((m) => m.id).filter(Boolean);
+  const nvidiaFallbackModels = [
+    "meta/llama-3.3-70b-instruct",
+    "openai/gpt-oss-20b",
+    "openai/gpt-oss-120b",
+    "deepseek-ai/deepseek-v4-flash",
+    "qwen/qwen3.5-122b-a10b",
+  ];
+  try {
+    const res = await request(`${baseUrl}/models`, { headers });
+    const data = await res.json();
+    if (!res.ok) {
+      const error = new Error(data?.error?.message || data?.detail || `HTTP ${res.status}`);
+      error.status = res.status;
+      throw error;
+    }
+    const models = (data.data || []).map((m) => m.id).filter(Boolean);
+    return provider === "nvidia" && !models.length ? nvidiaFallbackModels : models;
+  } catch (error) {
+    if (provider === "nvidia" && ![401, 403].includes(error?.status)) return nvidiaFallbackModels;
+    throw error;
+  }
 }
 
 export { callAI, fetchAvailableModels };

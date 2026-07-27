@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { appendGroupMessages, appendUniqueMessages, removeGroupMessage } from "../utils/messageState.js";
 import { extractPseudoVoiceDirectives, normalizePersistedPseudoVoiceMessages } from "../utils/pseudoVoice.js";
 import { messagePreviewText } from "../utils/pseudoImage.js";
+import { inferCoupleInviteState } from "../utils/coupleInviteState.js";
 
 const original = [{ id: "m1", content: "before request" }];
 const userMessage = { id: "m2", content: "request" };
@@ -68,6 +69,13 @@ assert.equal(
   messagePreviewText({ role: "user", content: "", image: "base64" }, { imageText: "玩家傳送了圖片" }),
   "玩家傳送了圖片",
 );
+
+assert.equal(inferCoupleInviteState("好啊，我願意跟你一起開啟。"), "accepted");
+assert.equal(inferCoupleInviteState("那就一起吧。"), "accepted");
+assert.equal(inferCoupleInviteState("我不願意接受這份邀請。"), "declined");
+assert.equal(inferCoupleInviteState("讓我再想想，晚點回覆你。"), null);
+assert.equal(inferCoupleInviteState("我不確定自己是否願意。"), null);
+assert.equal(inferCoupleInviteState("今天心情很好。"), null);
 
 // 靜態護欄：群聊 AI hook 不可再把 request 開始時捕獲的整包訊息寫回 state。
 const groupHook = await readFile(new URL("../hooks/chat/useGroupChatAI.js", import.meta.url), "utf8");

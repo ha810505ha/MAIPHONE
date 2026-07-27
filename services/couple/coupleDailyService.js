@@ -1,5 +1,6 @@
 import { callAI } from "../aiService";
 import { loadFeatureEntity, saveFeatureEntity } from "../../utils/indexedDbStorage";
+import { inferCoupleInviteState } from "../../utils/coupleInviteState";
 
 const DAILY_KEY = "ent_coupleDaily";
 
@@ -55,13 +56,16 @@ export function extractCoupleDirectives(text) {
   const raw = String(text || "");
   const taskMatches = [...raw.matchAll(/\[\[COUPLE_TASK:(completed|cancelled)\]\]/gi)];
   const inviteMatches = [...raw.matchAll(/\[\[COUPLE_INVITE:(accepted|declined)\]\]/gi)];
+  const inviteState = inviteMatches.length
+    ? inviteMatches[inviteMatches.length - 1][1].toLowerCase()
+    : inferCoupleInviteState(raw);
   return {
     text: raw
       .replace(/\s*\[\[COUPLE_TASK:(?:completed|cancelled)\]\]\s*/gi, " ")
       .replace(/\s*\[\[COUPLE_INVITE:(?:accepted|declined)\]\]\s*/gi, " ")
       .replace(/\n{3,}/g, "\n\n").trim(),
     taskState: taskMatches.length ? taskMatches[taskMatches.length - 1][1].toLowerCase() : null,
-    inviteState: inviteMatches.length ? inviteMatches[inviteMatches.length - 1][1].toLowerCase() : null,
+    inviteState,
   };
 }
 
