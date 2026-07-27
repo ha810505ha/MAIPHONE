@@ -204,7 +204,7 @@ export default function ShopPanel({ save, onDirty, onToast, onCrystals, onClose,
           </div>
         );
       })}
-      <div style={{ fontSize: 11, color: "#8a7a6a" }}>訂單每日刷新，💎 與遊戲中心的抽卡水晶共用。</div>
+      <div style={{ fontSize: 11, color: "#8a7a6a" }}>訂單每日更新，💎 與遊戲中心的抽卡水晶共用。</div>
     </div>
   );
 

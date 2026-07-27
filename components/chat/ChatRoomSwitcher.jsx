@@ -1,7 +1,8 @@
 import React from "react";
+import MotionPresence from "../motion/MotionPresence.jsx";
 
 export default function ChatRoomSwitcher({ open, onClose, rooms, activeRoomId, onSwitchRoom, onCreateRoom, onRenameRoom, onDeleteRoom, onOpenSettings, tr }) {
-  if (!open || !Array.isArray(rooms) || !rooms.length) return null;
+  const hasRooms = Array.isArray(rooms) && rooms.length > 0;
   const formatUpdatedAt = (value) => {
     const time = Number(value) || 0;
     if (!time) return "";
@@ -9,8 +10,10 @@ export default function ChatRoomSwitcher({ open, onClose, rooms, activeRoomId, o
     return date.toLocaleDateString(undefined, { month: "numeric", day: "numeric" }) + " " + date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
   };
   return (
+    <MotionPresence show={open && hasRooms}>
+    {open && hasRooms && (
     <div className="mp-overlay" style={{zIndex:90,alignItems:"flex-end",padding:0}} onClick={onClose}>
-      <div style={{width:"100%",maxHeight:"72vh",overflowY:"auto",background:"var(--mp-surface)",borderRadius:"22px 22px 0 0",padding:"10px 14px 18px",boxShadow:"0 -12px 36px rgba(0,0,0,.2)"}} onClick={(event) => event.stopPropagation()}>
+      <div className="mp-sheet" style={{width:"100%",maxHeight:"72vh",overflowY:"auto",background:"var(--mp-surface)",borderRadius:"22px 22px 0 0",padding:"10px 14px 18px",boxShadow:"0 -12px 36px rgba(0,0,0,.2)"}} onClick={(event) => event.stopPropagation()}>
         <div style={{width:38,height:4,borderRadius:99,background:"color-mix(in srgb,var(--mp-txt-l) 35%,transparent)",margin:"0 auto 12px"}} />
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
           <div style={{fontSize:15,fontWeight:900,color:"var(--mp-txt)"}}>{tr("切換對話", "Switch chat", "会話を切り替え", "대화 전환")}</div>
@@ -33,5 +36,7 @@ export default function ChatRoomSwitcher({ open, onClose, rooms, activeRoomId, o
         <button type="button" style={{width:"100%",border:0,background:"transparent",color:"var(--mp-txt-l)",padding:"12px 4px 2px",fontSize:11,fontWeight:700}} onClick={() => { onClose?.(); onOpenSettings?.(); }}>{tr("聊天室設定…", "Chat settings…", "チャット設定…", "채팅 설정…")}</button>
       </div>
     </div>
+    )}
+    </MotionPresence>
   );
 }

@@ -79,10 +79,10 @@ export default function AccountSyncSettings({ tr, notify }) {
         await refresh();
       } else {
         // 防呆：匿名（訪客）帳號沒有 email/密碼，登入其他帳號後裝置改綁新帳號，
-        // 訪客資料就再也拿不回來——先給玩家一次註冊保存的機會
+        // 訪客資料就再也拿不回來——先給玩家一次註冊儲存的機會
         if (getSyncAccount()?.anonymous) {
           const proceed = window.confirm(text(
-            "此裝置上的訪客資料在登入其他帳號後將無法取回。\n建議先「註冊」把訪客資料綁定成帳號保存。\n\n確定要直接登入其他帳號嗎？",
+            "此裝置上的訪客資料在登入其他帳號後將無法取回。\n建議先「註冊」把訪客資料綁定成帳號儲存。\n\n確定要直接登入其他帳號嗎？",
             "Guest data on this device cannot be recovered after signing in to another account.\nWe recommend registering first to keep your guest data.\n\nSign in to another account anyway?",
           ));
           if (!proceed) return;
@@ -242,7 +242,7 @@ export default function AccountSyncSettings({ tr, notify }) {
                 <div style={{ maxWidth: 280, fontSize: 11, lineHeight: 1.6, color: "var(--mp-txt-l)" }}>
                   {formMode === "login"
                     ? text("登入後即可載入並同步您的雲端資料", "Sign in to load and sync your cloud data")
-                    : text("註冊後即可跨裝置保存角色與遊戲資料", "Register to keep your characters and game data across devices")}
+                    : text("註冊後即可跨裝置儲存角色與遊戲資料", "Register to keep your characters and game data across devices")}
                 </div>
               </div>
 

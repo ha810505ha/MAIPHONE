@@ -1,8 +1,7 @@
-import { PHONE_APP_META, sanitizePhoneTheme, buildPhonePromptContext, buildPhoneAppPrompt, sanitizePhoneAppData } from "../../utils/phoneAppGen";
 import { messagePlainText } from "../../utils/pseudoImage";
 
 export default function usePhoneDataGeneration({
-  phoneInboxCache, phoneAppCache, chatHistory, memories, playerProfile, characterWallets, apiConfig,
+  phoneInboxCache, phoneAppCache, chatHistory, playerProfile, characterWallets, apiConfig,
   setPhoneInboxCache, setPhoneAppCache, setPhoneGenLoading, setPhonePlayerContactLoading,
   setPhoneAppGenLoading, setDiaryPage, syncShopOrdersToWallet, canUseCurrentProvider,
   getOutputLanguageDirective, callAI, sanitizeText, gid, showToast, tr,
@@ -20,7 +19,12 @@ export default function usePhoneDataGeneration({
 
   const generatePhoneNpcChats = async (char) => {
     if (!char) return;
-    if (!window.confirm("刷新其他聊天只會重新生成其他聯絡人的聊天內容，不包含與玩家的聊天，也不會修改玩家暱稱或備註。確定要繼續嗎？")) return;
+    if (!window.confirm(tr(
+      "更新其他聊天只會重新生成其他聯絡人的聊天內容，不包含與玩家的聊天，也不會修改玩家暱稱或備註。確定要繼續嗎？",
+      "Refreshing other chats regenerates only other contacts' conversations. It won't affect the player chat, nickname, or notes. Continue?",
+      "ほかのチャットを更新すると、プレイヤー以外の連絡先との会話だけが再生成されます。プレイヤーとの会話、ニックネーム、メモは変更されません。続けますか？",
+      "다른 채팅을 업데이트하면 플레이어를 제외한 연락처의 대화만 다시 생성됩니다. 플레이어 채팅, 닉네임, 메모는 변경되지 않습니다. 계속할까요?",
+    ))) return;
     if (!canUseCurrentProvider()) { showToast(tr("請先完成 AI 連線設定（API Key）", "Please finish AI connection setup (API key) first", "先にAI接続設定（APIキー）を完了してください", "먼저 AI 연결 설정(API 키)을 완료해주세요")); return; }
     setPhoneGenLoading(true);
     try {
@@ -96,18 +100,17 @@ ${recent || "（尚無）"}
 
   const refreshPhonePlayerContact = async (char) => {
     if (!char) return;
-    if (!window.confirm("確定刷新玩家聊天室？\n\n只會更新玩家名稱、括號稱呼與關係備註；與玩家的對話內容、其他聯絡人聊天都不會改變。")) return;
+    if (!window.confirm(tr(
+      "確定更新玩家聊天室？\n\n只會更新玩家名稱、括號稱呼與關係備註；與玩家的對話內容、其他聯絡人聊天都不會改變。",
+      "Refresh the player chat?\n\nOnly the player name, parenthetical nickname, and relationship note will change. Conversations won't be modified.",
+      "プレイヤーチャットを更新しますか？\n\nプレイヤー名、括弧内の呼び名、関係メモだけが更新され、会話内容は変更されません。",
+      "플레이어 채팅을 업데이트할까요?\n\n플레이어 이름, 괄호 호칭, 관계 메모만 업데이트되며 대화 내용은 변경되지 않습니다.",
+    ))) return;
     if (!canUseCurrentProvider()) { showToast(tr("請先完成 AI 連線設定（API Key）", "Please finish AI connection setup (API key) first", "先にAI接続設定（APIキー）を完了してください", "먼저 AI 연결 설정(API 키)을 완료해주세요")); return; }
     setPhonePlayerContactLoading(true);
     try {
       const currentPlayerContact = phoneInboxCache[char.id]?.playerContact || {};
       const explicitRelationship = sanitizeText(char.relationshipToUser || "", 120).trim();
-      const longTermMemoryContext = (memories?.[char.id] || [])
-        .filter((memory) => memory?.text)
-        .sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || Number(b.updatedAt || b.time || 0) - Number(a.updatedAt || a.time || 0))
-        .slice(0, 8)
-        .map((memory, index) => `${index + 1}. ${sanitizeText(memory.text, 240)}`)
-        .join("\n");
       const recentPlayerChat = (chatHistory[char.id] || []).slice(-10)
         .map((message) => {
           if (message.role === "user") return `玩家：${sanitizeText(messagePlainText(message, "[圖片]"), 300)}`;
@@ -133,23 +136,22 @@ ${recent || "（尚無）"}
 {"suffix":"放在玩家名稱括號內的關係稱呼，可空白","note":"角色替玩家設定的短備註名"}
 
 規則：
-1) 資訊優先順序固定為：「與玩家關係」> 角色設定 > 長期記憶 > 近期互動。已明確設定關係時，不可被近期一次爭吵、玩笑或短期情緒推翻。
+1) 資訊優先順序固定為：「與玩家關係」> 角色設定 > 近期互動。已明確設定關係時，不可被近期一次爭吵、玩笑或短期情緒推翻。
 2) 若「與玩家關係」有內容，suffix 必須優先呈現該關係，但可依角色性格自然變化，不必逐字照抄。例如關係是「情侶」，可寫「寶貝」「親愛的」「戀人」「我家那位」；關係是「青梅竹馬」，可寫「竹馬」「老朋友」等。最多 8 字。
-3) 若「與玩家關係」未設定，才根據角色描述、System prompt、性格、情境、長期記憶與近期聊天推斷最自然的稱呼；證據不足時 suffix 可以留空，不要擅自升級成戀人、夫妻或家人。
+3) 若「與玩家關係」未設定，才根據角色描述、System prompt、性格、情境與近期聊天推斷最自然的稱呼；證據不足時 suffix 可以留空，不要擅自升級成戀人、夫妻或家人。
 4) suffix 不要填 thought、note、玩家等系統詞。
 5) note 是 ${char.name} 替玩家設定的短備註名，必須符合明確關係與角色口吻，例如「我家那位」「最重要的人」「總忘記帶傘」，2~16 字；可以反映相處細節，但不可違背已設定的關係。
 6) note 不要寫成完整句子，但詞語與語意必須完整，禁止輸出「值得信任的後」這類未完成片段。
 7) suffix 與 note 都必須使用目前介面語言，不要中英混搭，不要輸出 thought、note、memo、remark、角色設定等標籤。
-8) 目前備註是「${sanitizeText(currentPlayerContact.note || "尚無", 16)}」。這次刷新請生成不同的新備註，不要原樣重複。
+8) 目前備註是「${sanitizeText(currentPlayerContact.note || "尚無", 16)}」。這次更新請生成不同的新備註，不要原樣重複。
 
 角色設定：${sanitizeText([char.description, char.systemPrompt, char.personality, char.scenario].filter(Boolean).join("\n") || "未設定", 3200)}
 與玩家關係（最高優先）：${explicitRelationship || "未設定"}
 玩家名稱：${sanitizeText(playerProfile?.name || "玩家", 40)}
 玩家暱稱：${sanitizeText(playerProfile?.nickname || "未設定", 40)}
-長期記憶：\n${longTermMemoryContext || "尚無長期記憶"}
 近期互動：\n${recentPlayerChat || "尚無對話"}`,
       }];
-      const raw = await callAI(prompt, { ...apiConfig, maxTokens: 300 }, "你是角色手機聯絡人資料生成器，只能輸出有效 JSON。");
+      const raw = await callAI(prompt, { ...apiConfig, maxTokens: 500 }, "你是角色手機聯絡人資料生成器，只能輸出有效 JSON。");
       const parsed = parseJsonObjectFromText(raw) || {};
       const parsedContact = parsed.playerContact && typeof parsed.playerContact === "object"
         ? parsed.playerContact
@@ -168,8 +170,8 @@ ${recent || "（尚無）"}
       if (!nextNote || /[a-z]{3,}/i.test(nextNote) || isIncompleteContactNote(nextNote)) {
         const retryRaw = await callAI([{
           role: "user",
-          content: `${getOutputLanguageDirective()}\n請以 ${char.name} 的視角，只輸出一則 2~16 字、詞語完整的玩家聯絡人短備註名，例如「我家那位」或「最重要的人」。不要輸出未完成片段，不要 JSON、英文、標籤、引號或說明。玩家關係（最高優先）：${explicitRelationship || "未設定"}\n長期記憶：${longTermMemoryContext || "尚無"}\n近期互動：${recentPlayerChat || "尚無"}`,
-        }], { ...apiConfig, maxTokens: 100 }, "你只輸出聯絡人備註文字。");
+          content: `${getOutputLanguageDirective()}\n請以 ${char.name} 的視角，只輸出一則 2~16 字、詞語完整的玩家聯絡人短備註名，例如「我家那位」或「最重要的人」。不要輸出未完成片段，不要 JSON、英文、標籤、引號或說明。玩家關係（最高優先）：${explicitRelationship || "未設定"}\n近期互動：${recentPlayerChat || "尚無"}`,
+        }], { ...apiConfig, maxTokens: 500 }, "你只輸出聯絡人備註文字。");
         nextNote = sanitizeText(String(retryRaw || "").replace(/^[「『"']+|[」』"']+$/g, "").trim(), 16)
           .replace(/^\s*(?:thought|note|memo|remark|備註)\s*[:：-]?\s*/i, "").trim();
       }
@@ -185,7 +187,7 @@ ${recent || "（尚無）"}
         ...prev,
         [char.id]: { ...(prev[char.id] || {}), playerContact, playerContactUpdatedAt: Date.now() },
       }));
-      showToast("玩家暱稱與備註已刷新");
+      showToast("玩家暱稱與備註已更新");
     } catch (err) {
       showToast(`${tr("生成失敗", "Generation failed", "生成に失敗しました", "생성 실패")}：${sanitizeText(err?.message || "", 120)}`);
     } finally {
@@ -194,7 +196,15 @@ ${recent || "（尚無）"}
   };
 
   const generatePhoneApp = async (char, appId) => {
-    if (!char || !PHONE_APP_META[appId]) return;
+    if (!char) return;
+    const {
+      PHONE_APP_META,
+      sanitizePhoneTheme,
+      buildPhonePromptContext,
+      buildPhoneAppPrompt,
+      sanitizePhoneAppData,
+    } = await import("../../utils/phoneAppGen");
+    if (!PHONE_APP_META[appId]) return;
     if (!canUseCurrentProvider()) { showToast(tr("請先完成 AI 連線設定（API Key）", "Please finish AI connection setup first", "先にAI接続設定を完了してください", "먼저 AI 연결 설정을 완료해주세요")); return; }
     setPhoneAppGenLoading(appId);
     try {

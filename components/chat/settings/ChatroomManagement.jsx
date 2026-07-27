@@ -1,5 +1,87 @@
 import React from "react";
 
-export default function ChatroomManagement({ open, setOpen, character, importing, importRef, onImportFile, onExport, onOpenImport, onClear, onDelete, tr }) {
-  return <section className={`mp-chat-setting-section mp-chat-management-section ${open ? "open" : ""}`}><button type="button" className="mp-chat-setting-section-head" onClick={() => setOpen((value) => !value)}><span><b>{tr("聊天室管理", "Chatroom management", "チャットルーム管理", "채팅방 관리")}</b><small>{tr("匯入、匯出、清空與刪除", "Import, export, clear and delete", "インポート・エクスポート・消去・削除", "가져오기, 내보내기, 비우기 및 삭제")}</small></span><i>{open ? tr("收合", "Collapse", "折りたたむ", "접기") : tr("展開", "Expand", "展開", "펼치기")}</i></button>{open && <div className="mp-chat-management-body"><div style={{ fontSize: 11, color: "var(--mp-txt-l)", lineHeight: 1.7, marginBottom: 8 }}>{tr("「清空」會保留目前聊天室，只移除其中內容；「刪除」會移除這個角色的全部聊天室，但不會刪除角色聯絡人。", "Clear keeps the current chatroom but removes its contents. Delete removes all chatrooms for this character but keeps the contact.", "「消去」は現在のチャットルームを残して内容だけを削除し、「削除」はこのキャラクターの全チャットルームを削除します。連絡先は残ります。", "비우기는 현재 채팅방을 유지하고 내용만 지우며, 삭제는 이 캐릭터의 모든 채팅방을 제거합니다. 연락처는 유지됩니다.")}</div><div style={{ display: "grid", gap: 8 }}><button type="button" className="mp-save" style={{ background: "linear-gradient(135deg,#90caf9,#42a5f5)" }} onClick={() => onExport(character.id, character.name)}>{tr("匯出聊天室", "Export chatroom", "チャットルームを書き出す", "채팅방 내보내기")}</button><button type="button" className="mp-save" style={{ background: "linear-gradient(135deg,#b0bec5,#78909c)" }} onClick={() => onOpenImport(character.id)}>{importing ? tr("等待選擇檔案...", "Waiting for file selection...", "ファイル選択待ち...", "파일 선택 대기 중...") : tr("匯入聊天室", "Import chatroom", "チャットルームを取り込む", "채팅방 가져오기")}</button><button type="button" className="mp-save" style={{ background: "linear-gradient(135deg,#ffcc80,#fb8c00)" }} onClick={onClear}>{tr("清空當前聊天室", "Clear current chatroom", "現在のチャットルームを空にする", "현재 채팅방 비우기")}</button><button type="button" className="mp-save" style={{ background: "linear-gradient(135deg,#ef9a9a,#e53935)" }} onClick={() => onDelete(character.id, character.name)}>{tr("刪除整個聊天室", "Delete entire chatroom", "チャットルーム全体を削除", "채팅방 전체 삭제")}</button><input ref={importRef} type="file" accept=".json,application/json" style={{ display: "none" }} onChange={onImportFile} /></div></div>}</section>;
+export default function ChatroomManagement({
+  open,
+  setOpen,
+  character,
+  importing,
+  importRef,
+  onImportFile,
+  onExport,
+  onOpenImport,
+  onClear,
+  onDelete,
+  tr,
+}) {
+  return (
+    <section className={`mp-chat-setting-section mp-chat-management-section ${open ? "open" : ""}`}>
+      <button
+        type="button"
+        className="mp-chat-setting-section-head"
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span>
+          <b>{tr("聊天室管理", "Chatroom management", "チャットルーム管理", "채팅방 관리")}</b>
+          <small>{tr("匯入、匯出、清空與刪除", "Import, export, clear and delete", "インポート・エクスポート・消去・削除", "가져오기, 내보내기, 비우기 및 삭제")}</small>
+        </span>
+        <i>{open ? tr("收合", "Collapse", "折りたたむ", "접기") : tr("展開", "Expand", "展開", "펼치기")}</i>
+      </button>
+
+      {open && (
+        <div className="mp-chat-management-body">
+          <div style={{ fontSize: 11, color: "var(--mp-txt-l)", lineHeight: 1.7, marginBottom: 8 }}>
+            {tr(
+              "「清空」會保留目前聊天室，只移除其中內容；「刪除」會移除這個角色的全部聊天室，但不會刪除角色聯絡人。",
+              "Clear keeps the current chatroom but removes its contents. Delete removes all chatrooms for this character but keeps the contact.",
+              "「消去」は現在のチャットルームを残して内容だけを削除し、「削除」はこのキャラクターの全チャットルームを削除します。連絡先は残ります。",
+              "비우기는 현재 채팅방을 유지하고 내용만 지우며, 삭제는 이 캐릭터의 모든 채팅방을 제거합니다. 연락처는 유지됩니다.",
+            )}
+          </div>
+          <div style={{ display: "grid", gap: 8 }}>
+            <button
+              type="button"
+              className="mp-save"
+              style={{ background: "linear-gradient(135deg,#90caf9,#42a5f5)" }}
+              onClick={() => onExport(character.id, character.name)}
+            >
+              {tr("匯出聊天室", "Export chatroom", "チャットルームを書き出す", "채팅방 내보내기")}
+            </button>
+            <button
+              type="button"
+              className="mp-save"
+              style={{ background: "linear-gradient(135deg,#b0bec5,#78909c)" }}
+              onClick={() => onOpenImport(character.id)}
+            >
+              {importing
+                ? tr("等待選擇檔案...", "Waiting for file selection...", "ファイル選択待ち...", "파일 선택 대기 중...")
+                : tr("匯入聊天室", "Import chatroom", "チャットルームを取り込む", "채팅방 가져오기")}
+            </button>
+            <button
+              type="button"
+              className="mp-save"
+              style={{ background: "linear-gradient(135deg,#ffcc80,#fb8c00)" }}
+              onClick={onClear}
+            >
+              {tr("清空目前聊天室", "Clear current chatroom", "現在のチャットルームを空にする", "현재 채팅방 비우기")}
+            </button>
+            <button
+              type="button"
+              className="mp-save"
+              style={{ background: "linear-gradient(135deg,#ef9a9a,#e53935)" }}
+              onClick={() => onDelete(character.id, character.name)}
+            >
+              {tr("刪除整個聊天室", "Delete entire chatroom", "チャットルーム全体を削除", "채팅방 전체 삭제")}
+            </button>
+            <input
+              ref={importRef}
+              type="file"
+              accept=".json,application/json"
+              style={{ display: "none" }}
+              onChange={onImportFile}
+            />
+          </div>
+        </div>
+      )}
+    </section>
+  );
 }

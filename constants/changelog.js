@@ -1,3 +1,5 @@
+import { toSimplifiedChinese } from "../utils/i18n.js";
+
 const ZH_CHANGELOG = {
   "1.2.6": [
     "07/27 大型更新",
@@ -27,7 +29,7 @@ const ZH_CHANGELOG = {
   "1.2.3": [
     "07/12 更新",
     "新增每日登入獎勵：可前往「遊戲中心 → 登入獎勵」領取。登入天數不需連續累積，每日於台灣時間早上 5:00 更新。",
-    "「雲隱山莊」內容調整：重新調整靈田種植、作物售價、訂單、秘境與資源獲取數值。秘境探索次數改為每日早上 5:00 重置。",
+    "「雲隱山莊」內容調整：重新調整靈田種植、作物售價、訂單、秘境與資源取得數值。秘境探索次數改為每日早上 5:00 重置。",
     "筆記功能正式開放：支援一般／私密筆記、自動儲存、文字格式、字體、字色、搜尋與釘選。",
     "聯絡人排序功能：可依照使用習慣自由調整角色順序，常用角色更容易找到。",
     "「寵物小屋」新增日記功能：可以留下並查看與寵物相處的生活紀錄。AI 日記功能預設開啟，可於寵物小屋設定中關閉。",
@@ -43,7 +45,7 @@ const ZH_CHANGELOG = {
     "聊天室版型與訊息顯示優化，手機輸入可正常換行，改為點擊發送按鈕才送出訊息",
     "統一各款主題的版型設計，新增蜜桃慕斯與主題動態效果開關，並改善特效呈現",
     "改善設定、自訂 CSS 與多個 App 的介面結構及操作穩定性",
-    "調整角色手機 App：新增主題化桌面、相簿、音樂、地圖、商店、日記、瀏覽與使用紀錄，並改善聊天刷新與玩家備註",
+    "調整角色手機 App：新增主題化桌面、相簿、音樂、地圖、商店、日記、瀏覽與使用紀錄，並改善聊天更新與玩家備註",
     "新增全站字體選擇功能，可依喜好切換介面字體",
   ],
   "1.2.0": [
@@ -146,5 +148,6 @@ const TRANSLATED_CHANGELOG = {
 
 export function getChangelog(version, language = "zh-TW") {
   if (language === "zh-TW") return ZH_CHANGELOG[version] || [];
+  if (language === "zh-CN") return (ZH_CHANGELOG[version] || []).map(toSimplifiedChinese);
   return TRANSLATED_CHANGELOG[version]?.[language] || ZH_CHANGELOG[version] || [];
 }

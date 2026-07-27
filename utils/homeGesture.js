@@ -1,24 +1,92 @@
-export function resolveHomeSwipe({ startX, startY, endX, endY }) {
-  if (![startX, startY, endX, endY].every(Number.isFinite)) return null;
+export const HOME_GESTURE = Object.freeze({
+  activationDistance: 8,
+  directionRatio: 1.22,
+  distanceRatio: 0.22,
+  minimumDistance: 42,
+  velocityThreshold: 0.45,
+  projectionMs: 170,
+  settleMs: 240,
+  flickSettleMs: 180,
+});
 
-  const diffX = startX - endX;
-  const diffY = startY - endY;
-  const absX = Math.abs(diffX);
-  const absY = Math.abs(diffY);
+const finite = (...values) => values.every(Number.isFinite);
 
-  if (diffY > 70 && absY > absX * 1.25) return "open-library";
-  if (absX < 18 || absY > absX * 1.35) return null;
-  return diffX > 0 ? "next-page" : "previous-page";
+export function rubberBand(distance, dimension, constant = 0.42) {
+  if (!Number.isFinite(distance) || !Number.isFinite(dimension) || dimension <= 0) {
+    return 0;
+  }
+  return (distance * dimension * constant) /
+    (dimension + constant * Math.abs(distance));
 }
 
-export function resolveLibrarySwipe({ startX, startY, endX, endY }) {
-  if (![startX, startY, endX, endY].every(Number.isFinite)) return null;
+export function classifyHomeGesture({
+  startX,
+  startY,
+  endX,
+  endY,
+  durationMs,
+  viewportWidth = 390,
+}) {
+  if (!finite(startX, startY, endX, endY)) return null;
 
-  const rise = startY - endY;
-  const horizontal = startX - endX;
-  const drift = Math.abs(horizontal);
+  const dx = endX - startX;
+  const dy = endY - startY;
+  const absX = Math.abs(dx);
+  const absY = Math.abs(dy);
+  const hasDuration = Number.isFinite(durationMs) && durationMs > 0;
+  const elapsed = hasDuration ? Math.max(1, durationMs) : 1;
+  const vx = hasDuration ? dx / elapsed : 0;
+  const vy = hasDuration ? dy / elapsed : 0;
+  const horizontal = absX >= HOME_GESTURE.activationDistance &&
+    absX > absY * HOME_GESTURE.directionRatio;
+  const vertical = absY >= HOME_GESTURE.activationDistance &&
+    absY > absX * HOME_GESTURE.directionRatio;
+  const distanceThreshold = Math.max(
+    HOME_GESTURE.minimumDistance,
+    viewportWidth * HOME_GESTURE.distanceRatio,
+  );
 
-  if (rise >= 58 && rise > drift * 1.15) return "home";
-  if (drift < 42 || drift <= Math.abs(rise) * 1.15) return null;
-  return horizontal > 0 ? "next-page" : "previous-page";
+  if (horizontal) {
+    const projected = dx + vx * HOME_GESTURE.projectionMs;
+    if (Math.abs(dx) >= distanceThreshold ||
+        Math.abs(vx) >= HOME_GESTURE.velocityThreshold ||
+        Math.abs(projected) >= distanceThreshold) {
+      return {
+        axis: "x",
+        direction: dx < 0 ? 1 : -1,
+        velocity: vx,
+        fast: Math.abs(vx) >= HOME_GESTURE.velocityThreshold,
+      };
+    }
+  }
+
+  if (vertical && dy < 0) {
+    const projected = dy + vy * HOME_GESTURE.projectionMs;
+    if (absY >= distanceThreshold ||
+        -vy >= HOME_GESTURE.velocityThreshold ||
+        -projected >= distanceThreshold) {
+      return {
+        axis: "y",
+        direction: -1,
+        velocity: vy,
+        fast: -vy >= HOME_GESTURE.velocityThreshold,
+      };
+    }
+  }
+
+  return null;
+}
+
+export function resolveHomeSwipe(input) {
+  const result = classifyHomeGesture(input);
+  if (!result) return null;
+  if (result.axis === "y") return "open-library";
+  return result.direction > 0 ? "next-page" : "previous-page";
+}
+
+export function resolveLibrarySwipe(input) {
+  const result = classifyHomeGesture(input);
+  if (!result) return null;
+  if (result.axis === "y") return "home";
+  return result.direction > 0 ? "next-page" : "previous-page";
 }

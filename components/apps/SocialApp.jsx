@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import MotionPresence from "../motion/MotionPresence.jsx";
 
 const SOCIAL_PAGE_SIZE = 5;
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -211,10 +212,10 @@ export default function SocialApp({
             <div className="mp-sg-t">{tr("社群資料", "Social data", "ソーシャルデータ", "소셜 데이터")}</div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
               <div>
-                <div style={{ fontSize: 12, fontWeight: 800 }}>{tr(`已保存 ${posts.length} / ${postLimit} 則`, `${posts.length} / ${postLimit} posts saved`, `${posts.length} / ${postLimit}件保存`, `${posts.length} / ${postLimit}개 저장됨`)}</div>
+                <div style={{ fontSize: 12, fontWeight: 800 }}>{tr(`已珍藏 ${posts.length} / ${postLimit} 則`, `${posts.length} / ${postLimit} posts saved`, `${posts.length} / ${postLimit}件保存`, `${posts.length} / ${postLimit}개 저장됨`)}</div>
                 <div style={{ fontSize: 10, color: posts.length >= Math.floor(postLimit * .8) ? "#b45f3c" : "var(--mp-txt-l)", marginTop: 4, lineHeight: 1.55 }}>
                   {posts.length >= Math.floor(postLimit * .8)
-                    ? tr("貼文即將達到上限，建議先匯出保存。珍藏貼文不會自動刪除。", "The limit is near. Export a copy first. Saved posts are never auto-deleted.", "上限が近づいています。先に書き出してください。保存済み投稿は自動削除されません。", "한도에 가까워졌습니다. 먼저 내보내세요. 저장한 게시물은 자동 삭제되지 않습니다.")
+                    ? tr("貼文即將達到上限，建議先匯出備份。珍藏貼文不會自動刪除。", "The limit is near. Export a copy first. Saved posts are never auto-deleted.", "上限が近づいています。先に書き出してください。保存済み投稿は自動削除されません。", "한도에 가까워졌습니다. 먼저 내보내세요. 저장한 게시물은 자동 삭제되지 않습니다.")
                     : tr("超過上限後會從最舊、未珍藏的貼文開始清除。", "Past the limit, the oldest unsaved posts are removed first.", "上限を超えると、古い未保存投稿から削除されます。", "한도를 넘으면 오래된 미저장 게시물부터 삭제됩니다.")}
                 </div>
               </div>
@@ -275,8 +276,9 @@ export default function SocialApp({
                   aria-label={tr("更多選項", "More options", "その他のオプション", "더 보기")}
                   onClick={() => setActivePostMenuId((id) => (id === p.id ? null : p.id))}
                 >⋯</button>
+                <MotionPresence show={activePostMenuId === p.id} exitMs={140}>
                 {activePostMenuId === p.id && (
-                  <div className="mp-post-menu">
+                  <div className="mp-post-menu mp-popover">
                     <button
                       className="mp-post-menu-item"
                       onClick={() => {
@@ -302,6 +304,7 @@ export default function SocialApp({
                     </button>
                   </div>
                 )}
+                </MotionPresence>
               </div>
               <div className={`mp-post-ct ${canExpandPost && !postExpanded ? "clamped" : ""}`}>{p.content}</div>
               {canExpandPost && (

@@ -13,7 +13,7 @@ const readFeatureFlag = (name, fallback) => {
 // Keep the current production defaults while allowing builds and tests to opt in explicitly.
 export const GACHA_ENABLED = readFeatureFlag("VITE_GACHA_ENABLED", false);
 
-// Temporarily hide the dating app until its unfinished flows are ready to ship.
+// Dating remains configurable per build while staying available during active development.
 export const DATING_ENABLED = readFeatureFlag("VITE_DATING_ENABLED", false);
 
 // 雲端帳號／同步仍在開發中；false 時只使用本機 IndexedDB 與手動全域備份。

@@ -1,6 +1,6 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { appEntry, commitHomePreview, entryAppIds, findAppSlot, folderEntry, homePreviewKey, previewAppAtSource, previewInsertApp, removeAppFromSlots } from "../../utils/homeLayout";
-import { resolveHomeSwipe } from "../../utils/homeGesture.js";
+import { HOME_GESTURE, resolveHomeSwipe, rubberBand } from "../../utils/homeGesture.js";
 
 export default function useHomeDragAndDrop({
   allAppIds,
@@ -33,6 +33,15 @@ export default function useHomeDragAndDrop({
   const suppressHomeGestureUntilRef = useRef(0);
   const touchSwipeRef = useRef(null);
   const lastPointerGestureAtRef = useRef(0);
+  const homeGestureRef = useRef(null);
+  const [homeGesture, setHomeGesture] = useState({
+    active: false,
+    axis: null,
+    offsetX: 0,
+    offsetY: 0,
+    settling: false,
+    settleMs: HOME_GESTURE.settleMs,
+  });
   const clearFolderHover = () => {
     clearTimeout(folderHoverRef.current.timer);
     folderHoverRef.current = { slot: null, timer: null };
@@ -73,15 +82,43 @@ export default function useHomeDragAndDrop({
   const onHomeTouchStart = (e) => {
     const touch = e.touches?.[0];
     touchSwipeRef.current = touch
-      ? { x: touch.clientX, y: touch.clientY }
+      ? { x: touch.clientX, y: touch.clientY, time: e.timeStamp }
       : null;
   };
-  const switchHomePageBySwipe = (sx, sy, ex, ey) => {
+  const settleHomeGesture = (fast = false) => {
+    setHomeGesture((current) => ({
+      ...current,
+      active: false,
+      offsetX: 0,
+      offsetY: 0,
+      settling: true,
+      settleMs: fast ? HOME_GESTURE.flickSettleMs : HOME_GESTURE.settleMs,
+    }));
+    window.setTimeout(() => {
+      setHomeGesture((current) => current.settling
+        ? { ...current, axis: null, settling: false }
+        : current);
+    }, fast ? HOME_GESTURE.flickSettleMs : HOME_GESTURE.settleMs);
+  };
+  const switchHomePageBySwipe = (sx, sy, ex, ey, durationMs, viewportWidth) => {
     // React state 在 pointerup 當幀可能仍保留 pointerdown 時的舊值。
     // 真正的同步拖曳狀態以 ref 為準，否則從 App 圖示起手的滑動會被誤判。
     if (dragActiveRef.current) return;
     if (Date.now() < suppressHomeGestureUntilRef.current) return;
-    const action = resolveHomeSwipe({ startX: sx, startY: sy, endX: ex, endY: ey });
+    const gesture = resolveHomeSwipe({
+      startX: sx,
+      startY: sy,
+      endX: ex,
+      endY: ey,
+      durationMs,
+      viewportWidth,
+    });
+    const velocity = durationMs > 0
+      ? Math.max(Math.abs(ex - sx), Math.abs(ey - sy)) / durationMs
+      : 0;
+    const fast = velocity >= HOME_GESTURE.velocityThreshold;
+    settleHomeGesture(fast);
+    const action = gesture;
     if (action === "open-library") {
       openAllApps?.();
       return;
@@ -101,6 +138,8 @@ export default function useHomeDragAndDrop({
       start.y,
       touch?.clientX ?? null,
       touch?.clientY ?? null,
+      e.timeStamp - start.time,
+      e.currentTarget?.clientWidth,
     );
   };
   const onHomeTouchCancel = () => {
@@ -130,6 +169,21 @@ export default function useHomeDragAndDrop({
     try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch (_) {}
     swipeStartXRef.current = e.clientX ?? null;
     swipeStartYRef.current = e.clientY ?? null;
+    homeGestureRef.current = {
+      x: e.clientX ?? 0,
+      y: e.clientY ?? 0,
+      time: e.timeStamp,
+      width: e.currentTarget?.clientWidth || 390,
+      axis: null,
+    };
+    setHomeGesture({
+      active: true,
+      axis: null,
+      offsetX: 0,
+      offsetY: 0,
+      settling: false,
+      settleMs: HOME_GESTURE.settleMs,
+    });
   };
   const onHomePointerUp = (e) => {
     const pendingPress = dragPressRef.current;
@@ -145,7 +199,14 @@ export default function useHomeDragAndDrop({
       if (pendingPress.cancelled) {
         suppressAppClickUntilRef.current = Date.now() + 250;
         lastPointerGestureAtRef.current = Date.now();
-        switchHomePageBySwipe(pendingPress.startX, pendingPress.startY, ex, ey);
+        switchHomePageBySwipe(
+          pendingPress.startX,
+          pendingPress.startY,
+          ex,
+          ey,
+          e.timeStamp - (homeGestureRef.current?.time || e.timeStamp),
+          homeGestureRef.current?.width,
+        );
       } else {
         lastPointerGestureAtRef.current = Date.now();
         openApp(pendingPress.appId);
@@ -209,7 +270,15 @@ export default function useHomeDragAndDrop({
     swipeStartXRef.current = null;
     swipeStartYRef.current = null;
     lastPointerGestureAtRef.current = Date.now();
-    switchHomePageBySwipe(sx, sy, ex, ey);
+    switchHomePageBySwipe(
+      sx,
+      sy,
+      ex,
+      ey,
+      e.timeStamp - (homeGestureRef.current?.time || e.timeStamp),
+      homeGestureRef.current?.width,
+    );
+    homeGestureRef.current = null;
   };
   const onHomePointerMove = (e) => {
     const pendingPress = dragPressRef.current;
@@ -220,9 +289,45 @@ export default function useHomeDragAndDrop({
         clearTimeout(pendingPress.timer);
         dragPressRef.current = { ...pendingPress, timer: null, cancelled: true };
       }
+      if (!dragPressRef.current?.cancelled) return;
+    }
+    if (!pointerDrag) {
+      const gesture = homeGestureRef.current;
+      if (!gesture) return;
+      const dx = (e.clientX || 0) - gesture.x;
+      const dy = (e.clientY || 0) - gesture.y;
+      if (!gesture.axis) {
+        if (Math.hypot(dx, dy) < HOME_GESTURE.activationDistance) return;
+        if (Math.abs(dx) > Math.abs(dy) * HOME_GESTURE.directionRatio) gesture.axis = "x";
+        else if (Math.abs(dy) > Math.abs(dx) * HOME_GESTURE.directionRatio && dy < 0) gesture.axis = "y";
+        else return;
+      }
+      if (gesture.axis === "x") {
+        const atStart = homePage === 0 && dx > 0;
+        const atEnd = homePage === homePages.length - 1 && dx < 0;
+        const offsetX = atStart || atEnd
+          ? rubberBand(dx, gesture.width)
+          : dx;
+        setHomeGesture((current) => ({
+          ...current,
+          active: true,
+          axis: "x",
+          offsetX,
+          offsetY: 0,
+          settling: false,
+        }));
+      } else {
+        setHomeGesture((current) => ({
+          ...current,
+          active: true,
+          axis: "y",
+          offsetX: 0,
+          offsetY: Math.max(-gesture.width * 0.34, dy),
+          settling: false,
+        }));
+      }
       return;
     }
-    if (!pointerDrag) return;
     pendingPointerMoveRef.current = { clientX: e.clientX, clientY: e.clientY, currentTarget: e.currentTarget };
     if (pointerMoveRafRef.current) return;
     pointerMoveRafRef.current = requestAnimationFrame(() => {
@@ -354,6 +459,8 @@ export default function useHomeDragAndDrop({
     setPointerDrag(null);
     setIsDraggingApp(false);
     dragActiveRef.current = false;
+    homeGestureRef.current = null;
+    settleHomeGesture(false);
     clearFolderHover();
     clearTimeout(edgeTurnTimerRef.current);
     edgeTurnTimerRef.current = null;
@@ -421,5 +528,6 @@ export default function useHomeDragAndDrop({
     onDropToDock,
     onDropToDockContainer,
     onHomeDragOverPageEdge,
+    homeGesture,
   };
 }

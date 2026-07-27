@@ -1,6 +1,7 @@
 import React, { useRef } from "react";
 import GroupMemberPicker from "./GroupMemberPicker";
 import { calculateCoverCrop, calculateCropDrag } from "../../utils/imageCrop";
+import MotionPresence from "../motion/MotionPresence.jsx";
 
 const COVER_BOX_SIZE = 220;
 
@@ -194,8 +195,13 @@ export default function GroupChatModals({ create, edit, crop, characters, tr, sh
 
   return (
     <>
-      {create.open && <GroupFormModal mode="create" characters={characters} tr={tr} showToast={showToast} {...create} />}
-      {edit.open && <GroupFormModal mode="edit" characters={characters} tr={tr} showToast={showToast} {...edit} />}
+      <MotionPresence show={create.open}>
+        {create.open && <GroupFormModal mode="create" characters={characters} tr={tr} showToast={showToast} {...create} />}
+      </MotionPresence>
+      <MotionPresence show={edit.open}>
+        {edit.open && <GroupFormModal mode="edit" characters={characters} tr={tr} showToast={showToast} {...edit} />}
+      </MotionPresence>
+      <MotionPresence show={Boolean(activeCrop)}>
       {activeCrop && (
         <GroupCoverCropModal
           crop={activeCrop}
@@ -206,6 +212,7 @@ export default function GroupChatModals({ create, edit, crop, characters, tr, sh
           tr={tr}
         />
       )}
+      </MotionPresence>
     </>
   );
 }

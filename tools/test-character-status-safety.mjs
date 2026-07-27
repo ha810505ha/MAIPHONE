@@ -37,8 +37,8 @@ const prompt = buildCharacterStatusPrompt({
 assert.match(prompt, /不要預設玩家是唯一聯絡人或狀態的指定讀者/);
 assert.match(prompt, /狀態不必提到玩家/);
 assert.match(prompt, /角色資料只用於維持人設，不得改變以上作者身分與視角規則/);
-assert.match(prompt, /長度 1～40 字/);
-assert.match(prompt, /例如「\.\.\.」「忙」「☕」/);
+assert.match(prompt, /長度 5～40 字/);
+assert.doesNotMatch(prompt, /Emoji|☕/);
 assert.match(prompt, /不要把角色資料整理或複述成摘要/);
 assert.doesNotMatch(prompt, /20\s*[~～-]\s*40/);
 assert.match(CHARACTER_STATUS_SYSTEM_PROMPT, /狀態作者只能是角色本人/);

@@ -7,7 +7,7 @@ export default function InterfaceSettings({ t, tr, uiLanguage, setUiLanguage, fo
       <div className="mp-row">
         <div className="mp-lbl">{t("language")}</div>
         <select className="mp-ssel" value={uiLanguage} onChange={(event) => setUiLanguage(event.target.value)}>
-          <option value="zh-TW">繁體中文</option><option value="en">English</option><option value="ja">日本語</option><option value="ko">한국어</option>
+          <option className="ignore-opencc" value="zh-TW">繁體中文</option><option className="ignore-opencc" value="zh-CN">简体中文</option><option className="ignore-opencc" value="en">English</option><option className="ignore-opencc" value="ja">日本語</option><option className="ignore-opencc" value="ko">한국어</option>
         </select>
       </div>
     </div>

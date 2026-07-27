@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { GACHA_POOL, useGacha } from "../../contexts/GachaContext";
 import GachaRevealSequence from "./GachaRevealSequence";
 import GachaCardVisual from "./GachaCardVisual";
+import { confirmLocalized } from "../../utils/i18n";
 
 const colors = { SSR: ["#504160", "#f0bfd5"], SR: ["#a66f81", "#f5d2dc"], R: ["#74769c", "#dddff3"] };
 
@@ -48,7 +49,7 @@ export default function GachaGame({ characters = [], onBack, onOpenChat }) {
   const visible = useMemo(() => filter === "ALL" ? groupedInventory : groupedInventory.filter((item) => item.rarity === filter), [groupedInventory, filter]);
   const summon = (count) => {
     const cost = count === 10 ? 1800 : 180;
-    if (crystals < cost || !confirm(`確定消耗 ${cost.toLocaleString()} 靈魂結晶進行召喚？`)) return;
+    if (crystals < cost || !confirmLocalized(`確定消耗 ${cost.toLocaleString()} 靈魂結晶進行召喚？`)) return;
     setReveals(draw(count) || []);
   };
   const confirmGift = () => {

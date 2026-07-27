@@ -5,7 +5,7 @@ import { sanitizeUserImageUrl } from "../../utils/coreUtils";
 
 function ActiveCharacterCard({ character, peachTheme, onOpen, onOpenFromTouch, tr }) {
   if (!character) return null;
-  const status = (character.statusText || character.description || tr("在線中", "Online", "オンライン中", "온라인 중")).slice(0, 34);
+  const status = (character.statusText || character.description || tr("線上", "Online", "オンライン中", "온라인 중")).slice(0, 34);
   if (peachTheme) return <PeachHero character={character} imageUrl={sanitizeUserImageUrl(character.heroImage)} statusText={status} onOpen={onOpen} />;
   const avatar = sanitizeUserImageUrl(character.avatar);
   return (
@@ -25,7 +25,7 @@ function ActiveCharacterCard({ character, peachTheme, onOpen, onOpenFromTouch, t
 // 紅點只表示「有沒有」，數量留給 App 內部的列表顯示——桌面圖示這個尺寸放數字會太擠。
 const Badge = ({ show }) => (show ? <span className="mp-icon-badge" /> : null);
 
-function AppGrid({ pages, page, pageSize, appById, badges, dragging, pointerDrag, renderAppIcon, onDropGrid, onDropSlot, onOpenApp, onOpenFromTouch, onPointerDragStart }) {
+function AppGrid({ pages, page, pageSize, appById, badges, dragging, pointerDrag, pageGesture, renderAppIcon, onDropGrid, onDropSlot, onOpenApp, onOpenFromTouch, onPointerDragStart }) {
   const itemElementsRef = useRef(new Map());
   const previousRectsRef = useRef(new Map());
   const motionAnimationsRef = useRef(new Map());
@@ -65,7 +65,15 @@ function AppGrid({ pages, page, pageSize, appById, badges, dragging, pointerDrag
   return (
     <div className="mp-home-mid">
       <div className="mp-pages">
-        <div className="mp-pages-track" style={{ transform: `translate3d(-${page * 100}%,0,0)` }}>
+        <div
+          className="mp-pages-track"
+          style={{
+            transform: `translate3d(calc(-${page * 100}% + ${pageGesture?.offsetX || 0}px),0,0)`,
+            transitionDuration: pageGesture?.active
+              ? "0ms"
+              : `${pageGesture?.settleMs || 240}ms`,
+          }}
+        >
           {renderedPages.map((apps, pageIndex) => (
             <div key={pageIndex} className="mp-grid" onDragOver={(event) => event.preventDefault()} onDrop={(event) => onDropGrid(event, pageIndex)}>
               {Array.from({ length: pageSize }).map((_, slotIndex) => {
@@ -76,7 +84,37 @@ function AppGrid({ pages, page, pageSize, appById, badges, dragging, pointerDrag
                 const entryKey = app ? `app-${app.id}` : folder ? `folder-${folder.id}` : null;
                 const absoluteIndex = pageIndex * pageSize + slotIndex;
                 return (
-                  <div ref={(element) => { if (!entryKey) return; if (element) itemElementsRef.current.set(entryKey, element); else itemElementsRef.current.delete(entryKey); }} key={`slot-${absoluteIndex}`} className={`mp-icon ${entry ? "" : "mp-icon-empty"} ${placeholder ? "mp-icon-placeholder" : ""} ${pointerDrag?.folderArmedSlot === absoluteIndex ? "mp-folder-drop-armed" : ""} ${pointerDrag?.insertionSlot === absoluteIndex ? `mp-insert-${pointerDrag.insertionAfter ? "after" : "before"}` : ""}`} data-app-id={app?.id || undefined} data-drag-placeholder={placeholder ? "1" : undefined} onDragOver={(event) => event.preventDefault()} onDrop={(event) => onDropSlot(event, absoluteIndex)} data-drop-slot={absoluteIndex} onClick={(event) => { event.stopPropagation(); if (folder && !dragging) onOpenApp(folder); else if (app && !dragging) onOpenApp(app.id); }} onPointerUp={(event) => { if (app && !dragging) onOpenFromTouch(app.id, event); }} draggable={false} onPointerDown={(event) => app && onPointerDragStart(event, app.id, "home")}>
+                  <div
+                    ref={(element) => {
+                      if (!entryKey) return;
+                      if (element) itemElementsRef.current.set(entryKey, element);
+                      else itemElementsRef.current.delete(entryKey);
+                    }}
+                    key={`slot-${absoluteIndex}`}
+                    className={`mp-icon ${entry ? "" : "mp-icon-empty"} ${placeholder ? "mp-icon-placeholder" : ""} ${pointerDrag?.folderArmedSlot === absoluteIndex ? "mp-folder-drop-armed" : ""} ${pointerDrag?.insertionSlot === absoluteIndex ? `mp-insert-${pointerDrag.insertionAfter ? "after" : "before"}` : ""}`}
+                    data-app-id={app?.id || undefined}
+                    data-folder-id={folder?.id || undefined}
+                    data-drag-placeholder={placeholder ? "1" : undefined}
+                    data-drop-slot={absoluteIndex}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={(event) => onDropSlot(event, absoluteIndex)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      if (folder) onOpenApp(folder);
+                      else if (app && !dragging) onOpenApp(app.id);
+                    }}
+                    onPointerUp={(event) => {
+                      if (app && !dragging) onOpenFromTouch(app.id, event);
+                    }}
+                    onPointerDown={(event) => {
+                      if (folder) {
+                        event.stopPropagation();
+                        return;
+                      }
+                      if (app) onPointerDragStart(event, app.id, "home");
+                    }}
+                    draggable={false}
+                  >
                     {placeholder ? <div className="mp-drag-placeholder" /> : folder ? (
                       <div className="mp-icon-c mp-folder-icon">{folder.appIds.slice(0, 4).map((id) => <span key={id}>{renderAppIcon(appById[id], appById[id]?.iconUrl ? 22 : 13)}</span>)}</div>
                     ) : <div className={`mp-icon-c ${app?.iconUrl ? "mp-icon-c-img" : ""}`}>{app ? renderAppIcon(app, app.iconUrl ? (app.iconSize || 56) : 26) : ""}</div>}
@@ -106,15 +144,28 @@ function Dock({ apps, badges, dragging, renderAppIcon, onDropContainer, onDropAp
   );
 }
 
-export default function HomeScreen({ ft, fd, activeCharacter, peachTheme, tr, currentApp, pages, page, pageSize, appById, dockApps, badges, dragging, pointerDrag, renderAppIcon, gestureHandlers, onOpenStatus, onOpenStatusFromTouch, onDropGrid, onDropSlot, onDropDockContainer, onDropDockApp, onOpenApp, onOpenFolder, onOpenAllApps, onOpenFromTouch, onPointerDragStart }) {
+export default function HomeScreen({ ft, fd, activeCharacter, peachTheme, tr, currentApp, pages, page, pageSize, appById, dockApps, badges, dragging, pointerDrag, pageGesture, renderAppIcon, gestureHandlers, onOpenStatus, onOpenStatusFromTouch, onDropGrid, onDropSlot, onDropDockContainer, onDropDockApp, onOpenApp, onOpenFolder, onOpenAllApps, onOpenFromTouch, onPointerDragStart }) {
+  const verticalOffset = pageGesture?.axis === "y" ? pageGesture.offsetY || 0 : 0;
+  const verticalProgress = Math.min(1, Math.abs(verticalOffset) / 150);
   return (
     <>
-      <div className={`mp-desk ${currentApp ? "is-obscured" : ""}`} aria-hidden={currentApp ? "true" : undefined} {...gestureHandlers}>
+      <div
+        className={`mp-desk ${currentApp ? "is-obscured" : ""}`}
+        aria-hidden={currentApp ? "true" : undefined}
+        style={{
+          transform: `translate3d(0,${verticalOffset * 0.28}px,0) scale(${1 - verticalProgress * 0.025})`,
+          opacity: 1 - verticalProgress * 0.14,
+          transition: pageGesture?.active
+            ? "none"
+            : `transform ${pageGesture?.settleMs || 240}ms cubic-bezier(.22,.72,.2,1), opacity ${pageGesture?.settleMs || 240}ms ease`,
+        }}
+        {...gestureHandlers}
+      >
         <BarClock ft={ft} />
         <div className="mp-desk-scroll">
           <DeskClock ft={ft} fd={fd} />
           <ActiveCharacterCard character={activeCharacter} peachTheme={peachTheme} onOpen={onOpenStatus} onOpenFromTouch={onOpenStatusFromTouch} tr={tr} />
-          <AppGrid pages={pages} page={page} pageSize={pageSize} appById={appById} badges={badges} dragging={dragging} pointerDrag={pointerDrag} renderAppIcon={renderAppIcon} onDropGrid={onDropGrid} onDropSlot={onDropSlot} onOpenApp={(target) => typeof target === "string" ? onOpenApp(target) : onOpenFolder(target)} onOpenFromTouch={onOpenFromTouch} onPointerDragStart={onPointerDragStart} />
+          <AppGrid pages={pages} page={page} pageSize={pageSize} appById={appById} badges={badges} dragging={dragging} pointerDrag={pointerDrag} pageGesture={pageGesture} renderAppIcon={renderAppIcon} onDropGrid={onDropGrid} onDropSlot={onDropSlot} onOpenApp={(target) => typeof target === "string" ? onOpenApp(target) : onOpenFolder(target)} onOpenFromTouch={onOpenFromTouch} onPointerDragStart={onPointerDragStart} />
         </div>
         {!currentApp && <button className="mp-all-apps-handle" onClick={onOpenAllApps}><span>⌃</span>{tr("全部 App", "All apps", "すべてのアプリ", "모든 앱")}</button>}
         {!currentApp && <div className="mp-page-dots">{pages.map((_, index) => <span key={index} className={`mp-page-dot ${page === index ? "active" : ""}`} />)}</div>}

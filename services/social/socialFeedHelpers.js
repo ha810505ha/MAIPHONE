@@ -69,7 +69,7 @@ ${recentPosts || "（無）"}`;
     const days = Math.floor(hours / 24);
     if (days === 1) return tr("昨天", "Yesterday", "昨日", "어제");
     if (days <= 3) return tr(`${days} 天前`, `${days}d ago`, `${days}日前`, `${days}일 전`);
-    const locale = { "zh-TW": "zh-TW", en: "en-US", ja: "ja-JP", ko: "ko-KR" }[uiLanguage] || "zh-TW";
+    const locale = { "zh-TW": "zh-TW", "zh-CN": "zh-CN", en: "en-US", ja: "ja-JP", ko: "ko-KR" }[uiLanguage] || "zh-TW";
     return new Date(time).toLocaleDateString(locale, { year: "numeric", month: "short", day: "numeric" });
   };
   const getPostAuthorType = (post) => post?.authorType || (post?.charId ? "character" : "player");

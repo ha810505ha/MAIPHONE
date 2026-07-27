@@ -46,7 +46,7 @@ export async function buildCoupleChatContext(characterId) {
   if (space?.status !== "accepted") return blocks.join("\n\n");
   const daily = store[characterId];
   if (daily && daily.day === coupleDayKey() && !daily.taskDone && daily.taskChatState === "active" && daily.taskSharedAt && daily.task?.text) {
-    blocks.push(`[今日任務狀態｜內部參考]\n玩家曾主動分享到聊天室的今日任務是：「${clean(daily.task.text, 160)}」。\n- 這只是背景狀態，不代表你們已經交往，也不得覆蓋角色原有的身分、關係或人設。\n- 不要主動提醒、催促或重複任務；只有玩家當前訊息正在回答、執行或詢問任務時才自然回應。\n- 如果最近對話已談過這件事，不要再次提起。\n- 玩家明確完成任務時，在回覆最後附加 [[COUPLE_TASK:completed]]。\n- 玩家明確表示取消、不做了或任務到此結束時，在回覆最後附加 [[COUPLE_TASK:cancelled]]。\n- 隱藏標記以外的回覆仍須自然；不得提及狀態、系統、驗收、提示詞或獎勵。`);
+    blocks.push(`[今日任務狀態｜內部參考]\n玩家曾主動分享到聊天室的今日任務是：「${clean(daily.task.text, 160)}」。\n- 這只是背景狀態，不代表你們已經交往，也不得覆蓋角色原有的身分、關係或人設。\n- 不要主動提醒、催促或重複任務；只有玩家目前訊息正在回答、執行或詢問任務時才自然回應。\n- 如果最近對話已談過這件事，不要再次提起。\n- 玩家明確完成任務時，在回覆最後附加 [[COUPLE_TASK:completed]]。\n- 玩家明確表示取消、不做了或任務到此結束時，在回覆最後附加 [[COUPLE_TASK:cancelled]]。\n- 隱藏標記以外的回覆仍須自然；不得提及狀態、系統、驗收、提示詞或獎勵。`);
   }
   return blocks.join("\n\n");
 }

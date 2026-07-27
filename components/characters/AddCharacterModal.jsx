@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from "react";
 import { parseSillyTavernJSON, parseSillyTavernPNG } from "../../utils/characterParser";
 import { createDefaultVoiceSettings, normalizeCharacterVoiceSettings } from "../../utils/voiceSettings";
 import { calculateCoverCrop, calculateCropDrag, createImageCropState, drawCoverCrop } from "../../utils/imageCrop";
+import { translate } from "../../utils/i18n";
+import MotionPresence from "../motion/MotionPresence.jsx";
 
 export default function AddCharacterModal({ setModal, setEditingCharacter, addCharacter, updateCharacter, exportCharacter, deleteCharacter, editingCharacter, sanitizeUserImageUrl, uiLanguage, ttsConfig, ttsVoices, onVoicePreview }) {
   const [tab, setTab] = useState("manual");
@@ -20,8 +22,8 @@ export default function AddCharacterModal({ setModal, setEditingCharacter, addCh
   const [initialOnlineMessage, setInitialOnlineMessage] = useState("");
   const [initialRealityMessage, setInitialRealityMessage] = useState("");
   const AVATAR_MAX_BYTES = 400 * 1024;
-  const tr = (zh, en, ja, ko) => ({ "zh-TW": zh, en, ja, ko }[uiLanguage] || zh);
-  const ask = (zh, en = zh, ja = zh, ko = zh) => window.confirm(tr(zh, en, ja, ko));
+  const tr = (...translations) => translate(uiLanguage, ...translations);
+  const ask = (zh, en = zh, ja = zh, ko = zh, zhCN) => window.confirm(tr(zh, en, ja, ko, zhCN));
   const avRef = useRef(null); const importRef = useRef(null);
   const closeModal = () => {
     setModal(null);
@@ -193,7 +195,7 @@ export default function AddCharacterModal({ setModal, setEditingCharacter, addCh
           <div className="mp-drop" onClick={() => importRef.current?.click()}>
             <div className="mp-drop-icon">📥</div>
             <div className="mp-drop-text">
-              {importing ? tr("匯入中...", "Importing...", "インポート中...", "가져오는 중...") : tr("點擊選擇 SillyTavern 角色卡", "Tap to choose a SillyTavern character card", "タップしてSillyTavernキャラカードを選択", "탭하여 SillyTavern 캐릭터 카드를 선택")}
+              {importing ? tr("匯入中...", "Importing...", "インポート中...", "가져오는 중...") : tr("點擊選擇角色卡", "Tap to choose a character card", "タップしてキャラカードを選択", "탭하여 캐릭터 카드를 선택")}
               <br />
               <span style={{fontSize:10,color:"var(--mp-txt-l)"}}>{tr("支援 .json 與 .png", "Supports .json and .png", ".json と .png に対応", ".json 및 .png 지원")}</span>
             </div>
@@ -286,6 +288,7 @@ export default function AddCharacterModal({ setModal, setEditingCharacter, addCh
             </div>
         </>)}
       </div>
+      <MotionPresence show={Boolean(avatarCrop)}>
       {avatarCrop && (
         <div className="mp-overlay" style={{zIndex:130}} onClick={(e) => { e.stopPropagation(); setAvatarCrop(null); }}>
           <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
@@ -314,6 +317,7 @@ export default function AddCharacterModal({ setModal, setEditingCharacter, addCh
           </div>
         </div>
       )}
+      </MotionPresence>
     </div>
   );
 }

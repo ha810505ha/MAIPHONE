@@ -12,7 +12,12 @@ export default function useChatroomImportExport({ currentCharacter, characters, 
   const [importing, setImporting] = useState(false);
 
   const deleteChatroom = useCallback((characterId, characterName = "這個角色") => {
-    if (!characterId || !window.confirm(`確定要完整刪除「${characterName}」的聊天室嗎？\n\n聊天室、所有分支對話、訊息、記憶及相關設定都會刪除；角色聯絡人仍會保留。`) || !window.confirm(tr("請再次確認：刪除後無法復原。之後若要重新聊天，請到聯絡人點「開始聊天」建立新聊天室。確定繼續嗎？", "Please confirm again: deletion cannot be undone. To chat again, start a new chat from Contacts. Continue?", "再確認してください。削除後は元に戻せません。再び話す場合は、連絡先から新しいチャットを開始してください。続けますか？", "다시 확인해주세요. 삭제 후에는 복구할 수 없습니다. 다시 대화하려면 연락처에서 새 채팅을 시작하세요. 계속할까요?"))) return;
+    if (!characterId || !window.confirm(tr(
+      `確定要完整刪除「${characterName}」的聊天室嗎？\n\n聊天室、所有分支對話、訊息、記憶及相關設定都會刪除；角色聯絡人仍會保留。`,
+      `Delete all chatrooms for “${characterName}”?\n\nAll branches, messages, memories, and related settings will be deleted; the contact will remain.`,
+      `「${characterName}」のチャットルームをすべて削除しますか？\n\n分岐会話、メッセージ、記憶、関連設定は削除されますが、連絡先は残ります。`,
+      `“${characterName}”의 모든 채팅방을 삭제할까요?\n\n분기 대화, 메시지, 기억, 관련 설정은 삭제되지만 연락처는 유지됩니다.`,
+    )) || !window.confirm(tr("請再次確認：刪除後無法復原。之後若要重新聊天，請到聯絡人點「開始聊天」建立新聊天室。確定繼續嗎？", "Please confirm again: deletion cannot be undone. To chat again, start a new chat from Contacts. Continue?", "再確認してください。削除後は元に戻せません。再び話す場合は、連絡先から新しいチャットを開始してください。続けますか？", "다시 확인해주세요. 삭제 후에는 복구할 수 없습니다. 다시 대화하려면 연락처에서 새 채팅을 시작하세요. 계속할까요?"))) return;
     [setChatHistory, setChatModes, setChatLorebookBindings, setChatBackgrounds, setInnerThoughtSettings, setChatTimeSettings, setMemories, setChatScenes, setProactiveUnread].forEach((setter) => setter && removeKey(setter, characterId));
     removeCharacterRooms?.(characterId);
     setCharacters?.((previous) => previous.map((character) => String(character.id) === String(characterId)

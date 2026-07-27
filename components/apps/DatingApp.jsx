@@ -8,6 +8,7 @@ import DatingSystemPanel from "../dating/DatingSystemPanel";
 import { canReport, findProfile } from "../../services/dating/datingMatching";
 import { tagLabel } from "../../data/dating/interestTags";
 import { sanitizeUserImageUrl } from "../../utils/coreUtils";
+import { confirmLocalized } from "../../utils/i18n";
 
 const relativeFuture = (at) => {
   const diff = at - Date.now();
@@ -96,7 +97,7 @@ export default function DatingApp({ closeApp, dating, playerProfile, onPromoteTo
       showToast?.(next ? "已封鎖，對方不會再出現也無法傳訊息" : "已解除封鎖");
     },
     onReport: () => {
-      if (!window.confirm("提交檢舉會同時封鎖此用戶，且無法復原。\n審核需要 1～2 個工作天，結果會通知你。\n確定要檢舉嗎？")) return;
+      if (!confirmLocalized("提交檢舉會同時封鎖此使用者，且無法復原。\n審核需要 1～2 個工作天，結果會通知你。\n確定要檢舉嗎？")) return;
       report(profileId);
       setDetail(null);
       showToast?.("檢舉已送出，審核中");

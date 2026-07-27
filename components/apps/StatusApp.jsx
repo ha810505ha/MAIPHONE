@@ -60,7 +60,7 @@ export default function StatusApp({
                   <div style={{fontSize:12,color:"var(--mp-txt-l)",marginTop:4,lineHeight:1.5}}>{(c.statusText || tr("尚無狀態", "No status yet", "まだステータスがありません", "아직 상태가 없습니다")).slice(0,80)}</div>
                   {c.statusUpdatedAt ? <div style={{fontSize:10,color:"var(--mp-txt-l)",opacity:.8,marginTop:2}}>{tr("更新時間", "Updated", "更新時刻", "업데이트 시간")}：{new Date(c.statusUpdatedAt).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"})}</div> : null}
                   <div style={{marginTop:6}}>
-                    <button type="button" className="mp-ibtn" disabled={!!statusRefreshingIds?.[c.id]} onClick={(event) => { event.stopPropagation(); void refreshCharacterStatus(c.id, true); }}>{statusRefreshingIds?.[c.id] ? tr("更新中...", "Updating...", "更新中...", "업데이트 중...") : tr("刷新狀態", "Refresh status", "ステータスを更新", "상태 새로고침")}</button>
+                    <button type="button" className="mp-ibtn" disabled={!!statusRefreshingIds?.[c.id]} onClick={(event) => { event.stopPropagation(); void refreshCharacterStatus(c.id, true); }}>{statusRefreshingIds?.[c.id] ? tr("更新中...", "Updating...", "更新中...", "업데이트 중...") : tr("更新狀態", "Refresh status", "ステータスを更新", "상태 새로고침")}</button>
                   </div>
                   {c.tags?.length > 0 && <div className="mp-sc-tags">{c.tags.map((t,i) => <span key={i} className="mp-tag">{t}</span>)}</div>}
                   {c.creator && <div style={{fontSize:10,color:"var(--mp-txt-l)",marginTop:4}}>by {c.creator}</div>}

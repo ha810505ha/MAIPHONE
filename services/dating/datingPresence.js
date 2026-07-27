@@ -83,7 +83,7 @@ function relativeLabel(at, now) {
  * lastActivityAt 傳入對方最後一則訊息的時間，比推算出來的時段結束更準。
  */
 export function presenceLabel(entry, time = Date.now(), lastActivityAt = 0) {
-  if (isOnline(entry, time)) return { online: true, text: "在線中" };
+  if (isOnline(entry, time)) return { online: true, text: "線上" };
   const at = Math.min(time, Math.max(lastOnlineAt(entry, time), lastActivityAt || 0));
   return { online: false, text: relativeLabel(at, time) };
 }

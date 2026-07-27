@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { loadFeatureEntity, saveFeatureEntity } from "../../utils/indexedDbStorage";
 import { parseIcs } from "../../services/calendar/icsParser";
 import { fetchWithTimeout, isRequestCancelled, NETWORK_TIMEOUTS } from "../../utils/networkRequest.js";
+import { confirmLocalized } from "../../utils/i18n";
 
 const STORE_KEY = "ent_calendar";
 const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
@@ -141,7 +142,7 @@ export default function CalendarApp({ closeApp }) {
   const removeEvent = (id) => saveStore({ ...store, events: events.filter((e) => e.id !== id) });
   const toggleVisible = (id) => saveStore({ ...store, events: events.map((e) => e.id !== id ? e : { ...e, visibleToChar: !e.visibleToChar }) });
   const clearImported = () => {
-    if (!window.confirm(`確定要清除全部 ${importedCount} 筆匯入的事件嗎？手動新增的事件會保留。`)) return;
+    if (!confirmLocalized(`確定要清除全部 ${importedCount} 筆匯入的事件嗎？手動新增的事件會保留。`)) return;
     saveStore({ ...store, events: events.filter((e) => e.source !== "ics") });
   };
 

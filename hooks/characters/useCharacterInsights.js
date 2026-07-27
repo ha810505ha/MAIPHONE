@@ -77,7 +77,7 @@ export default function useCharacterInsights({
       setCharacters((prev) => prev.map((c) => c.id === charId ? { ...c, statusText: status, statusUpdatedAt: Date.now() } : c));
       showToast("狀態已更新");
     } catch (err) {
-      showToast(`${tr("刷新失敗", "Refresh failed", "更新に失敗しました", "새로고침 실패")}：${sanitizeText(err?.message || tr("未知錯誤", "Unknown error", "不明なエラー", "알 수 없는 오류"), 120)}`);
+      showToast(`${tr("更新失敗", "Refresh failed", "更新に失敗しました", "새로고침 실패")}：${sanitizeText(err?.message || tr("未知錯誤", "Unknown error", "不明なエラー", "알 수 없는 오류"), 120)}`);
     } finally {
       statusRefreshBusyRef.current.delete(charId);
       setStatusRefreshingIds((previous) => { const next = { ...previous }; delete next[charId]; return next; });

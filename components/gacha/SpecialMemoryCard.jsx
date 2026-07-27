@@ -232,7 +232,7 @@ export function SpecialMemoryModal({ memory: memoryProp, characterAvatar, player
       if (result?.method === "native-filesystem") setNotice(`已儲存到 Documents/${result.path}`);
       else if (result?.method !== "cancelled") setNotice("紀念卡已下載");
     } catch (error) {
-      setNotice(error?.message || "下載失敗，請改用截圖保存");
+      setNotice(error?.message || "下載失敗，請改用截圖另存");
     } finally {
       setSaving(false);
     }

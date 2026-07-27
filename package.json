@@ -17,7 +17,8 @@
     "test:settings-mailbox-badge": "node tools/test-settings-mailbox-badge-safety.mjs",
     "test:network": "node tools/test-network-request-safety.mjs",
     "test:performance": "node tools/test-performance-safety.mjs",
-    "test:regression": "npm run test:import-transaction && npm run test:message-state && npm run test:character-status && npm run test:crystal-ledger && npm run test:settings-mailbox-badge && npm run test:network && npm run test:home-gesture && npm run test:performance"
+    "test:i18n": "node tools/test-i18n-safety.mjs",
+    "test:regression": "npm run test:import-transaction && npm run test:message-state && npm run test:character-status && npm run test:crystal-ledger && npm run test:settings-mailbox-badge && npm run test:network && npm run test:home-gesture && npm run test:performance && npm run test:i18n"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.1",
@@ -28,6 +29,7 @@
     "dompurify": "^3.4.12",
     "html2canvas": "^1.4.1",
     "lucide-react": "^1.21.0",
+    "opencc-js": "^1.4.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

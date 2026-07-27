@@ -25,7 +25,7 @@ const [
   source("MaliPhone.jsx"),
   source("styles/themeCss.js"),
   source("components/shell/HomeScreen.jsx"),
-  source("styles/maliPhoneCss.js"),
+  source("styles/maliPhone.css"),
   source("services/images/galleryImageStorage.js"),
   source("hooks/images/useGalleryImageUrl.js"),
   source("vite.config.js"),

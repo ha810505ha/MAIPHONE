@@ -1,9 +1,14 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import ChatRoomSwitcher from "./ChatRoomSwitcher";
+import MotionPresence from "../motion/MotionPresence.jsx";
 
 export default function ChatHeader({ item, modelShort, modelFull, modelBadgeOpen, setModelBadgeOpen, onBack, onTogglePinned, onOpenSettings, rooms, activeRoomId, onSwitchRoom, onCreateRoom, onRenameRoom, onDeleteRoom, tr }) {
   const [roomPickerOpen, setRoomPickerOpen] = useState(false);
   const hasRooms = Array.isArray(rooms) && rooms.length > 0;
+  useEffect(() => {
+    setModelBadgeOpen(false);
+    return () => setModelBadgeOpen(false);
+  }, [item?.id, setModelBadgeOpen]);
   return (
     <>
       <div className="mp-hdr">
@@ -16,12 +21,14 @@ export default function ChatHeader({ item, modelShort, modelFull, modelBadgeOpen
         <button type="button" className="mp-ibtn" onClick={onOpenSettings}>{tr("設定", "Settings", "設定", "설정")}</button>
       </div>
       <ChatRoomSwitcher open={roomPickerOpen} onClose={() => setRoomPickerOpen(false)} rooms={rooms} activeRoomId={activeRoomId} onSwitchRoom={onSwitchRoom} onCreateRoom={onCreateRoom} onRenameRoom={onRenameRoom} onDeleteRoom={onDeleteRoom} onOpenSettings={onOpenSettings} tr={tr} />
+      <MotionPresence show={modelBadgeOpen} exitMs={140}>
       {modelBadgeOpen && (
-        <div style={{ position: "absolute", top: 56, right: 74, zIndex: 40, background: "#fff", border: "1px solid rgba(244,143,177,.35)", borderRadius: 12, padding: "8px 10px", boxShadow: "0 8px 24px rgba(0,0,0,.12)", maxWidth: 220 }} onClick={(event) => event.stopPropagation()}>
-          <div style={{ fontSize: 11, fontWeight: 800, color: "#666", marginBottom: 2 }}>{tr("目前模型", "Current model", "現在のモデル", "현재 모델")}</div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#222" }}>{modelFull}</div>
+        <div className="mp-model-popover mp-popover" onClick={(event) => event.stopPropagation()}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: "var(--mp-txt-l)", marginBottom: 2 }}>{tr("目前模型", "Current model", "現在のモデル", "현재 모델")}</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--mp-txt)" }}>{modelFull}</div>
         </div>
       )}
+      </MotionPresence>
     </>
   );
 }

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useGacha } from "../../contexts/GachaContext";
 import useGachaEpisodeAI from "../../hooks/gacha/useGachaEpisodeAI";
 import SpecialMemorySection from "./SpecialMemoryCard";
+import { confirmLocalized } from "../../utils/i18n";
 
 export default function RealityEpisodeRoom({ episode, character, playerProfile, apiConfig, recentMessages, onBack }) {
   const { sendEpisodeMessage, appendEpisodeAssistantMessage, setEpisodeOpening, endEpisode } = useGacha();
@@ -11,7 +12,7 @@ export default function RealityEpisodeRoom({ episode, character, playerProfile, 
   useEffect(() => { if (episode.openingStatus === "pending" && !openingStarted.current) { openingStarted.current = true; void prepareOpening(); } }, [episode.openingStatus, prepareOpening]);
   const send = async () => { const text = input.trim(); if (!text) return; setInput(""); await sendWithAI(text); };
   const endEarly = async () => {
-    if (isGenerating || !window.confirm("確定要提前結束這段特別篇嗎？\n\n角色會先為目前的故事留下最後一段收尾。")) return;
+    if (isGenerating || !confirmLocalized("確定要提前結束這段特別篇嗎？\n\n角色會先為目前的故事留下最後一段收尾。")) return;
     if (await finishEarly()) endEpisode(episode.id, true);
   };
   const completed = episode.status !== "active";

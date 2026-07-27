@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BANNER_DURATION, DEFAULT_NOTIFICATION_SETTINGS } from "../../constants/notifications";
+import useTransientItem from "../useTransientItem";
 import {
   buildBadgeCounts,
   buildBannerPayload,
@@ -19,7 +20,10 @@ export default function useNotificationCenter({ characters, chatHistory, proacti
   const [settings, setSettings] = useState(DEFAULT_NOTIFICATION_SETTINGS);
   const [lastNotifiedAt, setLastNotifiedAt] = useState(0);
   const [socialSeenAt, setSocialSeenAt] = useState(0);
-  const [banner, setBanner] = useState(null);
+  const { item: bannerItem, show: showBanner, dismiss: dismissBanner } = useTransientItem({
+    holdMs: BANNER_DURATION,
+    exitMs: 160,
+  });
   const lastNotifiedRef = useRef(0);
   const baselineRef = useRef(false);
 
@@ -42,14 +46,8 @@ export default function useNotificationCenter({ characters, chatHistory, proacti
     if (!canInterrupt({ settings, locked, currentApp })) return;
     // 人已經在該 App 裡面時，不跳自己的通知。
     const interrupting = fresh.filter((item) => item.appId !== currentApp);
-    if (interrupting.length) setBanner(buildBannerPayload(interrupting));
-  }, [notifications, settings, locked, currentApp]);
-
-  useEffect(() => {
-    if (!banner) return undefined;
-    const timer = setTimeout(() => setBanner(null), BANNER_DURATION);
-    return () => clearTimeout(timer);
-  }, [banner]);
+    if (interrupting.length) showBanner(buildBannerPayload(interrupting));
+  }, [notifications, settings, locked, currentApp, showBanner]);
 
   const hydrate = useCallback((data) => {
     setSettings(normalizeNotificationSettings(data?.notificationSettings));
@@ -70,8 +68,14 @@ export default function useNotificationCenter({ characters, chatHistory, proacti
     updateSettings,
     hydrate,
     persisted: { notificationSettings: settings, notificationState: { lastNotifiedAt, socialSeenAt } },
-    banner,
-    dismissBanner: useCallback(() => setBanner(null), []),
+    banner: bannerItem
+      ? {
+        ...bannerItem.value,
+        transitionPhase: bannerItem.phase,
+        transitionSequence: bannerItem.sequence,
+      }
+      : null,
+    dismissBanner,
     lockNotifications: useMemo(() => selectLockNotifications(notifications, settings), [notifications, settings]),
     badges: useMemo(() => buildBadgeCounts(notifications, settings), [notifications, settings]),
     markSocialRead: useCallback(() => setSocialSeenAt(Date.now()), []),

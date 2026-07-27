@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { FONT_PRESETS, THEME_PRESETS } from "../../styles/maliPhoneCss";
+import { FONT_PRESETS, THEME_PRESETS } from "../../styles/themePresets";
 import { buildThemeCss } from "../../styles/themeCss";
 import { buildFontStack } from "../../utils/fontName";
 

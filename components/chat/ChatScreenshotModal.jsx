@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import ChatMessageRenderer from "./ChatMessageRenderer";
 import { downloadImageFile } from "../../utils/exportFile";
+import MotionPresence from "../motion/MotionPresence.jsx";
 
 const LIMITS = { messages: 15, images: 4, outputHeight: 8000, width: 430, scale: 2 };
 
@@ -72,8 +73,6 @@ export default function ChatScreenshotModal({ open, onClose, onReselect, message
     };
   }, [open, selected]);
 
-  if (!open) return null;
-
   const validate = () => {
     if (!selected.length) return tr("沒有可截圖的訊息，請重新選取", "No messages selected; choose the range again", "メッセージが選択されていません。選び直してください", "선택된 메시지가 없습니다. 다시 선택하세요");
     if (selected.length > LIMITS.messages) return tr("選取範圍超過 15 則，請縮短範圍", "The range exceeds 15 messages", "範囲が15件を超えています", "선택 범위가 15개를 넘습니다");
@@ -108,7 +107,8 @@ export default function ChatScreenshotModal({ open, onClose, onReselect, message
 
   const staticRendererProps = { ...rendererProps, messages: selected, activeMessageId: null, setActiveMessageId: () => {}, highlightedThoughtMessageId: null, isTyping: false, startNoticeLongPress: () => {}, cancelNoticeLongPress: () => {}, retryChatFromNotice: () => {}, deleteChatMessage: () => {}, setMessageEditor: () => {}, renderCharacterVoiceAction: () => null };
 
-  return <div className="mp-overlay" style={{ zIndex: 120 }} onClick={busy ? undefined : onClose}>
+  return <MotionPresence show={open}>
+  {open && <div className="mp-overlay" style={{ zIndex: 120 }} onClick={busy ? undefined : onClose}>
     <div className="mp-modal" style={{ width: "min(86%,360px)", padding: 16 }} onClick={(event) => event.stopPropagation()}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <div className="mp-modal-t" style={{ flex: 1, margin: 0 }}>{tr("確認聊天截圖", "Confirm screenshot", "チャット画像の確認", "채팅 캡처 확인")}</div>
@@ -147,5 +147,6 @@ export default function ChatScreenshotModal({ open, onClose, onReselect, message
         </div>
       </div>
     </div>
-  </div>;
+  </div>}
+  </MotionPresence>;
 }

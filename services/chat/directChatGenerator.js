@@ -55,7 +55,7 @@ export async function generateDirectAssistant({ cid, char, nextForDisplay, selec
         if (recentMoneyTalk) {
           transferRuleContext = [
             `[轉帳規則]`,
-            `1. 玩家可以轉帳給角色，角色也可以主動轉帳給玩家；雙方轉帳與回應都要符合角色性格與當前情境，金額需合理，不因迎合而破壞人設。`,
+            `1. 玩家可以轉帳給角色，角色也可以主動轉帳給玩家；雙方轉帳與回應都要符合角色性格與目前情境，金額需合理，不因迎合而破壞人設。`,
             `2. 收到玩家轉帳時，依角色個性自然回應，不刻意改變平常的聊天語氣。`,
             `3. 只要角色真的有意願且餘額足夠，就直接輸出轉帳指令，不必等玩家要求；轉帳後可自然補充用途或情緒，但不能硬講。`,
             incomingPendingTransfer ? `[待處理轉帳]
@@ -72,7 +72,7 @@ export async function generateDirectAssistant({ cid, char, nextForDisplay, selec
       const contextBlocks = [
         { text: getPlayerContextBlock(), keep: 100 },
         { text: nowContext, keep: 90 },
-        { text: pinnedLoreContext ? `[強制條目 - 必須遵守]\n以下條目為當前對話的硬性規則，回覆時必須滿足：\n${pinnedLoreContext}` : "", keep: 95 },
+        { text: pinnedLoreContext ? `[強制條目 - 必須遵守]\n以下條目為目前對話的硬性規則，回覆時必須滿足：\n${pinnedLoreContext}` : "", keep: 95 },
         { text: memoryContext, keep: 60 },
         { text: coupleTaskContext, keep: 30 },
         { text: calendarContext, keep: 35 },

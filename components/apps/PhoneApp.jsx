@@ -190,7 +190,7 @@ export default function PhoneApp({
                 <div style={{ marginTop: "auto", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                   <button className="mp-ibtn" onClick={openPicker}>{t("switchRole")}</button>
                   <button className="mp-ibtn" disabled={phoneAppGenLoading === "theme"} onClick={() => generatePhoneApp(selectedChar, "theme")}>
-                    {phoneAppGenLoading === "theme" ? t("loading") : (phoneAppCache[selectedChar.id]?.theme ? tr("刷新主題", "Refresh theme", "テーマ更新", "테마 새로고침") : tr("✦ 生成主題", "✦ Generate theme", "✦ テーマ生成", "✦ 테마 생성"))}
+                    {phoneAppGenLoading === "theme" ? t("loading") : (phoneAppCache[selectedChar.id]?.theme ? tr("重新生成主題", "Refresh theme", "テーマ更新", "테마 새로고침") : tr("✦ 生成主題", "✦ Generate theme", "✦ テーマ生成", "✦ 테마 생성"))}
                   </button>
                 </div>
                 <div style={{ position: "absolute", left: "50%", bottom: 10, transform: "translateX(-50%)", width: 120, height: 5, borderRadius: 999, background: "rgba(28,44,55,.3)" }} />
@@ -222,7 +222,7 @@ export default function PhoneApp({
                       <button className="mp-ibtn" style={{...phBtn,flex:1}} disabled={walletGenLoading || hasPendingTransfer} title={hasPendingTransfer ? tr("有尚未完成的轉帳", "A transfer is still pending", "未処理の送金があります", "처리되지 않은 이체가 있습니다") : ""} onClick={() => generateCharacterWallet(selectedChar, { mode: "refresh" })}>{walletGenLoading ? t("loading") : t("refreshWallet")}</button>
                       <button className="mp-ibtn" style={{...phBtn,flex:1}} disabled={walletGenLoading || hasPendingTransfer} title={hasPendingTransfer ? tr("有尚未完成的轉帳", "A transfer is still pending", "未処理の送金があります", "처리되지 않은 이체가 있습니다") : ""} onClick={() => regenerateCharacterWallet(selectedChar)}>{walletGenLoading ? t("updating") : t("generate")}</button>
                     </div>
-                    <div style={{fontSize:13,fontWeight:800,marginBottom:6,color:phTh.text}}>{tr("近期流水", "Recent transactions", "最近の取引", "최근 거래")}</div>
+                    <div style={{fontSize:13,fontWeight:800,marginBottom:6,color:phTh.text}}>{tr("近期交易", "Recent transactions", "最近の取引", "최근 거래")}</div>
                     <div style={{display:"grid",gap:8,maxHeight:360,overflowY:"auto"}}>
                       {(phoneWallet.transactions || []).slice(0, 12).map((t) => (
                         <div key={t.id} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:12,padding:"7px 9px",borderRadius:10,background:"rgba(255,255,255,.62)"}}>
@@ -253,7 +253,7 @@ export default function PhoneApp({
                   {phoneGenLoading ? t("loading") : t("refreshOtherChats")}
                 </button>
                 <button className="mp-ibtn" style={{...phBtn,background:phoneChatUi.incoming,color:phoneChatUi.text,border:`1px solid ${phoneChatUi.incomingBorder}`}} disabled={phonePlayerContactLoading} onClick={() => refreshPhonePlayerContact(selectedChar)}>
-                  {phonePlayerContactLoading ? t("loading") : tr("刷新玩家聊天室", "Refresh player chat", "プレイヤーチャット更新", "플레이어 채팅 새로고침")}
+                  {phonePlayerContactLoading ? t("loading") : tr("更新玩家聊天室", "Refresh player chat", "プレイヤーチャット更新", "플레이어 채팅 새로고침")}
                 </button>
               </div>
               <div style={{fontSize:10,color:phoneChatUi.sub,margin:"-2px 0 8px 2px"}}>
@@ -345,7 +345,7 @@ export default function PhoneApp({
                       {busy ? t("generating") : `✦ ${t("generate")}${meta.name}`}
                     </button>
                     <div style={{ fontSize: 10, color: th.textSub, opacity: .8, lineHeight: 1.7 }}>
-                      {tr("只在按下時呼叫 AI・生成後存快取，不會自動刷新", "AI runs only when you tap · cached afterwards", "押した時だけAIを呼び、以後はキャッシュ表示", "누를 때만 AI 호출 · 이후 캐시 표시")}
+                      {tr("只在按下時呼叫 AI・生成後存快取，不會自動更新", "AI runs only when you tap · cached afterwards", "押した時だけAIを呼び、以後はキャッシュ表示", "누를 때만 AI 호출 · 이후 캐시 표시")}
                     </div>
                   </div>
                 )}
@@ -422,8 +422,8 @@ export default function PhoneApp({
                     ))}
                     <div style={{ fontSize: 10, color: th.textSub, lineHeight: 1.7, padding: "4px 2px" }}>
                       {characterWallets[selectedChar.id]
-                        ? tr("訂單已同步到錢包流水", "Orders synced to wallet", "注文はウォレットに同期済み", "주문이 지갑에 동기화됨")
-                        : tr("角色錢包尚未生成，訂單暫未寫入流水；生成錢包後刷新商店即可同步", "Wallet not generated yet; refresh shop after generating it to sync", "ウォレット未生成のため未同期。生成後にショップを更新してください", "지갑 미생성 상태. 지갑 생성 후 상점을 새로고침하면 동기화됩니다")}
+                        ? tr("訂單已同步到錢包明細", "Orders synced to wallet", "注文はウォレットに同期済み", "주문이 지갑에 동기화됨")
+                        : tr("角色錢包尚未生成，訂單暫未寫入錢包明細；生成錢包後更新商店即可同步", "Wallet not generated yet; refresh shop after generating it to sync", "ウォレット未生成のため未同期。生成後にショップを更新してください", "지갑 미생성 상태. 지갑 생성 후 상점을 새로고침하면 동기화됩니다")}
                     </div>
                   </div>
                 )}
@@ -523,7 +523,7 @@ export default function PhoneApp({
                   </div>
                 )}
 
-                {/* ===== 快取列 + 刷新（日記除外——它有自己的「寫新的一篇」） ===== */}
+                {/* ===== 快取列 + 更新（日記除外——它有自己的「寫新的一篇」） ===== */}
                 {data && appId !== "diary" && (
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ fontSize: 10, color: th.textSub }}>

@@ -129,7 +129,7 @@ export async function generateGachaEpisodeReply({ episode, character, playerProf
   const modeLabel = episode.mode === "reality" ? "現實見面" : "線上聊天／寄送禮物";
   const currentTurn = Math.min(20, Math.max(1, Number(episode.playerMessageCount || 0) + 1));
   const storyPhase = forceEnding
-    ? "提前收尾：玩家選擇在此刻結束本篇。請根據已發生的對話，讓角色自然完成當前互動、回應這份禮物並留下符合人設的結尾。不得責怪玩家、不得提出需要繼續回答的新問題、不得開啟新事件，也不得提及回合、系統或『提前結束』按鈕。"
+    ? "提前收尾：玩家選擇在此刻結束本篇。請根據已發生的對話，讓角色自然完成目前互動、回應這份禮物並留下符合人設的結尾。不得責怪玩家、不得提出需要繼續回答的新問題、不得開啟新事件，也不得提及回合、系統或『提前結束』按鈕。"
     : currentTurn <= 3
     ? "開場期：接住玩家的贈禮與反應，建立當下場景和情緒，不要急著推進或結束。"
     : currentTurn <= 10
@@ -138,7 +138,7 @@ export async function generateGachaEpisodeReply({ episode, character, playerProf
         ? "轉折期：讓本篇的核心情緒或事件逐漸明朗，開始回收前面出現的細節，不再無限制增加支線。"
         : currentTurn <= 19
           ? "收束期：朝自然結局推進，不可開啟新的大型事件或懸念；逐步回收話題，讓角色表達本篇最重要的感受。"
-          : "最終回覆：這是本篇最後一次角色回覆。必須完成當前場景並給出具有結束感的回應；不得提出需要玩家繼續回答的新問題，不得留下明顯懸念，也不得替玩家決定行動。";
+          : "最終回覆：這是本篇最後一次角色回覆。必須完成目前場景並給出具有結束感的回應；不得提出需要玩家繼續回答的新問題，不得留下明顯懸念，也不得替玩家決定行動。";
   const systemPrompt = `你正在扮演角色「${character?.name || episode.characterName}」，進行一段獨立的贈禮特別篇。
 
 角色設定：

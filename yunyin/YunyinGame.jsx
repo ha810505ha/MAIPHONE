@@ -81,7 +81,7 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
     const ripened = ripenedDuring(gameSave, gameSave.lastSeenAt, now);
     const shopRes = settleShelves(gameSave, now);      // 貨架離線照賣
     const crafted = gameSave.shop.furnaces.reduce((sum, f) => sum + furnaceDone(f, now), 0); // 兩爐已煉好待收數（不自動收）
-    refreshOrders(gameSave, now);                      // 跨日刷新行商訂單
+    refreshOrders(gameSave, now);                      // 跨日更新行商訂單
     resetDungeonDaily(gameSave, now);                  // 跨日重置秘境次數
     if (offlineMin >= 1 && (expGained >= 1 || ripened > 0 || shopRes.sold > 0 || crafted > 0)) {
       return { mins: offlineMin, expGained: Math.floor(expGained), ripened, ...shopRes, crafted };
