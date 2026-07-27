@@ -7,10 +7,16 @@ const PROVIDERS = {
     baseUrl: "https://ollama.com/v1",
     allowedPaths: [/^\/chat\/completions$/, /^\/models$/],
   },
+  nvidia: {
+    baseUrl: "https://integrate.api.nvidia.com/v1",
+    allowedPaths: [/^\/chat\/completions$/, /^\/models$/],
+  },
 };
 
 const DEFAULT_ALLOWED_ORIGINS = [
   "http://localhost:5173",
+  "http://localhost",
+  "https://localhost",
   "https://ha810505ha.github.io",
 ];
 
@@ -20,10 +26,10 @@ const corsHeaders = (request, env) => {
     .split(",")
     .map((x) => x.trim())
     .filter(Boolean);
-  const allowedOrigins = configured.length ? configured : DEFAULT_ALLOWED_ORIGINS;
-  const allowOrigin = allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
+  const allowedOrigins = [...new Set([...DEFAULT_ALLOWED_ORIGINS, ...configured])];
+  const allowOrigin = allowedOrigins.includes(origin) ? origin : "";
   return {
-    "Access-Control-Allow-Origin": allowOrigin,
+    ...(allowOrigin ? { "Access-Control-Allow-Origin": allowOrigin } : {}),
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type,Authorization,x-api-key,anthropic-version,anthropic-dangerous-direct-browser-access,HTTP-Referer,X-Title",
     "Access-Control-Max-Age": "86400",
@@ -85,7 +91,7 @@ export default {
       return json(request, env, {
         ok: true,
         name: "MALIPHONE Cloudflare AI Proxy",
-        usage: "/claude/messages, /claude/models, /ollama/chat/completions, /ollama/models",
+        usage: "/claude/messages, /claude/models, /ollama/chat/completions, /ollama/models, /nvidia/chat/completions, /nvidia/models",
       });
     }
 

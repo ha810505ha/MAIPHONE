@@ -2545,6 +2545,7 @@ export default function MaliPhone() {
         vertex: "Vertex",
         grok: "Grok",
         openrouter: "OR",
+        nvidia: "NVIDIA",
       };
       const providerFullMap = {
         openai: "OpenAI",
@@ -2554,6 +2555,7 @@ export default function MaliPhone() {
         vertex: "Vertex AI (快速模式)",
         grok: "Grok",
         openrouter: "OpenRouter",
+        nvidia: "NVIDIA NIM",
       };
       const modelShort = providerShortMap[apiConfig?.provider || "openai"] || "AI";
       const providerKey = apiConfig?.provider || "openai";
@@ -2656,6 +2658,7 @@ export default function MaliPhone() {
         vertex: "Vertex",
         grok: "Grok",
         openrouter: "OR",
+        nvidia: "NVIDIA",
       };
       const providerFullMap = {
         openai: "OpenAI",
@@ -2665,6 +2668,7 @@ export default function MaliPhone() {
         vertex: "Vertex AI (快速模式)",
         grok: "Grok",
         openrouter: "OpenRouter",
+        nvidia: "NVIDIA NIM",
       };
       const providerKey = apiConfig?.provider || "openai";
       const modelShort = providerShortMap[providerKey] || "AI";
