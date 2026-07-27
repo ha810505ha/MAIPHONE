@@ -190,7 +190,7 @@ export default function useCharacterChatRooms({
     const activeId = activeRoomIds[characterId];
     const current = rooms.find((room) => room.id === activeId);
     if (!current) return;
-    const message = tr(`確定要清空「${current.title || "當前聊天室"}」嗎？其中的訊息、記憶與場景會被清除，但聊天室本身會保留。`, `Clear “${current.title || "the current chat"}”? Its messages, memories, and scene will be removed, but the chatroom will remain.`, `「${current.title || "現在のチャット"}」を空にしますか？メッセージ・記憶・シーンは削除されますが、チャットルームは残ります。`, `“${current.title || "현재 채팅"}”을 비울까요? 메시지, 기억, 장면은 삭제되지만 채팅방은 유지됩니다.`);
+    const message = tr(`確定要清空「${current.title || "目前聊天室"}」嗎？其中的訊息、記憶與場景會被清除，但聊天室本身會保留。`, `Clear “${current.title || "the current chat"}”? Its messages, memories, and scene will be removed, but the chatroom will remain.`, `「${current.title || "現在のチャット"}」を空にしますか？メッセージ・記憶・シーンは削除されますが、チャットルームは残ります。`, `“${current.title || "현재 채팅"}”을 비울까요? 메시지, 기억, 장면은 삭제되지만 채팅방은 유지됩니다.`);
     if (!window.confirm(message)) return;
     const secondMessage = tr("請再次確認：清空後，這個聊天室目前的訊息、記憶與場景都無法復原。確定要繼續嗎？", "Please confirm again: this chatroom's current messages, memories, and scene cannot be restored after clearing. Continue?", "再確認してください。消去後、このチャットルームのメッセージ・記憶・シーンは復元できません。続けますか？", "다시 확인해주세요. 비운 뒤에는 이 채팅방의 메시지, 기억, 장면을 복구할 수 없습니다. 계속할까요?");
     if (!window.confirm(secondMessage)) return;

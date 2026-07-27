@@ -54,7 +54,7 @@ export default function WalletLedgerView({ wallet, setWallet, characters, closeA
       <span className="mp-crystal-link">{tr("查看紀錄","View history","履歴を見る","기록 보기")} ›</span>
     </button>
     <div className="mp-wtabs" style={{margin:"11px 0 8px"}}>
-      <button className={`mp-wtab ${tab==="ledger"?"active":""}`} onClick={()=>setTab("ledger")}>{tr("流水帳","Ledger","履歴","내역")}</button>
+      <button className={`mp-wtab ${tab==="ledger"?"active":""}`} onClick={()=>setTab("ledger")}>{tr("收支紀錄","Ledger","履歴","내역")}</button>
       <button className={`mp-wtab ${tab==="month"?"active":""}`} onClick={()=>setTab("month")}>{tr("月結","Monthly","月まとめ","월결산")}</button>
       <button className={`mp-wtab ${tab==="crystals"?"active":""}`} onClick={()=>setTab("crystals")}>{tr("結晶","Crystals","結晶","결정")}</button>
     </div>

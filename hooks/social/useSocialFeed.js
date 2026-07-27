@@ -80,7 +80,7 @@ export default function useSocialFeed({
     const nowTs = Date.now();
     const globalLeft = SOCIAL_GLOBAL_COOLDOWN_MS - (nowTs - (socialLastGlobalPostAtRef.current || 0));
     if (globalLeft > 0) {
-      showToast(tr(`刷新太快，請 ${Math.ceil(globalLeft / 1000)} 秒後再試`, `Too fast, try again in ${Math.ceil(globalLeft / 1000)}s`, `更新が早すぎます。${Math.ceil(globalLeft / 1000)}秒後にもう一度お試しください`, `너무 빨라요. ${Math.ceil(globalLeft / 1000)}초 후 다시 시도해주세요`));
+      showToast(tr(`操作太快，請 ${Math.ceil(globalLeft / 1000)} 秒後再試`, `Too fast, try again in ${Math.ceil(globalLeft / 1000)}s`, `更新が早すぎます。${Math.ceil(globalLeft / 1000)}秒後にもう一度お試しください`, `너무 빨라요. ${Math.ceil(globalLeft / 1000)}초 후 다시 시도해주세요`));
       return;
     }
     const c = pickRandomSocialCharacter();
@@ -229,7 +229,7 @@ export default function useSocialFeed({
       showToast(tr("玩家貼文目前不分享到角色聊天室", "Player posts can't be shared to character chats yet", "プレイヤーの投稿は今のところキャラのチャットに共有できません", "플레이어 게시물은 아직 캐릭터 채팅에 공유할 수 없습니다"));
       return;
     }
-    if (!window.confirm("要分享到此角色聊天室嗎？")) return;
+    if (!window.confirm(tr("要分享到此角色聊天室嗎？", "Share to this character's chatroom?", "このキャラクターのチャットルームに共有しますか？", "이 캐릭터의 채팅방에 공유할까요?"))) return;
     const char = characters.find((c) => c.id === post.charId);
     if (!char) return;
     const lines = (post.comments || []).slice(-4).map((c) => `${c.role === "assistant" ? (c.charName || post.charName) : "{{user}}"}：${c.content}`);

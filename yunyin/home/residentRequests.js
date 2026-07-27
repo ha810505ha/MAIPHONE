@@ -32,7 +32,7 @@ export const requestById = (id) => REQUEST_TEMPLATES.find((item) => item.id === 
 
 const rankOf = (homeState, characterId) => STAGE_RANK[residentStage(homeState, characterId).id] || 0;
 
-// 每日刷新：全家一則，發話者從住客中隨機挑一位
+// 每日更新：全家一則，發話者從住客中隨機挑一位
 export function refreshDailyRequest(homeState, now = Date.now(), random = Math.random) {
   const home = homeState.homes?.[PLAYER_HOME_ID];
   if (!home) return null;

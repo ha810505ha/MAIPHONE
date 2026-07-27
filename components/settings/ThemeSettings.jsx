@@ -1,5 +1,5 @@
 import React from "react";
-import { FONT_PRESETS } from "../../styles/maliPhoneCss";
+import { FONT_PRESETS } from "../../styles/themePresets";
 import { buildFontStack, sanitizeFontName } from "../../utils/fontName";
 
 export default function ThemeSettings({ t, tr, themeName, setThemeName, fontName, setFontName, fontSizeScale, setFontSizeScale, customFontName, setCustomFontName, effectsEnabled, setEffectsEnabled }) {

@@ -37,11 +37,11 @@ export default function useWalletController({
 }) {
   const transferExpiryMs = 24 * 60 * 60 * 1000;
   const settlingTransferIdsRef = useRef(new Set());
-  // 商店 → 錢包同步：先清舊 shop 流水（餘額加回），再寫新流水（餘額扣掉）。刷新不會重複扣款。
+  // 商店 → 錢包同步：先清除舊 shop 明細（餘額加回），再寫入新明細（餘額扣掉）。更新不會重複扣款。
   const syncShopOrdersToWallet = (charId, orders) => {
     setCharacterWallets((prev) => {
       const w = prev[charId];
-      if (!w) return prev; // 錢包尚未生成就不寫，等錢包生成後玩家再刷新商店即可
+      if (!w) return prev; // 錢包尚未生成就不寫，等錢包生成後玩家再更新商店即可
       const oldTx = Array.isArray(w.transactions) ? w.transactions : [];
       const oldShopTotal = oldTx.filter((t) => t.source === "shop").reduce((s, t) => s + (+t.amount || 0), 0);
       const kept = oldTx.filter((t) => t.source !== "shop");
@@ -320,7 +320,7 @@ ${recent || "（無）"}
   const generateCharacterWallet = async (char, { mode = "initial" } = {}) => {
     if (!char) return;
     if (mode === "refresh" && (transfers || []).some((item) => item.status === "pending" && item.characterId === char.id)) {
-      showToast(tr("此角色目前有尚未完成的轉帳，暫時不能刷新錢包", "This character has a pending transfer, so the wallet cannot be refreshed yet", "このキャラクターには未処理の送金があるため、ウォレットを更新できません", "이 캐릭터에게 처리되지 않은 이체가 있어 지갑을 새로고침할 수 없습니다"));
+      showToast(tr("此角色目前有尚未完成的轉帳，暫時不能更新錢包", "This character has a pending transfer, so the wallet cannot be refreshed yet", "このキャラクターには未処理の送金があるため、ウォレットを更新できません", "이 캐릭터에게 처리되지 않은 이체가 있어 지갑을 새로고침할 수 없습니다"));
       return;
     }
     if (!canUseCurrentProvider()) { showToast(tr("請先完成 AI 連線設定（API Key）", "Please finish AI connection setup (API key) first", "先にAI接続設定（APIキー）を完了してください", "먼저 AI 연결 설정(API 키)을 완료해주세요")); return; }
@@ -344,7 +344,7 @@ ${recent || "（無）"}
             : "3~10";
       const roleProfile = isRefresh ? "" : buildWalletRoleProfile(char);
       const walletPrompt = isRefresh
-        ? `請根據角色的錢包摘要，補充角色「${char.name}」自上次刷新至今可能發生、但尚未記錄的生活流水，只輸出有效 JSON。
+        ? `請根據角色的錢包摘要，補充角色「${char.name}」自上次更新至今可能發生、但尚未記錄的生活收支，只輸出有效 JSON。
 規則：
 1) 本次補完區間約 ${refreshElapsedDays.toFixed(1)} 天，請依期間長短生成 ${refreshTransactionRange} 筆 transactions；短期間沒有合理事件時可回傳空陣列。
 2) 不要生成轉帳事件，轉帳已由聊天室事件另外處理。
@@ -368,7 +368,7 @@ ${walletProfile || "（無）"}
 最近流水摘要：
 ${refreshHistory || "（無）"}
 
-角色設定補充：已由 walletProfile 取代，刷新時不要重新閱讀完整角色設定。`
+角色設定補充：已由 walletProfile 取代，更新時不要重新閱讀完整角色設定。`
         : `請根據角色設定，生成角色「${char.name}」自己的錢包狀態與錢包摘要，只輸出有效 JSON。
 規則：
 1) balance 是合理餘額，整數，不要太誇張。
@@ -377,7 +377,7 @@ ${refreshHistory || "（無）"}
 4) 若角色是醫生，收入/支出可部分和醫療、值班、書籍、交通有關，但不能全部都醫療；也要有飲食、娛樂、興趣、人際等生活花費。
 5) 不要提到 {{user}}，這是角色自己的錢包。
 6) 另外產生一份只用於錢包的 summary，並同步產生 walletProfile。walletProfile 只保留職業、收入來源、消費習慣、生活風格、財務風格等財務相關資訊，不要包含對 {{user}} 的態度、性行為、曖昧互動或私密感情。
-7) walletProfile 會用於之後的錢包刷新，請寫得簡短、穩定、方便長期重複使用。
+7) walletProfile 會用於之後的錢包更新，請寫得簡短、穩定、方便長期重複使用。
 8) 所有支出必須能被目前餘額支撐，若錢不夠，請改成較小額支出、臨時收入、借貸、預支，或直接不產生支出。
 9) 每筆流水的 note 要像角色真的會有的消費/收入，不要是泛用模板。
 10) time 使用目前時間附近的毫秒 timestamp，可用 ${Date.now()} 往前推。
@@ -399,8 +399,8 @@ ${roleProfile || "（無）"}`;
       setCharacterWallets((prev) => {
         const current = prev[char.id] || { balance: 0, transactions: [], summary: "", generatedAt: Date.now() };
         if (isRefresh) {
-          // 目前餘額已經包含舊流水與聊天室轉帳；刷新只能套用 AI 本次補出的增量，
-          // 不可再次重播舊流水，否則每次刷新都會重複加減歷史交易。
+          // 目前餘額已經包含舊明細與聊天室轉帳；更新只能套用 AI 本次補出的增量，
+          // 不可再次重播舊明細，否則每次更新都會重複加減歷史交易。
           const incremental = reconcileWalletLedger(current.balance || 0, (next.transactions || []).slice(0, refreshTransactionLimit), refreshTransactionLimit);
           return {
             ...prev,
@@ -429,7 +429,7 @@ ${roleProfile || "（無）"}`;
           },
         };
       });
-      showToast(isRefresh ? `${char.name} 的錢包已刷新` : `${char.name} 的錢包已更新`);
+      showToast(`${char.name} 的錢包已更新`);
     } catch (err) {
       showToast(`${tr("角色錢包生成失敗", "Character wallet generation failed", "キャラのウォレット生成に失敗しました", "캐릭터 지갑 생성에 실패했습니다")}：${sanitizeText(err?.message || tr("未知錯誤", "Unknown error", "不明なエラー", "알 수 없는 오류"), 120)}`);
     }

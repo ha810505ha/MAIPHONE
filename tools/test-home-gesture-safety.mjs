@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { resolveHomeSwipe, resolveLibrarySwipe } from "../utils/homeGesture.js";
+import { resolveHomeSwipe, resolveLibrarySwipe, rubberBand } from "../utils/homeGesture.js";
 
 function assertEqual(actual, expected, message) {
   if (actual !== expected) {
@@ -42,11 +42,39 @@ assertEqual(
   "next-page",
   "library left swipe",
 );
+assertEqual(
+  resolveHomeSwipe({
+    startX: 260,
+    startY: 300,
+    endX: 225,
+    endY: 298,
+    durationMs: 45,
+    viewportWidth: 390,
+  }),
+  "next-page",
+  "a short fast flick should advance",
+);
+assertEqual(
+  resolveHomeSwipe({
+    startX: 260,
+    startY: 300,
+    endX: 225,
+    endY: 298,
+    durationMs: 420,
+    viewportWidth: 390,
+  }),
+  null,
+  "a short slow drag should settle back",
+);
+if (!(rubberBand(120, 390) > 0 && rubberBand(120, 390) < 120)) {
+  throw new Error("edge rubber banding must stay responsive while resisting overscroll");
+}
 
 const hook = await readFile(new URL("../hooks/home/useHomeDragAndDrop.js", import.meta.url), "utf8");
-const css = await readFile(new URL("../styles/maliPhoneCss.js", import.meta.url), "utf8");
+const css = await readFile(new URL("../styles/maliPhone.css", import.meta.url), "utf8");
 const maliPhone = await readFile(new URL("../MaliPhone.jsx", import.meta.url), "utf8");
 const appLibrary = await readFile(new URL("../components/home/HomeAppLibrary.jsx", import.meta.url), "utf8");
+const homeScreen = await readFile(new URL("../components/shell/HomeScreen.jsx", import.meta.url), "utf8");
 const switchBody = hook.slice(
   hook.indexOf("const switchHomePageBySwipe"),
   hook.indexOf("const onHomeTouchEnd"),
@@ -80,6 +108,14 @@ if (!appLibrary.includes("onTouchStart={onHomeTouchStart}")
   || !appLibrary.includes("onTouchEnd={onHomeTouchEnd}")
   || !appLibrary.includes("resolveLibrarySwipe")) {
   throw new Error("app library must wire Touch Event fallback through the shared gesture classifier");
+}
+if (!homeScreen.includes("if (folder) onOpenApp(folder);")
+  || homeScreen.includes("folder && !dragging")
+  || !homeScreen.includes("data-folder-id={folder?.id || undefined}")) {
+  throw new Error("folder clicks must not depend on stale app-dragging state");
+}
+if (!homeScreen.includes("if (folder) {\n                        event.stopPropagation();")) {
+  throw new Error("folder pointer events must not start the home-page gesture");
 }
 
 console.log("ok: home and app-library gestures survive mobile pointer cancellation");

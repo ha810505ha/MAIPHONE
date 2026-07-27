@@ -106,7 +106,7 @@ export function startRun(save, difficultyId = 1) {
   return null;
 }
 
-// ---- 選擇當前事件的選項 ----
+// ---- 選擇目前事件的選項 ----
 export function chooseOption(save, choiceIdx) {
   const run = save.dungeon.activeRun;
   if (!run || run.state !== "event") return null;
@@ -178,7 +178,7 @@ export function finishRun(save, mode /* "cleared" | "retreat" | "dead" */) {
       summary.blueprint = { furnitureId, name: furnitureById(furnitureId)?.name || furnitureId };
     }
   }
-  // 修為進帳夾在當前境界上限（跟掛機一樣不能溢出）
+  // 修為進帳夾在目前境界上限（跟掛機一樣不能溢出）
   const realm = REALMS[save.cultivation.realmIdx];
   save.cultivation.exp = Math.min(realm.expMax, save.cultivation.exp + summary.exp);
   save.coins += summary.coins;

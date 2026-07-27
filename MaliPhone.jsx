@@ -11,6 +11,7 @@ import useWalletController from "./hooks/wallet/useWalletController";
 import { gid, ft, fd, sanitizeText, sanitizeUserImageUrl } from "./utils/coreUtils";
 import { downloadJsonFile, downloadTextFile, exportToastMessage } from "./utils/exportFile";
 import { UI_TEXT } from "./constants/uiText";
+import { localizeFallbackText, normalizeUiLanguage, translate } from "./utils/i18n";
 import { buildSystemPrompt } from "./utils/characterParser";
 import { callAI, fetchAvailableModels } from "./services/aiService";
 import { fetchElevenLabsDefaultVoices, synthesizeSpeech } from "./services/ttsService";
@@ -25,10 +26,12 @@ import { PHOTO_RULE_CONTEXT, extractPhotoDirectives, pseudoImagePromptLine } fro
 import { createPseudoVoice, extractPseudoVoiceDirectives, PSEUDO_VOICE_TEXT_LIMIT, pseudoVoicePromptLine, VOICE_MESSAGE_RULE_CONTEXT } from "./utils/pseudoVoice";
 import { calculateCropDrag, clampCropPan, createImageCropState, drawCoverCrop } from "./utils/imageCrop";
 import { compactActiveRoomMirrors, compactCharacterImages, compactGroupMessageImages, compactSocialPostImages } from "./utils/persistedMediaCleanup";
-import css, { FONT_PRESETS } from "./styles/maliPhoneCss";
+import "./styles/maliPhone.css";
+import { FONT_PRESETS } from "./styles/themePresets";
 import DesktopPet from "./DesktopPet";
 import AppRouter from "./components/apps/AppRouter";
 import useAppearanceSettings from "./hooks/settings/useAppearanceSettings";
+import useDocumentLocale from "./hooks/settings/useDocumentLocale";
 import useThemeRuntime from "./hooks/settings/useThemeRuntime";
 import useDirectChatAI from "./hooks/chat/useDirectChatAI";
 import useCharacterChatRooms from "./hooks/chat/useCharacterChatRooms";
@@ -43,7 +46,6 @@ import useHomeCustomization from "./hooks/home/useHomeCustomization";
 import { HOME_PAGE_SIZE, HOME_SLOT_COUNT, normalizeHomeSlots } from "./utils/homeLayout";
 import { getGroupMemberProfileText, buildGroupChatSystemPrompt, parseGroupReplies } from "./services/chat/groupChatHelpers";
 import { generateGroupReplies } from "./services/chat/groupChatGenerator";
-import { generateDirectAssistant } from "./services/chat/directChatGenerator";
 import { blockCharacterState, buildCharacterBlockCapabilityContext, buildCharacterBlockPromptContext, extractCharacterBlockDirective, normalizeCharacterBlockStates, setCharacterBlocksPlayerState, unblockCharacterState } from "./services/chat/characterBlockState";
 import useAppPersistence from "./hooks/data/useAppPersistence";
 import useDataImportExport from "./hooks/data/useDataImportExport";
@@ -55,6 +57,8 @@ import LockScreen from "./components/shell/LockScreen";
 import HomeScreen from "./components/shell/HomeScreen";
 import NotificationBanner from "./components/shell/NotificationBanner";
 import useNotificationCenter from "./hooks/notifications/useNotificationCenter";
+import useTransientItem from "./hooks/useTransientItem";
+import MotionPresence from "./components/motion/MotionPresence";
 import useDatingApp from "./hooks/dating/useDatingApp";
 import { promoteDatingContact } from "./services/dating/datingMatchApply";
 import { DATING_PROFILES } from "./data/dating/profiles";
@@ -118,10 +122,7 @@ export default function MaliPhone() {
   const [locked, setLocked] = useState(true);
   const [unlocking, setUnlocking] = useState(false);
   const [currentApp, setCurrentApp] = useState(null);
-  const [toast, setToast] = useState(null);
-  const toastSequenceRef = useRef(0);
-  const toastHoldTimerRef = useRef(null);
-  const toastExitTimerRef = useRef(null);
+  const { item: toast, show: showToast } = useTransientItem({ holdMs: 2000, exitMs: 120 });
   const [characters, setCharacters] = useState(defaultAppState.characters);
   const [activeCharId, setActiveCharId] = useState(defaultAppState.activeCharId);
   const [chatHistory, setChatHistory] = useState(defaultAppState.chatHistory);
@@ -215,6 +216,7 @@ export default function MaliPhone() {
   const [apiPresets, setApiPresets] = useState(defaultAppState.apiPresets);
   const [playerProfile, setPlayerProfile] = useState(defaultAppState.playerProfile);
   const { themeName, setThemeName, fontName, setFontName, fontSizeScale, setFontSizeScale, customFontName, setCustomFontName, uiLanguage, setUiLanguage, themeEffectsEnabled, setThemeEffectsEnabled, customCssEnabled, setCustomCssEnabled, customCss, setCustomCss, customCssDraft, setCustomCssDraft, customCssNotice, setCustomCssNotice, customCssGuideOpen, setCustomCssGuideOpen, settingsAppearanceOpen, setSettingsAppearanceOpen, scopedCustomCss } = useAppearanceSettings(defaultAppState);
+  useDocumentLocale(uiLanguage);
   const [playerAvatarCrop, setPlayerAvatarCrop] = useState(null);
   const [screenLockTimeout, setScreenLockTimeout] = useState(defaultAppState.screenLockTimeout);
   const [phoneViewCharId, setPhoneViewCharId] = useState(null);
@@ -227,6 +229,7 @@ export default function MaliPhone() {
   const [ttsConfig, setTtsConfig] = useState(defaultAppState.ttsConfig);
   const [modelBadgeOpen, setModelBadgeOpen] = useState(false);
   const [modal, setModal] = useState(null);
+  const [addCharacterModalSession, setAddCharacterModalSession] = useState(0);
   const [updateNoticeOpen, setUpdateNoticeOpen] = useState(false);
   const [editingCharacter, setEditingCharacter] = useState(null);
   const [tempConfig, setTempConfig] = useState(null);
@@ -303,9 +306,10 @@ export default function MaliPhone() {
   const [walletSettingsOpen, setWalletSettingsOpen] = useState(false);
   const [walletSettingsPage, setWalletSettingsPage] = useState("main");
   const t = (key) => UI_TEXT[uiLanguage]?.[key] || UI_TEXT["zh-TW"]?.[key] || key;
-  const tr = (zh, en, ja, ko) => ({ "zh-TW": zh, en, ja, ko }[uiLanguage] || zh);
+  const tr = (...translations) => translate(uiLanguage, ...translations);
   const getUiLanguageLabel = () => ({
     "zh-TW": "繁體中文",
+    "zh-CN": "简体中文",
     en: "English",
     ja: "日本語",
     ko: "한국어",
@@ -315,49 +319,29 @@ export default function MaliPhone() {
     const playerGender = sanitizeText(playerProfile?.gender || "", 80).trim();
     const taiwaneseChineseDirective = uiLanguage === "zh-TW"
       ? "\n若輸出語言為繁體中文，必須使用臺灣繁體中文與臺灣慣用詞彙。"
+      : uiLanguage === "zh-CN"
+        ? "\n若输出语言为简体中文，必须使用中国大陆简体中文与常用词汇。"
       : "";
     const playerGenderDirective = playerGender
       ? `\n玩家填寫的性別／組成：${playerGender}。稱謂與單複數必須依此判斷。`
       : "\n玩家未填寫性別／組成；不得自行推測性別，且 {{user}} 預設為單一人物。";
     return `UI language: ${languageLabel}\n請使用${languageLabel}回覆。${taiwaneseChineseDirective}${includePlayerContext ? playerGenderDirective : ""}`;
   };
-  const showToast = (message) => {
-    const sequence = toastSequenceRef.current + 1;
-    toastSequenceRef.current = sequence;
-    clearTimeout(toastHoldTimerRef.current);
-    clearTimeout(toastExitTimerRef.current);
-    setToast((current) => ({
-      message,
-      phase: current ? "visible" : "entering",
-      sequence,
-    }));
-    requestAnimationFrame(() => {
-      setToast((current) => current?.sequence === sequence
-        ? { ...current, phase: "visible" }
-        : current);
-    });
-    toastHoldTimerRef.current = setTimeout(() => {
-      setToast((current) => current?.sequence === sequence
-        ? { ...current, phase: "exiting" }
-        : current);
-      toastExitTimerRef.current = setTimeout(() => {
-        setToast((current) => current?.sequence === sequence ? null : current);
-      }, 140);
-    }, 2000);
-  };
-  useEffect(() => () => {
-    clearTimeout(toastHoldTimerRef.current);
-    clearTimeout(toastExitTimerRef.current);
-  }, []);
   const notify = (keyOrText, fallback) => {
-    const message = UI_TEXT[uiLanguage]?.[keyOrText] || fallback || keyOrText;
+    const message = UI_TEXT[uiLanguage]?.[keyOrText]
+      || localizeFallbackText(uiLanguage, fallback || keyOrText);
     showToast(message);
   };
   const armAppClickSuppression = (ms = 600) => {
     suppressAppClickUntilRef.current = Date.now() + ms;
   };
-  const ask = (keyOrText, fallback) => window.confirm(UI_TEXT[uiLanguage]?.[keyOrText] || fallback || keyOrText);
-  const askInput = (keyOrText, defaultValue = "", fallback) => prompt(UI_TEXT[uiLanguage]?.[keyOrText] || fallback || keyOrText, defaultValue);
+  const ask = (keyOrText, fallback) => window.confirm(
+    UI_TEXT[uiLanguage]?.[keyOrText] || localizeFallbackText(uiLanguage, fallback || keyOrText),
+  );
+  const askInput = (keyOrText, defaultValue = "", fallback) => prompt(
+    UI_TEXT[uiLanguage]?.[keyOrText] || localizeFallbackText(uiLanguage, fallback || keyOrText),
+    defaultValue,
+  );
   const {
     chatRooms, activeRoomIds, loadRoomState,
     activateRoom: activateCharacterRoom,
@@ -430,7 +414,7 @@ export default function MaliPhone() {
   setThemeName(data.themeName || defaultAppState.themeName);
   setFontName(FONT_PRESETS[data.fontName] ? data.fontName : defaultAppState.fontName);
   setFontSizeScale(["normal", "large", "xlarge", "xxlarge"].includes(data.fontSizeScale) ? data.fontSizeScale : defaultAppState.fontSizeScale);
-  setUiLanguage(data.uiLanguage || defaultAppState.uiLanguage);
+  setUiLanguage(normalizeUiLanguage(data.uiLanguage, defaultAppState.uiLanguage));
   const initialDock = (data.dockOrder && Array.isArray(data.dockOrder)) ? data.dockOrder : DOCK_APPS;
   setDockOrder(initialDock);
   if (data.homeSlots && Array.isArray(data.homeSlots) && data.homeSlots.length === HOME_SLOT_COUNT) {
@@ -1586,17 +1570,20 @@ export default function MaliPhone() {
       return null;
     })
     .filter(Boolean);
-  const generateAssistantForHistory = (args) => generateDirectAssistant({ ...args, includeRealTime: isChatRealTimeEnabled(args.cid) }, {
-    formatMessagesForPrompt, pickMemoriesForPrompt, pickLorebookEntriesForPrompt, characterWallets,
-    formatMoney, tr, getPlayerContextBlock, getCalendarContext, getCalendarReminderContext, estimateTokens, totalContextTokenLimit: TOTAL_CONTEXT_TOKEN_LIMIT,
-    apiConfig, applyUserPlaceholder, buildChatSystemPrompt, callAI, sanitizeText, normalizeRealityReply,
-    realityChatTextLimit: REALITY_CHAT_TEXT_LIMIT, normalizeAssistantReply, extractTransferDirective, extractTransferResponseDirective,
-    stripModeLabel, stripInternalBlocks, splitAssistantBubbles, createId: gid, wait, setChatHistory,
-    applyCharacterTransferToPlayer, transfers, handleCharacterTransferDecision,
-    characterBlockStates, buildCharacterBlockPromptContext, buildCharacterBlockCapabilityContext, extractCharacterBlockDirective,
-    applyCharacterBlockDirective: (cid, action) => setCharacterBlocksPlayer(cid, action === "block"),
-    isInnerThoughtAutoEnabled, generateInnerThought,
-  });
+  const generateAssistantForHistory = async (args) => {
+    const { generateDirectAssistant } = await import("./services/chat/directChatGenerator");
+    return generateDirectAssistant({ ...args, includeRealTime: isChatRealTimeEnabled(args.cid) }, {
+      formatMessagesForPrompt, pickMemoriesForPrompt, pickLorebookEntriesForPrompt, characterWallets,
+      formatMoney, tr, getPlayerContextBlock, getCalendarContext, getCalendarReminderContext, estimateTokens, totalContextTokenLimit: TOTAL_CONTEXT_TOKEN_LIMIT,
+      apiConfig, applyUserPlaceholder, buildChatSystemPrompt, callAI, sanitizeText, normalizeRealityReply,
+      realityChatTextLimit: REALITY_CHAT_TEXT_LIMIT, normalizeAssistantReply, extractTransferDirective, extractTransferResponseDirective,
+      stripModeLabel, stripInternalBlocks, splitAssistantBubbles, createId: gid, wait, setChatHistory,
+      applyCharacterTransferToPlayer, transfers, handleCharacterTransferDecision,
+      characterBlockStates, buildCharacterBlockPromptContext, buildCharacterBlockCapabilityContext, extractCharacterBlockDirective,
+      applyCharacterBlockDirective: (cid, action) => setCharacterBlocksPlayer(cid, action === "block"),
+      isInnerThoughtAutoEnabled, generateInnerThought,
+    });
+  };
 
   useEffect(() => {
     if (!pendingBlockReaction) return;
@@ -2134,7 +2121,7 @@ export default function MaliPhone() {
       themeName: src.themeName || defaultAppState.themeName,
       fontName: FONT_PRESETS[src.fontName] ? src.fontName : defaultAppState.fontName,
       fontSizeScale: ["normal", "large", "xlarge", "xxlarge"].includes(src.fontSizeScale) ? src.fontSizeScale : defaultAppState.fontSizeScale,
-      uiLanguage: src.uiLanguage || defaultAppState.uiLanguage,
+      uiLanguage: normalizeUiLanguage(src.uiLanguage, defaultAppState.uiLanguage),
       homeSlots: Array.isArray(src.homeSlots) && src.homeSlots.length === HOME_SLOT_COUNT ? src.homeSlots : Array.from({ length: HOME_SLOT_COUNT }, () => null),
       dockOrder: Array.isArray(src.dockOrder) && src.dockOrder.length ? src.dockOrder : DOCK_APPS,
       localAppData: src.localAppData && typeof src.localAppData === "object" ? src.localAppData : {},
@@ -2402,7 +2389,7 @@ export default function MaliPhone() {
     onHomeTouchStart, onHomeTouchEnd, onHomeTouchCancel, onHomeMouseDown, onHomeMouseUp,
     onHomePointerDown, onHomePointerUp, onHomePointerMove,
     onPointerDragStartApp, cancelPointerDrag, onDropToHome, onDropToHomeGrid,
-    onDropToDock, onDropToDockContainer, onHomeDragOverPageEdge,
+    onDropToDock, onDropToDockContainer, onHomeDragOverPageEdge, homeGesture,
   } = useHomeDragAndDrop({
     allAppIds, safeDock, cleanedSlots, dockApps, homePages, homePage, setHomePage,
     setHomeSlots, setDockOrder, isDraggingApp, setIsDraggingApp, pointerDrag, setPointerDrag,
@@ -2846,10 +2833,10 @@ export default function MaliPhone() {
   />;
   const renderCharacters = () => <ContactsApp
     t={t} closeApp={closeApp} characters={sortDisplayCharacters(characters)} activeCharId={activeCharId} sanitizeImage={sanitizeUserImageUrl}
-    onAdd={() => { setEditingCharacter(null); setModal("addChar"); }}
+    onAdd={() => { setAddCharacterModalSession((session) => session + 1); setEditingCharacter(null); setModal("addChar"); }}
     onSetActive={(character) => { setActiveCharId(character.id); showToast(`${character.name} ${t("setAsMainCharacter")}`); }}
     onChat={(character) => { openApp("chat"); openCharacterChat(character); }}
-    onView={(character) => { setEditingCharacter(character); setModal("addChar"); }}
+    onView={(character) => { setAddCharacterModalSession((session) => session + 1); setEditingCharacter(character); setModal("addChar"); }}
     onSaveDisplayOrder={(draft) => {
       const meta = new Map(draft.map((item, index) => [item.id, { displayOrder: index, displayPinned: !!item.pinned }]));
       setCharacters((items) => items.map((item) => ({ ...item, ...(meta.get(item.id) || {}) })));
@@ -3151,7 +3138,6 @@ export default function MaliPhone() {
   />;
   if (locked) return (
     <>
-      <style>{css}</style>
       <style>{themeCss}</style>
       <LockScreen
         unlocking={unlocking}
@@ -3173,11 +3159,11 @@ export default function MaliPhone() {
     </>
   );
 
-  return (<><style>{css}</style><style>{themeCss}</style><div className="mp-wrap" onClickCapture={blockRecentAppClicks}><div className="mp-phone">
+  return (<><style>{themeCss}</style><div className="mp-wrap" onClickCapture={blockRecentAppClicks}><div className="mp-phone">
     <HomeScreen
       ft={ft} fd={fd} activeCharacter={activeChar} peachTheme={isPeachTheme} tr={tr} currentApp={currentApp}
       pages={homePages} page={homePage} pageSize={HOME_PAGE_SIZE} appById={appById} dockApps={dockApps} badges={notificationCenter.badges}
-      dragging={isDraggingApp} pointerDrag={pointerDrag} renderAppIcon={renderAppIcon}
+      dragging={isDraggingApp} pointerDrag={pointerDrag} pageGesture={homeGesture} renderAppIcon={renderAppIcon}
       gestureHandlers={{
         onTouchStart: onHomeTouchStart,
         onTouchEnd: onHomeTouchEnd,
@@ -3212,11 +3198,12 @@ export default function MaliPhone() {
     }} />
     <MusicShellLayer currentApp={currentApp} />
     <NotificationBanner notification={notificationCenter.banner} onOpen={openNotification} onDismiss={notificationCenter.dismissBanner} tr={tr} />
-    {dataImportPreview && <React.Suspense fallback={null}><DataImportPreviewModal tr={tr} preview={dataImportPreview} onCancel={cancelDataImport} onConfirm={confirmImportPreview} /></React.Suspense>}
-    {chatroomImportPreview && <React.Suspense fallback={null}><ChatroomImportPreviewModal tr={tr} preview={chatroomImportPreview} onCancel={cancelChatroomImport} onConfirm={confirmChatroomImportPreview} /></React.Suspense>}
+    <MotionPresence show={Boolean(dataImportPreview)}>{dataImportPreview && <React.Suspense fallback={null}><DataImportPreviewModal tr={tr} preview={dataImportPreview} onCancel={cancelDataImport} onConfirm={confirmImportPreview} /></React.Suspense>}</MotionPresence>
+    <MotionPresence show={Boolean(chatroomImportPreview)}>{chatroomImportPreview && <React.Suspense fallback={null}><ChatroomImportPreviewModal tr={tr} preview={chatroomImportPreview} onCancel={cancelChatroomImport} onConfirm={confirmChatroomImportPreview} /></React.Suspense>}</MotionPresence>
     {customCssGuideOpen && <React.Suspense fallback={null}><CustomCssGuide onClose={() => setCustomCssGuideOpen(false)} /></React.Suspense>}
     <DesktopPet currentApp={currentApp} />
-    {modal === "addChar" && <React.Suspense fallback={null}><AddCharacterModal setModal={setModal} setEditingCharacter={setEditingCharacter} addCharacter={addCharacter} updateCharacter={updateCharacter} exportCharacter={exportCharacter} deleteCharacter={deleteCharacter} editingCharacter={editingCharacter} sanitizeUserImageUrl={sanitizeUserImageUrl} uiLanguage={uiLanguage} ttsConfig={ttsConfig} ttsVoices={ttsVoices.length ? ttsVoices : (ttsConfig.elevenlabs?.availableVoices || [])} onVoicePreview={previewCharacterVoice} /></React.Suspense>}
+    <MotionPresence show={modal === "addChar"}>{modal === "addChar" && <React.Suspense fallback={null}><AddCharacterModal key={addCharacterModalSession} setModal={setModal} setEditingCharacter={setEditingCharacter} addCharacter={addCharacter} updateCharacter={updateCharacter} exportCharacter={exportCharacter} deleteCharacter={deleteCharacter} editingCharacter={editingCharacter} sanitizeUserImageUrl={sanitizeUserImageUrl} uiLanguage={uiLanguage} ttsConfig={ttsConfig} ttsVoices={ttsVoices.length ? ttsVoices : (ttsConfig.elevenlabs?.availableVoices || [])} onVoicePreview={previewCharacterVoice} /></React.Suspense>}</MotionPresence>
+    <MotionPresence show={Boolean(memoryEditor)}>
     {memoryEditor && (
       <div className="mp-overlay" onClick={() => setMemoryEditor(null)}>
         <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
@@ -3242,6 +3229,8 @@ export default function MaliPhone() {
         </div>
       </div>
     )}
+    </MotionPresence>
+    <MotionPresence show={Boolean(messageEditor)}>
     {messageEditor && (
       <div className="mp-overlay" onClick={closeMessageEditor}>
         <div className="mp-modal" onClick={(e)=>e.stopPropagation()}>
@@ -3267,6 +3256,8 @@ export default function MaliPhone() {
         </div>
       </div>
     )}
+    </MotionPresence>
+    <MotionPresence show={updateNoticeOpen}>
     {updateNoticeOpen && (
       <div className="mp-overlay" onClick={closeUpdateNotice}>
         <div className="mp-modal" onClick={(e)=>e.stopPropagation()}>
@@ -3283,6 +3274,8 @@ export default function MaliPhone() {
         </div>
       </div>
     )}
+    </MotionPresence>
+    <MotionPresence show={playerPostModalOpen}>
     {playerPostModalOpen && (
       <div className="mp-overlay" onClick={() => setPlayerPostModalOpen(false)}>
         <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
@@ -3305,6 +3298,8 @@ export default function MaliPhone() {
         </div>
       </div>
     )}
+    </MotionPresence>
+    <MotionPresence show={Boolean(transferModalOpen && currentChatChar)}>
     {transferModalOpen && currentChatChar && (
       <div className="mp-overlay" onClick={() => setTransferModalOpen(false)}>
         <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
@@ -3336,6 +3331,8 @@ export default function MaliPhone() {
         </div>
       </div>
     )}
+    </MotionPresence>
+    <MotionPresence show={Boolean(groupCreateOpen || groupEditOpen || groupCoverCrop || groupEditCoverCrop)}>
     {(groupCreateOpen || groupEditOpen || groupCoverCrop || groupEditCoverCrop) && <React.Suspense fallback={null}><GroupChatModals
       characters={sortChatThreads(characters)}
       tr={tr}
@@ -3387,6 +3384,7 @@ export default function MaliPhone() {
         },
       }}
     /></React.Suspense>}
-      {toast && <div className="mp-toast" data-phase={toast.phase}>{toast.message}</div>}
+    </MotionPresence>
+      {toast && <div className="mp-toast" data-phase={toast.phase} role="status" aria-live="polite">{toast.value}</div>}
   </div></div></>);
 }

@@ -48,7 +48,7 @@ export default function ChatSettingsPanel({ tr, mode, innerThought, proactive, r
         </>}
 
         {activeTab === "management" && <>
-          <div className="mp-chat-tab-intro"><b>{tr("當前聊天室資料", "Current chat data", "現在のチャットデータ", "현재 채팅 데이터")}</b><span>{tr("以下操作只處理聊天室資料，不會刪除角色。", "These actions affect chat data only and do not delete the character.", "以下の操作はチャットデータのみを対象とし、キャラクターは削除されません。", "아래 작업은 채팅 데이터에만 적용되며 캐릭터는 삭제되지 않습니다.")}</span></div>
+          <div className="mp-chat-tab-intro"><b>{tr("目前聊天室資料", "Current chat data", "現在のチャットデータ", "현재 채팅 데이터")}</b><span>{tr("以下操作只處理聊天室資料，不會刪除角色。", "These actions affect chat data only and do not delete the character.", "以下の操作はチャットデータのみを対象とし、キャラクターは削除されません。", "아래 작업은 채팅 데이터에만 적용되며 캐릭터는 삭제되지 않습니다.")}</span></div>
           <ChatroomManagement {...management} tr={tr} />
         </>}
 

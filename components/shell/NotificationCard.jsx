@@ -3,7 +3,7 @@ import { sanitizeUserImageUrl } from "../../utils/coreUtils";
 import { formatNotificationTime } from "../../services/notifications/notificationSources";
 
 // 鎖定畫面與 App 內橫幅共用同一張卡，只差外層 className。
-export default function NotificationCard({ notification, className, onClick, gestureHandlers, tr }) {
+export default function NotificationCard({ notification, className, onClick, gestureHandlers, dataPhase, tr }) {
   const avatar = sanitizeUserImageUrl(notification.avatar);
   const title = notification.summaryCount
     ? tr(
@@ -17,7 +17,7 @@ export default function NotificationCard({ notification, className, onClick, ges
       : notification.title;
   const body = notification.summaryCount ? notification.names : notification.body;
   return (
-    <button type="button" className={`mp-notif ${className || ""}`} onClick={onClick} {...gestureHandlers}>
+    <button type="button" className={`mp-notif ${className || ""}`} data-phase={dataPhase} onClick={onClick} {...gestureHandlers}>
       <div className="mp-notif-avatar">
         {notification.summaryCount ? "🔔" : avatar ? <img src={avatar} alt="" /> : (notification.fallbackIcon || "🙂")}
       </div>

@@ -5,6 +5,7 @@ import useGachaEpisodeAI from "../../hooks/gacha/useGachaEpisodeAI";
 import useAutoResizeTextarea from "../../hooks/chat/useAutoResizeTextarea";
 import RealityEpisodeRoom from "./RealityEpisodeRoom";
 import SpecialMemorySection from "./SpecialMemoryCard";
+import { confirmLocalized } from "../../utils/i18n";
 
 function OnlineEpisodeRoom({ episode, character, playerProfile, apiConfig, recentMessages, onBack }) {
   const { sendEpisodeMessage, appendEpisodeAssistantMessage, setEpisodeOpening, endEpisode } = useGacha();
@@ -34,7 +35,7 @@ function OnlineEpisodeRoom({ episode, character, playerProfile, apiConfig, recen
   };
   const endEarly = async () => {
     if (isGenerating) return;
-    if (!window.confirm("確定要提前結束這段特別篇嗎？\n\n角色會先根據目前劇情做最後的收尾回覆，完成後便無法繼續傳送訊息。")) return;
+    if (!confirmLocalized("確定要提前結束這段特別篇嗎？\n\n角色會先根據目前劇情做最後的收尾回覆，完成後便無法繼續傳送訊息。")) return;
     const completed = await finishEarly();
     if (completed) endEpisode(episode.id, true);
   };

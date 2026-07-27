@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import DOMPurify from "dompurify";
+import { confirmLocalized } from "../../utils/i18n";
 import {
   loadFeatureEntity,
   saveFeatureEntity,
@@ -378,7 +379,7 @@ export default function NotesApp({ onBack }) {
     );
   const open = (note) => setDraft(note ? { ...note } : empty());
   const remove = async (note) => {
-    if (window.confirm("確定要刪除這篇筆記嗎？"))
+    if (confirmLocalized("確定要刪除這篇筆記嗎？"))
       await write(notes.filter((n) => n.id !== note.id));
   };
   const pin = async (note) =>
