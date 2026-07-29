@@ -21,7 +21,14 @@ export default function ChatLorebookSettings({ chatSettingsLorebookOpen, setChat
             return (
               <div key={book.id} style={{ marginBottom: 10, border: "1px solid rgba(244,143,177,.2)", borderRadius: 10, overflow: "hidden" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 700, padding: "10px 10px 8px", background: "rgba(244,143,177,.08)" }}>
-                  <input type="checkbox" checked={bookOn} onChange={() => toggleChatLorebookBook(currentChatChar.id, book.id)} />
+                  <button
+                    type="button"
+                    className={`mp-lorebook-state-btn ${bookOn ? "is-on" : "is-off"}`}
+                    aria-pressed={bookOn}
+                    onClick={() => toggleChatLorebookBook(currentChatChar.id, book.id)}
+                  >
+                    {bookOn ? tr("啟用", "On", "有効", "활성") : tr("停用", "Off", "無効", "비활성")}
+                  </button>
                   <span style={{ flex: 1 }}>{book.name || tr("未命名世界書", "Untitled lorebook", "無題の世界観", "이름 없는 월드북")}</span>
                   <span style={{ fontSize: 10, color: "var(--mp-txt-l)", fontWeight: 600 }}>{(book.entries || []).length} {tr("條目", "entries", "項目", "항목")}</span>
                   <button
@@ -49,12 +56,20 @@ export default function ChatLorebookSettings({ chatSettingsLorebookOpen, setChat
                     {(book.entries || []).map((entry) => {
                       const entryOn = Object.prototype.hasOwnProperty.call(binding.entryOverrides, entry.id)
                         ? !!binding.entryOverrides[entry.id]
-                        : !!entry.enabled;
+                        : true;
                       const mode = binding.entryModes?.[entry.id] || "AUTO";
                       const modeColor = MODE_COLORS[mode] || MODE_COLORS.AUTO;
                       return (
-                        <label key={entry.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "var(--mp-txt-l)", padding: "4px 2px" }}>
-                          <input type="checkbox" checked={entryOn} disabled={!bookOn} onChange={() => toggleChatLorebookEntry(currentChatChar.id, entry.id, !!entry.enabled)} />
+                        <div key={entry.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "var(--mp-txt-l)", padding: "4px 2px" }}>
+                          <button
+                            type="button"
+                            className={`mp-lorebook-state-btn mp-lorebook-entry-state ${entryOn ? "is-on" : "is-off"}`}
+                            aria-pressed={entryOn}
+                            disabled={!bookOn}
+                            onClick={() => toggleChatLorebookEntry(currentChatChar.id, entry.id, true)}
+                          >
+                            {entryOn ? tr("啟用", "On", "有効", "활성") : tr("停用", "Off", "無効", "비활성")}
+                          </button>
                           <span style={{flex:1}}>{entry.title || tr("未命名條目", "Untitled entry", "無題の項目", "이름 없는 항목")}</span>
                           <button
                             className="mp-ibtn"
@@ -70,7 +85,7 @@ export default function ChatLorebookSettings({ chatSettingsLorebookOpen, setChat
                           >
                             {mode}
                           </button>
-                        </label>
+                        </div>
                       );
                     })}
                     </div>

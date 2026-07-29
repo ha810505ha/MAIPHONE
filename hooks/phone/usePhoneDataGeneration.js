@@ -1,4 +1,5 @@
 import { messagePlainText } from "../../utils/pseudoImage";
+import { loadPhoneAppGen } from "../../utils/featurePreload";
 
 export default function usePhoneDataGeneration({
   phoneInboxCache, phoneAppCache, chatHistory, playerProfile, characterWallets, apiConfig,
@@ -203,7 +204,7 @@ ${recent || "（尚無）"}
       buildPhonePromptContext,
       buildPhoneAppPrompt,
       sanitizePhoneAppData,
-    } = await import("../../utils/phoneAppGen");
+    } = await loadPhoneAppGen();
     if (!PHONE_APP_META[appId]) return;
     if (!canUseCurrentProvider()) { showToast(tr("請先完成 AI 連線設定（API Key）", "Please finish AI connection setup first", "先にAI接続設定を完了してください", "먼저 AI 연결 설정을 완료해주세요")); return; }
     setPhoneAppGenLoading(appId);
@@ -229,10 +230,11 @@ ${recent || "（尚無）"}
               dateContext: diaryDateContext(),
             }
           : { mode: theme.mode };
-      const ctx = buildPhonePromptContext(char, chatHistory);
+      const playerFormalName = sanitizeText(playerProfile?.name || "玩家", 40);
+      const ctx = buildPhonePromptContext(char, chatHistory, playerFormalName);
       const prompt = [{ role: "user", content: buildPhoneAppPrompt(appId, getOutputLanguageDirective(), ctx, extra) }];
       const raw = await callAI(prompt, apiConfig, "你是手機 App 資料生成器，只能輸出有效 JSON。");
-      const data = sanitizePhoneAppData(appId, parseJsonObjectFromText(raw), phoneAppCache[char.id]?.[appId]?.data);
+      const data = sanitizePhoneAppData(appId, parseJsonObjectFromText(raw), phoneAppCache[char.id]?.[appId]?.data, { playerName: playerFormalName, charName: char.name });
       if (!data) throw new Error(tr("模型未回傳可用資料", "Model returned no usable data", "モデルが有効なデータを返しませんでした", "모델이 사용 가능한 데이터를 반환하지 않았습니다"));
       setPhoneAppCache((prev) => ({
         ...prev,

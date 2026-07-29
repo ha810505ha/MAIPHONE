@@ -1,35 +1,32 @@
 ﻿import React, { useState, useEffect, useRef } from "react";
-import { VERSION, API_PROVIDERS, DEFAULT_APPS, DOCK_APPS } from "./constants/appConstants";
+import { VERSION, DEFAULT_APPS, DOCK_APPS } from "./constants/appConstants";
 import { DATING_ENABLED } from "./config/featureFlags";
 import { getChangelog } from "./constants/changelog";
 import { createSocialFeedHelpers } from "./services/social/socialFeedHelpers";
 import { useGacha } from "./contexts/GachaContext";
-import MusicShellLayer from "./components/music/MusicShellLayer";
 import useSocialFeed from "./hooks/social/useSocialFeed";
-import { countUnreadMails, loadMailbox, MAILBOX_CHANGED_EVENT } from "./services/mailbox/mailboxService";
+import { loadMailbox, MAILBOX_CHANGED_EVENT } from "./services/mailbox/mailboxService";
 import useWalletController from "./hooks/wallet/useWalletController";
 import { gid, ft, fd, sanitizeText, sanitizeUserImageUrl } from "./utils/coreUtils";
 import { downloadJsonFile, downloadTextFile, exportToastMessage } from "./utils/exportFile";
 import { UI_TEXT } from "./constants/uiText";
 import { localizeFallbackText, normalizeUiLanguage, translate } from "./utils/i18n";
 import { buildSystemPrompt } from "./utils/characterParser";
-import { callAI, fetchAvailableModels } from "./services/aiService";
+import { callAI } from "./services/aiService";
 import { fetchElevenLabsDefaultVoices, synthesizeSpeech } from "./services/ttsService";
-import { loadAppState, saveAppState, loadFeatureEntity } from "./utils/indexedDbStorage";
+import { clearDeviceSecrets, loadAppState, saveAppState, loadFeatureEntity } from "./utils/indexedDbStorage";
 import { buildCalendarPromptContext, takeCalendarChatReminder } from "./services/calendar/calendarPromptContext";
-import { loadFeatureBackup, restoreFeatureBackup, summarizeFeatureBackup } from "./services/featureBackupService";
+import { loadFeatureBackup, resetFeatureData, restoreFeatureBackup, summarizeFeatureBackup } from "./services/featureBackupService";
+import { FEATURE_DATA_CHANGED_EVENT, featureDataEventIncludes } from "./services/featureDataLifecycle";
 import { syncOnBoot, schedulePush } from "./services/syncService";
 import { createDefaultVoiceSettings, normalizeCharacterVoiceSettings } from "./utils/voiceSettings";
-import { hasBalancedBraces, sanitizeCustomCss } from "./utils/customCss";
+import { sanitizeCustomCss } from "./utils/customCss";
 import { sanitizeFontName } from "./utils/fontName";
 import { PHOTO_RULE_CONTEXT, extractPhotoDirectives, pseudoImagePromptLine } from "./utils/pseudoImage";
 import { createPseudoVoice, extractPseudoVoiceDirectives, PSEUDO_VOICE_TEXT_LIMIT, pseudoVoicePromptLine, VOICE_MESSAGE_RULE_CONTEXT } from "./utils/pseudoVoice";
-import { calculateCropDrag, clampCropPan, createImageCropState, drawCoverCrop } from "./utils/imageCrop";
 import { compactActiveRoomMirrors, compactCharacterImages, compactGroupMessageImages, compactSocialPostImages } from "./utils/persistedMediaCleanup";
 import "./styles/maliPhone.css";
 import { FONT_PRESETS } from "./styles/themePresets";
-import DesktopPet from "./DesktopPet";
-import AppRouter from "./components/apps/AppRouter";
 import useAppearanceSettings from "./hooks/settings/useAppearanceSettings";
 import useDocumentLocale from "./hooks/settings/useDocumentLocale";
 import useThemeRuntime from "./hooks/settings/useThemeRuntime";
@@ -39,6 +36,9 @@ import useGroupChatAI from "./hooks/chat/useGroupChatAI";
 import useGroupChatController from "./hooks/chat/useGroupChatController";
 import useInnerThought from "./hooks/chat/useInnerThought";
 import usePhoneDataGeneration from "./hooks/phone/usePhoneDataGeneration";
+import usePlayerProfileController from "./hooks/player/usePlayerProfileController";
+import usePersonaController from "./hooks/player/usePersonaController";
+import { capturePersonaData, serializePersonas } from "./services/persona/personaModel";
 import useCharacterInsights from "./hooks/characters/useCharacterInsights";
 import useChatBackground from "./hooks/chat/useChatBackground";
 import useHomeDragAndDrop from "./hooks/home/useHomeDragAndDrop";
@@ -51,40 +51,64 @@ import useAppPersistence from "./hooks/data/useAppPersistence";
 import useDataImportExport from "./hooks/data/useDataImportExport";
 import useChatroomImportExport from "./hooks/data/useChatroomImportExport";
 import useVoicePlayback from "./hooks/audio/useVoicePlayback";
-import { heroImgStyle } from "./components/home/PeachHero";
 import { CharacterVoiceAction, RealityMessageText, SceneBar } from "./components/chat/ChatMessageParts";
-import LockScreen from "./components/shell/LockScreen";
-import HomeScreen from "./components/shell/HomeScreen";
-import NotificationBanner from "./components/shell/NotificationBanner";
+import MaliPhoneChatSurface from "./components/chat/MaliPhoneChatSurface";
+import {
+  MaliPhoneContactsSurface,
+  MaliPhoneDatingSurface,
+  MaliPhoneLorebookSurface,
+  MaliPhonePlayerSurface,
+  MaliPhoneSocialSurface,
+  MaliPhoneStatusSurface,
+} from "./components/apps/MaliPhoneFeatureSurfaces";
+import { MaliPhonePhoneSurface, MaliPhoneWalletSurface } from "./components/apps/MaliPhoneUtilitySurfaces";
+import MaliPhoneSettingsSurface from "./components/settings/MaliPhoneSettingsSurface";
+import MaliPhoneShell from "./components/shell/MaliPhoneShell";
+import MaliPhoneOverlays from "./components/shell/MaliPhoneOverlays";
+import usePhoneNavigation from "./hooks/navigation/usePhoneNavigation";
 import useNotificationCenter from "./hooks/notifications/useNotificationCenter";
 import useTransientItem from "./hooks/useTransientItem";
-import MotionPresence from "./components/motion/MotionPresence";
 import useDatingApp from "./hooks/dating/useDatingApp";
 import { promoteDatingContact } from "./services/dating/datingMatchApply";
 import { DATING_PROFILES } from "./data/dating/profiles";
-import { AllAppsDrawer, FolderPanel } from "./components/home/HomeAppLibrary";
 import { DEFAULT_APP_STATE } from "./constants/defaultAppState";
-
-// 只在玩家開啟對應 App 時下載及解析；AppRouter 統一提供 Suspense fallback。
-const SettingsApp = React.lazy(() => import("./components/settings/SettingsApp.jsx"));
-const PlayerProfileApp = React.lazy(() => import("./components/apps/PlayerProfileApp.jsx"));
-const DatingApp = React.lazy(() => import("./components/apps/DatingApp.jsx"));
-const ContactsApp = React.lazy(() => import("./components/apps/ContactsApp.jsx"));
-const WalletSettingsApp = React.lazy(() => import("./components/apps/WalletSettingsApp.jsx"));
-const PhoneApp = React.lazy(() => import("./components/apps/PhoneApp.jsx"));
-const SocialApp = React.lazy(() => import("./components/apps/SocialApp.jsx"));
-const LorebookApp = React.lazy(() => import("./components/apps/LorebookApp.jsx"));
-const StatusApp = React.lazy(() => import("./components/apps/StatusApp.jsx"));
-const WalletLedgerView = React.lazy(() => import("./components/wallet/WalletLedgerView.jsx"));
-const ChatView = React.lazy(() => import("./components/chat/ChatView.jsx"));
-const DirectChatView = React.lazy(() => import("./components/chat/DirectChatView.jsx"));
-const ChatScreenshotModal = React.lazy(() => import("./components/chat/ChatScreenshotModal.jsx"));
-const MemoryToastCard = React.lazy(() => import("./components/chat/MemoryToastCard.jsx"));
-const GroupChatModals = React.lazy(() => import("./components/chat/GroupChatModals.jsx"));
-const AddCharacterModal = React.lazy(() => import("./components/characters/AddCharacterModal.jsx"));
-const DataImportPreviewModal = React.lazy(() => import("./components/settings/DataImportPreviewModal.jsx"));
-const ChatroomImportPreviewModal = React.lazy(() => import("./components/settings/ChatroomImportPreviewModal.jsx"));
-const CustomCssGuide = React.lazy(() => import("./CustomCssGuide.jsx"));
+import {
+  loadDirectChatGenerator,
+  preloadFeatureForApp,
+  scheduleIdleFeaturePreload,
+} from "./utils/featurePreload";
+import {
+  selectDirectChatThoughts,
+  selectMessageRangeIds,
+  selectVisibleChatMessages,
+} from "./utils/chatViewSelectors";
+import {
+  ONLINE_CHAT_TEXT_LIMIT,
+  REALITY_CHAT_TEXT_LIMIT,
+  displayWalletText as formatWalletDisplayText,
+  estimateTokens,
+  extractTransferDirective,
+  extractTransferResponseDirective,
+  getChatTextLimit,
+  getLastCommittedChatMode as selectLastCommittedChatMode,
+  getMessageMode,
+  getModeLabel as localizeChatModeLabel,
+  getSelectedChatMode as selectSelectedChatMode,
+  isChatMode,
+  isGemmaModel,
+  normalizeAssistantReply,
+  normalizeRealityReply,
+  parseShareEventNotice,
+  splitAssistantBubbles,
+  stripInternalBlocks,
+  stripModeLabel,
+  stripUserPlaceholder as replaceUserPlaceholder,
+} from "./utils/chatMessageUtils";
+import {
+  sortChatThreads as sortChatThreadsByActivity,
+  sortGroupChats,
+} from "./utils/chatSorting";
+import { sortDisplayCharacters } from "./utils/characterSorting";
 
 // 世界書 AUTO 條目的召回參數。IDF 正規化後 1 分＝在最近訊息命中一個專屬於該條目的詞，
 // 門檻略低於 1 是留給浮點誤差與「稍微常見的詞剛好出現在最新一則」的餘裕。
@@ -99,6 +123,7 @@ const SOCIAL_POST_LIMIT = 100;
 // 立繪位移：object-position 滑動 cover 的溢出裁切窗口（到邊自動停），
 // translate 只用縮放產生的溢出空間（上限 (zoom-1)*50%），兩者相加永遠不會露出背景缺口
 export default function MaliPhone() {
+  useEffect(() => scheduleIdleFeaturePreload(), []);
   const defaultAppState = DEFAULT_APP_STATE;
   const [calendarEvents, setCalendarEvents] = useState([]);
   useEffect(() => {
@@ -114,9 +139,14 @@ export default function MaliPhone() {
         .catch(() => {});
     };
     window.addEventListener("calendar-storage-updated", onCalendarUpdated);
+    const onFeatureDataChanged = (event) => {
+      if (featureDataEventIncludes(event, "ent_calendar")) onCalendarUpdated(event);
+    };
+    window.addEventListener(FEATURE_DATA_CHANGED_EVENT, onFeatureDataChanged);
     return () => {
       active = false;
       window.removeEventListener("calendar-storage-updated", onCalendarUpdated);
+      window.removeEventListener(FEATURE_DATA_CHANGED_EVENT, onFeatureDataChanged);
     };
   }, []);
   const [locked, setLocked] = useState(true);
@@ -192,8 +222,6 @@ export default function MaliPhone() {
   const [transferAmount, setTransferAmount] = useState("");
   const [transferNote, setTransferNote] = useState("");
   const [transferSubmitting, setTransferSubmitting] = useState(false);
-  const ONLINE_CHAT_TEXT_LIMIT = 800;
-  const REALITY_CHAT_TEXT_LIMIT = 4000;
   const SHARE_RAW_TOKEN_LIMIT = 1000;
   const PLAYER_SOCIAL_POST_LIMIT = 500;
   const CHARACTER_WALLET_TX_LIMIT = 15;
@@ -214,10 +242,8 @@ export default function MaliPhone() {
   const [pendingBlockReaction, setPendingBlockReaction] = useState(null);
   const [walletGenLoading, setWalletGenLoading] = useState(false);
   const [apiPresets, setApiPresets] = useState(defaultAppState.apiPresets);
-  const [playerProfile, setPlayerProfile] = useState(defaultAppState.playerProfile);
   const { themeName, setThemeName, fontName, setFontName, fontSizeScale, setFontSizeScale, customFontName, setCustomFontName, uiLanguage, setUiLanguage, themeEffectsEnabled, setThemeEffectsEnabled, customCssEnabled, setCustomCssEnabled, customCss, setCustomCss, customCssDraft, setCustomCssDraft, customCssNotice, setCustomCssNotice, customCssGuideOpen, setCustomCssGuideOpen, settingsAppearanceOpen, setSettingsAppearanceOpen, scopedCustomCss } = useAppearanceSettings(defaultAppState);
   useDocumentLocale(uiLanguage);
-  const [playerAvatarCrop, setPlayerAvatarCrop] = useState(null);
   const [screenLockTimeout, setScreenLockTimeout] = useState(defaultAppState.screenLockTimeout);
   const [phoneViewCharId, setPhoneViewCharId] = useState(null);
   const [phonePage, setPhonePage] = useState("picker");
@@ -232,27 +258,11 @@ export default function MaliPhone() {
   const [addCharacterModalSession, setAddCharacterModalSession] = useState(0);
   const [updateNoticeOpen, setUpdateNoticeOpen] = useState(false);
   const [editingCharacter, setEditingCharacter] = useState(null);
-  const [tempConfig, setTempConfig] = useState(null);
-  const [providerModelOptions, setProviderModelOptions] = useState({});
-  const [fetchingModels, setFetchingModels] = useState(false);
-  const [testingConnection, setTestingConnection] = useState(false);
-  const [presetSavePickerOpen, setPresetSavePickerOpen] = useState(false);
-  const [clearCacheArmed, setClearCacheArmed] = useState(false);
   const [statusExpandedCharId, setStatusExpandedCharId] = useState(null);
   const [statusMemoryExpandedCharId, setStatusMemoryExpandedCharId] = useState(null);
   const [statusMemoryPages, setStatusMemoryPages] = useState({});
   const [statusRefreshingIds, setStatusRefreshingIds] = useState({});
-  const [settingsApiOpen, setSettingsApiOpen] = useState(true);
-  const [settingsResetOpen, setSettingsResetOpen] = useState(false);
-  const [settingsVersionOpen, setSettingsVersionOpen] = useState(false);
-  const [settingsDisclaimerOpen, setSettingsDisclaimerOpen] = useState(false);
-  const [settingsAiConnOpen, setSettingsAiConnOpen] = useState(false);
-  const [settingsVoiceOpen, setSettingsVoiceOpen] = useState(false);
-  const [settingsResetDataOpen, setSettingsResetDataOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState("appearance");
-  const [heroDraft, setHeroDraft] = useState(null);
-  const heroFileRef = useRef(null);
-  const heroDragRef = useRef(null);
   const [editingLorebookEntry, setEditingLorebookEntry] = useState(null);
   const [editingLorebookBook, setEditingLorebookBook] = useState(null);
   const [pendingLorebookExport, setPendingLorebookExport] = useState(null);
@@ -292,21 +302,39 @@ export default function MaliPhone() {
   const noticeLongPressTimerRef = useRef(null);
   const swipeStartXRef = useRef(null);
   const swipeStartYRef = useRef(null);
-  const lockStartYRef = useRef(null);
   const autoLockTimerRef = useRef(null);
   const edgeTurnTimerRef = useRef(null);
   const edgeTurnDirRef = useRef(null);
-  const suppressAppClickUntilRef = useRef(0);
   const serviceWorkerReloadingRef = useRef(false);
   const serviceWorkerHadControllerRef = useRef(false);
   const chatMsgsRef = useRef(null);
   const chatLoadAdjustRef = useRef(null);
   const chatScrollPositionsRef = useRef({});
   const thoughtJumpInProgressRef = useRef(false);
-  const [walletSettingsOpen, setWalletSettingsOpen] = useState(false);
-  const [walletSettingsPage, setWalletSettingsPage] = useState("main");
   const t = (key) => UI_TEXT[uiLanguage]?.[key] || UI_TEXT["zh-TW"]?.[key] || key;
   const tr = (...translations) => translate(uiLanguage, ...translations);
+  const notify = (keyOrText, fallback) => {
+    const message = UI_TEXT[uiLanguage]?.[keyOrText]
+      || localizeFallbackText(uiLanguage, fallback || keyOrText);
+    showToast(message);
+  };
+  const {
+    applyPlayerAvatarCrop,
+    handlePlayerAvatarUpload,
+    onPlayerAvatarPointerDown,
+    onPlayerAvatarPointerMove,
+    onPlayerAvatarPointerUp,
+    playerAvatarCrop,
+    playerAvatarRef,
+    playerProfile,
+    setPlayerAvatarCrop,
+    setPlayerProfile,
+  } = usePlayerProfileController({
+    initialProfile: defaultAppState.playerProfile,
+    notify,
+    sanitizeImage: sanitizeUserImageUrl,
+    tr,
+  });
   const getUiLanguageLabel = () => ({
     "zh-TW": "繁體中文",
     "zh-CN": "简体中文",
@@ -326,14 +354,6 @@ export default function MaliPhone() {
       ? `\n玩家填寫的性別／組成：${playerGender}。稱謂與單複數必須依此判斷。`
       : "\n玩家未填寫性別／組成；不得自行推測性別，且 {{user}} 預設為單一人物。";
     return `UI language: ${languageLabel}\n請使用${languageLabel}回覆。${taiwaneseChineseDirective}${includePlayerContext ? playerGenderDirective : ""}`;
-  };
-  const notify = (keyOrText, fallback) => {
-    const message = UI_TEXT[uiLanguage]?.[keyOrText]
-      || localizeFallbackText(uiLanguage, fallback || keyOrText);
-    showToast(message);
-  };
-  const armAppClickSuppression = (ms = 600) => {
-    suppressAppClickUntilRef.current = Date.now() + ms;
   };
   const ask = (keyOrText, fallback) => window.confirm(
     UI_TEXT[uiLanguage]?.[keyOrText] || localizeFallbackText(uiLanguage, fallback || keyOrText),
@@ -357,9 +377,91 @@ export default function MaliPhone() {
     setMessageEditor, setIsTyping, setChatVisibleCounts, createId: gid, sanitizeText, tr,
   });
 
+  const captureCurrentPersona = () => capturePersonaData({
+    activeCharId, chatHistory, chatRooms, activeRoomIds, chatModes, chatBackgrounds,
+    groupChats, chatScenes, groupScenes, chatTimeSettings, innerThoughtSettings,
+    proactiveSettings, proactiveUnread, posts, socialSettings, memories,
+    chatLorebookBindings, phoneInboxCache, phoneAppCache, wallet, characterWallets,
+    transfers, characterBlockStates, playerProfile,
+    characterChatMeta: Object.fromEntries(characters.map((character) => [character.id, {
+      pinned: !!character.pinned,
+      chatOpenedAt: Number(character.chatOpenedAt) || 0,
+      chatroomDeleted: !!character.chatroomDeleted,
+      chatroomDeletedAt: Number(character.chatroomDeletedAt) || 0,
+    }])),
+  }, defaultAppState);
+
+  const applyPersonaData = (data = {}) => {
+    const characterChatMeta = data.characterChatMeta || {};
+    const personaCharacters = characters.map((character) => {
+      const meta = characterChatMeta[character.id] || {};
+      return {
+        ...character,
+        statusText: "",
+        statusUpdatedAt: 0,
+        pinned: !!meta.pinned,
+        chatOpenedAt: Number(meta.chatOpenedAt) || 0,
+        chatroomDeleted: !!meta.chatroomDeleted,
+        chatroomDeletedAt: Number(meta.chatroomDeletedAt) || 0,
+      };
+    });
+    const roomState = loadRoomState(data, personaCharacters);
+    setCharacters(roomState.characters);
+    setActiveCharId(data.activeCharId ?? null);
+    setChatHistory(roomState.chatHistory);
+    setChatModes(data.chatModes || {});
+    setChatBackgrounds(data.chatBackgrounds || {});
+    setGroupChats(Array.isArray(data.groupChats) ? data.groupChats : []);
+    setChatScenes(roomState.chatScenes);
+    setGroupScenes(data.groupScenes || {});
+    setChatTimeSettings(data.chatTimeSettings || {});
+    setInnerThoughtSettings(data.innerThoughtSettings || {});
+    setProactiveSettings(data.proactiveSettings || {});
+    setProactiveUnread(data.proactiveUnread || {});
+    setPosts(Array.isArray(data.posts) ? data.posts : []);
+    setSocialSettings(data.socialSettings || defaultAppState.socialSettings);
+    setMemories(roomState.memories);
+    setChatLorebookBindings(data.chatLorebookBindings || {});
+    setPhoneInboxCache(data.phoneInboxCache || {});
+    setPhoneAppCache(data.phoneAppCache || {});
+    setWallet(data.wallet || defaultAppState.wallet);
+    setCharacterWallets(data.characterWallets || {});
+    setTransfers(Array.isArray(data.transfers) ? data.transfers : []);
+    setCharacterBlockStates(normalizeCharacterBlockStates(data.characterBlockStates));
+    setPlayerProfile(data.playerProfile || defaultAppState.playerProfile);
+    setCurrentChatChar(null);
+    setCurrentChatGroup(null);
+    setChatInput("");
+    setChatImage(null);
+    setIsTyping(false);
+  };
+
+  const personaController = usePersonaController({
+    defaults: defaultAppState,
+    onApplyPersona: applyPersonaData,
+    onBeforeSwitch: async () => {
+      if (isTyping || phoneGenLoading || phoneAppGenLoading || walletGenLoading) {
+        throw new Error("請等待目前的生成完成後再切換玩家人格");
+      }
+    },
+  });
+
   const applyLoadedAppState = (data) => {
+  const personaState = personaController.hydratePersonas(data);
+  data = { ...data, ...personaState.activeData };
   const roomState = loadRoomState(data, data.characters || []);
-  setCharacters(roomState.characters);
+  const characterChatMeta = data.characterChatMeta || {};
+  setCharacters(roomState.characters.map((character) => {
+    const meta = characterChatMeta[character.id];
+    if (!meta) return character;
+    return {
+      ...character,
+      pinned: !!meta.pinned,
+      chatOpenedAt: Number(meta.chatOpenedAt) || 0,
+      chatroomDeleted: !!meta.chatroomDeleted,
+      chatroomDeletedAt: Number(meta.chatroomDeletedAt) || 0,
+    };
+  }));
   setActiveCharId(data.activeCharId ?? null);
   setChatHistory(roomState.chatHistory);
   setChatModes(data.chatModes || {});
@@ -438,7 +540,18 @@ export default function MaliPhone() {
     datingState: dating.state, datingProfiles: DATING_PROFILES,
     posts, mailboxMails,
   });
-  const persistenceSnapshot = { characters, activeCharId, chatHistory, chatRooms, activeRoomIds, chatModes, chatBackgrounds, groupChats, chatScenes, groupScenes, chatTimeSettings, innerThoughtSettings, proactiveSettings, proactiveUnread, posts, socialSettings, memories, lorebooks, chatLorebookBindings, phoneInboxCache, phoneAppCache, wallet, characterWallets, transfers, characterBlockStates, screenLockTimeout, apiPresets, playerProfile, apiConfig, ttsConfig, ...notificationCenter.persisted, themeName, fontName, fontSizeScale, uiLanguage, homeSlots, dockOrder };
+  const activePersonaData = captureCurrentPersona();
+  const persistenceSnapshot = {
+    characters, activeCharId, chatHistory, chatRooms, activeRoomIds, chatModes,
+    chatBackgrounds, groupChats, chatScenes, groupScenes, chatTimeSettings,
+    innerThoughtSettings, proactiveSettings, proactiveUnread, posts, socialSettings,
+    memories, lorebooks, chatLorebookBindings, phoneInboxCache, phoneAppCache, wallet,
+    characterWallets, transfers, characterBlockStates, screenLockTimeout, apiPresets,
+    playerProfile, apiConfig, ttsConfig, ...notificationCenter.persisted, themeName,
+    fontName, fontSizeScale, uiLanguage, homeSlots, dockOrder,
+    personas: serializePersonas(personaController.personas, personaController.activePersonaId, activePersonaData),
+    activePersonaId: personaController.activePersonaId,
+  };
   const { hydrated } = useAppPersistence({
     defaults: defaultAppState,
     snapshot: persistenceSnapshot,
@@ -458,9 +571,14 @@ export default function MaliPhone() {
     };
     refreshMailbox();
     window.addEventListener(MAILBOX_CHANGED_EVENT, refreshMailbox);
+    const onFeatureDataChanged = (event) => {
+      if (featureDataEventIncludes(event, "ent_systemMailbox")) refreshMailbox();
+    };
+    window.addEventListener(FEATURE_DATA_CHANGED_EVENT, onFeatureDataChanged);
     return () => {
       active = false;
       window.removeEventListener(MAILBOX_CHANGED_EVENT, refreshMailbox);
+      window.removeEventListener(FEATURE_DATA_CHANGED_EVENT, onFeatureDataChanged);
     };
   }, [hydrated]);
   useEffect(() => {
@@ -787,20 +905,11 @@ export default function MaliPhone() {
     try { localStorage.setItem("mali_seen_version", VERSION); } catch {}
     setUpdateNoticeOpen(false);
   };
-  const playerAvatarRef = useRef(null);
-  // 中日韓字元 ≈ 1 token，其餘（英文、標點）≈ 0.25 token
-  const estimateTokens = (s) => {
-    const str = String(s || "");
-    const cjk = (str.match(/[぀-ヿ一-鿿가-힯]/g) || []).length;
-    return Math.ceil(cjk + (str.length - cjk) / 4);
-  };
   const getUserDisplayName = () => sanitizeText(playerProfile?.name || t("player"), 40) || t("player");
   const applyUserPlaceholder = (text) => String(text || "").replace(/\{\{user\}\}/g, getUserDisplayName());
-  const replaceUserPlaceholderForWallet = (text) => String(text || "")
-    .replace(/\{\{user\}\}/gi, getUserDisplayName())
-    .replace(/\s{2,}/g, " ")
-    .replace(/\s+([，。！？、,.!?；;：:])/g, "$1")
-    .trim();
+  const stripUserPlaceholder = (text) => replaceUserPlaceholder(text, getUserDisplayName());
+  const replaceUserPlaceholderForWallet = stripUserPlaceholder;
+  const displayWalletText = (text) => formatWalletDisplayText(text, getUserDisplayName());
   const getPlayerContextBlock = () => {
     const n = sanitizeText(playerProfile?.name || "玩家", 40);
     const nn = sanitizeText(playerProfile?.nickname || "", 40);
@@ -814,152 +923,57 @@ export default function MaliPhone() {
   };
   const getCalendarContext = (query) => buildCalendarPromptContext(calendarEvents, query);
   const getCalendarReminderContext = () => takeCalendarChatReminder(calendarEvents);
-  const handlePlayerAvatarUpload = (e) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    const r = new FileReader();
-    r.onload = () => {
-      const safe = sanitizeUserImageUrl(String(r.result || ""));
-      if (!safe) return notify("頭像格式不支援", tr("頭像格式不支援", "Unsupported avatar format", "アバター形式に対応していません", "아바타 형식을 지원하지 않습니다"));
-      const img = new Image();
-      img.onload = () => {
-        const maxSide = 1024;
-        const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
-        const width = Math.max(1, Math.round(img.width * scale));
-        const height = Math.max(1, Math.round(img.height * scale));
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-        ctx.drawImage(img, 0, 0, width, height);
-        const output = canvas.toDataURL("image/jpeg", 0.86);
-        const processed = sanitizeUserImageUrl(output);
-        if (!processed) return notify("頭像處理失敗", tr("頭像處理失敗", "Avatar processing failed", "アバターの処理に失敗しました", "아바타 처리가 실패했습니다"));
-        setPlayerAvatarCrop(createImageCropState({ src: processed, width, height }));
-      };
-      img.onerror = () => notify("圖片讀取失敗", tr("圖片讀取失敗", "Image load failed", "画像の読み込みに失敗しました", "이미지 읽기에 실패했습니다"));
-      img.src = safe;
-    };
-    r.readAsDataURL(f);
-    e.target.value = "";
-  };
-  const applyPlayerAvatarCrop = () => {
-    if (!playerAvatarCrop?.src) return;
-    const img = new Image();
-    img.onload = () => {
-      const size = 320;
-      const canvas = document.createElement("canvas");
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-      drawCoverCrop(ctx, img, playerAvatarCrop, size);
-      const out = canvas.toDataURL("image/jpeg", 0.86);
-      const safe = sanitizeUserImageUrl(out);
-      if (!safe) return notify("頭像處理失敗", tr("頭像處理失敗", "Avatar processing failed", "アバターの処理に失敗しました", "아바타 처리가 실패했습니다"));
-      setPlayerProfile((p) => ({ ...(p || {}), avatar: safe }));
-      setPlayerAvatarCrop(null);
-      notify("大頭貼已更新", tr("大頭貼已更新", "Avatar updated", "アバターを更新しました", "프로필 사진이 업데이트되었습니다"));
-    };
-    img.onerror = () => notify("圖片讀取失敗", tr("圖片讀取失敗", "Image load failed", "画像の読み込みに失敗しました", "이미지 읽기에 실패했습니다"));
-    img.src = playerAvatarCrop.src;
-  };
-  const startPlayerAvatarDrag = (e) => {
-    if (!playerAvatarCrop) return;
-    const px = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
-    const py = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
-    setPlayerAvatarCrop((s) => ({ ...(s || {}), dragging: true, dragStartX: px, dragStartY: py, startPanX: s?.panX || 0, startPanY: s?.panY || 0 }));
-  };
-  const movePlayerAvatarDrag = (e) => {
-    setPlayerAvatarCrop((s) => {
-      if (!s?.dragging) return s;
-      const px = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
-      const py = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
-      return { ...s, ...calculateCropDrag(s, px, py) };
-    });
-  };
-  const endPlayerAvatarDrag = () => setPlayerAvatarCrop((s) => s ? { ...s, dragging: false } : s);
-  const onPlayerAvatarPointerDown = (e) => {
-    e.preventDefault();
-    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch (_) {}
-    startPlayerAvatarDrag(e);
-  };
-  const onPlayerAvatarPointerMove = (e) => {
-    if (!playerAvatarCrop?.dragging) return;
-    e.preventDefault();
-    movePlayerAvatarDrag(e);
-  };
-  const onPlayerAvatarPointerUp = (e) => {
-    try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch (_) {}
-    endPlayerAvatarDrag();
-  };
   const activeChar = characters.find(c => c.id === activeCharId);
-  const handleUnlock = () => { setUnlocking(true); setTimeout(() => { setLocked(false); setUnlocking(false); }, 450); };
-  const onLockTouchStart = (e) => { lockStartYRef.current = e.touches?.[0]?.clientY ?? null; };
-  const onLockTouchEnd = (e) => {
-    const sy = lockStartYRef.current;
-    const ey = e.changedTouches?.[0]?.clientY ?? null;
-    lockStartYRef.current = null;
-    if (sy === null || ey === null) return;
-    const diff = sy - ey;
-    if (diff > 70) handleUnlock();
-  };
-  const onLockMouseDown = (e) => { lockStartYRef.current = e.clientY ?? null; };
-  const onLockMouseUp = (e) => {
-    const sy = lockStartYRef.current;
-    const ey = e.clientY ?? null;
-    lockStartYRef.current = null;
-    if (sy === null || ey === null) return;
-    const diff = sy - ey;
-    if (diff > 70) handleUnlock();
-  };
-  const onLockPointerDown = (e) => { lockStartYRef.current = e.clientY ?? null; };
-  const onLockPointerUp = (e) => {
-    const sy = lockStartYRef.current;
-    const ey = e.clientY ?? null;
-    lockStartYRef.current = null;
-    if (sy === null || ey === null) return;
-    const diff = sy - ey;
-    if (diff > 70) handleUnlock();
-  };
-  const openApp = (id) => {
-    if (id === "dating" && !DATING_ENABLED) return;
-    armAppClickSuppression(220);
-    if (id === "settings") setTempConfig({ ...apiConfig });
-    if (id === "social") notificationCenter.markSocialRead();
-    if (id === "lorebook") setActiveLorebookId(null);
-    if (id === "game") setGamePage("hub");
-    if (id === "chat") {
+  const {
+    armAppClickSuppression,
+    blockRecentAppClicks,
+    closeApp,
+    handleUnlock,
+    lockGestureHandlers,
+    openApp,
+    openAppFromTouch,
+    suppressAppClickUntilRef,
+  } = usePhoneNavigation({
+    canOpenApp: (appId) => appId !== "dating" || DATING_ENABLED,
+    preloadApp: preloadFeatureForApp,
+    onUnlockStart: () => setUnlocking(true),
+    onUnlockComplete: () => {
+      setLocked(false);
+      setUnlocking(false);
+    },
+    onOpenApp: (appId) => {
+      if (appId === "social") notificationCenter.markSocialRead();
+      if (appId === "lorebook") setActiveLorebookId(null);
+      if (appId === "game") setGamePage("hub");
+      if (appId === "chat") {
+        setCurrentChatChar(null);
+        setCurrentChatGroup(null);
+        setChatListTab("friends");
+      }
+      if (appId === "phone") {
+        setPhoneViewCharId(null);
+        setPhonePage("picker");
+        setPhoneActiveThreadId("player");
+      }
+      setCurrentApp(appId);
+    },
+    onCloseApp: () => {
+      setCurrentApp(null);
       setCurrentChatChar(null);
       setCurrentChatGroup(null);
-      setChatListTab("friends");
-    }
-    if (id === "phone") {
-      setPhoneViewCharId(null);
-      setPhonePage("picker");
-      setPhoneActiveThreadId("player");
-    }
-    setCurrentApp(id);
-  };
-  const openAppFromTouch = (id, e) => {
-    if (!e) return;
-    e.preventDefault();
-    e.stopPropagation();
-    armAppClickSuppression(220);
-    openApp(id);
-  };
-  const blockRecentAppClicks = (e) => {
-    if (Date.now() <= suppressAppClickUntilRef.current) {
-      e.stopPropagation();
-      e.preventDefault();
-    }
-  };
-  const closeApp = () => {
-    armAppClickSuppression(220);
-    setCurrentApp(null);
-    setCurrentChatChar(null);
-    setCurrentChatGroup(null);
+    },
+  });
+  const saveEditedMemory = () => {
+    if (!memoryEditor) return;
+    const nextText = sanitizeText(memoryEditor.text, 500);
+    setMemories((previous) => ({
+      ...previous,
+      [memoryEditor.charId]: (previous[memoryEditor.charId] || []).map((memory) =>
+        memory.id === memoryEditor.memoryId ? { ...memory, text: nextText } : memory
+      ),
+    }));
+    setMemoryEditor(null);
+    showToast(tr("記憶已更新", "Memory updated", "メモリを更新しました", "기억이 업데이트되었습니다"));
   };
   const closeMessageEditor = () => setMessageEditor(null);
   const deleteChatMessage = (charId, messageId) => {
@@ -1018,39 +1032,6 @@ export default function MaliPhone() {
     setActiveMessageId(null);
     showToast(tr("訊息已刪除", "Message deleted", "メッセージを削除しました", "메시지가 삭제되었습니다"));
   };
-  const normalizeAssistantReply = (text) => {
-    if (!text) return "";
-    let t = String(text).trim();
-    t = t.replace(/<internal>[\s\S]*?<\/internal>/gi, " ");
-    t = t.replace(/<think>[\s\S]*?<\/think>/gi, " ");
-    t = stripModeLabel(t);
-    // 移除常見動作描寫格式：*...*、（...）、(...)
-    t = t.replace(/\*[^*]{1,120}\*/g, " ");
-    t = t.replace(/（[^（）]{1,120}）/g, " ");
-    t = t.replace(/\([^()]{1,120}\)/g, " ");
-    // 收斂空白與空行
-    t = t.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
-    return t || "嗯，我在。";
-  };
-  const normalizeRealityReply = (text) => {
-    const t = String(text || "")
-      .replace(/\\n/g, "\n")
-      .replace(/[ \t]{2,}/g, " ")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
-    return t || "他安靜地看著你，像是在等你把話說完。";
-  };
-  const splitAssistantBubbles = (text) => {
-    const normalized = String(text || "")
-      .replace(/\\n/g, "\n")
-      .split(/\n+/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-    if (normalized.length <= 1) return [String(text || "").trim()].filter(Boolean);
-    const maxBubbles = 6;
-    if (normalized.length <= maxBubbles) return normalized;
-    return [...normalized.slice(0, maxBubbles - 1), normalized.slice(maxBubbles - 1).join("\n")];
-  };
   const isInnerThoughtAutoEnabled = (charId) => innerThoughtSettings?.[charId]?.auto !== false;
   const setInnerThoughtAutoEnabled = (charId, enabled) => {
     setInnerThoughtSettings((prev) => ({
@@ -1080,18 +1061,8 @@ export default function MaliPhone() {
       [charId]: { ...(prev?.[charId] || {}), frequency },
     }));
   };
-  const isChatMode = (mode) => mode === "reality" || mode === "online";
-  const getMessageMode = (m) => (isChatMode(m?.mode) ? m.mode : "online");
-  const getLastCommittedChatMode = (charId) => {
-    const list = chatHistory[charId] || [];
-    for (let i = list.length - 1; i >= 0; i--) {
-      const m = list[i];
-      if (m?.role === "mode_transition") return isChatMode(m.toMode) ? m.toMode : "online";
-      if (m?.role === "user" || m?.role === "assistant") return getMessageMode(m);
-    }
-    return "online";
-  };
-  const getSelectedChatMode = (charId) => chatModes?.[charId] || getLastCommittedChatMode(charId);
+  const getLastCommittedChatMode = (charId) => selectLastCommittedChatMode(chatHistory, charId);
+  const getSelectedChatMode = (charId) => selectSelectedChatMode(chatModes, chatHistory, charId);
   const setSelectedChatMode = (charId, mode) => {
     if (!charId || !isChatMode(mode)) return;
     // Changing the mode changes message styling/layout. Preserve the user's
@@ -1127,62 +1098,7 @@ export default function MaliPhone() {
       }));
     }
   };
-  const getModeLabel = (mode) => (mode === "reality" ? tr("現實模式", "Reality mode", "現実モード", "현실 모드") : tr("線上聊天", "Online chat", "オンラインチャット", "온라인 채팅"));
-  const stripModeLabel = (text) => String(text || "")
-    .replace(/^[\s\uFEFF\xA0]*[【\[]\s*(?:目前互動模式[:：]?\s*)?(線上聊天|現實模式)\s*[】\]]\s*/g, "")
-    .replace(/^[\s\uFEFF\xA0]*(?:目前互動模式[:：]?\s*)?(線上聊天|現實模式)\s*[：:．。-]?\s*/g, "")
-    .replace(/^[\s\uFEFF\xA0]*[【\[]\s*(?:模式[:：]?\s*)?(線上聊天|現實模式)\s*[】\]]\s*/g, "")
-    .trim();
-  const stripUserPlaceholder = (text) => String(text || "")
-    .replace(/\{\{user\}\}/gi, getUserDisplayName())
-    .replace(/\s{2,}/g, " ")
-    .replace(/\s+([，。！？、,.!?；;：:])/g, "$1")
-    .trim();
-  const stripInternalBlocks = (text) => String(text || "")
-    .replace(/<internal>[\s\S]*?<\/internal>/gi, " ")
-    .replace(/<think>[\s\S]*?<\/think>/gi, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .replace(/[ \t]{2,}/g, " ")
-    .trim();
-  const displayWalletText = (text) => {
-    const name = getUserDisplayName();
-    return String(text || "")
-      .replace(/\{\{user\}\}/gi, name)
-      .replace(/玩家/g, name)
-      .replace(/\s{2,}/g, " ")
-      .replace(/\s+([，。！？、,.!?；;：:])/g, "$1")
-      .trim();
-  };
-  const extractTransferDirective = (text) => {
-    const raw = String(text || "");
-    const matches = [...raw.matchAll(/\[\[TRANSFER:amount=(\d+)(?:;note=([^\]]*))?\]\]/gi)];
-    if (!matches.length) return { text: raw, transfer: null };
-    const transfer = matches[matches.length - 1];
-    const cleaned = raw
-      .replace(/\s*\[\[TRANSFER:amount=\d+(?:;note=[^\]]*)?\]\]\s*/gi, " ")
-      .replace(/\n{3,}/g, "\n\n")
-      .replace(/[ \t]{2,}/g, " ")
-      .trim();
-    return {
-      text: cleaned,
-      transfer: {
-        amount: Number(transfer[1]),
-        note: sanitizeText(transfer[2] || "", 60),
-      },
-    };
-  };
-  const extractTransferResponseDirective = (text) => {
-    const raw = String(text || "");
-    const matches = [...raw.matchAll(/\[\[TRANSFER_RESPONSE:id=([^;\]]+);decision=(accept|return|pending)\]\]/gi)];
-    if (!matches.length) return { text: raw, response: null };
-    const response = matches[matches.length - 1];
-    return {
-      text: raw.replace(/\s*\[\[TRANSFER_RESPONSE:id=[^;\]]+;decision=(?:accept|return|pending)\]\]\s*/gi, " ").replace(/\n{3,}/g, "\n\n").trim(),
-      response: { transferId: response[1], decision: response[2].toLowerCase() },
-    };
-  };
-  const getChatTextLimit = (mode) => (mode === "reality" ? REALITY_CHAT_TEXT_LIMIT : ONLINE_CHAT_TEXT_LIMIT);
-  const isGemmaModel = (modelName) => /gemma/i.test(String(modelName || ""));
+  const getModeLabel = (mode) => localizeChatModeLabel(mode, tr);
   const buildChatSystemPrompt = (char, memoryContext, modelName, selectedMode) => {
     const scene = chatScenes?.[char?.id] || {};
     const sceneText = [
@@ -1249,24 +1165,6 @@ export default function MaliPhone() {
   };
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const formatMoney = (value) => Math.round(Number(value) || 0).toLocaleString("en-US");
-  const sortModelsByProvider = (provider, models) => {
-    const list = [...(models || [])];
-    if (provider !== "openrouter") return list;
-    const companyOf = (m) => {
-      const s = String(m || "");
-      const slash = s.indexOf("/");
-      return slash > 0 ? s.slice(0, slash).toLowerCase() : "zzz";
-    };
-    const isFree = (m) => /:free$/i.test(String(m || ""));
-    return list.sort((a, b) => {
-      const freeDiff = (isFree(b) ? 1 : 0) - (isFree(a) ? 1 : 0);
-      if (freeDiff !== 0) return freeDiff;
-      const ca = companyOf(a);
-      const cb = companyOf(b);
-      if (ca !== cb) return ca.localeCompare(cb);
-      return String(a).localeCompare(String(b));
-    });
-  };
   // \u4e2d\u6587\u6539\u7528 bigram\uff08\u9023\u7e8c\u4e8c\u5b57\uff09\u5207\u8a5e\uff1a\u55ae\u5b57\u5207\u5206\u6703\u8b93\u300c\u706b\u300d\u8aa4\u547d\u4e2d\u300c\u706b\u934b\u300d\u3001\u300c\u767d\u300d\u8aa4\u547d\u4e2d\u300c\u660e\u767d\u300d\uff0c
   // \u9020\u6210\u4e16\u754c\u66f8\u8207\u8a18\u61b6\u53ec\u56de\u5927\u91cf\u566a\u97f3\u3002\u82f1\u6578\u8a5e\u7dad\u6301\u6574\u6bb5\u4fdd\u7559\u3002
   const tokenizeForRecall = (text) => {
@@ -1484,11 +1382,11 @@ export default function MaliPhone() {
     enabledBooks.forEach((book) => {
       (book.entries || []).forEach((entry) => {
         const mode = binding.entryModes?.[entry.id] || "AUTO";
-        const effectiveEnabled = mode === "PIN"
-          ? true
-          : (Object.prototype.hasOwnProperty.call(binding.entryOverrides, entry.id)
-              ? !!binding.entryOverrides[entry.id]
-              : !!entry.enabled);
+        // PIN 只決定「何時注入」，不應繞過世界書／條目的啟用狀態。
+        // 世界書已在 enabledBooks 過濾；條目是否啟用則完全由聊天室設定控制。
+        const effectiveEnabled = Object.prototype.hasOwnProperty.call(binding.entryOverrides, entry.id)
+          ? !!binding.entryOverrides[entry.id]
+          : true;
         if (!effectiveEnabled) return;
         if (mode === "PIN") {
           pinned.push({ entry, bookName: book.name || "世界書", hit: 9999, mode });
@@ -1571,7 +1469,7 @@ export default function MaliPhone() {
     })
     .filter(Boolean);
   const generateAssistantForHistory = async (args) => {
-    const { generateDirectAssistant } = await import("./services/chat/directChatGenerator");
+    const { generateDirectAssistant } = await loadDirectChatGenerator();
     return generateDirectAssistant({ ...args, includeRealTime: isChatRealTimeEnabled(args.cid) }, {
       formatMessagesForPrompt, pickMemoriesForPrompt, pickLorebookEntriesForPrompt, characterWallets,
       formatMoney, tr, getPlayerContextBlock, getCalendarContext, getCalendarReminderContext, estimateTokens, totalContextTokenLimit: TOTAL_CONTEXT_TOKEN_LIMIT,
@@ -1781,23 +1679,6 @@ export default function MaliPhone() {
     setChatHistory, setChatInput, setChatImage, setChatPseudoImage, setChatPseudoVoiceMode, setActionPanelOpen: setChatActionPanelOpen, setIsTyping,
     generateAssistant: generateAssistantForHistory, addErrorNotice: addChatErrorNotice,
   });
-  const parseShareEventNotice = (text) => {
-    const raw = String(text || "");
-    if (!raw.startsWith("[APP_SHARE_EVENT]")) return null;
-    const lines = raw.split("\n").map((x) => x.trim()).filter(Boolean);
-    const meta = {};
-    let bodyStart = 1;
-    for (let i = 1; i < lines.length; i++) {
-      if (!lines[i].includes("=")) { bodyStart = i; break; }
-      const idx = lines[i].indexOf("=");
-      const k = lines[i].slice(0, idx);
-      const v = lines[i].slice(idx + 1);
-      meta[k] = v;
-      bodyStart = i + 1;
-    }
-    return { meta, body: lines.slice(bodyStart).join("\n") };
-  };
-
   const handleImgUp = (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
@@ -2022,8 +1903,13 @@ export default function MaliPhone() {
       customCssEnabled,
       homeSlots,
       dockOrder,
+      personas: serializePersonas(personaController.personas, personaController.activePersonaId, captureCurrentPersona()),
+      activePersonaId: personaController.activePersonaId,
       localAppData: getLocalAppDataSnapshot({ includeMissing: includeMissingLocalData }),
-      featureData: await loadFeatureBackup(exportCharacters, { compactImages: compactMedia }),
+      featureData: await loadFeatureBackup(exportCharacters, {
+        compactImages: compactMedia,
+        personaIds: Object.keys(personaController.personas || {}),
+      }),
     },
     });
   };
@@ -2037,7 +1923,7 @@ export default function MaliPhone() {
     if (incoming.formatVersion != null && (!Number.isInteger(Number(incoming.formatVersion)) || Number(incoming.formatVersion) > 1)) fail();
     const src = incoming?.state && incoming?.format === "maliphone-app-state" ? incoming.state : incoming;
     if (!isRecord(src)) fail();
-    const knownFields = ["characters", "chatHistory", "chatRooms", "groupChats", "posts", "lorebooks", "playerProfile", "featureData"];
+    const knownFields = ["characters", "chatHistory", "chatRooms", "groupChats", "posts", "lorebooks", "playerProfile", "personas", "featureData"];
     if (!knownFields.some((field) => Object.prototype.hasOwnProperty.call(src, field))) fail();
     const arrayLimits = {
       characters: 500,
@@ -2052,7 +1938,7 @@ export default function MaliPhone() {
     for (const [field, limit] of Object.entries(arrayLimits)) {
       if (src[field] != null && (!Array.isArray(src[field]) || src[field].length > limit)) fail();
     }
-    const objectFields = ["chatHistory", "chatRooms", "activeRoomIds", "chatModes", "chatBackgrounds", "chatScenes", "groupScenes", "chatTimeSettings", "innerThoughtSettings", "proactiveSettings", "proactiveUnread", "memories", "chatLorebookBindings", "phoneInboxCache", "phoneAppCache", "wallet", "characterWallets", "playerProfile", "apiConfig", "ttsConfig", "localAppData", "featureData"];
+    const objectFields = ["chatHistory", "chatRooms", "activeRoomIds", "chatModes", "chatBackgrounds", "chatScenes", "groupScenes", "chatTimeSettings", "innerThoughtSettings", "proactiveSettings", "proactiveUnread", "memories", "chatLorebookBindings", "phoneInboxCache", "phoneAppCache", "wallet", "characterWallets", "playerProfile", "personas", "apiConfig", "ttsConfig", "localAppData", "featureData"];
     for (const field of objectFields) {
       if (src[field] != null && !isRecord(src[field])) fail();
     }
@@ -2076,7 +1962,7 @@ export default function MaliPhone() {
       ...summarizeFeatureBackup(src),
     };
   };
-  const applyImportedAppState = async (incoming) => {
+  const applyImportedAppState = async (incoming, { rollback = false } = {}) => {
     const src = incoming?.state && incoming?.format === "maliphone-app-state" ? incoming.state : incoming;
     if (!src || typeof src !== "object") throw new Error(tr("檔案內容不正確", "Invalid file content", "ファイル内容が正しくありません", "파일 내용이 올바르지 않습니다"));
     const nextState = {
@@ -2124,6 +2010,8 @@ export default function MaliPhone() {
       uiLanguage: normalizeUiLanguage(src.uiLanguage, defaultAppState.uiLanguage),
       homeSlots: Array.isArray(src.homeSlots) && src.homeSlots.length === HOME_SLOT_COUNT ? src.homeSlots : Array.from({ length: HOME_SLOT_COUNT }, () => null),
       dockOrder: Array.isArray(src.dockOrder) && src.dockOrder.length ? src.dockOrder : DOCK_APPS,
+      personas: src.personas && typeof src.personas === "object" ? src.personas : {},
+      activePersonaId: src.activePersonaId || null,
       localAppData: src.localAppData && typeof src.localAppData === "object" ? src.localAppData : {},
     };
     applyLoadedAppState(nextState);
@@ -2168,7 +2056,7 @@ export default function MaliPhone() {
     setHomeSlots(nextState.homeSlots);
     setDockOrder(nextState.dockOrder);
     applyLocalAppDataSnapshot(nextState.localAppData, { replace: true });
-    await restoreFeatureBackup(src, { replace: true });
+    await restoreFeatureBackup(src, { replace: true, reason: rollback ? "rollback" : "import" });
     setActiveLorebookId(nextState.lorebooks[0]?.id || null);
     setCurrentChatChar(null);
     setCurrentChatGroup(null);
@@ -2237,7 +2125,6 @@ export default function MaliPhone() {
     currentChatChar, transferSubmitting, transferAmount, transferNote,
     setTransferSubmitting, setTransferAmount, setTransferNote, setTransferModalOpen,
     setChatHistory, setWalletGenLoading,
-    setWalletSettingsPage, setWalletSettingsOpen,
     defaultWallet: defaultAppState.wallet,
     characterWalletTxLimit: CHARACTER_WALLET_TX_LIMIT,
     apiConfig, canUseCurrentProvider, showToast, tr, getPlayerDisplayName,
@@ -2365,8 +2252,13 @@ export default function MaliPhone() {
     wallet: { ...DEFAULT_APPS.find((a) => a.id === "wallet"), name: t("wallet") },
     game: { ...DEFAULT_APPS.find((a) => a.id === "game"), name: t("gameCenter") },
     petHome: { ...DEFAULT_APPS.find((a) => a.id === "petHome"), name: tr("寵物小屋", "Pet Home", "ペットのおうち", "펫 하우스") },
+    yunyin: { ...DEFAULT_APPS.find((a) => a.id === "yunyin"), name: tr("雲隱山莊", "Yunyin Villa", "雲隠山荘", "운은산장") },
     lbook: { ...DEFAULT_APPS.find((a) => a.id === "lbook"), name: t("answerBook") },
     notebook: { ...DEFAULT_APPS.find((a) => a.id === "notebook"), name: t("notebook") },
+    music: { ...DEFAULT_APPS.find((a) => a.id === "music"), name: tr("一起聽歌", "Listen Together", "一緒に音楽", "함께 듣기") },
+    dating: { ...DEFAULT_APPS.find((a) => a.id === "dating"), name: tr("信風", "Tradewind", "信風", "신풍") },
+    couple: { ...DEFAULT_APPS.find((a) => a.id === "couple"), name: tr("情侶空間", "Couple Space", "カップルスペース", "커플 공간") },
+    calendar: { ...DEFAULT_APPS.find((a) => a.id === "calendar"), name: tr("日曆", "Calendar", "カレンダー", "달력") },
     settings: { ...DEFAULT_APPS.find((a) => a.id === "settings"), name: t("settings") },
     characters: { ...DEFAULT_APPS.find((a) => a.id === "characters"), name: t("characters") },
     phone: { ...DEFAULT_APPS.find((a) => a.id === "phone"), name: t("phone") },
@@ -2397,61 +2289,20 @@ export default function MaliPhone() {
     pageSize: HOME_PAGE_SIZE, openApp, openAllApps: home.openLibrary,
   });
 
-    // ---- Status (RPG) ----
-  const renderStatus = () => <StatusApp
-    closeApp={closeApp} t={t} tr={tr} characters={sortDisplayCharacters(characters)} chatHistory={chatHistory} memories={memories} posts={posts}
-    sanitizeUserImageUrl={sanitizeUserImageUrl} statusExpandedCharId={statusExpandedCharId} setStatusExpandedCharId={setStatusExpandedCharId}
-    statusMemoryExpandedCharId={statusMemoryExpandedCharId} setStatusMemoryExpandedCharId={setStatusMemoryExpandedCharId} statusMemoryPages={statusMemoryPages} setStatusMemoryPages={setStatusMemoryPages}
-    refreshCharacterStatus={refreshCharacterStatus} statusRefreshingIds={statusRefreshingIds} activeMemoryId={activeMemoryId} setActiveMemoryId={setActiveMemoryId}
-    setMemoryEditor={setMemoryEditor} togglePinMemory={togglePinMemory} deleteMemory={deleteMemory}
-    generateMemory={generateMemory} genLoading={genLoading} applyUserPlaceholder={applyUserPlaceholder} playerProfile={playerProfile}
+  // ---- Status (RPG) ----
+  const renderStatus = () => <MaliPhoneStatusSurface
+    core={{ closeApp, t, tr, sanitizeUserImageUrl }}
+    data={{ characters, chatHistory, memories, posts, playerProfile }}
+    state={{
+      statusExpandedCharId, setStatusExpandedCharId, statusMemoryExpandedCharId, setStatusMemoryExpandedCharId,
+      statusMemoryPages, setStatusMemoryPages, statusRefreshingIds, activeMemoryId, setActiveMemoryId, genLoading,
+    }}
+    actions={{ refreshCharacterStatus, setMemoryEditor, togglePinMemory, deleteMemory, generateMemory, applyUserPlaceholder }}
   />;
 
   // ---- Chat ----
   const renderRealityText = (text) => <RealityMessageText text={text} />;
-  const getChatThreadSortMeta = (char) => {
-    const msgs = chatHistory[char?.id] || [];
-    const lastMsg = msgs[msgs.length - 1] || null;
-    const lastAt = Number(lastMsg?.time || 0);
-    const pinned = !!char?.pinned || !!char?.chatPinned;
-    return { pinned, lastAt, openedAt: Number(char?.chatOpenedAt || 0), name: String(char?.name || "") };
-  };
-  const sortChatThreads = (list) => [...list].sort((a, b) => {
-    const am = getChatThreadSortMeta(a);
-    const bm = getChatThreadSortMeta(b);
-    if (am.pinned !== bm.pinned) return am.pinned ? -1 : 1;
-    const aNew = !am.lastAt && !!am.openedAt;
-    const bNew = !bm.lastAt && !!bm.openedAt;
-    if (aNew !== bNew) return aNew ? -1 : 1;
-    if (aNew && bNew && am.openedAt !== bm.openedAt) return bm.openedAt - am.openedAt;
-    if (am.lastAt !== bm.lastAt) return bm.lastAt - am.lastAt;
-    return am.name.localeCompare(bm.name, "zh-Hant");
-  });
-  const sortGroupChats = (list) => [...list].sort((a, b) => {
-    const am = !!a?.pinned;
-    const bm = !!b?.pinned;
-    if (am !== bm) return am ? -1 : 1;
-    const ao = Number.isFinite(Number(a?.displayOrder)) ? Number(a.displayOrder) : null;
-    const bo = Number.isFinite(Number(b?.displayOrder)) ? Number(b.displayOrder) : null;
-    if (ao !== null || bo !== null) { if (ao === null) return 1; if (bo === null) return -1; if (ao !== bo) return ao - bo; }
-    const at = Number(a?.createdAt || 0), bt = Number(b?.createdAt || 0);
-    if (at !== bt) return bt - at;
-    return String(a?.name || "").localeCompare(String(b?.name || ""), "zh-Hant");
-  });
-  const sortDisplayCharacters = (list) => [...list].sort((a, b) => {
-    if (!!a.displayPinned !== !!b.displayPinned) return a.displayPinned ? -1 : 1;
-    const ao = Number.isFinite(Number(a.displayOrder)) ? Number(a.displayOrder) : Number.MAX_SAFE_INTEGER;
-    const bo = Number.isFinite(Number(b.displayOrder)) ? Number(b.displayOrder) : Number.MAX_SAFE_INTEGER;
-    if (ao !== bo) return ao - bo;
-    return characters.indexOf(a) - characters.indexOf(b);
-  });
-  const moveDisplayCharacter = (charId, direction) => {
-    const ordered = sortDisplayCharacters(characters), index = ordered.findIndex((item) => item.id === charId), target = index + direction;
-    if (index < 0 || target < 0 || target >= ordered.length) return;
-    [ordered[index], ordered[target]] = [ordered[target], ordered[index]];
-    const order = new Map(ordered.map((item, position) => [item.id, position]));
-    setCharacters((items) => items.map((item) => ({ ...item, displayOrder: order.get(item.id) })));
-  };
+  const sortChatThreads = (charactersToSort) => sortChatThreadsByActivity(charactersToSort, chatHistory);
   const markChatOpened = (character) => setCharacters((items) => items.map((item) => item.id === character.id ? { ...item, chatOpenedAt: Date.now() } : item));
   const openCharacterChat = (character) => {
     if (!character?.id) return;
@@ -2528,6 +2379,12 @@ export default function MaliPhone() {
     generateReplies: runGroupReplyGeneration, connectionErrorPrefix: getConnectionErrorPrefix, tr,
   });
   const renderChat = () => {
+    const chatPersonaSwitcher = {
+      activePersonaId: personaController.activePersonaId,
+      personas: personaController.personas,
+      onSwitch: (id) => personaController.switchPersona(id, captureCurrentPersona)
+        .catch((error) => showToast(error?.message || "無法切換玩家人格")),
+    };
     if (currentChatGroup) {
       const msgs = currentChatGroup.messages || [];
       const visibleMsgs = msgs;
@@ -2537,37 +2394,15 @@ export default function MaliPhone() {
         || members.find((member) => member.name === message?.speakerName)?.avatar
         || message?.speakerAvatar,
       );
-      const providerShortMap = {
-        openai: "GPT",
-        deepseek: "DS",
-        claude: "Claude",
-        gemini: "Gemini",
-        vertex: "Vertex",
-        grok: "Grok",
-        openrouter: "OR",
-        nvidia: "NVIDIA",
-      };
-      const providerFullMap = {
-        openai: "OpenAI",
-        deepseek: "DeepSeek",
-        claude: "Claude",
-        gemini: "Gemini API",
-        vertex: "Vertex AI (快速模式)",
-        grok: "Grok",
-        openrouter: "OpenRouter",
-        nvidia: "NVIDIA NIM",
-      };
-      const modelShort = providerShortMap[apiConfig?.provider || "openai"] || "AI";
-      const providerKey = apiConfig?.provider || "openai";
-      const modelFull = `${providerFullMap[providerKey] || providerKey} · ${apiConfig?.model || "-"}`;
-      return <ChatView
+      return <MaliPhoneChatSurface
+        apiConfig={apiConfig}
         currentGroup={currentChatGroup}
         tr={tr}
         group={{
           onPageClick: () => setModelBadgeOpen(false),
           members,
           header: {
-            item: currentChatGroup, modelShort, modelFull, modelBadgeOpen, setModelBadgeOpen,
+            item: currentChatGroup, modelBadgeOpen, setModelBadgeOpen,
             onBack: () => setCurrentChatGroup(null),
             onTogglePinned: () => setGroupChats((previous) => previous.map((group) => group.id === currentChatGroup.id ? { ...group, pinned: !group.pinned } : group)),
             onOpenSettings: () => openEditGroup(currentChatGroup),
@@ -2575,7 +2410,7 @@ export default function MaliPhone() {
           sceneBar: renderSceneBar("group", currentChatGroup.id, tr("場景", "Scene", "シーン", "장면")),
           content: {
             messages: visibleMsgs, isTyping, activeMessageId, setActiveMessageId,
-            playerAvatar: getPlayerAvatar(), resolveSpeakerAvatar, chatMsgsRef, messagesEndRef,
+            playerAvatar: getPlayerAvatar(), playerProfile, persona: chatPersonaSwitcher, resolveSpeakerAvatar, chatMsgsRef, messagesEndRef,
             onScroll: updateScrollToBottomVisibility, isConnectionErrorNotice, onRetry: retryGroupFromNotice,
             onEdit: (message) => setMessageEditor({ id: message.id, content: message.content || "", mode: "online" }),
             onDelete: (message) => {
@@ -2594,7 +2429,7 @@ export default function MaliPhone() {
       />;
     }
     if (!currentChatChar) {
-      return <ChatView tr={tr} list={{
+      return <MaliPhoneChatSurface tr={tr} list={{
         tab: chatListTab, setTab: setChatListTab, characters: sortChatThreads(characters.filter((character) => !character.chatroomDeleted)),
         chatHistory, groups: sortGroupChats(groupChats), proactiveUnread, characterBlockStates, closeApp, openCreateGroup,
         onOpenCharacter: (character, unread) => {
@@ -2605,37 +2440,24 @@ export default function MaliPhone() {
         onOpenGroup: (group) => {
           if (Date.now() > suppressAppClickUntilRef.current) setCurrentChatGroup(group);
         },
-        getGroupMembers, apiConfig, playerProfile, t,
+        getGroupMembers, apiConfig, playerProfile, persona: chatPersonaSwitcher, t,
       }} />;
     }
     if (currentChatChar) {
       const msgs = chatHistory[currentChatChar.id] || [];
-      const visibleCount = Math.max(50, chatVisibleCounts[currentChatChar.id] || 50);
-      const visibleMsgs = msgs.slice(Math.max(0, msgs.length - visibleCount));
-      const innerThoughtAnchorIds = new Set();
-      msgs.forEach((message, index) => {
-        if (message?.role !== "assistant") return;
-        if (message.replyGroupId) {
-          if (message.replyGroupIndex === message.replyGroupSize - 1) innerThoughtAnchorIds.add(message.id);
-          return;
-        }
-        if (msgs[index + 1]?.role !== "assistant") innerThoughtAnchorIds.add(message.id);
-      });
-      const latestInnerThoughtAnchorId = [...msgs].reverse().find((message) => message?.role === "assistant")?.id || null;
-      const canRenderInnerThought = (message) => (
-        innerThoughtAnchorIds.has(message.id) && (
-          !!message.innerThought?.content ||
-          (!isTyping && message.id === latestInnerThoughtAnchorId)
-        )
-      );
-      const thoughtRecords = msgs
-        .filter((message) => message?.role === "assistant" && message.innerThought?.content)
-        .slice()
-        .sort((a, b) => (b.innerThought.generatedAt || b.time || 0) - (a.innerThought.generatedAt || a.time || 0));
-      const thoughtPageSize = 5;
-      const thoughtPageCount = Math.max(1, Math.ceil(thoughtRecords.length / thoughtPageSize));
-      const activeThoughtPage = Math.min(thoughtHistoryPage, thoughtPageCount - 1);
-      const visibleThoughtRecords = thoughtRecords.slice(activeThoughtPage * thoughtPageSize, (activeThoughtPage + 1) * thoughtPageSize);
+      const {
+        visibleCount,
+        visibleMessages: visibleMsgs,
+        hasEarlier,
+        nextVisibleCount,
+      } = selectVisibleChatMessages(msgs, chatVisibleCounts[currentChatChar.id]);
+      const {
+        records: thoughtRecords,
+        visibleRecords: visibleThoughtRecords,
+        activePage: activeThoughtPage,
+        pageCount: thoughtPageCount,
+        canRender: canRenderInnerThought,
+      } = selectDirectChatThoughts(msgs, thoughtHistoryPage, isTyping);
       const jumpToThoughtMessage = (messageId) => {
         thoughtJumpInProgressRef.current = true;
         setChatVisibleCounts((prev) => ({ ...prev, [currentChatChar.id]: msgs.length }));
@@ -2650,29 +2472,6 @@ export default function MaliPhone() {
       const characterBlockState = characterBlockStates?.[currentChatChar.id] || null;
       const isCharacterBlocked = characterBlockState?.playerBlocksCharacter === true || characterBlockState?.blocked === true;
       const isPlayerBlockedByCharacter = characterBlockState?.characterBlocksPlayer === true;
-      const providerShortMap = {
-        openai: "GPT",
-        deepseek: "DS",
-        claude: "Claude",
-        gemini: "Gemini",
-        vertex: "Vertex",
-        grok: "Grok",
-        openrouter: "OR",
-        nvidia: "NVIDIA",
-      };
-      const providerFullMap = {
-        openai: "OpenAI",
-        deepseek: "DeepSeek",
-        claude: "Claude",
-        gemini: "Gemini API",
-        vertex: "Vertex AI (快速模式)",
-        grok: "Grok",
-        openrouter: "OpenRouter",
-        nvidia: "NVIDIA NIM",
-      };
-      const providerKey = apiConfig?.provider || "openai";
-      const modelShort = providerShortMap[providerKey] || "AI";
-      const modelFull = `${providerFullMap[providerKey] || providerKey} · ${apiConfig?.model || "-"}`;
       const chatBg = normalizeChatBackground(chatBackgrounds?.[currentChatChar.id] || "");
       const chatBgUrl = chatBg.src;
       const chatCrStyle = chatBgUrl
@@ -2686,9 +2485,8 @@ export default function MaliPhone() {
       const loadEarlier = () => {
         const element = chatMsgsRef.current;
         if (!element) return;
-        const nextCount = Math.min(msgs.length, visibleCount + 50);
         chatLoadAdjustRef.current = { charId: currentChatChar.id, prevScrollHeight: element.scrollHeight, prevScrollTop: element.scrollTop };
-        setChatVisibleCounts((previous) => ({ ...previous, [currentChatChar.id]: nextCount }));
+        setChatVisibleCounts((previous) => ({ ...previous, [currentChatChar.id]: nextVisibleCount }));
       };
       const directMessageRendererProps = {
         character: currentChatChar, activeMessageId, setActiveMessageId,
@@ -2704,12 +2502,8 @@ export default function MaliPhone() {
           setChatScreenshotSelection({ active: true, startId: messageId, endId: null, selectedIds: [] });
           return;
         }
-        const startIndex = msgs.findIndex((message) => message.id === chatScreenshotSelection.startId);
-        const endIndex = msgs.findIndex((message) => message.id === messageId);
-        if (startIndex < 0 || endIndex < 0) return;
-        const from = Math.min(startIndex, endIndex);
-        const to = Math.max(startIndex, endIndex);
-        const selectedIds = msgs.slice(from, to + 1).filter((message) => message?.id).map((message) => message.id);
+        const selectedIds = selectMessageRangeIds(msgs, chatScreenshotSelection.startId, messageId);
+        if (!selectedIds) return;
         setChatScreenshotSelection({ active: true, startId: chatScreenshotSelection.startId, endId: messageId, selectedIds });
       };
       const screenshotSelectionProps = {
@@ -2719,11 +2513,13 @@ export default function MaliPhone() {
         selectedIds: chatScreenshotSelection.selectedIds,
         onSelect: selectScreenshotBoundary,
       };
-      return <ChatView currentCharacter={currentChatChar} tr={tr} directView={<DirectChatView
-        onPageClick={() => setModelBadgeOpen(false)}
+      return <MaliPhoneChatSurface
+        apiConfig={apiConfig}
+        currentCharacter={currentChatChar}
         tr={tr}
-        header={{
-          item: currentChatChar, modelShort, modelFull, modelBadgeOpen, setModelBadgeOpen,
+        onDirectPageClick={() => setModelBadgeOpen(false)}
+        directHeader={{
+          item: currentChatChar, modelBadgeOpen, setModelBadgeOpen,
           rooms: chatRooms[currentChatChar.id] || [],
           activeRoomId: activeRoomIds[currentChatChar.id],
           onSwitchRoom: (roomId) => activateCharacterRoom(currentChatChar.id, roomId),
@@ -2744,10 +2540,11 @@ export default function MaliPhone() {
             setChatSettingsOpen(true);
           },
         }}
-        settingsOpen={chatSettingsOpen}
-        settings={{
+        directSettingsOpen={chatSettingsOpen}
+        directSettings={{
           mode: { selectedMode, pending: hasPendingMode, onChange: (mode) => setSelectedChatMode(currentChatChar.id, mode) },
           innerThought: { autoEnabled: isInnerThoughtAutoEnabled(currentChatChar.id), onToggleAuto: () => setInnerThoughtAutoEnabled(currentChatChar.id, !isInnerThoughtAutoEnabled(currentChatChar.id)), open: chatSettingsThoughtsOpen, setOpen: setChatSettingsThoughtsOpen, records: thoughtRecords, visibleRecords: visibleThoughtRecords, page: activeThoughtPage, pageCount: thoughtPageCount, setPage: setThoughtHistoryPage, onJump: jumpToThoughtMessage, locale: uiLanguage, sanitizeText },
+          memory: { memories: memories[currentChatChar.id] || [], applyUserPlaceholder, onEdit: (memory) => setMemoryEditor({ charId: currentChatChar.id, memoryId: memory.id, text: memory.text || "" }), onTogglePin: (memory) => togglePinMemory(currentChatChar.id, memory.id), onDelete: (memory) => deleteMemory(currentChatChar.id, memory.id) },
           proactive: { enabled: isProactiveEnabled(currentChatChar.id), frequency: getProactiveFrequency(currentChatChar.id), onToggle: () => setProactiveEnabled(currentChatChar.id, !isProactiveEnabled(currentChatChar.id)), onFrequencyChange: (frequency) => setProactiveFrequency(currentChatChar.id, frequency) },
           realTime: { enabled: isChatRealTimeEnabled(currentChatChar.id), onToggle: () => setChatRealTimeEnabled(currentChatChar.id, !isChatRealTimeEnabled(currentChatChar.id)) },
           background: { currentChatChar, chatSettingsBackgroundOpen, setChatSettingsBackgroundOpen, chatBackgrounds, normalizeChatBackground, getChatBackgroundLayerStyle, getChatBackgroundBlurFilter, onChatBackgroundFile, chatBgEditor, setChatBgEditor, updateChatBackground },
@@ -2755,8 +2552,8 @@ export default function MaliPhone() {
           management: { open: chatroomManageOpen, setOpen: setChatroomManageOpen, character: currentChatChar, importing: chatroomImporting, importRef: chatroomImportRef, onImportFile: importChatroomFile, onExport: exportChatroomForCharacter, onOpenImport: openChatroomImport, onClear: () => clearCharacterRoom(currentChatChar.id), onDelete: deleteChatroomForCharacter },
           contact: { character: currentChatChar, blockState: characterBlockState, onBlock: () => setCharacterBlocked(currentChatChar, true), onUnblock: () => setCharacterBlocked(currentChatChar, false) },
         }}
-        blockBanner={{ playerBlocksCharacter: isCharacterBlocked, characterBlocksPlayer: isPlayerBlockedByCharacter, mode: selectedMode, character: currentChatChar, onUnblock: () => setCharacterBlocked(currentChatChar, false) }}
-        messageList={{
+        directBlockBanner={{ playerBlocksCharacter: isCharacterBlocked, characterBlocksPlayer: isPlayerBlockedByCharacter, mode: selectedMode, character: currentChatChar, onUnblock: () => setCharacterBlocked(currentChatChar, false) }}
+        directMessageList={{
           mode: selectedMode,
           containerStyle: chatCrStyle,
           backgroundLayer: chatBgUrl ? <><div style={{ ...getChatBackgroundLayerStyle(chatBg, 1.08), filter: getChatBackgroundBlurFilter(chatBg), zIndex: 0 }} /><div style={{ position: "absolute", inset: 0, background: isNightTheme ? "rgba(18,12,28,.46)" : "rgba(255,255,255,.52)", pointerEvents: "none", zIndex: 0 }} /></> : null,
@@ -2776,17 +2573,16 @@ export default function MaliPhone() {
           onScroll: (element) => {
             rememberCurrentChatScroll(element);
             updateScrollToBottomVisibility(element);
-            if (element.scrollTop > 0 || visibleCount >= msgs.length) return;
-            const nextCount = Math.min(msgs.length, visibleCount + 50);
+            if (element.scrollTop > 0 || !hasEarlier) return;
             chatLoadAdjustRef.current = { charId: currentChatChar.id, prevScrollHeight: element.scrollHeight, prevScrollTop: element.scrollTop };
-            setChatVisibleCounts((previous) => ({ ...previous, [currentChatChar.id]: nextCount }));
+            setChatVisibleCounts((previous) => ({ ...previous, [currentChatChar.id]: nextVisibleCount }));
           },
-          hasEarlier: visibleCount < msgs.length, onLoadEarlier: loadEarlier, isTyping, showScrollToBottom,
+          hasEarlier, onLoadEarlier: loadEarlier, isTyping, showScrollToBottom,
           scrollButtonBottom: chatActionPanelOpen ? 142 : ((chatImage || chatPseudoImage || chatPseudoVoiceMode) ? 148 : 68),
           onScrollToBottom: scrollCurrentChatToBottom,
         }}
-        messageRenderer={{...directMessageRendererProps, messages: visibleMsgs, screenshotSelection: screenshotSelectionProps}}
-        composer={{
+        directMessageRenderer={{...directMessageRendererProps, messages: visibleMsgs, screenshotSelection: screenshotSelectionProps}}
+        directComposer={{
           image: chatImage, onClearImage: () => setChatImage(null), actionPanelOpen: chatActionPanelOpen,
           pseudoImage: chatPseudoImage, onSetPseudoImage: setChatPseudoImage,
           pseudoVoiceMode: chatPseudoVoiceMode, onSetPseudoVoiceMode: setChatPseudoVoiceMode,
@@ -2797,99 +2593,59 @@ export default function MaliPhone() {
           onCancelScreenshot: () => setChatScreenshotSelection({ active: false, startId: null, endId: null, selectedIds: [] }),
           onSaveScreenshot: () => { setChatScreenshotSelection((current) => ({ ...current, active: false })); setChatScreenshotOpen(true); },
           character: currentChatChar, onGiftEpisodeStarted: () => { setCurrentChatChar(null); setChatListTab("episodes"); },
-          value: chatInput, setValue: setChatInput, textLimit: inputTextLimit, onSend: sendMessage, mode: selectedMode,
+          value: chatInput, setValue: setChatInput, textLimit: inputTextLimit, onSend: sendMessage, mode: selectedMode, playerProfile, persona: chatPersonaSwitcher,
         }}
-        overlay={<>
-          <ChatScreenshotModal open={chatScreenshotOpen} onClose={() => setChatScreenshotOpen(false)} onReselect={() => { setChatScreenshotOpen(false); setChatScreenshotSelection({ active: true, startId: null, endId: null, selectedIds: [] }); }} messages={msgs} initialSelectedIds={chatScreenshotSelection.selectedIds} character={currentChatChar} modelShort={modelShort} sceneBar={renderSceneBar("char", currentChatChar.id, tr("場景", "Scene", "シーン", "장면"))} mode={selectedMode} rendererProps={directMessageRendererProps} backgroundUrl={chatBgUrl} isNightTheme={isNightTheme} tr={tr} />
-          <MemoryToastCard card={memoryCard} onClose={() => setMemoryCard(null)} applyUserPlaceholder={applyUserPlaceholder} tr={tr} />
-        </>}
-      />} />;
+        screenshot={{ open: chatScreenshotOpen, onClose: () => setChatScreenshotOpen(false), onReselect: () => { setChatScreenshotOpen(false); setChatScreenshotSelection({ active: true, startId: null, endId: null, selectedIds: [] }); }, messages: msgs, initialSelectedIds: chatScreenshotSelection.selectedIds, character: currentChatChar, sceneBar: renderSceneBar("char", currentChatChar.id, tr("場景", "Scene", "シーン", "장면")), mode: selectedMode, rendererProps: directMessageRendererProps, backgroundUrl: chatBgUrl, isNightTheme }}
+        memoryToast={{ card: memoryCard, onClose: () => setMemoryCard(null), applyUserPlaceholder }}
+      />;
     }
   };
 
-  const renderSocial = () => <SocialApp
-    socialSettingsOpen={socialSettingsOpen} setSocialSettingsOpen={setSocialSettingsOpen}
-    socialSettings={socialSettings} setSocialSettings={setSocialSettings} posts={posts} setPosts={setPosts}
-    closeApp={closeApp} t={t} tr={tr} characters={characters} setPlayerPostModalOpen={setPlayerPostModalOpen}
-    handleRandomSocialPost={handleRandomSocialPost} socialFeedRef={socialFeedRef}
-    setPendingPostScrollId={setPendingPostScrollId} getPostAuthorName={getPostAuthorName}
-    getPostAuthorAvatar={getPostAuthorAvatar} getPostAuthorType={getPostAuthorType} formatPostTime={formatPostTime}
-    sanitizeUserImageUrl={sanitizeUserImageUrl} getLikedByListText={getLikedByListText}
-    activeCommentPostId={activeCommentPostId} setActiveCommentPostId={setActiveCommentPostId}
-    socialReplyTarget={socialReplyTarget} setSocialReplyTarget={setSocialReplyTarget}
-    activeLikePostId={activeLikePostId} setActiveLikePostId={setActiveLikePostId}
-    expandedSocialPosts={expandedSocialPosts} setExpandedSocialPosts={setExpandedSocialPosts}
-    shouldClampSocialPost={shouldClampSocialPost} shouldScrollComments={shouldScrollComments}
-    highlightedPostId={highlightedPostId} activePostMenuId={activePostMenuId} setActivePostMenuId={setActivePostMenuId}
-    showToast={showToast} sharePostToChat={sharePostToChat} formatSocialCount={formatSocialCount}
-    getPostLikeCount={getPostLikeCount} getCommentDepth={getCommentDepth} getCommentAuthorName={getCommentAuthorName}
-    postCommentInputs={postCommentInputs} setPostCommentInputs={setPostCommentInputs} addPostComment={addPostComment}
-    postLimit={SOCIAL_POST_LIMIT} downloadTextFile={downloadTextFile} exportToastMessage={exportToastMessage}
-  />;
-  const renderLorebook = () => <LorebookApp
-    lorebooks={lorebooks} setLorebooks={setLorebooks} activeLorebookId={activeLorebookId} setActiveLorebookId={setActiveLorebookId}
-    editingLorebookBook={editingLorebookBook} setEditingLorebookBook={setEditingLorebookBook}
-    editingLorebookEntry={editingLorebookEntry} setEditingLorebookEntry={setEditingLorebookEntry}
-    pendingLorebookExport={pendingLorebookExport} setPendingLorebookExport={setPendingLorebookExport}
-    viewingLorebookEntry={viewingLorebookEntry} setViewingLorebookEntry={setViewingLorebookEntry}
-    lorebookImportInputRef={lorebookImportInputRef} closeApp={closeApp} t={t} tr={tr}
-    sanitizeText={sanitizeText} downloadJsonFile={downloadJsonFile} showToast={showToast} gid={gid} notify={notify} ask={ask}
-  />;
-  const renderCharacters = () => <ContactsApp
-    t={t} closeApp={closeApp} characters={sortDisplayCharacters(characters)} activeCharId={activeCharId} sanitizeImage={sanitizeUserImageUrl}
-    onAdd={() => { setAddCharacterModalSession((session) => session + 1); setEditingCharacter(null); setModal("addChar"); }}
-    onSetActive={(character) => { setActiveCharId(character.id); showToast(`${character.name} ${t("setAsMainCharacter")}`); }}
-    onChat={(character) => { openApp("chat"); openCharacterChat(character); }}
-    onView={(character) => { setAddCharacterModalSession((session) => session + 1); setEditingCharacter(character); setModal("addChar"); }}
-    onSaveDisplayOrder={(draft) => {
-      const meta = new Map(draft.map((item, index) => [item.id, { displayOrder: index, displayPinned: !!item.pinned }]));
-      setCharacters((items) => items.map((item) => ({ ...item, ...(meta.get(item.id) || {}) })));
-      showToast("角色順序已儲存");
+  const renderSocial = () => <MaliPhoneSocialSurface
+    core={{ closeApp, t, tr, characters, sanitizeUserImageUrl, showToast, postLimit: SOCIAL_POST_LIMIT, downloadTextFile, exportToastMessage }}
+    state={{
+      socialSettingsOpen, setSocialSettingsOpen, socialSettings, setSocialSettings, posts, setPosts,
+      activeCommentPostId, setActiveCommentPostId, socialReplyTarget, setSocialReplyTarget,
+      activeLikePostId, setActiveLikePostId, expandedSocialPosts, setExpandedSocialPosts,
+      highlightedPostId, activePostMenuId, setActivePostMenuId, postCommentInputs, setPostCommentInputs,
+    }}
+    actions={{ setPlayerPostModalOpen, handleRandomSocialPost, setPendingPostScrollId, sharePostToChat, addPostComment }}
+    helpers={{
+      socialFeedRef, getPostAuthorName, getPostAuthorAvatar, getPostAuthorType, formatPostTime,
+      getLikedByListText, shouldClampSocialPost, shouldScrollComments, formatSocialCount,
+      getPostLikeCount, getCommentDepth, getCommentAuthorName,
     }}
   />;
-  const beginHeroEdit = (src = sanitizeUserImageUrl(activeChar?.heroImage || activeChar?.avatarOriginal || activeChar?.avatar), sourceType = activeChar?.heroImage ? "hero" : "avatar") => {
-    if (!activeChar) return;
-    const saved = activeChar.heroView || {};
-    setHeroDraft({ src: src || "", sourceType, x: Number(saved.x) || 0, y: Number(saved.y) || 0, zoom: Number(saved.zoom) || 1 });
-  };
-  const onHeroFile = (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file || !activeChar) return;
-    if (!file.type.startsWith("image/")) return showToast(tr("請選擇圖片檔案", "Choose an image file", "画像ファイルを選択してください", "이미지 파일을 선택하세요"));
-    if (file.size > 5 * 1024 * 1024) return showToast(tr("立繪圖片請小於 5MB", "Hero image must be under 5MB", "立ち絵は5MB未満にしてください", "이미지는 5MB 이하여야 합니다"));
-    const reader = new FileReader();
-    reader.onload = () => { const safe = sanitizeUserImageUrl(String(reader.result || "")); if (safe) setHeroDraft({ src: safe, sourceType: "hero", x: 0, y: 0, zoom: 1 }); };
-    reader.readAsDataURL(file);
-  };
-  const startHeroSettingDrag = (event) => {
-    if (!heroDraft?.src) return;
-    event.preventDefault();
-    heroDragRef.current = { px: event.clientX, py: event.clientY, x: heroDraft.x, y: heroDraft.y };
-    try { event.currentTarget.setPointerCapture?.(event.pointerId); } catch (_) {}
-  };
-  const moveHeroSettingDrag = (event) => {
-    const drag = heroDragRef.current;
-    if (!drag) return;
-    event.preventDefault();
-    setHeroDraft((old) => {
-      if (!old) return old;
-      // 放大時位移對畫面的影響變大，靈敏度除以縮放倍率讓拖曳速度保持一致
-      const z = Math.max(1, Number(old.zoom) || 1);
-      return { ...old, x: clampCropPan(drag.x + (event.clientX - drag.px) / (2 * z), 50), y: clampCropPan(drag.y + (event.clientY - drag.py) / (1.5 * z), 50) };
-    });
-  };
-  const endHeroSettingDrag = (event) => {
-    heroDragRef.current = null;
-    try { event.currentTarget.releasePointerCapture?.(event.pointerId); } catch (_) {}
-  };
-  const saveHeroDraft = () => {
-    if (!activeChar || !heroDraft?.src) return;
-    setCharacters((list) => list.map((item) => item.id === activeChar.id ? { ...item, ...(heroDraft.sourceType === "hero" ? { heroImage: heroDraft.src } : {}), heroView: { x: heroDraft.x, y: heroDraft.y, zoom: heroDraft.zoom } } : item));
-    setHeroDraft(null); showToast(tr("桌面立繪已儲存", "Hero image saved", "立ち絵を保存しました", "이미지를 저장했습니다"));
-  };
-  const clearAllData = () => {
+  const renderLorebook = () => <MaliPhoneLorebookSurface
+    core={{ lorebookImportInputRef, closeApp, t, tr, sanitizeText, downloadJsonFile, showToast, gid, notify, ask }}
+    state={{
+      lorebooks, setLorebooks, activeLorebookId, setActiveLorebookId,
+      editingLorebookBook, setEditingLorebookBook, editingLorebookEntry, setEditingLorebookEntry,
+      pendingLorebookExport, setPendingLorebookExport, viewingLorebookEntry, setViewingLorebookEntry,
+    }}
+  />;
+  const renderCharacters = () => <MaliPhoneContactsSurface
+    core={{ t, closeApp, sanitizeImage: sanitizeUserImageUrl, showToast }}
+    data={{ characters, setCharacters, activeCharId }}
+    actions={{
+      onAdd: () => { setAddCharacterModalSession((session) => session + 1); setEditingCharacter(null); setModal("addChar"); },
+      onSetActive: (character) => { setActiveCharId(character.id); showToast(`${character.name} ${t("setAsMainCharacter")}`); },
+      onChat: (character) => { openApp("chat"); openCharacterChat(character); },
+      onView: (character) => { setAddCharacterModalSession((session) => session + 1); setEditingCharacter(character); setModal("addChar"); },
+    }}
+  />;
+  const clearAllData = async () => {
     if(!confirm(tr("確定要清空所有資料嗎？", "Are you sure you want to clear all data?", "本当にすべてのデータを消去しますか？", "정말 모든 데이터를 삭제할까요?"))) return;
+    try {
+      await resetFeatureData();
+      await clearDeviceSecrets();
+      const { clearImageApiConfig } = await import("./services/images/galleryImageStorage");
+      await clearImageApiConfig();
+      applyLocalAppDataSnapshot({}, { replace: true });
+    } catch (error) {
+      showToast(`${tr("清空資料失敗", "Failed to clear data", "データの消去に失敗しました", "데이터 삭제 실패")}：${sanitizeText(error?.message || "Unknown error", 80)}`);
+      return;
+    }
     setCharacters([]);
     setActiveCharId(null);
     setCurrentChatChar(null);
@@ -2917,6 +2673,7 @@ export default function MaliPhone() {
     setCharacterWallets({});
     setTransfers([]);
     setCharacterBlockStates({});
+    personaController.resetPersonas(defaultAppState);
     setApiPresets(defaultAppState.apiPresets);
     setPlayerProfile(defaultAppState.playerProfile);
     setApiConfig(defaultAppState.apiConfig);
@@ -2958,217 +2715,211 @@ export default function MaliPhone() {
     showToast(tr("資料已清空", "Data cleared", "データを消去しました", "데이터를 삭제했습니다"));
   };
 
-  const renderSettings = () => {
-    const tc = tempConfig || apiConfig;
-    const activeTtsConfig = ttsConfig[ttsConfig.provider] || {};
-    const availableTtsVoices = ttsVoices.length ? ttsVoices : (ttsConfig.elevenlabs?.availableVoices || []);
-    const updateActiveTtsConfig = (patch) => setTtsConfig((current) => ({
-      ...current,
-      [current.provider]: { ...(current[current.provider] || {}), ...patch },
-    }));
-    const cp = API_PROVIDERS.find(p=>p.id===tc.provider);
-    const modelOptions = providerModelOptions[tc.provider] || cp?.models || [];
-    const getProviderBaseUrl = (provider, fallback = "") => {
-      const found = API_PROVIDERS.find((p) => p.id === provider);
-      return provider === "custom" ? fallback : (found?.baseUrl || fallback || "");
-    };
-    const applyApiPreset = (idx) => {
-      const p = apiPresets[idx];
-      if (!p) return;
-      const provider = p.provider || "openai";
-      const nextConfig = {
-        ...(apiConfig || {}),
-        provider,
-        baseUrl: getProviderBaseUrl(provider, p.baseUrl || apiConfig?.baseUrl || ""),
-        apiKey: p.apiKey || "",
-        model: p.model || apiConfig?.model || "",
-      };
-      setTempConfig(nextConfig);
-      setApiConfig(nextConfig);
-      showToast(`已套用 ${p.name || `預設 ${idx + 1}`}`);
-    };
-    const activePresetIndex = (apiPresets || []).findIndex((p) =>
-      p &&
-      p.provider === tc.provider &&
-      p.baseUrl === tc.baseUrl &&
-      p.apiKey === tc.apiKey &&
-      p.model === tc.model
-    );
-    const saveApiPreset = (idx) => {
-      const p = tc || apiConfig;
-      setApiPresets((prev) => {
-        const list = [...(prev || [])];
-        const fallback = defaultAppState.apiPresets[idx] || { id: `preset-${idx + 1}`, name: `預設 ${idx + 1}` };
-        list[idx] = {
-          id: list[idx]?.id || fallback.id,
-          name: list[idx]?.name || fallback.name,
-          provider: p.provider,
-          baseUrl: getProviderBaseUrl(p.provider, p.baseUrl),
-          apiKey: p.apiKey,
-          model: p.model,
-        };
-        return list;
-      });
-      notify(tr("已儲存到預設", `Saved to preset ${idx + 1}`, `プリセット ${idx + 1} に保存しました`, `프리셋 ${idx + 1}에 저장되었습니다`), `Saved to preset ${idx + 1}`);
-    };
-    const fetchLatestModels = async () => {
-      try {
-        setFetchingModels(true);
-        const models = sortModelsByProvider(tc.provider, await fetchAvailableModels(tc));
-        if (!models.length) throw new Error(tr("找不到可用模型", "No models found", "利用可能なモデルが見つかりません", "사용 가능한 모델을 찾을 수 없습니다"));
-        setProviderModelOptions((previous) => ({ ...previous, [tc.provider]: models }));
-        setTempConfig((current) => ({ ...current, model: models.includes(current.model) ? current.model : models[0] }));
-        showToast(tr(`已抓取 ${models.length} 個模型`, `Fetched ${models.length} models`, `${models.length}件のモデルを取得しました`, `모델 ${models.length}개를 가져왔습니다`));
-      } catch (error) {
-        const message = tc.provider === "vertex" ? tr("抓取失敗，可手動輸入模型名稱", "Fetch failed; you can type the model name manually", "取得に失敗しました。モデル名を手動入力できます", "가져오기에 실패했습니다. 모델 이름을 직접 입력할 수 있습니다") : tr("抓取失敗", "Fetch failed", "取得に失敗しました", "가져오기 실패");
-        showToast(`${message}：${error.message}`);
-      } finally { setFetchingModels(false); }
-    };
-    const testApiConnection = async () => {
-      if (testingConnection) return;
-      setTestingConnection(true);
-      try {
-        const reply = await callAI([{ role: "user", content: "請只回覆 OK" }], tc, "你是連線測試助手，只能回覆 OK。");
-        const ok = /\bOK\b|ＯＫ/i.test(String(reply || "").trim());
-        notify("連線成功", ok ? "Connection successful" : `Connected, but the reply looks odd: ${sanitizeText(reply, 40) || "empty"}`);
-      } catch (err) {
-        notify("連線失敗", `Connection failed: ${sanitizeText(err?.message || "unknown error", 120)}`);
-      }
-      setTestingConnection(false);
-    };
-    const clearSiteCache = async () => {
-      try {
-        if (!clearCacheArmed) {
-          setClearCacheArmed(true);
-          showToast(tr("再按一次清除快取", "Tap again to clear cache", "もう一度押すとキャッシュを削除します", "한 번 더 누르면 캐시를 삭제합니다"));
-          setTimeout(() => setClearCacheArmed(false), 3000);
-          return;
-        }
-        setClearCacheArmed(false);
-        if (!window.confirm(tr("確定要清除網站快取並重新載入嗎？", "Clear site cache and reload?", "サイトキャッシュを削除して再読み込みしますか？", "사이트 캐시를 삭제하고 다시 불러올까요?"))) return;
-        if ("caches" in window) {
-          const keys = await caches.keys();
-          await Promise.all(keys.map((k) => caches.delete(k)));
-        }
-        if ("serviceWorker" in navigator) {
-          const regs = await navigator.serviceWorker.getRegistrations();
-          await Promise.all(regs.map((r) => r.unregister()));
-        }
-        showToast(tr("快取已清除，正在重新載入", "Cache cleared, reloading now", "キャッシュを削除しました。再読み込みしています", "캐시를 삭제했습니다. 다시 불러오는 중입니다"));
-        setTimeout(() => window.location.reload(), 250);
-      } catch (err) {
-        showToast(`${tr("清除快取失敗", "Failed to clear cache", "キャッシュ削除に失敗しました", "캐시 삭제 실패")}：${err?.message || tr("未知錯誤", "Unknown error", "不明なエラー", "알 수 없는 오류")}`);
-      }
-    };
-    const settingsAppearance = {
-      open: settingsAppearanceOpen,
-      toggleOpen: () => setSettingsAppearanceOpen((value) => !value),
-      themeProps: { t, tr, themeName, setThemeName, fontName, setFontName, fontSizeScale, setFontSizeScale, customFontName, setCustomFontName, effectsEnabled: themeEffectsEnabled, setEffectsEnabled: setThemeEffectsEnabled },
-      cssProps: {
-        tr, enabled: customCssEnabled, setEnabled: setCustomCssEnabled, draft: customCssDraft, setDraft: setCustomCssDraft,
-        notice: customCssNotice, setNotice: setCustomCssNotice, sanitize: sanitizeCustomCss,
-        onOpenGuide: () => setCustomCssGuideOpen(true),
-        onReset: () => { setCustomCssDraft(""); setCustomCss(""); setCustomCssEnabled(false); setCustomCssNotice(tr("已重設", "Reset", "リセットしました", "초기화됨")); try { localStorage.removeItem("mali_custom_css"); } catch {} },
-        onApply: (safe) => {
-        if (!hasBalancedBraces(safe)) { setCustomCssNotice(tr("大括號 { } 不成對，請檢查後再儲存", "Unbalanced braces { }, please check before saving", "波かっこ { } が対応していません。確認してください", "중괄호 { }가 맞지 않습니다. 확인해주세요")); return; }
-        setCustomCssDraft(safe); setCustomCss(safe); setCustomCssEnabled(true); setCustomCssNotice(tr("已儲存並套用", "Saved and applied", "保存して適用しました", "저장 및 적용됨")); try { localStorage.setItem("mali_custom_css", safe); } catch {}
-      },
-      },
-      heroProps: {
-        tr, activeChar, heroFileRef, onHeroFile, heroDraft, setHeroDraft, beginHeroEdit,
-        removeHero: () => setCharacters((list) => list.map((item) => item.id === activeChar.id ? { ...item, heroImage: "", heroView: null } : item)),
-        startDrag: startHeroSettingDrag, moveDrag: moveHeroSettingDrag, endDrag: endHeroSettingDrag, heroImgStyle, saveDraft: saveHeroDraft,
-      },
-      interfaceProps: { t, tr, uiLanguage, setUiLanguage, fontSizeScale, setFontSizeScale, screenLockTimeout, setScreenLockTimeout },
-    };
-    const settingsApi = {
-      presetProps: { tr, activePresetIndex, config: tc, onApplyPreset: applyApiPreset },
-      connectionProps: {
-        t, tr, open: settingsAiConnOpen, setOpen: setSettingsAiConnOpen, config: tc, setConfig: setTempConfig,
-        providers: API_PROVIDERS, modelOptions, fetchingModels, onFetchModels: fetchLatestModels,
-        testingConnection, onTest: testApiConnection,
-        onProviderChange: (providerId) => { const provider = API_PROVIDERS.find((item) => item.id === providerId); setTempConfig((current) => ({ ...current, provider: provider.id, baseUrl: getProviderBaseUrl(provider.id, current?.baseUrl || ""), model: provider.models[0] || "" })); },
-        onSave: () => { setApiConfig(tc); notify(tr("設定已儲存", "Settings saved", "設定を保存しました", "설정이 저장되었습니다"), "Settings saved"); },
-        onSavePreset: () => setPresetSavePickerOpen(true),
-      },
-      voiceProps: {
-        tr, open: settingsVoiceOpen, setOpen: setSettingsVoiceOpen, config: ttsConfig, setConfig: setTtsConfig,
-        activeConfig: activeTtsConfig, updateConfig: (patch) => { setTtsConnectionState("idle"); setTtsVoices([]); updateActiveTtsConfig(patch); },
-        voices: availableTtsVoices, connectionState: ttsConnectionState,
-        onLoadVoices: () => void loadElevenLabsDefaultVoices(), onPreview: () => void previewDefaultTtsVoice(),
-      },
-    };
-    const settingsModals = {
-      preset: presetSavePickerOpen ? { tr, t, onClose: () => setPresetSavePickerOpen(false), onSave: (index) => { saveApiPreset(index); setPresetSavePickerOpen(false); } } : null,
-    };
-    return <SettingsApp
-      closeApp={closeApp} t={t} tr={tr} tab={settingsTab} setTab={setSettingsTab} nightTheme={isNightTheme}
-      appearance={settingsAppearance} api={settingsApi}
-      data={{ syncProps: { tr, notify }, backupProps: { tr, dataImporting, dataImportRef, onExport: exportAllData, onImport: importAllData } }}
-      about={{
-        infoProps: { tr, version: VERSION, currentChangelogTitle, currentChangelog, versionOpen: settingsVersionOpen, setVersionOpen: setSettingsVersionOpen, disclaimerOpen: settingsDisclaimerOpen, setDisclaimerOpen: setSettingsDisclaimerOpen },
-        resetProps: { tr, open: settingsResetDataOpen, setOpen: setSettingsResetDataOpen, clearCacheArmed, onClearAll: clearAllData, onClearCache: clearSiteCache },
+  const renderSettings = () => (
+    <MaliPhoneSettingsSurface
+      core={{
+        closeApp,
+        isNightTheme,
+        notify,
+        settingsTab,
+        setSettingsTab,
+        showToast,
+        t,
+        tr,
       }}
-      modals={settingsModals}
-      notifications={{ settings: notificationCenter.settings, updateSettings: notificationCenter.updateSettings }}
-      mailboxUnreadCount={countUnreadMails(mailboxMails)}
-    />;
-    };
-
-  const renderDating = () => <DatingApp closeApp={closeApp} dating={dating} playerProfile={playerProfile} showToast={showToast}
-    onPromoteToContact={(entry, messages) => promoteDatingContact({ entry, messages, addCharacter, setChatHistory, createId: gid })}
-    onOpenContact={(charId) => { openApp("chat"); openCharacterChat(characters.find((item) => item.id === charId) || null); }} />;
-  const renderPlayer = () => <PlayerProfileApp
-    t={t} tr={tr} closeApp={closeApp} profile={playerProfile} setProfile={setPlayerProfile}
-    avatarRef={playerAvatarRef} sanitizeImage={sanitizeUserImageUrl} onAvatarUpload={handlePlayerAvatarUpload}
-    crop={playerAvatarCrop} setCrop={setPlayerAvatarCrop}
-    onCropPointerDown={onPlayerAvatarPointerDown} onCropPointerMove={onPlayerAvatarPointerMove} onCropPointerUp={onPlayerAvatarPointerUp}
-    onApplyCrop={applyPlayerAvatarCrop}
-  />;
-  const renderWallet = () => walletSettingsOpen && walletSettingsPage === "settings"
-    ? <WalletSettingsApp tr={tr} onBack={() => setWalletSettingsPage("main")} onClear={clearWalletData} />
-    : <WalletLedgerView wallet={wallet} setWallet={setWallet} characters={characters} closeApp={closeApp} openSettings={() => { setWalletSettingsPage("settings"); setWalletSettingsOpen(true); }} tr={tr} formatMoney={formatMoney} displayWalletText={displayWalletText} sanitizeUserImageUrl={sanitizeUserImageUrl} />;
-  const renderPhone = () => <PhoneApp
-    phoneViewCharId={phoneViewCharId} setPhoneViewCharId={setPhoneViewCharId} phonePage={phonePage} setPhonePage={setPhonePage}
-    phoneActiveThreadId={phoneActiveThreadId} setPhoneActiveThreadId={setPhoneActiveThreadId}
-    characters={sortDisplayCharacters(characters)} chatHistory={chatHistory} phoneInboxCache={phoneInboxCache} characterWallets={characterWallets} transfers={transfers} playerProfile={playerProfile}
-    closeApp={closeApp} t={t} tr={tr} sanitizeUserImageUrl={sanitizeUserImageUrl} renderAppIcon={renderAppIcon}
-    phoneGenLoading={phoneGenLoading} generatePhoneNpcChats={generatePhoneNpcChats} phonePlayerContactLoading={phonePlayerContactLoading} refreshPhonePlayerContact={refreshPhonePlayerContact}
-    phoneAppCache={phoneAppCache} setPhoneAppCache={setPhoneAppCache} phoneAppGenLoading={phoneAppGenLoading} generatePhoneApp={generatePhoneApp}
-    diaryPage={diaryPage} setDiaryPage={setDiaryPage}
-    walletGenLoading={walletGenLoading} generateCharacterWallet={generateCharacterWallet} regenerateCharacterWallet={regenerateCharacterWallet}
-    formatMoney={formatMoney} displayWalletText={displayWalletText} armAppClickSuppression={armAppClickSuppression}
-    suppressAppClickUntilRef={suppressAppClickUntilRef} gid={gid}
-  />;
-  if (locked) return (
-    <>
-      <style>{themeCss}</style>
-      <LockScreen
-        unlocking={unlocking}
-        notifications={notificationCenter.lockNotifications}
-        onOpenNotification={openNotification}
-        onUnlock={handleUnlock}
-        gestureHandlers={{
-          onTouchStart: onLockTouchStart,
-          onTouchEnd: onLockTouchEnd,
-          onMouseDown: onLockMouseDown,
-          onMouseUp: onLockMouseUp,
-          onPointerDown: onLockPointerDown,
-          onPointerUp: onLockPointerUp,
-        }}
-        ft={ft}
-        fd={fd}
-        tr={tr}
-      />
-    </>
+      api={{
+        config: apiConfig,
+        setConfig: setApiConfig,
+        presets: apiPresets,
+        setPresets: setApiPresets,
+      }}
+      appearance={{
+        open: settingsAppearanceOpen,
+        setOpen: setSettingsAppearanceOpen,
+        theme: {
+          themeName,
+          setThemeName,
+          fontName,
+          setFontName,
+          fontSizeScale,
+          setFontSizeScale,
+          customFontName,
+          setCustomFontName,
+          effectsEnabled: themeEffectsEnabled,
+          setEffectsEnabled: setThemeEffectsEnabled,
+        },
+        css: {
+          enabled: customCssEnabled,
+          setEnabled: setCustomCssEnabled,
+          draft: customCssDraft,
+          setDraft: setCustomCssDraft,
+          value: customCss,
+          setValue: setCustomCss,
+          notice: customCssNotice,
+          setNotice: setCustomCssNotice,
+          onOpenGuide: () => setCustomCssGuideOpen(true),
+        },
+        hero: {
+          activeCharacter: activeChar,
+          setCharacters,
+          sanitizeImage: sanitizeUserImageUrl,
+        },
+        interface: {
+          uiLanguage,
+          setUiLanguage,
+          fontSizeScale,
+          setFontSizeScale,
+          screenLockTimeout,
+          setScreenLockTimeout,
+        },
+      }}
+      voice={{
+        config: ttsConfig,
+        setConfig: setTtsConfig,
+        voices: ttsVoices,
+        setVoices: setTtsVoices,
+        connectionState: ttsConnectionState,
+        setConnectionState: setTtsConnectionState,
+        loadDefaultVoices: loadElevenLabsDefaultVoices,
+        previewDefaultVoice: previewDefaultTtsVoice,
+      }}
+      data={{
+        importing: dataImporting,
+        importRef: dataImportRef,
+        onExport: exportAllData,
+        onImport: importAllData,
+      }}
+      release={{
+        changelogTitle: currentChangelogTitle,
+        changelog: currentChangelog,
+        onClearAll: clearAllData,
+      }}
+      notifications={{
+        settings: notificationCenter.settings,
+        updateSettings: notificationCenter.updateSettings,
+      }}
+      mailboxMails={mailboxMails}
+    />
   );
-
-  return (<><style>{themeCss}</style><div className="mp-wrap" onClickCapture={blockRecentAppClicks}><div className="mp-phone">
-    <HomeScreen
-      ft={ft} fd={fd} activeCharacter={activeChar} peachTheme={isPeachTheme} tr={tr} currentApp={currentApp}
-      pages={homePages} page={homePage} pageSize={HOME_PAGE_SIZE} appById={appById} dockApps={dockApps} badges={notificationCenter.badges}
-      dragging={isDraggingApp} pointerDrag={pointerDrag} pageGesture={homeGesture} renderAppIcon={renderAppIcon}
-      gestureHandlers={{
+  const renderDating = () => <MaliPhoneDatingSurface
+    core={{ closeApp, showToast }} dating={dating} playerProfile={playerProfile}
+    actions={{
+      onPromoteToContact: (entry, messages) => promoteDatingContact({ entry, messages, addCharacter, setChatHistory, createId: gid }),
+      onOpenContact: (charId) => { openApp("chat"); openCharacterChat(characters.find((item) => item.id === charId) || null); },
+    }}
+  />;
+  const renderPlayer = () => <MaliPhonePlayerSurface
+    core={{ t, tr, closeApp }}
+    profile={{ profile: playerProfile, setProfile: setPlayerProfile, avatarRef: playerAvatarRef, sanitizeImage: sanitizeUserImageUrl, onAvatarUpload: handlePlayerAvatarUpload }}
+    persona={{
+      activePersonaId: personaController.activePersonaId,
+      personas: personaController.personas,
+      maxPersonas: personaController.maxPersonas,
+      onSwitch: (id) => personaController.switchPersona(id, captureCurrentPersona).catch((error) => showToast(error?.message || "無法切換玩家人格")),
+      onCreate: (label) => personaController.createPersona(label, { name: label }),
+      onRename: personaController.renamePersona,
+      onDelete: (id) => personaController.deletePersona(id).catch((error) => showToast(error?.message || "無法刪除玩家人格")),
+    }}
+    crop={{
+      crop: playerAvatarCrop, setCrop: setPlayerAvatarCrop,
+      onCropPointerDown: onPlayerAvatarPointerDown, onCropPointerMove: onPlayerAvatarPointerMove,
+      onCropPointerUp: onPlayerAvatarPointerUp, onApplyCrop: applyPlayerAvatarCrop,
+    }}
+  />;
+  const renderWallet = () => (
+    <MaliPhoneWalletSurface
+      wallet={wallet}
+      setWallet={setWallet}
+      characters={characters}
+      closeApp={closeApp}
+      clearWalletData={clearWalletData}
+      tr={tr}
+      formatMoney={formatMoney}
+      displayWalletText={displayWalletText}
+      sanitizeUserImageUrl={sanitizeUserImageUrl}
+      showToast={showToast}
+    />
+  );
+  const renderPhone = () => (
+    <MaliPhonePhoneSurface
+      navigation={{
+        phoneViewCharId,
+        setPhoneViewCharId,
+        phonePage,
+        setPhonePage,
+        phoneActiveThreadId,
+        setPhoneActiveThreadId,
+        closeApp,
+      }}
+      data={{
+        characters: sortDisplayCharacters(characters),
+        chatHistory,
+        phoneInboxCache,
+        characterWallets,
+        transfers,
+        playerProfile,
+        phoneAppCache,
+        setPhoneAppCache,
+        diaryPage,
+        setDiaryPage,
+      }}
+      generation={{
+        phoneGenLoading,
+        generatePhoneNpcChats,
+        phonePlayerContactLoading,
+        refreshPhonePlayerContact,
+        phoneAppGenLoading,
+        generatePhoneApp,
+        walletGenLoading,
+        generateCharacterWallet,
+        regenerateCharacterWallet,
+      }}
+      shared={{
+        t,
+        tr,
+        sanitizeUserImageUrl,
+        renderAppIcon,
+        formatMoney,
+        displayWalletText,
+        armAppClickSuppression,
+        suppressAppClickUntilRef,
+        gid,
+      }}
+    />
+  );
+  return (
+    <MaliPhoneShell
+      themeCss={themeCss}
+      locked={locked}
+      lockProps={{
+        unlocking,
+        notifications: notificationCenter.lockNotifications,
+        onOpenNotification: openNotification,
+        onUnlock: handleUnlock,
+        gestureHandlers: lockGestureHandlers,
+        ft,
+        fd,
+        tr,
+      }}
+      onClickCapture={blockRecentAppClicks}
+      homeProps={{
+        ft,
+        fd,
+        activeCharacter: activeChar,
+        peachTheme: isPeachTheme,
+        tr,
+        currentApp,
+        pages: homePages,
+        page: homePage,
+        pageSize: HOME_PAGE_SIZE,
+        appById,
+        dockApps,
+        badges: notificationCenter.badges,
+        dragging: isDraggingApp,
+        pointerDrag,
+        pageGesture: homeGesture,
+        renderAppIcon,
+        gestureHandlers: {
         onTouchStart: onHomeTouchStart,
         onTouchEnd: onHomeTouchEnd,
         onTouchCancel: onHomeTouchCancel,
@@ -3177,218 +2928,218 @@ export default function MaliPhone() {
         onPointerMove: onHomePointerMove,
         onPointerCancel: cancelPointerDrag,
         onDragOver: onHomeDragOverPageEdge,
+        },
+        onOpenStatus: () => openApp("status"),
+        onOpenStatusFromTouch: (event) => openAppFromTouch("status", event),
+        onDropGrid: onDropToHomeGrid,
+        onDropSlot: onDropToHome,
+        onDropDockContainer: onDropToDockContainer,
+        onDropDockApp: onDropToDock,
+        onOpenApp: (appId) => { if (Date.now() > suppressAppClickUntilRef.current) openApp(appId); },
+        onOpenFolder: home.showFolder,
+        onOpenAllApps: home.openLibrary,
+        onOpenFromTouch: openAppFromTouch,
+        onPointerDragStart: onPointerDragStartApp,
+        onPreloadApp: preloadFeatureForApp,
       }}
-      onOpenStatus={() => openApp("status")} onOpenStatusFromTouch={(event) => openAppFromTouch("status", event)}
-      onDropGrid={onDropToHomeGrid} onDropSlot={onDropToHome} onDropDockContainer={onDropToDockContainer} onDropDockApp={onDropToDock}
-      onOpenApp={(appId) => { if (Date.now() > suppressAppClickUntilRef.current) openApp(appId); }}
-      onOpenFolder={home.showFolder} onOpenAllApps={home.openLibrary}
-      onOpenFromTouch={openAppFromTouch} onPointerDragStart={onPointerDragStartApp}
-    />
-    <AllAppsDrawer open={home.libraryOpen} apps={localizedApps} placedIds={home.placedIds} renderAppIcon={renderAppIcon} tr={tr}
-      onClose={home.closeLibrary} onOpenApp={(appId) => { home.closeLibrary(); openApp(appId); }} onApplyHome={home.applyHomeSelection} />
-    <FolderPanel folder={home.openFolder} appById={appById} renderAppIcon={renderAppIcon} tr={tr}
-      onClose={home.closeFolder} onRename={home.renameFolder} onOpenApp={(appId) => { home.closeFolder(); openApp(appId); }} onRemoveApp={home.removeFromFolder} />
-    <AppRouter currentApp={currentApp} closeApp={closeApp} t={t} tr={tr} game={{ page: gamePage, setPage: setGamePage, characters, onOpenChat: () => { setCurrentApp("chat"); setCurrentChatChar(null); setCurrentChatGroup(null); setChatListTab("episodes"); } }} yunyin={{ characters, apiConfig }} apiConfig={apiConfig} playerProfile={playerProfile} chatHistory={chatHistory} setChatHistory={setChatHistory} renderers={{
-      chat: renderChat,
-      status: renderStatus,
-      social: renderSocial,
-      lorebook: renderLorebook,
-      characters: renderCharacters,
-      settings: renderSettings,
-      player: renderPlayer,
-      wallet: renderWallet,
-      phone: renderPhone,
-      dating: renderDating,
-    }} />
-    <MusicShellLayer currentApp={currentApp} />
-    <NotificationBanner notification={notificationCenter.banner} onOpen={openNotification} onDismiss={notificationCenter.dismissBanner} tr={tr} />
-    <MotionPresence show={Boolean(dataImportPreview)}>{dataImportPreview && <React.Suspense fallback={null}><DataImportPreviewModal tr={tr} preview={dataImportPreview} onCancel={cancelDataImport} onConfirm={confirmImportPreview} /></React.Suspense>}</MotionPresence>
-    <MotionPresence show={Boolean(chatroomImportPreview)}>{chatroomImportPreview && <React.Suspense fallback={null}><ChatroomImportPreviewModal tr={tr} preview={chatroomImportPreview} onCancel={cancelChatroomImport} onConfirm={confirmChatroomImportPreview} /></React.Suspense>}</MotionPresence>
-    {customCssGuideOpen && <React.Suspense fallback={null}><CustomCssGuide onClose={() => setCustomCssGuideOpen(false)} /></React.Suspense>}
-    <DesktopPet currentApp={currentApp} />
-    <MotionPresence show={modal === "addChar"}>{modal === "addChar" && <React.Suspense fallback={null}><AddCharacterModal key={addCharacterModalSession} setModal={setModal} setEditingCharacter={setEditingCharacter} addCharacter={addCharacter} updateCharacter={updateCharacter} exportCharacter={exportCharacter} deleteCharacter={deleteCharacter} editingCharacter={editingCharacter} sanitizeUserImageUrl={sanitizeUserImageUrl} uiLanguage={uiLanguage} ttsConfig={ttsConfig} ttsVoices={ttsVoices.length ? ttsVoices : (ttsConfig.elevenlabs?.availableVoices || [])} onVoicePreview={previewCharacterVoice} /></React.Suspense>}</MotionPresence>
-    <MotionPresence show={Boolean(memoryEditor)}>
-    {memoryEditor && (
-      <div className="mp-overlay" onClick={() => setMemoryEditor(null)}>
-        <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
-          <div className="mp-modal-t">{tr("編輯記憶", "Edit memory", "メモリを編集", "기억 편집")}</div>
-          <div className="mp-row">
-            <div className="mp-lbl">{tr("記憶內容（最多 500 字）", "Memory content (up to 500 chars)", "メモ内容（500文字以内）", "기억 내용(최대 500자)")}</div>
-            <textarea className="mp-ta" value={memoryEditor.text} maxLength={500} onChange={(e)=>setMemoryEditor((s)=>({ ...s, text: e.target.value }))} style={{minHeight:140,resize:"vertical"}} />
-          </div>
-          <div style={{display:"flex",gap:8,marginTop:10}}>
-            <button className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#b0bec5,#90a4ae)"}} onClick={() => setMemoryEditor(null)}>{tr("取消", "Cancel", "キャンセル", "취소")}</button>
-            <button className="mp-save" style={{flex:1}} onClick={() => {
-              const t = sanitizeText(memoryEditor.text, 500);
-              setMemories((prev) => ({
-                ...prev,
-                [memoryEditor.charId]: (prev[memoryEditor.charId] || []).map((m) =>
-                  m.id === memoryEditor.memoryId ? { ...m, text: t } : m
-                ),
-              }));
-              setMemoryEditor(null);
-              showToast(tr("記憶已更新", "Memory updated", "メモリを更新しました", "기억이 업데이트되었습니다"));
-            }}>{tr("儲存", "Save", "保存", "저장")}</button>
-          </div>
-        </div>
-      </div>
-    )}
-    </MotionPresence>
-    <MotionPresence show={Boolean(messageEditor)}>
-    {messageEditor && (
-      <div className="mp-overlay" onClick={closeMessageEditor}>
-        <div className="mp-modal" onClick={(e)=>e.stopPropagation()}>
-          <div className="mp-modal-t" style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-            <span>{tr("編輯對話", "Edit message", "メッセージを編集", "메시지 편집")}</span>
-            <button className="mp-ibtn-r" onClick={deleteMessageWithConfirm} title={tr("刪除此段訊息", "Delete this message", "このメッセージを削除", "이 메시지 삭제")}>🗑️</button>
-          </div>
-          <div className="mp-row">
-            <div className="mp-lbl">{tr("訊息內容", "Message content", "メッセージ内容", "메시지 내용")}</div>
-            <textarea
-              className="mp-ta"
-              value={messageEditor.content}
-              maxLength={messageEditor.pseudoVoice ? PSEUDO_VOICE_TEXT_LIMIT : getChatTextLimit(messageEditor.mode)}
-              onChange={(e)=>setMessageEditor((s)=>({ ...s, content: e.target.value.slice(0, s?.pseudoVoice ? PSEUDO_VOICE_TEXT_LIMIT : getChatTextLimit(s?.mode)) }))}
-              style={{minHeight:120,resize:"vertical"}}
-            />
-            <div className="mp-char-counter mp-char-counter-modal">{(messageEditor.content || "").length}/{messageEditor.pseudoVoice ? PSEUDO_VOICE_TEXT_LIMIT : getChatTextLimit(messageEditor.mode)}</div>
-          </div>
-          <div style={{display:"flex",gap:8,marginTop:10}}>
-            <button className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#b0bec5,#90a4ae)"}} onClick={closeMessageEditor}>{tr("取消", "Cancel", "キャンセル", "취소")}</button>
-            <button className="mp-save" style={{flex:1}} onClick={saveEditedMessage}>{tr("儲存", "Save", "保存", "저장")}</button>
-          </div>
-        </div>
-      </div>
-    )}
-    </MotionPresence>
-    <MotionPresence show={updateNoticeOpen}>
-    {updateNoticeOpen && (
-      <div className="mp-overlay" onClick={closeUpdateNotice}>
-        <div className="mp-modal" onClick={(e)=>e.stopPropagation()}>
-          <div className="mp-modal-t">MaliPhone v{VERSION} {tr("更新", "Update", "更新", "업데이트")}</div>
-          <div className="mp-update-list">
-            {(currentChangelog.length ? currentChangelog : [tr("這個版本沒有填寫更新內容。", "No update notes were added for this version.", "このバージョンの更新内容は未記入です。", "이 버전의 업데이트 내용이 없습니다.")]).map((item, idx) => {
-              const [title, ...detail] = String(item).split("｜");
-              return <div key={idx} className="mp-update-item">
-                {detail.length ? <><strong>{title}</strong><span>{detail.join("｜")}</span></> : <span>{item}</span>}
-              </div>;
-            })}
-          </div>
-          <button className="mp-save" style={{marginTop:12}} onClick={closeUpdateNotice}>{tr("知道了", "Got it", "OK", "확인")}</button>
-        </div>
-      </div>
-    )}
-    </MotionPresence>
-    <MotionPresence show={playerPostModalOpen}>
-    {playerPostModalOpen && (
-      <div className="mp-overlay" onClick={() => setPlayerPostModalOpen(false)}>
-        <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
-          <div className="mp-modal-t">{tr("發佈社群貼文", "Create social post", "投稿を作成", "소셜 게시물 작성")}</div>
-          <div className="mp-row">
-            <textarea
-              className="mp-ta"
-              value={playerPostText}
-              maxLength={PLAYER_SOCIAL_POST_LIMIT}
-              placeholder={tr("今天想分享什麼？", "What would you like to share today?", "今日は何を共有しますか？", "오늘 무엇을 공유할까요?")}
-              onChange={(e) => setPlayerPostText(e.target.value.slice(0, PLAYER_SOCIAL_POST_LIMIT))}
-              style={{minHeight:130,resize:"vertical"}}
-            />
-            <div className="mp-char-counter mp-char-counter-modal">{playerPostText.length}/{PLAYER_SOCIAL_POST_LIMIT}</div>
-          </div>
-          <div style={{display:"flex",gap:8,marginTop:12}}>
-            <button className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#b0bec5,#90a4ae)"}} onClick={() => setPlayerPostModalOpen(false)}>{tr("取消", "Cancel", "キャンセル", "취소")}</button>
-            <button className="mp-save" style={{flex:1}} disabled={playerPostSubmitting} onClick={submitPlayerPost}>{playerPostSubmitting ? tr("發佈中...", "Posting...", "投稿中...", "게시 중...") : tr("發佈", "Post", "投稿", "게시")}</button>
-          </div>
-        </div>
-      </div>
-    )}
-    </MotionPresence>
-    <MotionPresence show={Boolean(transferModalOpen && currentChatChar)}>
-    {transferModalOpen && currentChatChar && (
-      <div className="mp-overlay" onClick={() => setTransferModalOpen(false)}>
-        <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
-          <div className="mp-modal-t">{tr("轉帳給", "Transfer to", "送金先", "송금 대상")} {currentChatChar.name}</div>
-          <div className="mp-row">
-            <div className="mp-lbl">{tr("金額", "Amount", "金額", "금액")}</div>
-            <input
-              className="mp-sinp"
-              inputMode="numeric"
-              value={transferAmount}
-              onChange={(e) => setTransferAmount(e.target.value.replace(/[^\d]/g, ""))}
-              placeholder={tr("輸入金額", "Enter amount", "金額を入力", "금액을 입력")}
-            />
-          </div>
-          <div className="mp-row">
-            <div className="mp-lbl">{tr("備註", "Note", "メモ", "메모")}</div>
-            <input
-              className="mp-sinp"
-              value={transferNote}
-              maxLength={60}
-              onChange={(e) => setTransferNote(e.target.value)}
-              placeholder={tr("可不填，例如：下午茶 / 車資 / 還款", "Optional, e.g. snacks / fare / repayment", "任意入力。例: おやつ / 交通費 / 返済", "선택 사항. 예: 간식 / 교통비 / 상환")}
-            />
-          </div>
-          <div style={{display:"flex",gap:8,marginTop:12}}>
-            <button className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#b0bec5,#90a4ae)"}} onClick={() => setTransferModalOpen(false)}>{tr("取消", "Cancel", "キャンセル", "취소")}</button>
-            <button className="mp-save" style={{flex:1}} disabled={transferSubmitting} onClick={transferToCurrentChar}>{transferSubmitting ? tr("轉帳中...", "Transferring...", "送金中...", "송금 중...") : tr("確認轉帳", "Confirm transfer", "送金を確定", "송금 확인")}</button>
-          </div>
-        </div>
-      </div>
-    )}
-    </MotionPresence>
-    <MotionPresence show={Boolean(groupCreateOpen || groupEditOpen || groupCoverCrop || groupEditCoverCrop)}>
-    {(groupCreateOpen || groupEditOpen || groupCoverCrop || groupEditCoverCrop) && <React.Suspense fallback={null}><GroupChatModals
-      characters={sortChatThreads(characters)}
-      tr={tr}
-      showToast={showToast}
-      create={{
-        open: groupCreateOpen,
-        name: groupCreateName,
-        setName: setGroupCreateName,
-        cover: groupCreateCover,
-        setCover: setGroupCreateCover,
-        memberIds: groupCreateMemberIds,
-        setMemberIds: setGroupCreateMemberIds,
-        search: groupCreateSearch,
-        setSearch: setGroupCreateSearch,
-        rulePrompt: groupCreateRulePrompt,
-        setRulePrompt: setGroupCreateRulePrompt,
-        onCoverUpload: handleGroupCreateCoverUp,
-        onClose: () => setGroupCreateOpen(false),
-        onSubmit: createGroupChat,
+      libraryProps={{
+        open: home.libraryOpen,
+        apps: localizedApps,
+        placedIds: home.placedIds,
+        renderAppIcon,
+        tr,
+        onClose: home.closeLibrary,
+        onOpenApp: (appId) => { home.closeLibrary(); openApp(appId); },
+        onApplyHome: home.applyHomeSelection,
+        onPreloadApp: preloadFeatureForApp,
       }}
-      edit={{
-        open: groupEditOpen,
-        name: groupEditName,
-        setName: setGroupEditName,
-        cover: groupEditCover,
-        setCover: setGroupEditCover,
-        memberIds: groupEditMemberIds,
-        setMemberIds: setGroupEditMemberIds,
-        search: groupEditSearch,
-        setSearch: setGroupEditSearch,
-        rulePrompt: groupEditRulePrompt,
-        setRulePrompt: setGroupEditRulePrompt,
-        useRealTime: groupEditUseRealTime,
-        setUseRealTime: setGroupEditUseRealTime,
-        onCoverUpload: handleGroupEditCoverUp,
-        onClose: () => setGroupEditOpen(false),
-        onSubmit: saveEditGroup,
-        onDelete: deleteGroupChat,
+      folderProps={{
+        folder: home.openFolder,
+        appById,
+        renderAppIcon,
+        tr,
+        onClose: home.closeFolder,
+        onRename: home.renameFolder,
+        onOpenApp: (appId) => { home.closeFolder(); openApp(appId); },
+        onRemoveApp: home.removeFromFolder,
+        onPreloadApp: preloadFeatureForApp,
       }}
-      crop={{
-        createValue: groupCoverCrop,
-        setCreateValue: setGroupCoverCrop,
-        editValue: groupEditCoverCrop,
-        setEditValue: setGroupEditCoverCrop,
-        onApply: applyGroupCoverCrop,
-        onClose: () => {
-          setGroupCoverCrop(null);
-          setGroupEditCoverCrop(null);
+      routerProps={{
+        currentApp,
+        closeApp,
+        t,
+        tr,
+        game: {
+          page: gamePage,
+          setPage: setGamePage,
+          characters,
+          onOpenChat: () => {
+            setCurrentApp("chat");
+            setCurrentChatChar(null);
+            setCurrentChatGroup(null);
+            setChatListTab("episodes");
+          },
+        },
+        yunyin: { characters, apiConfig },
+        apiConfig,
+        playerProfile,
+        chatHistory,
+        setChatHistory,
+        renderers: {
+          chat: renderChat,
+          status: renderStatus,
+          social: renderSocial,
+          lorebook: renderLorebook,
+          characters: renderCharacters,
+          settings: renderSettings,
+          player: renderPlayer,
+          wallet: renderWallet,
+          phone: renderPhone,
+          dating: renderDating,
         },
       }}
-    /></React.Suspense>}
-    </MotionPresence>
-      {toast && <div className="mp-toast" data-phase={toast.phase} role="status" aria-live="polite">{toast.value}</div>}
-  </div></div></>);
+      currentApp={currentApp}
+      notificationProps={{
+        notification: notificationCenter.banner,
+        onOpen: openNotification,
+        onDismiss: notificationCenter.dismissBanner,
+        tr,
+      }}
+      globalLayer={(
+        <MaliPhoneOverlays
+          currentApp={currentApp}
+          tr={tr}
+          dataImport={{
+            preview: dataImportPreview,
+            onCancel: cancelDataImport,
+            onConfirm: confirmImportPreview,
+          }}
+          chatroomImport={{
+            preview: chatroomImportPreview,
+            onCancel: cancelChatroomImport,
+            onConfirm: confirmChatroomImportPreview,
+          }}
+          customCssGuide={{
+            open: customCssGuideOpen,
+            onClose: () => setCustomCssGuideOpen(false),
+          }}
+          character={{
+            open: modal === "addChar",
+            sessionKey: addCharacterModalSession,
+            props: {
+              setModal,
+              setEditingCharacter,
+              addCharacter,
+              updateCharacter,
+              exportCharacter,
+              deleteCharacter,
+              editingCharacter,
+              sanitizeUserImageUrl,
+              uiLanguage,
+              ttsConfig,
+              ttsVoices: ttsVoices.length ? ttsVoices : (ttsConfig.elevenlabs?.availableVoices || []),
+              onVoicePreview: previewCharacterVoice,
+            },
+          }}
+          memory={{
+            value: memoryEditor,
+            onChange: setMemoryEditor,
+            onClose: () => setMemoryEditor(null),
+            onSave: saveEditedMemory,
+          }}
+          message={{
+            value: messageEditor,
+            onChange: setMessageEditor,
+            onClose: closeMessageEditor,
+            onDelete: deleteMessageWithConfirm,
+            onSave: saveEditedMessage,
+            getLimit: (editor) => editor?.pseudoVoice
+              ? PSEUDO_VOICE_TEXT_LIMIT
+              : getChatTextLimit(editor?.mode),
+          }}
+          updateNotice={{
+            open: updateNoticeOpen,
+            version: VERSION,
+            items: currentChangelog,
+            onClose: closeUpdateNotice,
+          }}
+          playerPost={{
+            open: playerPostModalOpen,
+            text: playerPostText,
+            limit: PLAYER_SOCIAL_POST_LIMIT,
+            submitting: playerPostSubmitting,
+            onClose: () => setPlayerPostModalOpen(false),
+            onTextChange: setPlayerPostText,
+            onSubmit: submitPlayerPost,
+          }}
+          transfer={{
+            open: transferModalOpen,
+            character: currentChatChar,
+            amount: transferAmount,
+            note: transferNote,
+            submitting: transferSubmitting,
+            onClose: () => setTransferModalOpen(false),
+            onAmountChange: setTransferAmount,
+            onNoteChange: setTransferNote,
+            onSubmit: transferToCurrentChar,
+          }}
+          groupChat={{
+            open: Boolean(groupCreateOpen || groupEditOpen || groupCoverCrop || groupEditCoverCrop),
+            props: {
+              characters: sortChatThreads(characters),
+              tr,
+              showToast,
+              create: {
+                open: groupCreateOpen,
+                name: groupCreateName,
+                setName: setGroupCreateName,
+                cover: groupCreateCover,
+                setCover: setGroupCreateCover,
+                memberIds: groupCreateMemberIds,
+                setMemberIds: setGroupCreateMemberIds,
+                search: groupCreateSearch,
+                setSearch: setGroupCreateSearch,
+                rulePrompt: groupCreateRulePrompt,
+                setRulePrompt: setGroupCreateRulePrompt,
+                onCoverUpload: handleGroupCreateCoverUp,
+                onClose: () => setGroupCreateOpen(false),
+                onSubmit: createGroupChat,
+              },
+              edit: {
+                open: groupEditOpen,
+                name: groupEditName,
+                setName: setGroupEditName,
+                cover: groupEditCover,
+                setCover: setGroupEditCover,
+                memberIds: groupEditMemberIds,
+                setMemberIds: setGroupEditMemberIds,
+                search: groupEditSearch,
+                setSearch: setGroupEditSearch,
+                rulePrompt: groupEditRulePrompt,
+                setRulePrompt: setGroupEditRulePrompt,
+                useRealTime: groupEditUseRealTime,
+                setUseRealTime: setGroupEditUseRealTime,
+                onCoverUpload: handleGroupEditCoverUp,
+                onClose: () => setGroupEditOpen(false),
+                onSubmit: saveEditGroup,
+                onDelete: deleteGroupChat,
+              },
+              crop: {
+                createValue: groupCoverCrop,
+                setCreateValue: setGroupCoverCrop,
+                editValue: groupEditCoverCrop,
+                setEditValue: setGroupEditCoverCrop,
+                onApply: applyGroupCoverCrop,
+                onClose: () => {
+                  setGroupCoverCrop(null);
+                  setGroupEditCoverCrop(null);
+                },
+              },
+            },
+          }}
+          toast={toast}
+        />
+      )}
+    />
+  );
 }

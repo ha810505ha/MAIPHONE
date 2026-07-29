@@ -7,6 +7,9 @@ import {
   nextRefreshAt, normalizeDatingState, resolveReports, resolveSuperLikeLog, sharedTags,
 } from "../../services/dating/datingMatching";
 import { generateDatingReply } from "../../services/dating/datingChat";
+import { FEATURE_DATA_CHANGED_EVENT, featureDataEventIncludes } from "../../services/featureDataLifecycle";
+import { createDatingReplyLifecycle, waitForDatingReplyDelay } from "../../services/dating/datingReplyLifecycle";
+import { isRequestCancelled } from "../../utils/networkRequest.js";
 
 const SWEEP_INTERVAL = 30 * 1000;
 const newId = () => `dm-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -22,20 +25,38 @@ export default function useDatingApp({ apiConfig, playerName, onError }) {
   const [state, setState] = useState(createDatingState);
   const [hydrated, setHydrated] = useState(false);
   const [tick, setTick] = useState(0);
-  const [typing, setTyping] = useState(null);
+  const [typingProfiles, setTypingProfiles] = useState(() => new Set());
   const [openChatId, setOpenChatId] = useState(null);
   const stateRef = useRef(state);
   stateRef.current = state;
-  // 防止 sweep 跟玩家送出的訊息同時對同一個人生成回覆。
-  const deliveringRef = useRef(new Set());
+  // 每個對象各自持有 request token；不同對象可並行，同一對象不可重複生成。
+  const replyLifecycleRef = useRef(null);
+  if (!replyLifecycleRef.current) replyLifecycleRef.current = createDatingReplyLifecycle();
+  const lifecycleGenerationRef = useRef(0);
 
   useEffect(() => {
     let mounted = true;
-    loadFeatureEntity(DATING_ENTITY_KEY, null)
-      .then((data) => { if (mounted && data) setState(normalizeDatingState(data)); })
-      .catch(() => {})
-      .finally(() => { if (mounted) setHydrated(true); });
-    return () => { mounted = false; };
+    const reload = async () => {
+      const generation = ++lifecycleGenerationRef.current;
+      replyLifecycleRef.current.cancelAll("Dating data reloaded");
+      setTypingProfiles(new Set());
+      setOpenChatId(null);
+      const data = await loadFeatureEntity(DATING_ENTITY_KEY, null).catch(() => null);
+      if (!mounted || generation !== lifecycleGenerationRef.current) return;
+      setState(data ? normalizeDatingState(data) : createDatingState());
+      setHydrated(true);
+    };
+    const onFeatureDataChanged = (event) => {
+      if (featureDataEventIncludes(event, DATING_ENTITY_KEY)) void reload();
+    };
+    void reload();
+    window.addEventListener(FEATURE_DATA_CHANGED_EVENT, onFeatureDataChanged);
+    return () => {
+      mounted = false;
+      lifecycleGenerationRef.current += 1;
+      replyLifecycleRef.current.cancelAll("Dating app disposed");
+      window.removeEventListener(FEATURE_DATA_CHANGED_EVENT, onFeatureDataChanged);
+    };
   }, []);
 
   useEffect(() => {
@@ -50,6 +71,18 @@ export default function useDatingApp({ apiConfig, playerName, onError }) {
       return { ...current, relations: { ...current.relations, [profileId]: { ...relation, ...updater(relation) } } };
     });
   }, []);
+
+  const syncTypingProfiles = useCallback(() => {
+    setTypingProfiles(replyLifecycleRef.current.activeProfileIds());
+  }, []);
+
+  const cancelReply = useCallback((profileId, reason = "Dating reply cancelled") => {
+    if (replyLifecycleRef.current.cancel(profileId, reason)) syncTypingProfiles();
+  }, [syncTypingProfiles]);
+
+  const cancelAllReplies = useCallback((reason = "Dating app closed") => {
+    if (replyLifecycleRef.current.cancelAll(reason)) syncTypingProfiles();
+  }, [syncTypingProfiles]);
 
   const runSweep = useCallback(() => {
     setState((current) => {
@@ -119,20 +152,27 @@ export default function useDatingApp({ apiConfig, playerName, onError }) {
   /** 產生一則回覆並寫進對話。catchUp 有值代表這是離線期間累積的訊息，上線後一次回完。 */
   const produceReply = useCallback(async (entry, catchUp) => {
     const profileId = entry.id;
-    if (deliveringRef.current.has(profileId)) return;
-    deliveringRef.current.add(profileId);
-    setTyping(profileId);
+    const request = replyLifecycleRef.current.start(profileId);
+    if (!request) return;
+    const lifecycleGeneration = lifecycleGenerationRef.current;
+    syncTypingProfiles();
     const startedAt = Date.now();
     try {
       const reply = await generateDatingReply({
         entry, messages: stateRef.current.relations[profileId]?.messages || [],
         datingProfile: stateRef.current.profile, playerName, apiConfig, catchUp,
+        signal: request.controller.signal,
       });
       // 最短耗時：秒回型幾乎立刻，慢熱型即使在線也會拖一下。API 本身慢的話就不再加等。
       const [min, max] = IN_APP_REPLY_DELAY[entry.responseStyle] || IN_APP_REPLY_DELAY.normal;
       const remaining = min + Math.random() * (max - min) - (Date.now() - startedAt);
-      if (remaining > 0) await new Promise((done) => setTimeout(done, remaining));
-      if (!reply) return;
+      if (remaining > 0) await waitForDatingReplyDelay(remaining, request.controller.signal);
+      if (
+        !reply
+        || lifecycleGeneration !== lifecycleGenerationRef.current
+        || !replyLifecycleRef.current.isActive(request)
+        || stateRef.current.blocked?.[profileId]
+      ) return;
       patchRelation(profileId, (relation) => ({
         messages: [...relation.messages, { id: newId(), role: "assistant", content: reply, time: Date.now() }],
         // 補回的訊息要算未讀，才會跳通知；玩家正在看的話 openChat 會清掉。
@@ -140,17 +180,22 @@ export default function useDatingApp({ apiConfig, playerName, onError }) {
       }));
     } catch (error) {
       // 玩家的訊息已經寫進去了，保留它；只回報失敗，讓玩家可以重試。
-      onError?.(error?.message || "訊息傳送失敗");
+      if (
+        !isRequestCancelled(error)
+        && lifecycleGeneration === lifecycleGenerationRef.current
+        && replyLifecycleRef.current.isActive(request)
+      ) {
+        onError?.(error?.message || "訊息傳送失敗");
+      }
     } finally {
-      deliveringRef.current.delete(profileId);
-      setTyping(null);
+      if (replyLifecycleRef.current.finish(request)) syncTypingProfiles();
     }
-  }, [apiConfig, playerName, patchRelation, onError]);
+  }, [apiConfig, playerName, patchRelation, onError, syncTypingProfiles]);
 
   const sendMessage = useCallback(async (profileId, text) => {
     const entry = findProfile(profileId);
     const content = String(text || "").trim();
-    if (!entry || !content || typing) return;
+    if (!entry || !content || replyLifecycleRef.current.has(profileId)) return;
     if (stateRef.current.blocked?.[profileId]) return;
     patchRelation(profileId, (relation) => ({
       messages: [...relation.messages, { id: newId(), role: "user", content, time: Date.now() }],
@@ -158,13 +203,13 @@ export default function useDatingApp({ apiConfig, playerName, onError }) {
     // 離線就先不回；等他上線後由 sweep 一次回完，這樣才有真實的時間差。
     if (!isOnline(entry)) return;
     await produceReply(entry, null);
-  }, [typing, patchRelation, produceReply]);
+  }, [patchRelation, produceReply]);
 
   /** 對方上線後，把離線期間累積的訊息補回。 */
   const deliverPendingReplies = useCallback(() => {
     const current = stateRef.current;
     for (const [profileId, relation] of Object.entries(current.relations || {})) {
-      if (current.blocked?.[profileId] || deliveringRef.current.has(profileId)) continue;
+      if (current.blocked?.[profileId] || replyLifecycleRef.current.has(profileId)) continue;
       const entry = findProfile(profileId);
       if (!entry || !isOnline(entry)) continue;
       const pending = pendingUserMessages(relation.messages);
@@ -210,15 +255,17 @@ export default function useDatingApp({ apiConfig, playerName, onError }) {
   }, [patchRelation]);
 
   const setBlocked = useCallback((profileId, blocked) => {
+    if (blocked) cancelReply(profileId, "Profile blocked");
     setState((current) => {
       const next = { ...current.blocked };
       if (blocked) next[profileId] = Date.now(); else delete next[profileId];
       return { ...current, blocked: next };
     });
-  }, []);
+  }, [cancelReply]);
 
   /** 檢舉一定連帶封鎖：真實的交友軟體就是這樣，也讓誤報的成本天然存在。 */
   const report = useCallback((profileId) => {
+    cancelReply(profileId, "Profile reported");
     setState((current) => {
       if (current.reports.some((item) => item.profileId === profileId)) return current;
       const now = Date.now();
@@ -229,7 +276,7 @@ export default function useDatingApp({ apiConfig, playerName, onError }) {
         reports: [{ profileId, at: now, resolveAt: now + min + Math.random() * (max - min), status: "reviewing", claimed: false }, ...current.reports],
       };
     });
-  }, []);
+  }, [cancelReply]);
 
   const claimReportReward = useCallback((profileId) => {
     setState((current) => {
@@ -252,9 +299,14 @@ export default function useDatingApp({ apiConfig, playerName, onError }) {
     }));
   }, [patchRelation]);
 
+  const closeChat = useCallback((profileId = openChatId) => {
+    if (profileId) cancelReply(profileId, "Dating chat closed");
+    setOpenChatId(null);
+  }, [openChatId, cancelReply]);
+
   return {
-    state, typing, openChatId, setOpenChatId, openChat, swipe, rewind, sendMessage, promoteToContact,
-    setBlocked, report, claimReportReward,
+    state, typingProfiles, openChatId, openChat, closeChat, swipe, rewind, sendMessage, promoteToContact,
+    setBlocked, report, claimReportReward, cancelAllReplies,
     deck: useMemo(() => availableProfiles(state, Date.now()), [state, tick]),
     refreshAt: useMemo(() => nextRefreshAt(state, Date.now()), [state, tick]),
     unseenMatches: useMemo(() => state.matches.filter((item) => !item.seen), [state.matches]),

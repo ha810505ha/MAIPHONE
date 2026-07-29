@@ -1,6 +1,6 @@
 // 修仙：修為掛機（時間戳回算）、突破、境界解鎖樹。
-import { REALMS, BREAKTHROUGH_BASE_RATE, BREAKTHROUGH_FAIL_LOSS, BREAKTHROUGH_COOLDOWN_MS } from "../data/realms";
-import { taiwanDayKey } from "../../utils/taiwanDayKey";
+import { REALMS, BREAKTHROUGH_BASE_RATE, BREAKTHROUGH_FAIL_LOSS, BREAKTHROUGH_COOLDOWN_MS } from "../data/realms.js";
+import { taiwanDayKey } from "../../utils/taiwanDayKey.js";
 
 export const realmOf = (c) => REALMS[c.realmIdx];
 export const isMaxRealm = (c) => c.realmIdx >= REALMS.length - 1;

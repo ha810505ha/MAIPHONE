@@ -3,6 +3,7 @@ import { useGacha } from "../../contexts/GachaContext";
 import { sanitizeUserImageUrl } from "../../utils/coreUtils";
 import { generateSpecialMemorySummary } from "../../services/gacha/specialMemoryService";
 import { downloadImageFile } from "../../utils/exportFile";
+import { translate } from "../../utils/i18n";
 
 const RARITY_THEMES = {
   SSR: { label: "SSR MEMORY", bgTop: "#fff6e3", bgBottom: "#ffdfe9", frame: "#c99a4b", frameSoft: "#e5c78f", accent: "#a2652f", text: "#5c4632", glow: "rgba(255,214,150,.55)" },
@@ -12,7 +13,7 @@ const RARITY_THEMES = {
 const HAND_FONT = "'LXGW WenKai TC','Noto Serif TC','PMingLiU',serif";
 const SCRIPT_FONT = "'Great Vibes',cursive";
 const themeOf = (memory) => RARITY_THEMES[memory?.itemRarity] || RARITY_THEMES.R;
-const formatMemoryDate = (time) => new Intl.DateTimeFormat("zh-TW", { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(time || Date.now()));
+const formatMemoryDate = (time, locale = "zh-TW") => new Intl.DateTimeFormat(locale, { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(time || Date.now()));
 
 const roundedRectPath = (ctx, x, y, w, h, r) => {
   ctx.beginPath();
@@ -98,7 +99,8 @@ const ensureCardFonts = async () => {
 };
 
 // 以 Canvas 直接繪製紀念卡 PNG（720×1150），避免外部截圖庫與圖片跨域污染問題。
-export async function renderSpecialMemoryImage(memory, { characterAvatar, playerAvatar, playerName } = {}) {
+export async function renderSpecialMemoryImage(memory, { characterAvatar, playerAvatar, playerName, locale = "zh-TW", tr } = {}) {
+  const localTr = typeof tr === "function" ? tr : (...translations) => translate(locale, ...translations);
   const theme = themeOf(memory);
   const W = 720, H = 1150;
   await ensureCardFonts();
@@ -155,10 +157,10 @@ export async function renderSpecialMemoryImage(memory, { characterAvatar, player
 
   ctx.fillStyle = theme.text;
   ctx.font = `700 34px ${HAND_FONT}`;
-  ctx.fillText(memory.itemName || "心意", W / 2, 348);
+  ctx.fillText(memory.itemName || localTr("心意", "Sentiment", "想い", "마음"), W / 2, 348);
   ctx.fillStyle = theme.accent;
   ctx.font = `700 29px ${HAND_FONT}`;
-  ctx.fillText(memory.title || "特別的回憶", W / 2, 398);
+  ctx.fillText(memory.title || localTr("特別的回憶", "A Special Memory", "特別な思い出", "특별한 추억"), W / 2, 398);
 
   ctx.strokeStyle = theme.frameSoft;
   ctx.lineWidth = 1.4;
@@ -195,44 +197,49 @@ export async function renderSpecialMemoryImage(memory, { characterAvatar, player
 
   const avatarY = H - 210;
   drawAvatarCircle(ctx, { image: charImage, fallbackChar: (memory.characterName || "♥")[0], cx: W / 2 - 26, cy: avatarY, radius: 33, theme });
-  drawAvatarCircle(ctx, { image: playerImage, fallbackChar: (playerName || "你")[0], cx: W / 2 + 26, cy: avatarY, radius: 33, theme });
+  drawAvatarCircle(ctx, { image: playerImage, fallbackChar: (playerName || localTr("你", "You", "あなた", "나"))[0], cx: W / 2 + 26, cy: avatarY, radius: 33, theme });
   ctx.fillStyle = theme.accent;
   ctx.font = `700 23px ${HAND_FONT}`;
-  ctx.fillText(`${memory.characterName || ""} ✕ ${playerName || "你"}`, W / 2, H - 148);
+  ctx.fillText(`${memory.characterName || ""} ✕ ${playerName || localTr("你", "You", "あなた", "나")}`, W / 2, H - 148);
   ctx.fillStyle = theme.text;
   ctx.font = `18px ${HAND_FONT}`;
-  ctx.fillText(`${memory.mode === "reality" ? "現實篇章" : "線上篇章"} · ${formatMemoryDate(memory.createdAt)}`, W / 2, H - 114);
+  ctx.fillText(`${memory.mode === "reality"
+    ? localTr("現實篇章", "Reality Chapter", "リアル篇", "현실 편")
+    : localTr("線上篇章", "Online Chapter", "オンライン篇", "온라인 편")} · ${formatMemoryDate(memory.createdAt, locale)}`, W / 2, H - 114);
   ctx.fillStyle = theme.frame;
   ctx.font = `42px ${SCRIPT_FONT}`;
   ctx.fillText("Special Memory", W / 2, H - 66);
 
-  return new Promise((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("圖片產生失敗")), "image/png"));
+  return new Promise((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error(localTr("圖片產生失敗", "Could not create the image.", "画像を生成できませんでした。", "이미지를 생성하지 못했습니다."))), "image/png"));
 }
 
-export function SpecialMemoryModal({ memory: memoryProp, characterAvatar, playerAvatar, playerName, onClose }) {
+export function SpecialMemoryModal({ memory: memoryProp, characterAvatar, playerAvatar, playerName, tr, locale = "zh-TW", onClose }) {
   const { specialMemories, toggleSpecialMemoryPin } = useGacha();
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
+  const localTr = typeof tr === "function" ? tr : (...translations) => translate(locale, ...translations);
   // 呼叫端可能傳入快照，釘選狀態一律以 context 中的最新資料為準
   const memory = specialMemories.find((item) => item.id === memoryProp?.id) || memoryProp;
   const theme = themeOf(memory);
   if (!memory) return null;
   const togglePin = () => {
     const result = toggleSpecialMemoryPin(memory.id);
-    if (!result.ok && result.reason === "limit") setNotice("每位角色最多銘記 3 段特別記憶，請先解除其他銘記");
-    else if (result.ok) setNotice(result.pinned ? "已銘記：角色聊天時會永遠記得這段回憶" : "已解除銘記：這段回憶改為聊到相關話題時想起");
+    if (!result.ok && result.reason === "limit") setNotice(localTr("每位角色最多銘記 3 段特別記憶，請先解除其他銘記", "Each character can keep up to 3 permanent special memories. Unpin another one first.", "各キャラが銘記できる特別な思い出は3件までです。先に別の銘記を解除してください。", "캐릭터마다 특별한 추억을 최대 3개까지 새길 수 있습니다. 다른 추억을 먼저 해제하세요."));
+    else if (result.ok) setNotice(result.pinned
+      ? localTr("已銘記：角色聊天時會永遠記得這段回憶", "Remembered: the character will always recall this during chat.", "銘記しました：キャラはチャット中、この思い出をずっと覚えています。", "새김 완료: 캐릭터가 채팅 중 이 추억을 항상 기억합니다.")
+      : localTr("已解除銘記：這段回憶改為聊到相關話題時想起", "Unpinned: this memory will now surface only when related topics come up.", "銘記を解除しました：関連する話題になったときに思い出します。", "새김 해제: 이제 관련 주제가 나올 때 이 추억을 떠올립니다."));
   };
   const download = async () => {
     if (saving) return;
     setSaving(true);
     setNotice("");
     try {
-      const blob = await renderSpecialMemoryImage(memory, { characterAvatar, playerAvatar, playerName });
-      const result = await downloadImageFile(blob, `special-memory-${memory.characterName || "memory"}-${formatMemoryDate(memory.createdAt).replace(/\//g, "")}.png`);
-      if (result?.method === "native-filesystem") setNotice(`已儲存到 Documents/${result.path}`);
-      else if (result?.method !== "cancelled") setNotice("紀念卡已下載");
+      const blob = await renderSpecialMemoryImage(memory, { characterAvatar, playerAvatar, playerName, locale, tr: localTr });
+      const result = await downloadImageFile(blob, `special-memory-${memory.characterName || "memory"}-${formatMemoryDate(memory.createdAt, locale).replace(/\//g, "")}.png`);
+      if (result?.method === "native-filesystem") setNotice(localTr(`已儲存到 Documents/${result.path}`, `Saved to Documents/${result.path}`, `Documents/${result.path} に保存しました`, `Documents/${result.path}에 저장했습니다`));
+      else if (result?.method !== "cancelled") setNotice(localTr("紀念卡已下載", "Memory card downloaded.", "記念カードをダウンロードしました。", "기념 카드를 다운로드했습니다."));
     } catch (error) {
-      setNotice(error?.message || "下載失敗，請改用截圖另存");
+      setNotice(error?.message || localTr("下載失敗，請改用截圖另存", "Download failed. Please save a screenshot instead.", "ダウンロードに失敗しました。スクリーンショットで保存してください。", "다운로드에 실패했습니다. 스크린샷으로 저장해 주세요."));
     } finally {
       setSaving(false);
     }
@@ -254,16 +261,18 @@ export function SpecialMemoryModal({ memory: memoryProp, characterAvatar, player
         <div className="sg-memory-monologue" style={{ color: theme.accent }}>{memory.monologue}</div>
         <div className="sg-memory-sign">—— {memory.characterName}</div>
       </>}
-      <div className="sg-memory-pair">{renderAvatar(characterAvatar, (memory.characterName || "♥")[0])}{renderAvatar(playerAvatar, (playerName || "你")[0])}</div>
-      <div className="sg-memory-footer" style={{ color: theme.accent }}>{memory.characterName} ✕ {playerName || "你"}</div>
-      <div className="sg-memory-date">{memory.mode === "reality" ? "現實篇章" : "線上篇章"} · {formatMemoryDate(memory.createdAt)}</div>
+      <div className="sg-memory-pair">{renderAvatar(characterAvatar, (memory.characterName || "♥")[0])}{renderAvatar(playerAvatar, (playerName || localTr("你", "You", "あなた", "나"))[0])}</div>
+      <div className="sg-memory-footer" style={{ color: theme.accent }}>{memory.characterName} ✕ {playerName || localTr("你", "You", "あなた", "나")}</div>
+      <div className="sg-memory-date">{memory.mode === "reality"
+        ? localTr("現實篇章", "Reality Chapter", "リアル篇", "현실 편")
+        : localTr("線上篇章", "Online Chapter", "オンライン篇", "온라인 편")} · {formatMemoryDate(memory.createdAt, locale)}</div>
       <div className="sg-memory-brand" style={{ color: theme.frame }}>Special Memory</div>
     </div>
     {notice && <div className="sg-memory-notice">{notice}</div>}
     <div className="sg-memory-actions" onClick={(event) => event.stopPropagation()}>
-      <button className="sg-memory-btn sg-memory-btn-primary" disabled={saving} onClick={download}>{saving ? "產生中…" : "⬇ 下載紀念卡"}</button>
-      <button className={`sg-memory-btn ${memory.pinned ? "sg-memory-btn-sealed" : "sg-memory-btn-ghost"}`} onClick={togglePin}>{memory.pinned ? "✦ 銘記中" : "✧ 銘記"}</button>
-      <button className="sg-memory-btn sg-memory-btn-ghost" onClick={onClose}>關閉</button>
+      <button className="sg-memory-btn sg-memory-btn-primary" disabled={saving} onClick={download}>{saving ? localTr("產生中…", "Creating…", "生成中…", "생성 중…") : localTr("⬇ 下載紀念卡", "⬇ Download Card", "⬇ 記念カードを保存", "⬇ 기념 카드 다운로드")}</button>
+      <button className={`sg-memory-btn ${memory.pinned ? "sg-memory-btn-sealed" : "sg-memory-btn-ghost"}`} onClick={togglePin}>{memory.pinned ? localTr("✦ 銘記中", "✦ Remembered", "✦ 銘記中", "✦ 새김 중") : localTr("✧ 銘記", "✧ Remember", "✧ 銘記", "✧ 새기기")}</button>
+      <button className="sg-memory-btn sg-memory-btn-ghost" onClick={onClose}>{localTr("關閉", "Close", "閉じる", "닫기")}</button>
     </div>
   </div>;
 }

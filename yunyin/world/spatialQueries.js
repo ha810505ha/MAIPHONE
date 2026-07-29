@@ -18,3 +18,26 @@ export const portalAt = (map, x, y, radius = 1) => {
 };
 
 export const plotIndexAt = (map, x, y) => (map.plots || []).findIndex((plot) => plot.x === x && plot.y === y);
+
+// 手指點擊需要比像素田格更寬鬆：0.5× 鏡頭時 32px tile 只剩 16px，
+// 因此以畫面上的最小觸控尺寸反推世界座標命中範圍；範圍重疊時取最近地塊。
+export const plotIndexNearPoint = (map, tilePointX, tilePointY, scale = 1, minHitSizePx = 56) => {
+  const safeScale = Number(scale);
+  const pointX = Number(tilePointX);
+  const pointY = Number(tilePointY);
+  if (!Number.isFinite(safeScale) || safeScale <= 0 || !Number.isFinite(pointX) || !Number.isFinite(pointY)) return -1;
+  const halfHitTiles = Math.max(0.5, minHitSizePx / (2 * 32 * safeScale));
+  let bestIndex = -1;
+  let bestDistance = Infinity;
+  (map.plots || []).forEach((plot, index) => {
+    const dx = pointX - (plot.x + 0.5);
+    const dy = pointY - (plot.y + 0.5);
+    if (Math.abs(dx) > halfHitTiles || Math.abs(dy) > halfHitTiles) return;
+    const distance = dx * dx + dy * dy;
+    if (distance < bestDistance) {
+      bestIndex = index;
+      bestDistance = distance;
+    }
+  });
+  return bestIndex;
+};

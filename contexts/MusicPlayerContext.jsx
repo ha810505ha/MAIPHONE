@@ -1,10 +1,12 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { loadFeatureEntity, saveFeatureEntity } from "../utils/indexedDbStorage";
+import { FEATURE_DATA_CHANGED_EVENT, featureDataEventIncludes } from "../services/featureDataLifecycle";
 import * as yt from "../services/music/youtubeProvider";
 import * as sp from "../services/music/spotifyProvider";
 
 const MusicPlayerContext = createContext(null);
 const FLOAT_KEY = "ent_musicPlayer";
+const DEFAULT_FLOAT_STATE = { mode: "ball", side: "right", y: 420 };
 
 export async function resolveTrackFromUrl(url) {
   const text = String(url || "").trim();
@@ -20,9 +22,10 @@ export function MusicPlayerProvider({ children }) {
   const [queue, setQueue] = useState([]);
   const [charPicks, setCharPicks] = useState([]); // [{title, artist, reason, characterName}]
   const [charReaction, setCharReaction] = useState(null); // {text, characterName, ts}
-  const [floatState, setFloatState] = useState({ mode: "ball", side: "right", y: 420 });
+  const [floatState, setFloatState] = useState(DEFAULT_FLOAT_STATE);
   const [loopMode, setLoopMode] = useState("off"); // off → list → single
   const providerRef = useRef(null);
+  const playGenerationRef = useRef(0);
   const queueRef = useRef(queue);
   queueRef.current = queue;
   const trackRef = useRef(track);
@@ -34,12 +37,41 @@ export function MusicPlayerProvider({ children }) {
   floatRef.current = floatState;
 
   useEffect(() => {
-    loadFeatureEntity(FLOAT_KEY, null).then((saved) => {
-      if (saved && typeof saved === "object") {
-        setFloatState((state) => ({ ...state, side: saved.side === "left" ? "left" : "right", y: Number.isFinite(Number(saved.y)) ? Number(saved.y) : state.y }));
-        if (["off", "list", "single"].includes(saved.loopMode)) setLoopMode(saved.loopMode);
+    let active = true;
+    const reload = async (reason = "load") => {
+      const saved = await loadFeatureEntity(FLOAT_KEY, null).catch(() => null);
+      if (!active) return;
+      const nextFloat = saved && typeof saved === "object"
+        ? {
+            ...DEFAULT_FLOAT_STATE,
+            side: saved.side === "left" ? "left" : "right",
+            y: Number.isFinite(Number(saved.y)) ? Number(saved.y) : DEFAULT_FLOAT_STATE.y,
+          }
+        : DEFAULT_FLOAT_STATE;
+      setFloatState(nextFloat);
+      setLoopMode(["off", "list", "single"].includes(saved?.loopMode) ? saved.loopMode : "off");
+      if (reason === "reset") {
+        playGenerationRef.current += 1;
+        providerRef.current?.stop();
+        providerRef.current = null;
+        historyRef.current = [];
+        setTrack(null);
+        setIsPlaying(false);
+        setProgress(0);
+        setQueue([]);
+        setCharPicks([]);
+        setCharReaction(null);
       }
-    }).catch(() => {});
+    };
+    const onFeatureDataChanged = (event) => {
+      if (featureDataEventIncludes(event, FLOAT_KEY)) void reload(event?.detail?.reason);
+    };
+    void reload();
+    window.addEventListener(FEATURE_DATA_CHANGED_EVENT, onFeatureDataChanged);
+    return () => {
+      active = false;
+      window.removeEventListener(FEATURE_DATA_CHANGED_EVENT, onFeatureDataChanged);
+    };
   }, []);
 
   const persist = (patch = {}) => {
@@ -51,6 +83,7 @@ export function MusicPlayerProvider({ children }) {
     const callbacks = {
       onState: setIsPlaying,
       onProgress: setProgress,
+      onError: () => setIsPlaying(false),
       onTrack: (nextTrack) => {
         if (!nextTrack) return;
         setTrack(nextTrack);
@@ -77,16 +110,46 @@ export function MusicPlayerProvider({ children }) {
       track, isPlaying, progress, queue, charPicks, charReaction, floatState, loopMode,
       setCharPicks, setCharReaction, setQueue,
       async play(input) {
+        const generation = ++playGenerationRef.current;
         const nextTrack = typeof input === "string" ? await resolveTrackFromUrl(input) : input;
-        if (!nextTrack) return null;
+        if (!nextTrack || generation !== playGenerationRef.current) return null;
         const provider = nextTrack.source === "yt" ? yt : sp;
         if (providerRef.current && providerRef.current !== provider) providerRef.current.stop();
         providerRef.current = provider;
-        if (!historyRef.current.some((item) => item.id === nextTrack.id)) historyRef.current.push(nextTrack);
         setProgress(0);
         setTrack(nextTrack);
-        setIsPlaying(true);
-        await provider.load(nextTrack, callbacks);
+        setIsPlaying(false);
+        const guardedCallbacks = {
+          onState: (playing) => {
+            if (generation === playGenerationRef.current && providerRef.current === provider) callbacks.onState(playing);
+          },
+          onProgress: (nextProgress) => {
+            if (generation === playGenerationRef.current && providerRef.current === provider) callbacks.onProgress(nextProgress);
+          },
+          onTrack: (providerTrack) => {
+            if (generation === playGenerationRef.current && providerRef.current === provider) callbacks.onTrack(providerTrack);
+          },
+          onEnded: () => {
+            if (generation === playGenerationRef.current && providerRef.current === provider) callbacks.onEnded();
+          },
+          onError: (error) => {
+            if (generation === playGenerationRef.current && providerRef.current === provider) callbacks.onError(error);
+          },
+        };
+        try {
+          await provider.load(nextTrack, guardedCallbacks);
+        } catch (error) {
+          if (generation === playGenerationRef.current) {
+            provider.stop();
+            providerRef.current = null;
+            setTrack(null);
+            setProgress(0);
+            setIsPlaying(false);
+          }
+          throw error;
+        }
+        if (generation !== playGenerationRef.current) return null;
+        if (!historyRef.current.some((item) => item.id === nextTrack.id)) historyRef.current.push(nextTrack);
         return nextTrack;
       },
       cycleLoop() {
@@ -96,7 +159,7 @@ export function MusicPlayerProvider({ children }) {
         persist({ loopMode: next });
       },
       pause() { providerRef.current?.pause(); setIsPlaying(false); },
-      resume() { providerRef.current?.resume(); setIsPlaying(true); },
+      resume() { providerRef.current?.resume(); },
       toggle() { if (isPlaying) api.pause(); else api.resume(); },
       seek(pct) { providerRef.current?.seek(Math.max(0, Math.min(1, pct))); },
       next() {
@@ -104,7 +167,14 @@ export function MusicPlayerProvider({ children }) {
         const [nextTrack, ...rest] = queueRef.current;
         if (nextTrack) { setQueue(rest); void api.play(nextTrack); }
       },
-      stop() { providerRef.current?.stop(); providerRef.current = null; setTrack(null); setIsPlaying(false); setProgress(0); },
+      stop() {
+        playGenerationRef.current += 1;
+        providerRef.current?.stop();
+        providerRef.current = null;
+        setTrack(null);
+        setIsPlaying(false);
+        setProgress(0);
+      },
       saveFloat(nextState) {
         setFloatState(nextState);
         persist({ side: nextState.side, y: nextState.y });

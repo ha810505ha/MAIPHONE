@@ -6,8 +6,9 @@ import { pseudoImageStyle } from "../../utils/pseudoImage";
 import { estimatePseudoVoiceDuration, PSEUDO_VOICE_TEXT_LIMIT } from "../../utils/pseudoVoice";
 import { GACHA_ENABLED } from "../../config/featureFlags";
 import useAutoResizeTextarea from "../../hooks/chat/useAutoResizeTextarea";
+import PlayerPersonaIndicator from "./PlayerPersonaIndicator";
 
-export default function DirectChatComposer({ image, onClearImage, pseudoImage, onSetPseudoImage, pseudoVoiceMode, onSetPseudoVoiceMode, actionPanelOpen, setActionPanelOpen, allowTransfer, onOpenTransfer, onStartScreenshot, screenshotSelection, onCancelScreenshot, onSaveScreenshot, character, onGiftEpisodeStarted, fileInputRef, onImageUpload, value, setValue, textLimit, onSend, mode, tr }) {
+export default function DirectChatComposer({ image, onClearImage, pseudoImage, onSetPseudoImage, pseudoVoiceMode, onSetPseudoVoiceMode, actionPanelOpen, setActionPanelOpen, allowTransfer, onOpenTransfer, onStartScreenshot, screenshotSelection, onCancelScreenshot, onSaveScreenshot, character, onGiftEpisodeStarted, fileInputRef, onImageUpload, value, setValue, textLimit, onSend, mode, playerProfile, persona, tr }) {
   const [giftOpen, setGiftOpen] = useState(false);
   const [pseudoPickerOpen, setPseudoPickerOpen] = useState(false);
   const [photoChooserOpen, setPhotoChooserOpen] = useState(false);
@@ -39,6 +40,7 @@ export default function DirectChatComposer({ image, onClearImage, pseudoImage, o
       <button className="mp-chat-action" disabled><span className="mp-chat-action-i">📅</span><span>{tr("日程", "Schedule", "予定", "일정")}</span></button>
     </div>}
     {GACHA_ENABLED && giftOpen && <DirectGiftModal character={character} onClose={() => setGiftOpen(false)} onStarted={(episode) => { setGiftOpen(false); onGiftEpisodeStarted?.(episode); }} />}
+    <PlayerPersonaIndicator playerProfile={playerProfile} persona={persona} tr={tr} />
     <div className="mp-inp-bar"><button className={`mp-btn mp-btn-img ${actionPanelOpen ? "active" : ""}`} onClick={() => setActionPanelOpen((open) => !open)}>＋</button><input type="file" ref={fileInputRef} accept="image/*" style={{ display: "none" }} onChange={onImageUpload} /><div className="mp-inp-wrap"><textarea ref={inputRef} className="mp-inp" placeholder={pseudoVoiceMode && mode !== "reality" ? tr("輸入語音內容...", "Type voice message...", "音声メッセージを入力...", "음성 메시지 입력...") : mode === "reality" ? tr("輸入對話（現實）...", "Speak in person...", "会話を入力（現実）...", "대화 입력（현실）...") : tr("輸入訊息（線上）...", "Type a message (online)...", "メッセージを入力（オンライン）...", "메시지 입력（온라인）...")} name="mali_chat_text" rows={1} maxLength={pseudoVoiceMode && mode !== "reality" ? PSEUDO_VOICE_TEXT_LIMIT : textLimit} autoComplete="off" autoCorrect="off" autoCapitalize="sentences" spellCheck={false} data-form-type="other" data-lpignore="true" value={value} onChange={(event) => { const limit = pseudoVoiceMode && mode !== "reality" ? PSEUDO_VOICE_TEXT_LIMIT : textLimit; setValue(event.target.value.slice(0, limit)); }} /><div className="mp-char-counter">{value.length}/{pseudoVoiceMode && mode !== "reality" ? PSEUDO_VOICE_TEXT_LIMIT : textLimit}</div></div><button className="mp-btn mp-btn-send" onClick={onSend}>➤</button></div>
   </>;
 }

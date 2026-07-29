@@ -386,6 +386,12 @@ export async function saveImageApiConfig(config) {
   return next;
 }
 
+export async function clearImageApiConfig() {
+  await runTx([CONFIG_STORE], "readwrite", (tx) => {
+    tx.objectStore(CONFIG_STORE).delete(IMAGE_API_KEY);
+  });
+}
+
 function todayKey() {
   const now = new Date();
   return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;

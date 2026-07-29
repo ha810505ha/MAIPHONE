@@ -2,7 +2,7 @@ import { TILE } from "../engine/tilemap";
 import { activePackLines } from "../systems/ai";
 import { npcAtTile, talkToNpc } from "../systems/npc";
 import { plotUnlocked } from "../systems/farm";
-import { buildingAt, plotIndexAt, portalAt } from "./spatialQueries";
+import { buildingAt, plotIndexAt, plotIndexNearPoint, portalAt } from "./spatialQueries";
 import { worldInteractionAt } from "./worldInteractions";
 
 export function routeWorldTap({ screenX, screenY, camera, scale, map, player, npcs, save, hasMap, walkTo, switchMap, openPanel, showToast, onPlotArrive, onWorldInteraction }) {
@@ -54,10 +54,16 @@ export function routeWorldTap({ screenX, screenY, camera, scale, map, player, np
     activatePortal(nearbyPortal);
     return { worldX, worldY };
   }
-  const plotIndex = plotIndexAt(map, tileX, tileY);
+  const exactPlotIndex = plotIndexAt(map, tileX, tileY);
+  const plotIndex = exactPlotIndex >= 0
+    ? exactPlotIndex
+    : plotIndexNearPoint(map, worldX / TILE, worldY / TILE, scale);
   if (plotIndex >= 0) {
     if (!plotUnlocked(plotIndex, save.cultivation)) showToast("🔒 境界不足，尚未開墾");
-    else walkTo(tileX, tileY, () => onPlotArrive(plotIndex));
+    else {
+      const plot = map.plots[plotIndex];
+      walkTo(plot.x, plot.y, () => onPlotArrive(plotIndex));
+    }
     return { worldX, worldY };
   }
   walkTo(tileX, tileY, null);

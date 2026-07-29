@@ -1,7 +1,24 @@
+import {
+  EMPTY_DEVICE_SECRETS,
+  deviceSecretsEqual,
+  extractDeviceSecrets,
+  hydrateDeviceSecrets,
+  mergeDeviceSecrets,
+  normalizeDeviceSecrets,
+  stripDeviceSecrets,
+} from "./deviceSecrets.js";
+import {
+  getActivePersonaStorageId,
+  isPersonaScopedFeatureKey,
+  resolvePersonaFeatureKey,
+} from "../services/persona/personaStorageScope.js";
+import { DEFAULT_PERSONA_ID } from "../services/persona/personaModel.js";
+
 const DB_NAME = "maliphone_db";
 const DB_VERSION = 1;
 const STORE_NAME = "app_kv";
 const APP_STATE_KEY = "app_state";
+const DEVICE_SECRETS_KEY = "device_secrets_v1";
 
 // === 儲存格式（v3：per-entity） ===
 // 每個實體獨立一筆，包一層同步 metadata：
@@ -171,22 +188,32 @@ const mem = {
   lastSaved: new Map(),
   lastRevs: new Map(),
   outbox: {},
+  lastDeviceSecrets: null,
 };
 
-const wrapEntity = (key, data, deleted = false) => {
-  const rev = (mem.lastRevs.get(key) || 0) + 1;
-  mem.lastRevs.set(key, rev);
+// 所有會同時更新 IndexedDB 與 mem 的操作依序執行，避免兩個非同步存檔
+// 從同一份 revision/outbox 基準出發，後完成的舊快照反而蓋掉新快照。
+let mutationQueue = Promise.resolve();
+const enqueueMutation = (work) => {
+  const result = mutationQueue.then(work);
+  mutationQueue = result.catch(() => {});
+  return result;
+};
+
+const wrapEntity = (key, data, deleted = false, revisions = mem.lastRevs) => {
+  const rev = (revisions.get(key) || 0) + 1;
   return { data: deleted ? null : data, updatedAt: Date.now(), rev, deviceId: getDeviceId(), deleted };
 };
 
 // 把整包 app state 拆成實體 map：{ 實體key → 資料參照 }
 function splitStateToEntities(state) {
+  const safeState = stripDeviceSecrets(state);
   const {
     characters = [],
     chatHistory = {},
     chatBackgrounds = {},
     ...rest
-  } = state;
+  } = safeState;
   const entities = new Map();
   const core = { ...rest };
   for (const field of Object.keys(SINGLETON_ENTITIES)) {
@@ -223,11 +250,15 @@ const coreChanged = (next, prev) => {
 
 async function writeStateEntities(state, force = false) {
   const entities = splitStateToEntities(state);
+  const deviceSecrets = extractDeviceSecrets(state);
   const writes = [];
+  const nextLastSaved = new Map(mem.lastSaved);
+  const nextLastRevs = new Map(mem.lastRevs);
+  const nextOutbox = { ...mem.outbox };
   let outboxDirty = false;
   const markOutbox = (key, updatedAt) => {
     if (NO_SYNC_KEYS.has(key)) return;
-    mem.outbox[key] = updatedAt;
+    nextOutbox[key] = updatedAt;
     outboxDirty = true;
   };
 
@@ -235,23 +266,34 @@ async function writeStateEntities(state, force = false) {
     const changed = force ||
       (key === CORE_KEY ? coreChanged(data, mem.lastSaved.get(key)) : data !== mem.lastSaved.get(key));
     if (!changed) continue;
-    const wrapped = wrapEntity(key, data);
+    const wrapped = wrapEntity(key, data, false, nextLastRevs);
     writes.push([key, wrapped]);
     markOutbox(key, wrapped.updatedAt);
-    mem.lastSaved.set(key, data);
+    nextLastSaved.set(key, data);
+    nextLastRevs.set(key, wrapped.rev);
   }
 
   // 消失的實體（角色被刪等）→ 墓碑，讓未來的同步能傳播刪除
   for (const key of mem.lastSaved.keys()) {
     if (key === CORE_KEY || entities.has(key)) continue;
-    const wrapped = wrapEntity(key, null, true);
+    const wrapped = wrapEntity(key, null, true, nextLastRevs);
     writes.push([key, wrapped]);
     markOutbox(key, wrapped.updatedAt);
-    mem.lastSaved.delete(key);
+    nextLastSaved.delete(key);
+    nextLastRevs.set(key, wrapped.rev);
   }
 
-  if (outboxDirty) writes.push([OUTBOX_KEY, { ...mem.outbox }]);
+  if (outboxDirty) writes.push([OUTBOX_KEY, nextOutbox]);
+  if (force || !deviceSecretsEqual(deviceSecrets, mem.lastDeviceSecrets)) {
+    writes.push([DEVICE_SECRETS_KEY, deviceSecrets]);
+  }
   await writeEntries(writes);
+  // IndexedDB transaction 成功後才提交記憶體基準；失敗時原狀保留，
+  // 下一次相同 snapshot 仍會被判定為待寫入並完整重試。
+  mem.lastSaved = nextLastSaved;
+  mem.lastRevs = nextLastRevs;
+  if (outboxDirty) mem.outbox = nextOutbox;
+  mem.lastDeviceSecrets = deviceSecrets;
 }
 
 // 從實體 map 還原成整包 app state
@@ -293,6 +335,50 @@ function primeMemory(state, entities) {
   }
 }
 
+function sanitizeEntityData(key, data) {
+  if (!data || typeof data !== "object") return data;
+  if (key === CORE_KEY) return stripDeviceSecrets(data);
+  if (key === SINGLETON_ENTITIES.apiConfig) {
+    return { ...data, apiKey: "" };
+  }
+  if (key === SINGLETON_ENTITIES.ttsConfig) {
+    return stripDeviceSecrets({ ttsConfig: data }).ttsConfig;
+  }
+  return data;
+}
+
+function sanitizeWrappedEntity(key, wrapped) {
+  if (!wrapped || wrapped.deleted) return wrapped;
+  const safeData = sanitizeEntityData(key, wrapped.data);
+  if (safeData === wrapped.data) return wrapped;
+  return { ...wrapped, data: safeData };
+}
+
+const valuesDiffer = (left, right) => JSON.stringify(left) !== JSON.stringify(right);
+
+async function hydrateAndMigrateDeviceSecrets(state, entities, storedSecrets) {
+  const legacySecrets = extractDeviceSecrets(state);
+  const deviceSecrets = mergeDeviceSecrets(storedSecrets, legacySecrets);
+  const safeState = stripDeviceSecrets(state);
+  const safeEntities = { ...entities };
+  const writes = [];
+  for (const key of [CORE_KEY, SINGLETON_ENTITIES.apiConfig, SINGLETON_ENTITIES.ttsConfig]) {
+    const wrapped = entities[key];
+    const safeWrapped = sanitizeWrappedEntity(key, wrapped);
+    if (safeWrapped && valuesDiffer(wrapped, safeWrapped)) {
+      safeEntities[key] = safeWrapped;
+      writes.push([key, safeWrapped]);
+    }
+  }
+  if (!storedSecrets || !deviceSecretsEqual(storedSecrets, deviceSecrets)) {
+    writes.push([DEVICE_SECRETS_KEY, deviceSecrets]);
+  }
+  await writeEntries(writes);
+  mem.lastDeviceSecrets = deviceSecrets;
+  primeMemory(safeState, safeEntities);
+  return hydrateDeviceSecrets(safeState, deviceSecrets);
+}
+
 async function readV2PartitionedState() {
   const core = await readKv(V2_CORE_KEY);
   if (!core) return null;
@@ -313,12 +399,12 @@ async function migrateToEntities(migrated, oldKeysToDelete) {
 }
 
 async function loadAppState(defaultState) {
+  const storedSecrets = await readKv(DEVICE_SECRETS_KEY);
   const entities = await readAllEntities();
   const assembled = assembleState(defaultState, entities);
   if (assembled) {
     mem.outbox = (await readKv(OUTBOX_KEY)) || {};
-    primeMemory(assembled, entities);
-    return assembled;
+    return hydrateAndMigrateDeviceSecrets(assembled, entities, storedSecrets);
   }
 
   // v2 分區格式 → 遷移
@@ -326,7 +412,7 @@ async function loadAppState(defaultState) {
   if (v2) {
     const migrated = { ...defaultState, ...v2 };
     await migrateToEntities(migrated, [V2_CORE_KEY, ...V2_PARTITION_FIELDS.map(v2PartitionKey)]);
-    return migrated;
+    return hydrateDeviceSecrets(stripDeviceSecrets(migrated), mem.lastDeviceSecrets);
   }
 
   // v1 單一 blob 格式 → 遷移
@@ -334,7 +420,7 @@ async function loadAppState(defaultState) {
   if (savedLegacyKv) {
     const migrated = { ...defaultState, ...savedLegacyKv };
     await migrateToEntities(migrated, [APP_STATE_KEY]);
-    return migrated;
+    return hydrateDeviceSecrets(stripDeviceSecrets(migrated), mem.lastDeviceSecrets);
   }
 
   // 最早的 localStorage 格式 → 遷移
@@ -343,13 +429,15 @@ async function loadAppState(defaultState) {
     const migrated = { ...defaultState, ...legacy };
     await migrateToEntities(migrated, []);
     clearLegacyLocalStorage();
-    return migrated;
+    return hydrateDeviceSecrets(stripDeviceSecrets(migrated), mem.lastDeviceSecrets);
   }
-  return defaultState;
+  const deviceSecrets = normalizeDeviceSecrets(storedSecrets || EMPTY_DEVICE_SECRETS);
+  mem.lastDeviceSecrets = deviceSecrets;
+  return hydrateDeviceSecrets(defaultState, deviceSecrets);
 }
 
 function saveAppState(state) {
-  return writeStateEntities(state);
+  return enqueueMutation(() => writeStateEntities(state));
 }
 
 // === 給未來同步引擎用的 API ===
@@ -359,13 +447,14 @@ async function getSyncOutbox() {
 }
 // 讀取單一實體（含 metadata 包裝），供上傳用
 function readEntity(key) {
-  return readKv(key);
+  return readKv(key).then((wrapped) => sanitizeWrappedEntity(key, wrapped));
 }
 // 套用從伺服器拉下來的實體（不進 outbox——那是本地變更專用）。
 // 回傳實際寫入的筆數；呼叫端若在 App 執行中收到 > 0，必須重新載入，
 // 否則畫面與 mem.lastSaved 還握著舊資料，下次存檔會把舊資料蓋回雲端。
-async function applyRemoteEntities(list) {
+async function applyRemoteEntitiesUnlocked(list) {
   const writes = [];
+  const nextLastRevs = new Map(mem.lastRevs);
   const myDeviceId = getDeviceId();
   for (const e of list || []) {
     if (!e?.key || !e.key.startsWith(ENT_PREFIX)) continue;
@@ -378,52 +467,85 @@ async function applyRemoteEntities(list) {
     // 游標重置或重新登入可能再次拉到舊的雲端快照；較舊版本不得覆蓋本機資料。
     if (local && (localUpdatedAt > remoteUpdatedAt || (localUpdatedAt === remoteUpdatedAt && (Number(local.rev) || 0) >= (Number(e.rev) || 0)))) continue;
     writes.push([e.key, {
-      data: e.deleted ? null : (e.data ?? null),
+      data: e.deleted ? null : sanitizeEntityData(e.key, e.data ?? null),
       updatedAt: remoteUpdatedAt || Date.now(),
       rev: Number(e.rev) || 1,
       deviceId: e.deviceId || null,
       deleted: !!e.deleted,
     }]);
-    mem.lastRevs.set(e.key, Number(e.rev) || 1);
+    nextLastRevs.set(e.key, Number(e.rev) || 1);
   }
   await writeEntries(writes);
+  mem.lastRevs = nextLastRevs;
   return writes.length;
+}
+function applyRemoteEntities(list) {
+  return enqueueMutation(() => applyRemoteEntitiesUnlocked(list));
 }
 
 // 換帳號時清除本地所有實體與 outbox，之後由雲端資料重建。
 // 只能在確定接下來會從雲端完整拉取時呼叫。
-async function resetLocalEntities() {
+async function resetLocalEntitiesUnlocked() {
   const entities = await readAllEntities();
-  mem.lastSaved = new Map();
-  mem.lastRevs = new Map();
-  mem.outbox = {};
   await writeEntries([
     ...Object.keys(entities).map((key) => [key, undefined]),
     [OUTBOX_KEY, {}],
   ]);
+  mem.lastSaved = new Map();
+  mem.lastRevs = new Map();
+  mem.outbox = {};
+}
+function resetLocalEntities() {
+  return enqueueMutation(resetLocalEntitiesUnlocked);
+}
+
+async function clearDeviceSecretsUnlocked() {
+  await writeEntries([[DEVICE_SECRETS_KEY, undefined]]);
+  mem.lastDeviceSecrets = normalizeDeviceSecrets(EMPTY_DEVICE_SECRETS);
+}
+function clearDeviceSecrets() {
+  return enqueueMutation(clearDeviceSecretsUnlocked);
 }
 
 // 清空待同步清單（切換帳號時用：舊帳號的未上傳項目不該推到新帳號）
-async function clearSyncOutbox() {
-  mem.outbox = {};
+async function clearSyncOutboxUnlocked() {
   await writeEntries([[OUTBOX_KEY, {}]]);
+  mem.outbox = {};
+}
+function clearSyncOutbox() {
+  return enqueueMutation(clearSyncOutboxUnlocked);
 }
 
 // 上傳成功後把實體移出 outbox；墓碑實體順便真正刪除
-async function ackSynced(keys) {
+async function ackSyncedUnlocked(keys) {
   const deletes = [];
+  const nextOutbox = { ...mem.outbox };
   for (const key of keys) {
-    delete mem.outbox[key];
+    delete nextOutbox[key];
     const wrapped = await readKv(key);
     if (wrapped?.deleted) deletes.push([key, undefined]);
   }
-  await writeEntries([...deletes, [OUTBOX_KEY, { ...mem.outbox }]]);
+  await writeEntries([...deletes, [OUTBOX_KEY, nextOutbox]]);
+  mem.outbox = nextOutbox;
+}
+function ackSynced(keys) {
+  return enqueueMutation(() => ackSyncedUnlocked(keys));
 }
 
 // 獨立功能可直接使用既有 maliphone_db 實體與同步 outbox，避免各自建立資料庫。
 async function loadFeatureEntity(key, fallback = null) {
   if (!FEATURE_KEYS.has(key)) throw new Error(`Unknown feature entity: ${key}`);
-  const wrapped = await readKv(key);
+  const resolvedKey = resolvePersonaFeatureKey(key);
+  let wrapped = await readKv(resolvedKey);
+  // Existing installs stored these features without a persona namespace. Only
+  // the migrated default persona may adopt that legacy value.
+  if (!wrapped && isPersonaScopedFeatureKey(key) && getActivePersonaStorageId() === DEFAULT_PERSONA_ID) {
+    const legacy = await readKv(key);
+    if (legacy && !legacy.deleted) {
+      await saveFeatureEntities([[key, legacy.data]]);
+      wrapped = await readKv(resolvedKey);
+    }
+  }
   return wrapped && !wrapped.deleted ? wrapped.data : fallback;
 }
 
@@ -431,14 +553,29 @@ async function saveFeatureEntity(key, data) {
   await saveFeatureEntities([[key, data]]);
 }
 
+async function loadPersonaFeatureEntity(key, personaId, fallback = null) {
+  if (!FEATURE_KEYS.has(key) || !isPersonaScopedFeatureKey(key)) {
+    throw new Error(`Unknown persona feature entity: ${key}`);
+  }
+  const wrapped = await readKv(resolvePersonaFeatureKey(key, personaId));
+  return wrapped && !wrapped.deleted ? wrapped.data : fallback;
+}
+
+function savePersonaFeatureEntities(personaId, entries) {
+  const requested = Array.from(entries || []);
+  for (const [key] of requested) {
+    if (!FEATURE_KEYS.has(key) || !isPersonaScopedFeatureKey(key)) {
+      throw new Error(`Unknown persona feature entity: ${key}`);
+    }
+  }
+  const resolved = requested.map(([key, data]) => [resolvePersonaFeatureKey(key, personaId), data]);
+  return enqueueMutation(() => saveResolvedFeatureEntitiesUnlocked(resolved));
+}
+
 // 將一組獨立功能資料放在同一個 IndexedDB transaction 內寫入。
 // 匯入備份時可避免前幾項成功、後幾項失敗而留下混合資料。
-async function saveFeatureEntities(entries) {
-  const normalized = Array.from(entries || []);
+async function saveResolvedFeatureEntitiesUnlocked(normalized) {
   if (!normalized.length) return;
-  for (const [key] of normalized) {
-    if (!FEATURE_KEYS.has(key)) throw new Error(`Unknown feature entity: ${key}`);
-  }
   const previousEntries = await Promise.all(normalized.map(async ([key]) => [key, await readKv(key)]));
   const previousByKey = new Map(previousEntries);
   const latestOutbox = (await readKv(OUTBOX_KEY)) || {};
@@ -458,5 +595,18 @@ async function saveFeatureEntities(entries) {
   await writeEntries([...writes, [OUTBOX_KEY, nextOutbox]]);
   mem.outbox = nextOutbox;
 }
+function normalizeFeatureWrites(entries) {
+  const requested = Array.from(entries || []);
+  for (const [key] of requested) {
+    if (!FEATURE_KEYS.has(key)) throw new Error(`Unknown feature entity: ${key}`);
+  }
+  return requested.map(([key, data]) => [resolvePersonaFeatureKey(key), data]);
+}
+function saveFeatureEntities(entries) {
+  // Resolve the active persona before entering the mutation queue. An async
+  // write started by Persona A must never land in Persona B after a switch.
+  const normalized = normalizeFeatureWrites(entries);
+  return enqueueMutation(() => saveResolvedFeatureEntitiesUnlocked(normalized));
+}
 
-export { loadAppState, saveAppState, getSyncOutbox, readEntity, ackSynced, applyRemoteEntities, clearSyncOutbox, resetLocalEntities, getDeviceId, loadFeatureEntity, saveFeatureEntity, saveFeatureEntities };
+export { loadAppState, saveAppState, getSyncOutbox, readEntity, ackSynced, applyRemoteEntities, clearSyncOutbox, resetLocalEntities, clearDeviceSecrets, getDeviceId, loadFeatureEntity, saveFeatureEntity, saveFeatureEntities, loadPersonaFeatureEntity, savePersonaFeatureEntities };
