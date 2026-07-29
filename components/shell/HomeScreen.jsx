@@ -151,6 +151,7 @@ function Dock({ apps, badges, dragging, renderAppIcon, onDropContainer, onDropAp
 export default function HomeScreen({ ft, fd, activeCharacter, peachTheme, tr, currentApp, pages, page, pageSize, appById, dockApps, badges, dragging, pointerDrag, pageGesture, renderAppIcon, gestureHandlers, onOpenStatus, onOpenStatusFromTouch, onDropGrid, onDropSlot, onDropDockContainer, onDropDockApp, onOpenApp, onOpenFolder, onOpenAllApps, onOpenFromTouch, onPointerDragStart, onPreloadApp }) {
   const verticalOffset = pageGesture?.axis === "y" ? pageGesture.offsetY || 0 : 0;
   const verticalProgress = Math.min(1, Math.abs(verticalOffset) / 150);
+  const stopHomeGesture = (event) => event.stopPropagation();
   return (
     <>
       <div
@@ -171,7 +172,23 @@ export default function HomeScreen({ ft, fd, activeCharacter, peachTheme, tr, cu
           <ActiveCharacterCard character={activeCharacter} peachTheme={peachTheme} onOpen={onOpenStatus} onOpenFromTouch={onOpenStatusFromTouch} tr={tr} />
           <AppGrid pages={pages} page={page} pageSize={pageSize} appById={appById} badges={badges} dragging={dragging} pointerDrag={pointerDrag} pageGesture={pageGesture} renderAppIcon={renderAppIcon} onDropGrid={onDropGrid} onDropSlot={onDropSlot} onOpenApp={(target) => typeof target === "string" ? onOpenApp(target) : onOpenFolder(target)} onOpenFromTouch={onOpenFromTouch} onPointerDragStart={onPointerDragStart} onPreloadApp={onPreloadApp} />
         </div>
-        {!currentApp && <button className="mp-all-apps-handle" onClick={onOpenAllApps}><span>⌃</span>{tr("全部 App", "All apps", "すべてのアプリ", "모든 앱")}</button>}
+        {!currentApp && (
+          <button
+            type="button"
+            className="mp-all-apps-handle"
+            aria-label={tr("全部 App", "All apps", "すべてのアプリ", "모든 앱")}
+            onPointerDown={stopHomeGesture}
+            onPointerUp={stopHomeGesture}
+            onTouchStart={stopHomeGesture}
+            onTouchEnd={stopHomeGesture}
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpenAllApps();
+            }}
+          >
+            <span>⌃</span>{tr("全部 App", "All apps", "すべてのアプリ", "모든 앱")}
+          </button>
+        )}
         {!currentApp && <div className="mp-page-dots">{pages.map((_, index) => <span key={index} className={`mp-page-dot ${page === index ? "active" : ""}`} />)}</div>}
         <Dock apps={dockApps} badges={badges} dragging={dragging} renderAppIcon={renderAppIcon} onDropContainer={onDropDockContainer} onDropApp={onDropDockApp} onOpenApp={onOpenApp} onOpenFromTouch={onOpenFromTouch} onPointerDragStart={onPointerDragStart} onPreloadApp={onPreloadApp} />
       </div>

@@ -83,6 +83,7 @@ const pageTrackRule = css.match(/\.mp-pages-track\{([^}]*)\}/)?.[1] || "";
 const desktopRule = css.match(/\.mp-desk\{([^}]*)\}/)?.[1] || "";
 const libraryRule = css.match(/\.mp-app-library\{([^}]*)\}/)?.[1] || "";
 const libraryPagerRule = css.match(/\.mp-library-pager\{([^}]*)\}/)?.[1] || "";
+const allAppsHandleRule = css.match(/\.mp-all-apps-handle\{([^}]*)\}/)?.[1] || "";
 
 if (switchBody.includes("dragActiveRef.current || isDraggingApp")) {
   throw new Error("home swipe must not depend on stale React dragging state");
@@ -116,6 +117,14 @@ if (!homeScreen.includes("if (folder) onOpenApp(folder);")
 }
 if (!homeScreen.includes("if (folder) {\n                        event.stopPropagation();")) {
   throw new Error("folder pointer events must not start the home-page gesture");
+}
+if (!homeScreen.includes("onPointerDown={stopHomeGesture}")
+  || !homeScreen.includes("onPointerUp={stopHomeGesture}")
+  || !homeScreen.includes("event.stopPropagation();\n              onOpenAllApps();")) {
+  throw new Error("the all-apps button must not be retargeted into the desktop home gesture");
+}
+if (!allAppsHandleRule.includes("min-width:96px") || !allAppsHandleRule.includes("min-height:44px")) {
+  throw new Error("the all-apps button must keep a desktop-safe pointer target");
 }
 
 console.log("ok: home and app-library gestures survive mobile pointer cancellation");
