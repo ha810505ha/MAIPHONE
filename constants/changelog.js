@@ -11,6 +11,7 @@ const ZH_CHANGELOG = {
     "生活記帳｜新增獨立生活帳本、收支分類、每月預算、明細與統計，並跟隨目前使用中的玩家人格。",
     "多語言｜補齊玩家資料、聯絡人、登入獎勵、日曆、一起聽歌、情侶空間、App 名稱及聊天室設定的英文、日文與韓文介面。",
     "介面改善｜簡化人格清單操作以降低誤刪風險，並改善夜色主題的示意圖片、語音氣泡及錢包配色與文字清晰度。",
+    "桌面瀏覽器｜修正使用滑鼠時「全部 App」按鈕可能被首頁手勢攔截而無法開啟的問題，並加大可點擊範圍。",
     "穩定性｜強化裝置資料庫寫入、功能資料切換、裝置密鑰、筆記、音樂與訊息狀態的安全性及穩定性。",
   ],
   "1.2.6": [
@@ -122,6 +123,7 @@ const TRANSLATED_CHANGELOG = {
       "Life ledger | Added a separate life ledger with income and expense categories, monthly budgets, transaction details, and statistics tied to the active player persona.",
       "Languages | Expanded English, Japanese, and Korean support across Player Profile, Contacts, Login Rewards, Calendar, Listen Together, Couple Space, app names, and chat settings.",
       "Interface | Simplified persona-list actions to reduce accidental deletion, and improved the clarity of simulated images, voice bubbles, wallet colors, and text in the Night theme.",
+      "Desktop browser | Fixed an issue where the home gesture could intercept mouse clicks on All Apps, and enlarged the clickable target.",
       "Stability | Improved device-database writes, feature-data switching, device secrets, notes, music, and message-state safety.",
     ],
     ja: [
@@ -134,6 +136,7 @@ const TRANSLATED_CHANGELOG = {
       "生活家計簿｜収支カテゴリ、月間予算、明細、統計を備えた生活家計簿を追加し、使用中のプレイヤー人格に連動するようにしました。",
       "多言語｜プレイヤー情報、連絡先、ログイン報酬、カレンダー、一緒に音楽、カップルスペース、App 名、チャット設定の英語・日本語・韓国語表示を拡充しました。",
       "画面改善｜誤削除を防ぐため人格一覧の操作を整理し、夜色テーマのイメージ画像、音声吹き出し、財布の配色と文字の見やすさを改善しました。",
+      "デスクトップブラウザ｜ホーム画面のジェスチャーが「すべてのアプリ」へのマウスクリックを妨げる問題を修正し、クリック範囲を広げました。",
       "安定性｜端末データベースへの書き込み、機能データの切り替え、端末シークレット、ノート、音楽、メッセージ状態の安全性と安定性を強化しました。",
     ],
     ko: [
@@ -146,6 +149,7 @@ const TRANSLATED_CHANGELOG = {
       "생활 장부 | 수입·지출 분류, 월 예산, 내역, 통계를 제공하는 생활 장부를 추가하고 현재 플레이어 페르소나에 연결했습니다.",
       "다국어 | 플레이어 정보, 연락처, 로그인 보상, 달력, 함께 음악 듣기, 커플 공간, 앱 이름, 채팅 설정의 영어·일본어·한국어 지원을 보강했습니다.",
       "화면 개선 | 실수로 삭제하지 않도록 페르소나 목록 동작을 단순화하고, 야간 테마의 예시 이미지, 음성 말풍선, 지갑 색상과 글자 가독성을 개선했습니다.",
+      "데스크톱 브라우저 | 홈 화면 제스처가 모든 앱 버튼의 마우스 클릭을 가로채 열리지 않던 문제를 수정하고 클릭 영역을 넓혔습니다.",
       "안정성 | 기기 데이터베이스 쓰기, 기능 데이터 전환, 기기 비밀정보, 노트, 음악, 메시지 상태의 안전성과 안정성을 강화했습니다.",
     ],
   },
