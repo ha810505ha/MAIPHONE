@@ -72,7 +72,7 @@ export function HomeEditorOverlay({ editor, catalog, previewControlsRef, onSelec
   </div></>;
 }
 
-export const YunyinToast = ({ message }) => message ? <div style={{ position: "absolute", bottom: 24, left: "50%", transform: "translateX(-50%)", background: "rgba(0,0,0,.72)", color: "#fff", fontSize: 13, borderRadius: 14, padding: "8px 16px", zIndex: 7 }}>{message}</div> : null;
+export const YunyinToast = ({ message }) => message ? <div style={{ position: "absolute", bottom: 24, left: "50%", transform: "translateX(-50%)", background: "rgba(0,0,0,.72)", color: "#fff", fontSize: 13, borderRadius: 14, padding: "8px 16px", zIndex: 7, pointerEvents: "none" }}>{message}</div> : null;
 
 export function CompanionNotice({ notice }) {
   if (!notice) return null;

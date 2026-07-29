@@ -3,6 +3,7 @@ import { sanitizeUserImageUrl } from "../../utils/coreUtils";
 import { messagePreviewText } from "../../utils/pseudoImage";
 import { useGacha } from "../../contexts/GachaContext";
 import EpisodeRoom from "../gacha/EpisodeRoom";
+import PlayerPersonaIndicator from "./PlayerPersonaIndicator";
 
 const PAGE_SIZE = 10;
 
@@ -74,6 +75,7 @@ export default function ChatListView({
   getGroupMembers,
   apiConfig,
   playerProfile,
+  persona,
   t,
   tr,
 }) {
@@ -105,17 +107,7 @@ export default function ChatListView({
       <div className="mp-hdr">
         <div className="mp-back" onClick={closeApp}>←</div>
         <div className="mp-htitle">{t("chat")}</div>
-        {tab === "groups" && (
-          <button
-            type="button"
-            className="mp-ibtn"
-            style={{ marginLeft: "auto", padding: "4px 10px", background: "linear-gradient(135deg,#f9e6ee,#fff6fb)" }}
-            onClick={openCreateGroup}
-            title="Add group"
-          >
-            ＋
-          </button>
-        )}
+        <PlayerPersonaIndicator playerProfile={playerProfile} persona={persona} tr={tr} compact />
       </div>
       <div className="mp-cm" style={{ paddingTop: 2 }}>
         <div className="mp-chat-switch">
@@ -178,7 +170,7 @@ export default function ChatListView({
             </div>
           )
         ) : tab === "groups" ? (
-          <div className="mp-chat-list mp-chat-list-line">
+          <div className="mp-chat-list mp-chat-list-line" style={{ paddingBottom: 76 }}>
             {visibleGroups.map((group) => {
               const messages = group.messages || [];
               const lastMessage = messages[messages.length - 1];
@@ -212,6 +204,17 @@ export default function ChatListView({
           </div>
         ) : episodes.length ? <EpisodeLibrary episodes={episodes} characters={characters} onOpen={setSelectedEpisodeId} /> : <div className="mp-empty mp-chat-empty"><div className="mp-empty-i">🌸</div><div className="mp-empty-t">尚未建立特別篇</div></div>}
       </div>
+      {tab === "groups" && (
+        <button
+          type="button"
+          onClick={openCreateGroup}
+          title={tr("新增群組", "Add group", "グループを追加", "그룹 추가")}
+          aria-label={tr("新增群組", "Add group", "グループを追加", "그룹 추가")}
+          style={{ position: "absolute", right: 18, bottom: 20, zIndex: 4, width: 50, height: 50, display: "grid", placeItems: "center", border: "1px solid color-mix(in srgb,var(--mp-pink) 42%,transparent)", borderRadius: "50%", background: "linear-gradient(135deg,var(--mp-pink),var(--mp-pink-dk))", color: "#fff", boxShadow: "0 8px 22px color-mix(in srgb,var(--mp-pink) 38%,transparent)", fontSize: 25, lineHeight: 1, cursor: "pointer" }}
+        >
+          ＋
+        </button>
+      )}
     </div>
   );
 }

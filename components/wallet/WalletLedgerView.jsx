@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import { gid } from "../../utils/coreUtils";
 import { useGacha } from "../../contexts/GachaContext";
+import LifeLedgerView from "./LifeLedgerView.jsx";
 
-export default function WalletLedgerView({ wallet, setWallet, characters, closeApp, openSettings, tr, formatMoney, displayWalletText, sanitizeUserImageUrl }) {
+export default function WalletLedgerView({ wallet, setWallet, characters, closeApp, openSettings, tr, formatMoney, displayWalletText, sanitizeUserImageUrl, showToast }) {
   const { crystals, crystalLedger, crystalLedgerReady } = useGacha();
   const [tab, setTab] = useState("ledger");
   const [filter, setFilter] = useState(null);
@@ -15,6 +16,12 @@ export default function WalletLedgerView({ wallet, setWallet, characters, closeA
     return [...characters].sort((a,b)=>(b.name||"").length-(a.name||"").length).find((c) => c.name && note.includes(c.name))?.id || null;
   };
   const txs = [...(wallet?.transactions || [])].filter((t) => !filter || txCharId(t) === filter).sort((a,b)=>(b.time||0)-(a.time||0));
+  // wallet.balance/transactions 是劇情錢包（角色轉帳、商店…）；wallet.life 是玩家自己的生活記帳，兩者互不扣抵。
+  const storyBalance = Number(wallet?.balance || 0);
+  const lifeBalance = Number(wallet?.life?.balance || 0);
+  const lifeTxCount = (wallet?.life?.transactions || []).length;
+  // 生活記帳允許負餘額，負號要放在錢號前面。
+  const money = (n) => `${n < 0 ? "-" : ""}$${formatMoney(Math.abs(n))}`;
   const crystalTransactions = [...(crystalLedger || [])].filter((entry) => crystalFilter === "all" || entry.type === crystalFilter);
   const crystalSourceIcon = { system: "💎", yunyin: "🏔️", couple: "💞", gacha: "🌸", furniture: "🪑", mailbox: "✉️", login: "🎁", other: "💎" };
   const dayKey = (time) => { const d=new Date(time); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
@@ -30,6 +37,7 @@ export default function WalletLedgerView({ wallet, setWallet, characters, closeA
   const monthMaxWeek=Math.max(1,...weekOut,...weekIn), memorials=monthTx.filter(t=>t.memorial), biggestWeek=biggest?Math.min(5,Math.floor((new Date(biggest.time).getDate()-1)/7)+1):0;
   const selectedName=filter?(characters.find(c=>c.id===filter)?.name||tr("角色","Character","キャラ","캐릭터")):tr("角色們","Characters","キャラたち","캐릭터들");
   const keywordTx=monthTx.find(t=>["生日","紅包","紀念","第一次"].some(k=>String(t.note||"").includes(k)));
+  if(tab==="life") return <LifeLedgerView wallet={wallet} setWallet={setWallet} onBack={()=>setTab("ledger")} tr={tr} formatMoney={formatMoney} showToast={showToast} />;
   if(tab==="month") return <div className="mp-page mp-wallet-month"><div className="mp-hdr"><div className="mp-back" onClick={()=>setTab("ledger")}>←</div><div><div className="mp-htitle">{tr("月結","Monthly","月まとめ","월결산")}</div><div className="mp-wallet-month-sub">{tr("這個月的我們","This month together","今月のふたり","이번 달의 우리")}</div></div></div><div className="mp-cm mp-wallet-month-body">
     <div className="mp-wfilter"><button className={`mp-wchip ${!filter?"active":""}`} onClick={()=>setFilter(null)}>{tr("全部","All","すべて","전체")}</button>{characters.map(c=><button key={c.id} className={`mp-wchip ${filter===c.id?"active":""}`} onClick={()=>setFilter(c.id)}>{c.name}</button>)}</div>
     <div className="mp-wmonth-nav"><button onClick={()=>setMonthOffset(v=>v-1)}>‹</button><span>{mDate.getFullYear()} · {mDate.getMonth()+1}{tr("月","","月","월")}</span><button disabled={monthOffset>=0} onClick={()=>setMonthOffset(v=>v+1)}>›</button></div>
@@ -41,12 +49,22 @@ export default function WalletLedgerView({ wallet, setWallet, characters, closeA
   return <div className="mp-page"><div className="mp-hdr"><div className="mp-back" onClick={closeApp}>←</div><div><div className="mp-htitle">{tr("錢包","Wallet","ウォレット","지갑")}</div><div style={{font:"10px var(--mp-hand,var(--mp-font))",color:"var(--mp-txt-l)"}}>{tr("我們的小帳本","Our little ledger","ふたりの家計簿","우리의 가계부")}</div></div><button className="mp-ibtn" style={{marginLeft:"auto"}} onClick={openSettings}>⚙</button></div>
   <div className="mp-cm">
     <div className="mp-bank">
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <span className="mp-bank-label">{tr("我的小金庫","My little vault","わたしの金庫","나의 금고")}</span>
-        <button className="mp-bank-edit" onClick={setBalance}>✎ {tr("設定餘額","Set balance","残高設定","잔액 설정")}</button>
+      <span className="mp-bank-label">{tr("總資產","Total assets","総資産","총자산")}</span>
+      <div className="mp-bank-amt">{money(storyBalance+lifeBalance)}</div>
+      <div className="mp-bank-sum">{tr("手機","Phone","スマホ","폰")} ${formatMoney(storyBalance)} ＋ {tr("生活","Life","生活","생활")} {money(lifeBalance)}</div>
+    </div>
+    {/* 兩本帳各自獨立：劇情扣款永遠不動生活帳戶，總資產只是顯示層加總。 */}
+    <div className="mp-acct-row">
+      <div className="mp-acct story">
+        <div className="mp-acct-top"><span>📱 {tr("手機錢包","Phone wallet","スマホ財布","폰 지갑")}</span><button className="mp-bank-edit" onClick={setBalance}>✎</button></div>
+        <b>${formatMoney(storyBalance)}</b>
+        <small onClick={()=>setTab("month")}>{mDate.getMonth()+1}{tr("月","","月","월")}・{tr("送出","Sent","送った","보냄")} ${formatMoney(expense)} ↔ {tr("收到","Received","もらった","받음")} ${formatMoney(income)}</small>
       </div>
-      <div className="mp-bank-amt">${formatMoney(wallet?.balance||0)}</div>
-      <div className="mp-bank-sum" onClick={()=>setTab("month")}>{mDate.getMonth()+1}{tr("月","","月","월")}・{tr("送出","Sent","送った","보냄")} ${formatMoney(expense)} ↔ {tr("收到","Received","もらった","받음")} ${formatMoney(income)}</div>
+      <button type="button" className="mp-acct life" onClick={()=>setTab("life")}>
+        <div className="mp-acct-top"><span>📒 {tr("生活記帳","Life ledger","生活家計簿","생활 가계부")}</span><span className="mp-crystal-link">›</span></div>
+        <b>{money(lifeBalance)}</b>
+        <small>{lifeTxCount?tr(`已記 ${lifeTxCount} 筆`,`${lifeTxCount} entries`,`${lifeTxCount} 件`,`${lifeTxCount}건`):tr("開始記帳","Start tracking","記帳を始める","기록 시작")}</small>
+      </button>
     </div>
     <button type="button" className={`mp-crystal-account ${tab==="crystals"?"active":""}`} onClick={()=>setTab("crystals")}>
       <span className="mp-crystal-icon">💎</span>

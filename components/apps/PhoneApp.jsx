@@ -1,6 +1,7 @@
 import React from "react";
 import { PHONE_APP_META, sanitizePhoneTheme, phoneWallpaperCss, mixHex, getReadableTextColor } from "../../utils/phoneAppGen";
 import { pseudoImageStyle } from "../../utils/pseudoImage";
+import { generateCityMap, categoryColor } from "../../utils/mapGen";
 import PseudoVoiceBubble from "../chat/PseudoVoiceBubble";
 
 const AI_APP_PAGES = ["gallery", "music", "map", "shop", "diary", "browser", "usage"];
@@ -387,24 +388,40 @@ export default function PhoneApp({
                 )}
 
                 {/* ===== 地圖 ===== */}
-                {data && appId === "map" && (
-                  <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
-                    <div style={{ height: 150, borderRadius: 16, border: `1px solid ${th.cardBorder}`, position: "relative", overflow: "hidden",
-                      background: `repeating-linear-gradient(0deg, ${th.cardBorder} 0 1px, transparent 1px 26px), repeating-linear-gradient(90deg, ${th.cardBorder} 0 1px, transparent 1px 26px), ${th.card}` }}>
-                      {data.places.slice(0, 3).map((p, i) => (
-                        <div key={i} style={{ position: "absolute", top: [34, 92, 60][i], left: [52, 170, 110][i], width: 10, height: 10, borderRadius: "50%", background: th.accent, boxShadow: `0 0 0 5px ${th.accent}38` }} />
-                      ))}
-                      <div style={{ position: "absolute", bottom: 6, right: 10, fontSize: 9, color: th.textSub, fontFamily: "monospace" }}>{tr("示意足跡", "footprints (illustrative)", "足跡イメージ", "발자취(예시)")}</div>
-                    </div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: th.textSub, letterSpacing: 1 }}>{tr("常去地點", "Frequent places", "よく行く場所", "자주 가는 곳")}</div>
-                    {data.places.map((p, i) => (
-                      <div key={i} style={{ ...cardS, borderRadius: 10, padding: "9px 12px", display: "flex", alignItems: "center", gap: 10 }}>
-                        <span style={{ fontSize: 16 }}>{p.emoji}</span>
-                        <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 11.5, color: th.text, fontWeight: 700 }}>{p.name}</div><div style={{ fontSize: 9.5, color: th.textSub, lineHeight: 1.45, whiteSpace: "normal", overflowWrap: "anywhere" }}>{p.note}</div></div>
+                {data && appId === "map" && (() => {
+                  const cityMap = generateCityMap(`${selectedChar.id}:${cache?.updatedAt || 0}`, data.places, data.theme);
+                  const v = cityMap.visuals;
+                  return (
+                    <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
+                      <div style={{ height: 190, borderRadius: 16, border: `1px solid ${th.cardBorder}`, overflow: "hidden" }}>
+                        <svg viewBox={`0 0 ${cityMap.w} ${cityMap.h}`} width="100%" height="100%" style={{ display: "block", background: v.bg }}>
+                          {cityMap.roads.map((r, i) => (
+                            <line key={i} x1={r.x1} y1={r.y1} x2={r.x2} y2={r.y2} stroke={r.tint || v.road} strokeWidth={r.main ? 4 : 2.2} strokeOpacity={r.tint ? 0.85 : 1} strokeLinecap="round" />
+                          ))}
+                          {cityMap.buildings.map((b, i) => (
+                            <rect key={i} x={b.x} y={b.y} width={b.w} height={b.h} rx={v.rx} fill={v.building} stroke={v.buildingBorder} strokeWidth={0.6} />
+                          ))}
+                          {cityMap.landmarks.map((l, i) => (
+                            <rect key={i} x={l.x} y={l.y} width={l.w} height={l.h} rx={v.rx * 1.6} fill={v.landmarkFill} stroke={v.landmarkBorder} strokeWidth={1.2} />
+                          ))}
+                          {cityMap.markers.map((m, i) => (
+                            <g key={i}>
+                              <circle cx={m.x} cy={m.y} r={4} fill={m.color} stroke="#fff" strokeWidth={1} />
+                              <circle cx={m.x} cy={m.y} r={7} fill="none" stroke={m.color} strokeOpacity={0.5} strokeWidth={1.5} />
+                            </g>
+                          ))}
+                        </svg>
                       </div>
-                    ))}
-                  </div>
-                )}
+                      <div style={{ fontSize: 11, fontWeight: 700, color: th.textSub, letterSpacing: 1 }}>{tr("常去地點", "Frequent places", "よく行く場所", "자주 가는 곳")}</div>
+                      {data.places.map((p, i) => (
+                        <div key={i} style={{ ...cardS, borderRadius: 10, padding: "9px 12px", display: "flex", alignItems: "center", gap: 10, borderLeft: `3px solid ${categoryColor(p.category)}` }}>
+                          <span style={{ fontSize: 16, width: 24, height: 24, borderRadius: "50%", display: "grid", placeItems: "center", background: `${categoryColor(p.category)}2e` }}>{p.emoji}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 11.5, color: th.text, fontWeight: 700 }}>{p.name}</div><div style={{ fontSize: 9.5, color: th.textSub, lineHeight: 1.45, whiteSpace: "normal", overflowWrap: "anywhere" }}>{p.note}</div></div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
 
                 {/* ===== 商店 ===== */}
                 {data && appId === "shop" && (

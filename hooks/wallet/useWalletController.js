@@ -21,8 +21,6 @@ export default function useWalletController({
   setTransferModalOpen,
   setChatHistory,
   setWalletGenLoading,
-  setWalletSettingsPage,
-  setWalletSettingsOpen,
   defaultWallet,
   characterWalletTxLimit,
   apiConfig,
@@ -449,12 +447,14 @@ ${roleProfile || "（無）"}`;
   const clearWalletData = () => {
     if ((transfers || []).some((item) => item.status === "pending")) {
       showToast(tr("目前有尚未完成的轉帳，暫時不能清除錢包資料", "Pending transfers must be resolved before wallet data can be cleared", "未処理の送金があるため、ウォレットデータを削除できません", "처리되지 않은 이체가 있어 지갑 데이터를 지울 수 없습니다"));
-      return;
+      return false;
     }
-    if (!window.confirm(tr("確定要清除錢包頁面的資料嗎？", "Clear the wallet page data?", "ウォレットページのデータを消去しますか？", "지갑 페이지 데이터를 지울까요?"))) return;
-    if (!window.confirm(tr("請再次確認：這只會清除錢包頁面內容，不會影響聊天室，確定要繼續嗎？", "Please confirm again: this only clears the wallet page content and won't affect chats. Continue?", "再確認してください。これはウォレットページの内容のみを消去し、チャットには影響しません。続けますか？", "다시 확인해주세요. 이것은 지갑 페이지만 지우며 채팅에는 영향을 주지 않습니다. 계속할까요?"))) return;
-    setWallet(defaultWallet); setCharacterWallets({}); setWalletSettingsPage("main"); setWalletSettingsOpen(false);
+    if (!window.confirm(tr("確定要清除錢包頁面的資料嗎？", "Clear the wallet page data?", "ウォレットページのデータを消去しますか？", "지갑 페이지 데이터를 지울까요?"))) return false;
+    if (!window.confirm(tr("請再次確認：這只會清除錢包頁面內容，不會影響聊天室，確定要繼續嗎？", "Please confirm again: this only clears the wallet page content and won't affect chats. Continue?", "再確認してください。これはウォレットページの内容のみを消去し、チャットには影響しません。続けますか？", "다시 확인해주세요. 이것은 지갑 페이지만 지우며 채팅에는 영향을 주지 않습니다. 계속할까요?"))) return false;
+    setWallet(defaultWallet);
+    setCharacterWallets({});
     showToast(tr("錢包資料已清除", "Wallet data cleared", "ウォレットデータを消去しました", "지갑 데이터를 지웠습니다"));
+    return true;
   };
 
   return {

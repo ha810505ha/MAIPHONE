@@ -1,6 +1,7 @@
 // 角色手機 AI App：預設主題、驗證工具、各 App prompt 與資料淨化
 import { gid, sanitizeText } from "./coreUtils";
 import { messagePlainText } from "./pseudoImage";
+import { resolveTheme, resolveCategory } from "./mapGen";
 
 export const DEFAULT_PHONE_THEME = {
   themeName: "預設",
@@ -95,11 +96,12 @@ export const PHONE_APP_META = {
 };
 
 // 共用上下文（角色資料 + 最近 10 句對話）
-export const buildPhonePromptContext = (char, chatHistory) => {
+export const buildPhonePromptContext = (char, chatHistory, playerName) => {
+  const player = sanitizeText(playerName || "", 40) || "玩家";
   const recent = ((chatHistory || {})[char.id] || []).slice(-10)
-    .map((m) => `${m.role === "user" ? "{{user}}" : char.name}: ${messagePlainText(m)}`).join("\n");
+    .map((m) => `${m.role === "user" ? player : char.name}: ${messagePlainText(m)}`).join("\n");
   const roleProfile = [char.description, char.personality, char.scenario].filter(Boolean).join("\n");
-  return `角色：${char.name}\n角色設定：\n${roleProfile || "（無）"}\n\n最近對話（只供參考語氣與近況，不要複述）：\n${recent || "（尚無）"}`;
+  return `角色：${char.name}\n玩家：${player}（生成內容若需提及玩家，一律直接使用這個名字，不要輸出 {{user}} 這種佔位符）\n角色設定：\n${roleProfile || "（無）"}\n\n最近對話（只供參考語氣與近況，不要複述）：\n${recent || "（尚無）"}`;
 };
 
 // G = 輸出語言指令；ctx = buildPhonePromptContext 結果
@@ -135,8 +137,8 @@ ${ctx}`;
   if (appId === "map") return `${G}
 
 請生成角色常去地點 JSON，輸出 JSON 且只能輸出 JSON。
-格式：{"places":[{"emoji":"🏪","name":"10字內","note":"24字內"}]}
-規則：3~5 個；note 透露生活習慣但不破壞懸念，必須是完整短句；不要 markdown。
+格式：{"theme":"ancient或modern或scifi或fantasy","places":[{"emoji":"🏪","category":"民生小店或獨處療癒或社交熱鬧或大型地標或隱密秘境","name":"10字內","note":"24字內"}]}
+規則：theme 依角色世界觀四選一；places 4~6 個，category 盡量涵蓋不同種類且不重複；note 透露生活習慣但不破壞懸念，必須是完整短句；不要 markdown。
 
 ${ctx}`;
   if (appId === "shop") return `${G}
@@ -172,8 +174,27 @@ ${ctx}`;
   return "";
 };
 
-// prevData 只有日記用（追加式）；其他 App 忽略
-export const sanitizePhoneAppData = (appId, parsed, prevData) => {
+// 保險：即使 prompt 已要求不要輸出 {{user}}/{{char}} 佔位符，模型仍可能因角色卡慣例而殘留，這裡統一替換掉。
+const deepReplaceTokens = (value, names) => {
+  if (typeof value === "string") {
+    return value.replace(/\{\{user\}\}/gi, names.playerName || "玩家").replace(/\{\{char\}\}/gi, names.charName || "");
+  }
+  if (Array.isArray(value)) return value.map((v) => deepReplaceTokens(v, names));
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const k of Object.keys(value)) out[k] = deepReplaceTokens(value[k], names);
+    return out;
+  }
+  return value;
+};
+
+// prevData 只有日記用（追加式）；names = { playerName, charName } 用來清掉殘留的 {{user}}/{{char}} 佔位符
+export const sanitizePhoneAppData = (appId, parsed, prevData, names = {}) => {
+  const result = sanitizePhoneAppDataRaw(appId, parsed, prevData);
+  return result ? deepReplaceTokens(result, names) : result;
+};
+
+const sanitizePhoneAppDataRaw = (appId, parsed, prevData) => {
   if (appId === "theme") return sanitizePhoneTheme(parsed);
   if (appId === "gallery") {
     const photos = (Array.isArray(parsed?.photos) ? parsed.photos : []).slice(0, 6).map((p) => ({
@@ -190,10 +211,15 @@ export const sanitizePhoneAppData = (appId, parsed, prevData) => {
     return nowPlaying || playlist.length ? { nowPlaying, playlist } : null;
   }
   if (appId === "map") {
-    const places = (Array.isArray(parsed?.places) ? parsed.places : []).slice(0, 5).map((p) => ({
-      emoji: sanitizeText(p?.emoji || "📍", 4), name: sanitizeText(p?.name || "", 12), note: sanitizeText(p?.note || "", 40),
+    const places = (Array.isArray(parsed?.places) ? parsed.places : []).slice(0, 6).map((p) => ({
+      emoji: sanitizeText(p?.emoji || "📍", 4),
+      category: resolveCategory(p?.category),
+      name: sanitizeText(p?.name || "", 12),
+      note: sanitizeText(p?.note || "", 40),
     })).filter((p) => p.name);
-    return places.length ? { places } : null;
+    if (!places.length) return null;
+    const hint = places.map((p) => p.name + p.note).join("");
+    return { theme: resolveTheme(parsed?.theme, hint), places };
   }
   if (appId === "shop") {
     const orders = (Array.isArray(parsed?.orders) ? parsed.orders : []).slice(0, 5).map((o) => ({

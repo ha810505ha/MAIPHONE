@@ -1,4 +1,10 @@
 import { fetchWithTimeout, isRequestCancelled, NETWORK_TIMEOUTS } from "../../utils/networkRequest.js";
+import {
+  loadMusicSdk,
+  MUSIC_PLAYER_READY_TIMEOUT_MS,
+  MUSIC_SDK_TIMEOUT_MS,
+  withMusicTimeout,
+} from "./musicSdkLoader.js";
 
 // Spotify Embed iframe API 播放（瀏覽器已登入 Spotify 可播全曲，否則 30 秒預覽）。
 // OAuth now-playing 屬之後的擴充，v1 先支援貼連結播放。
@@ -6,14 +12,21 @@ let controller = null;
 let cbs = {};
 let apiPromise = null;
 
-function ensureEmbedApi() {
+function ensureEmbedApi(options = {}) {
   if (window.__spEmbedApi) return Promise.resolve(window.__spEmbedApi);
   if (apiPromise) return apiPromise;
-  apiPromise = new Promise((resolve) => {
-    window.onSpotifyIframeApiReady = (api) => { window.__spEmbedApi = api; resolve(api); };
-    const script = document.createElement("script");
-    script.src = "https://open.spotify.com/embed/iframe-api/v1";
-    document.head.appendChild(script);
+  apiPromise = loadMusicSdk({
+    src: "https://open.spotify.com/embed/iframe-api/v1",
+    label: "Spotify",
+    callbackName: "onSpotifyIframeApiReady",
+    getReady: (api) => {
+      if (api) window.__spEmbedApi = api;
+      return window.__spEmbedApi || null;
+    },
+    timeoutMs: options.sdkTimeoutMs || MUSIC_SDK_TIMEOUT_MS,
+  }).catch((error) => {
+    apiPromise = null;
+    throw error;
   });
   return apiPromise;
 }
@@ -39,30 +52,57 @@ export async function trackFromUrl(url, options = {}) {
   return track;
 }
 
-export async function load(track, callbacks) {
+export async function load(track, callbacks, options = {}) {
   cbs = callbacks;
-  const api = await ensureEmbedApi();
+  const api = await ensureEmbedApi(options);
   if (controller) {
     controller.loadUri(track.id);
     controller.play();
     return;
   }
-  await new Promise((resolve) => {
-    api.createController(document.getElementById("sp-embed-host"), { uri: track.id, width: 1, height: 1 }, (created) => {
-      controller = created;
-      controller.addListener("playback_update", (event) => {
-        const data = event?.data || {};
-        cbs.onState?.(!data.isPaused);
-        if (data.duration) {
-          cbs.onProgress?.(data.position / data.duration);
-          if (data.position >= data.duration) cbs.onEnded?.();
+  const controllerReady = new Promise((resolve, reject) => {
+    try {
+      api.createController(document.getElementById("sp-embed-host"), { uri: track.id, width: 1, height: 1 }, (created) => {
+        if (!created) {
+          reject(new Error("Spotify 播放器建立失敗"));
+          return;
         }
-        lastDuration = data.duration || lastDuration;
+        controller = created;
+        controller.addListener("playback_update", (event) => {
+          const data = event?.data || {};
+          cbs.onState?.(!data.isPaused);
+          if (data.duration) {
+            cbs.onProgress?.(data.position / data.duration);
+            if (data.position >= data.duration) cbs.onEnded?.();
+          }
+          lastDuration = data.duration || lastDuration;
+        });
+        controller.addListener?.("playback_error", (event) => {
+          const error = new Error(event?.data?.message || "Spotify 播放器錯誤");
+          cbs.onState?.(false);
+          cbs.onError?.(error);
+        });
+        controller.play();
+        resolve();
       });
-      controller.play();
-      resolve();
-    });
+    } catch (error) {
+      reject(error);
+    }
   });
+  try {
+    await withMusicTimeout(controllerReady, {
+      label: "Spotify 播放器",
+      timeoutMs: options.playerTimeoutMs || MUSIC_PLAYER_READY_TIMEOUT_MS,
+      onTimeout: () => {
+        try { controller?.pause?.(); } catch (_) {}
+        controller = null;
+      },
+    });
+  } catch (error) {
+    try { controller?.pause?.(); } catch (_) {}
+    controller = null;
+    throw error;
+  }
 }
 
 let lastDuration = 0;

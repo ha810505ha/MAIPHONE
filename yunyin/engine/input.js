@@ -6,12 +6,16 @@ export function createInput(el, handlers) {
   let startX = 0, startY = 0, lastX = 0, lastY = 0;
 
   const down = (e) => {
+    // Canvas 自己處理完整的觸控流程；阻止瀏覽器在 pointerup 後再合成一次 click，
+    // 否則角色很快抵達互動點時，新開啟的面板可能接到那次 click 而立刻關閉。
+    e.preventDefault?.();
     active = true; dragging = false;
     startX = lastX = e.clientX; startY = lastY = e.clientY;
     el.setPointerCapture?.(e.pointerId);
   };
   const move = (e) => {
     if (!active) return;
+    e.preventDefault?.();
     if (!dragging && Math.hypot(e.clientX - startX, e.clientY - startY) > DRAG_THRESHOLD) dragging = true;
     if (dragging) {
       handlers.onDrag?.(e.clientX - lastX, e.clientY - lastY);
@@ -20,6 +24,7 @@ export function createInput(el, handlers) {
   };
   const up = (e) => {
     if (!active) return;
+    e.preventDefault?.();
     active = false;
     if (!dragging) {
       const rect = el.getBoundingClientRect();
@@ -27,15 +32,23 @@ export function createInput(el, handlers) {
     }
     dragging = false;
   };
+  const cancel = (e) => {
+    e?.preventDefault?.();
+    // pointercancel 代表瀏覽器或系統接管了手勢，不能視為一次有效點擊。
+    // 手機上把它交給 up() 會產生幽靈點擊，尤其容易在角色站在靈田時
+    // 重複觸發剛完成的收成／種植互動。
+    active = false;
+    dragging = false;
+  };
 
   el.addEventListener("pointerdown", down);
   el.addEventListener("pointermove", move);
   el.addEventListener("pointerup", up);
-  el.addEventListener("pointercancel", up);
+  el.addEventListener("pointercancel", cancel);
   return () => {
     el.removeEventListener("pointerdown", down);
     el.removeEventListener("pointermove", move);
     el.removeEventListener("pointerup", up);
-    el.removeEventListener("pointercancel", up);
+    el.removeEventListener("pointercancel", cancel);
   };
 }

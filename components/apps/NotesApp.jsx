@@ -5,8 +5,10 @@ import {
   loadFeatureEntity,
   saveFeatureEntity,
 } from "../../utils/indexedDbStorage";
+import { FEATURE_DATA_CHANGED_EVENT, featureDataEventIncludes } from "../../services/featureDataLifecycle";
+import { NOTES_ENTITY_KEY, upsertNoteDraft } from "../../utils/notesPersistence";
 
-const KEY = "ent_notes";
+const KEY = NOTES_ENTITY_KEY;
 const COLORS = [
   "#57434b",
   "#9b4d68",
@@ -71,40 +73,76 @@ export default function NotesApp({ onBack }) {
     [activeFormats, setActiveFormats] = useState({});
   const editorRef = useRef(null),
     selectionRef = useRef(null),
-    timerRef = useRef(null);
-  useEffect(() => {
-    let live = true;
-    loadFeatureEntity(KEY, [])
-      .then((data) => live && setNotes(Array.isArray(data) ? data : []))
-      .catch(() => live && setNotes([]));
-    return () => {
-      live = false;
-    };
-  }, []);
+    timerRef = useRef(null),
+    notesRef = useRef(notes),
+    draftRef = useRef(draft),
+    latestContentRef = useRef(null);
+  notesRef.current = notes;
+  draftRef.current = draft;
   const write = async (next) => {
+    notesRef.current = next;
     setNotes(next);
     await saveFeatureEntity(KEY, next);
   };
+  const persistCurrentDraft = ({ updateState = true } = {}) => {
+    const activeDraft = draftRef.current;
+    if (!activeDraft) return Promise.resolve(null);
+    const content = latestContentRef.current
+      ?? editorRef.current?.innerHTML
+      ?? activeDraft.content;
+    const result = upsertNoteDraft(notesRef.current, activeDraft, content);
+    notesRef.current = result.notes;
+    if (updateState) setNotes(result.notes);
+    return saveFeatureEntity(KEY, result.notes).then(() => result.item);
+  };
   const saveDraft = (content = null) => {
-    if (!draft) return;
+    if (!draftRef.current) return;
+    if (content !== null) latestContentRef.current = content;
     clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(async () => {
-      const item = {
-        ...draft,
-        title: draft.title.trim() || "未命名筆記",
-        content: content ?? editorRef.current?.innerHTML ?? draft.content,
-        updatedAt: Date.now(),
-      };
-      const next = (notes || []).some((n) => n.id === item.id)
-        ? notes.map((n) => (n.id === item.id ? item : n))
-        : [item, ...(notes || [])];
-      await write(next);
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      persistCurrentDraft().catch((error) => console.error("[notes] 自動儲存失敗", error));
     }, 450);
   };
   useEffect(() => {
     if (draft) saveDraft();
-    return () => clearTimeout(timerRef.current);
   }, [draft?.title, draft?.privacy]);
+  useEffect(() => {
+    let live = true;
+    const reload = () => {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+      latestContentRef.current = null;
+      draftRef.current = null;
+      setDraft(null);
+      loadFeatureEntity(KEY, [])
+        .then((data) => {
+          if (!live) return;
+          const next = Array.isArray(data) ? data : [];
+          notesRef.current = next;
+          setNotes(next);
+        })
+        .catch(() => {
+          if (!live) return;
+          notesRef.current = [];
+          setNotes([]);
+        });
+    };
+    const onFeatureDataChanged = (event) => {
+      if (featureDataEventIncludes(event, KEY)) reload();
+    };
+    reload();
+    window.addEventListener(FEATURE_DATA_CHANGED_EVENT, onFeatureDataChanged);
+    return () => {
+      live = false;
+      window.removeEventListener(FEATURE_DATA_CHANGED_EVENT, onFeatureDataChanged);
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+      if (draftRef.current) {
+        void persistCurrentDraft({ updateState: false }).catch((error) => console.error("[notes] 離開前儲存失敗", error));
+      }
+    };
+  }, []);
   useEffect(() => {
     const remember = () => {
       const s = window.getSelection();
@@ -215,7 +253,11 @@ export default function NotesApp({ onBack }) {
           <div
             className="mp-back"
             onClick={() => {
-              saveDraft();
+              clearTimeout(timerRef.current);
+              timerRef.current = null;
+              void persistCurrentDraft().catch((error) => console.error("[notes] 返回前儲存失敗", error));
+              draftRef.current = null;
+              latestContentRef.current = null;
               setDraft(null);
             }}
           >
@@ -377,7 +419,11 @@ export default function NotesApp({ onBack }) {
         </div>
       </div>
     );
-  const open = (note) => setDraft(note ? { ...note } : empty());
+  const open = (note) => {
+    const next = note ? { ...note } : empty();
+    latestContentRef.current = next.content || "";
+    setDraft(next);
+  };
   const remove = async (note) => {
     if (confirmLocalized("確定要刪除這篇筆記嗎？"))
       await write(notes.filter((n) => n.id !== note.id));

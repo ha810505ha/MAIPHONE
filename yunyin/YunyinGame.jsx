@@ -10,7 +10,7 @@ import { routeWorldTap } from "./world/interactionRouter";
 import { findInteractionPlan } from "./world/worldInteractions";
 import { loadSave, persistSave } from "./systems/save";
 import { settleExp, meditateDaily } from "./systems/cultivation";
-import { plotStage, harvestPlot, remainMin, ripenedDuring, cropById } from "./systems/farm";
+import { HARVEST_REPLANT_GUARD_MS, plotStage, harvestPlot, remainMin, replantPromptBlocked, ripenedDuring, cropById } from "./systems/farm";
 import { settleShelves, refreshOrders, furnaceDone, itemMeta, recipeById } from "./systems/shop";
 import { resetDungeonDaily } from "./systems/dungeon";
 import { spawnNpcs, updateNpcs } from "./systems/npc";
@@ -97,13 +97,20 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
   const homeEditorActionsRef = useRef({});
   const homePreviewControlsRef = useRef(null);
   const cameraZoomActionsRef = useRef({});
+  const farmAssistActionsRef = useRef({});
+  const playerActionRef = useRef(() => {});
   homeEditorRef.current = homeEditor;
   const markDirty = () => { setCoins(gameSave.coins); persistSave(gameSave); };
   const markDirtyRef = useRef(null);
   markDirtyRef.current = markDirty;
 
-  // 同伴台詞：面板與農務觸發點共用（從個人句庫/通用句庫抽，零 token）。回傳 { name, text } 或 null。
-  const onCompanion = (opts) => companionReact({ save: gameSave, characters, ...opts });
+  // 同伴台詞：面板與農務觸發點共用（從個人句庫/通用句庫抽，零 token）。
+  // 顯示邏輯（NPC 冒泡泡優先，不在場才用畫面提示框）直接包在這裡，所有呼叫點
+  // （包含 React 面板內，碰不到 npcBubbleRef 的地方）都自動顯示，不用各自重複。
+  const onCompanion = (opts) => companionReact({ save: gameSave, characters, ...opts }).then((line) => {
+    if (line && !npcBubbleRef.current(line.charId, line.text)) showCompanionNotice(line);
+    return line;
+  });
   // 效果層提供的「讓綁定角色的 NPC 冒泡泡」能力（角色不在場回傳 false）
   const npcBubbleRef = useRef(() => false);
   // 效果層提供的「即時更新在場 NPC 外觀」能力（設定面板編輯後立刻反映在地圖上）
@@ -185,6 +192,7 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
     };
     let pendingAction = null;                     // 抵達路徑終點後要做的事
     let pendingInteraction = null;                // 行走中的家具席位預約
+    let lastHarvest = null;                       // 防止站在田上時連續事件讓收成後立刻進入種植
     if (import.meta.env.DEV) window.__yy = { player, map, cam, save: gameSave, npcs, open: (type, title) => panelRef.current({ type, title }) }; // 開發用
     let ripple = null;                            // 點擊漣漪 { wx, wy, t0 }
     let viewW = 0, viewH = 0, dpr = 1, raf = 0, lastT = 0;
@@ -226,6 +234,23 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
       pendingAction = action || null;
       cam.follow = true;
       if (!path.length && pendingAction) { const a = pendingAction; pendingAction = null; a(); }
+    };
+
+    // 種植/收成沒有專屬動畫素材，借 pickup（蹲下拿取）當示意動作——面板（React）碰不到
+    // canvas 裡的活動角色，所以跟 farmAssistActionsRef 一樣開一個 ref 讓面板呼叫進來。
+    playerActionRef.current = (durationMs = 900) => {
+      beginActorAction(player, { action: "pickup", facing: player.facing, slotKey: null, renderOffset: { x: 0, y: 0 } }, performance.now(), durationMs);
+    };
+
+    farmAssistActionsRef.current = {
+      finish: (helper) => {
+        if (!helper) return;
+        helper.helper = false;
+        helper.path = [];
+        helper.interactionPlan = null;
+        stopActorAction(helper);
+        helper.waitUntil = performance.now() + 600;
+      },
     };
 
     const reservedInteractionSlots = () => {
@@ -504,20 +529,30 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
       const plot = gameSave.farm.plots[plotIdx];
       const stage = plotStage(plot);
       if (stage === null) {
-        panelRef.current({ type: "plant", title: "選擇要種的作物", plotIdx });
+        if (replantPromptBlocked(lastHarvest, plotIdx)) return;
+        const openedAt = Date.now();
+        panelRef.current({
+          type: "plant",
+          title: "選擇要種的作物",
+          plotIdx,
+          // 即使瀏覽器送出極快的重複點擊，也不讓開啟面板的手勢穿透到作物按鈕。
+          interactionReadyAt: openedAt + 180,
+          // 手機瀏覽器偶爾會在 Canvas 的 pointerup 後補送 click。
+          // 短暫禁止背景關閉，避免種植面板剛出現就閃退。
+          dismissReadyAt: openedAt + 500,
+        });
       } else if (stage === 3) {
         const r = harvestPlot(gameSave, plotIdx);
         if (r) {
+          lastHarvest = { plotIdx, until: Date.now() + HARVEST_REPLANT_GUARD_MS };
+          playerActionRef.current(900); // 借 pickup 當收成的示意動作
           toastRef.current(`${r.crop.icon} ${r.crop.name} ×${r.count} 入袋`);
           markDirtyRef.current();
-          // 同伴搭話：稀有收成必觸發，一般收成走 10 分鐘冷卻
+          // 同伴搭話：稀有收成必觸發，一般收成走 10 分鐘冷卻（顯示邏輯已包在 onCompanion 裡）
           const rare = r.crop.id === "xinglu";
           onCompanion({
             poolKey: rare ? "rareHarvest" : "harvest", force: rare,
             prompt: `玩家剛在靈田收成了 ${r.crop.name} ×${r.count}${rare ? "（非常稀有的作物）" : ""}。`,
-          }).then((line) => {
-            if (!line) return;
-            if (!npcBubbleRef.current(line.charId, line.text)) showCompanionNotice(line);
           });
         }
       } else {
@@ -748,8 +783,10 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
       <YunyinPanelHost
         panel={panel} setPanel={setPanel} gameSave={gameSave} markDirty={markDirty}
         onCompanion={onCompanion} showToast={showToast} addCrystals={addCrystals} crystals={crystals}
-        characters={characters} onAiGenerate={onAiGenerate} npcAppearanceRef={npcAppearanceRef} coins={coins}
+        characters={characters} onAiGenerate={onAiGenerate} npcAppearanceRef={npcAppearanceRef}
         onHomeRefresh={() => homeEditorActionsRef.current.refreshHome?.()}
+        onFarmAssist={(helper) => farmAssistActionsRef.current.finish?.(helper)}
+        onPlayerAction={(durationMs) => playerActionRef.current?.(durationMs)}
       />
       <YunyinToast message={toast} />
       <HomeEditorOverlay editor={homeEditor} catalog={Object.values(FURNITURE_CATALOG).filter((item) => gameSave.home.furnitureUnlocks[item.id])} previewControlsRef={homePreviewControlsRef} onSelect={(id) => homeEditorActionsRef.current.select?.(id)} onConfirmPreview={() => homeEditorActionsRef.current.confirmPreview?.()} onCancelPreview={() => homeEditorActionsRef.current.cancelPreview?.()} onClose={() => homeEditorActionsRef.current.close?.()} onExpand={() => setPanel({ type: "homeExpand", title: "擴建居所" })} onResidents={() => setPanel({ type: "homeResidents", title: "入住管理" })} />

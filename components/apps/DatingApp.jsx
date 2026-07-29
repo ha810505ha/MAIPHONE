@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import SwipeDeck from "../dating/SwipeDeck";
 import ProfileDetail from "../dating/ProfileDetail";
 import MatchCelebration from "../dating/MatchCelebration";
@@ -69,9 +69,11 @@ export default function DatingApp({ closeApp, dating, playerProfile, onPromoteTo
   const [celebration, setCelebration] = useState(null);
   const {
     state, deck, swipe, rewind, updateProfile, markMatchSeen, refreshAt, unseenMatches,
-    typing, openChatId, setOpenChatId, openChat, sendMessage, promoteToContact,
-    setBlocked, report, claimReportReward,
+    typingProfiles, openChatId, openChat, closeChat, sendMessage, promoteToContact,
+    setBlocked, report, claimReportReward, cancelAllReplies,
   } = dating;
+
+  useEffect(() => () => cancelAllReplies("Dating app left"), [cancelAllReplies]);
 
   // 配對是延遲熟成的，所以慶祝畫面在玩家下次打開 App 時補放。
   const pendingCelebration = celebration || (tab === "deck" && unseenMatches[0]) || null;
@@ -109,9 +111,9 @@ export default function DatingApp({ closeApp, dating, playerProfile, onPromoteTo
     return (
       <div className="mp-page dt-page">
         <DatingChat
-          entry={openEntry} relation={state.relations[openChatId]} typing={typing === openChatId}
+          entry={openEntry} relation={state.relations[openChatId]} typing={typingProfiles.has(openChatId)}
           blocked={!!state.blocked[openChatId]}
-          onBack={() => setOpenChatId(null)}
+          onBack={() => closeChat(openChatId)}
           onSend={(text) => sendMessage(openChatId, text)}
           onOpenProfile={() => setDetail(openEntry)}
           onOpenContact={() => onOpenContact?.(state.relations[openChatId]?.contactCharId)}

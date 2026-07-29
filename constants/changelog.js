@@ -1,6 +1,18 @@
 import { toSimplifiedChinese } from "../utils/i18n.js";
 
 const ZH_CHANGELOG = {
+  "1.2.7": [
+    "07/30 大型更新",
+    "玩家人格｜新增最多 8 組玩家人格，可保存不同姓名、性別與頭像；可在玩家 App、聊天列表及聊天室內快速切換，並持續顯示目前使用中的人格。",
+    "人格資料｜切換人格時會同步切換聊天、AI 記憶與狀態、角色手機資料、手機錢包、社群、交友及情侶空間；水晶、登入帳本、抽卡物品、世界書、日記、寵物與山莊仍為共用。",
+    "聊天室記憶｜聊天室設定新增長期記憶檢視，可直接查看目前聊天已生成的記憶。",
+    "世界書｜全域頁面專注於匯入、編輯及刪除；是否使用改由各聊天室控制。AUTO 關鍵字與 PIN 常駐只在該世界書及條目啟用時生效。",
+    "文字轉語音｜生成過的語音會儲存在裝置資料庫並重複使用，減少再次播放的等待時間；快取設有 200 筆／64 MB 自動清理上限。",
+    "生活記帳｜新增獨立生活帳本、收支分類、每月預算、明細與統計，並跟隨目前使用中的玩家人格。",
+    "多語言｜補齊玩家資料、聯絡人、登入獎勵、日曆、一起聽歌、情侶空間、App 名稱及聊天室設定的英文、日文與韓文介面。",
+    "介面改善｜簡化人格清單操作以降低誤刪風險，並改善夜色主題的示意圖片、語音氣泡及錢包配色與文字清晰度。",
+    "穩定性｜強化裝置資料庫寫入、功能資料切換、裝置密鑰、筆記、音樂與訊息狀態的安全性及穩定性。",
+  ],
   "1.2.6": [
     "07/27 大型更新",
     "角色｜線上與現實模式可分別設定開場白；匯入角色卡時也能選擇套用方式。",
@@ -99,6 +111,44 @@ const ZH_CHANGELOG = {
 };
 
 const TRANSLATED_CHANGELOG = {
+  "1.2.7": {
+    en: [
+      "07/30 Major Update",
+      "Player personas | Added up to 8 player personas with separate names, genders, and avatars. Switch quickly from the Player app, chat list, or chatroom while always seeing which persona is active.",
+      "Persona data | Switching personas now switches chats, AI memories and status, character-phone data, phone wallet, social, dating, and couple space. Crystals, login ledger, gacha items, lorebooks, diary, pets, and the manor remain shared.",
+      "Chat memories | Added long-term memory viewing to chat settings so generated memories can be reviewed without leaving the chatroom.",
+      "Lorebooks | The global page now focuses on import, editing, and deletion, while usage is controlled per chatroom. AUTO keyword and PIN entries only work when both their lorebook and entry are enabled.",
+      "Text to speech | Generated audio is stored in the device database and reused to reduce replay delays. The cache automatically cleans up beyond 200 entries or 64 MB.",
+      "Life ledger | Added a separate life ledger with income and expense categories, monthly budgets, transaction details, and statistics tied to the active player persona.",
+      "Languages | Expanded English, Japanese, and Korean support across Player Profile, Contacts, Login Rewards, Calendar, Listen Together, Couple Space, app names, and chat settings.",
+      "Interface | Simplified persona-list actions to reduce accidental deletion, and improved the clarity of simulated images, voice bubbles, wallet colors, and text in the Night theme.",
+      "Stability | Improved device-database writes, feature-data switching, device secrets, notes, music, and message-state safety.",
+    ],
+    ja: [
+      "07/30 大型アップデート",
+      "プレイヤー人格｜名前・性別・アバターを個別に保存できるプレイヤー人格を最大8件追加しました。プレイヤー App、チャット一覧、チャットルームから素早く切り替えられ、使用中の人格も常に確認できます。",
+      "人格データ｜人格を切り替えると、チャット、AI の記憶と状態、キャラスマホのデータ、スマホ財布、SNS、出会い、カップルスペースも切り替わります。クリスタル、ログイン台帳、ガチャアイテム、世界観、日記、ペット、山荘は共通です。",
+      "チャットの記憶｜チャット設定に長期記憶の表示を追加し、チャットルームを離れずに生成済みの記憶を確認できるようになりました。",
+      "世界観｜全体ページはインポート・編集・削除に整理し、使用するかどうかはチャットルームごとに設定します。AUTO キーワードと PIN 常駐は、世界観と条目の両方が有効な場合のみ動作します。",
+      "音声読み上げ｜生成済み音声を端末データベースに保存して再利用し、再生時の待ち時間を短縮しました。キャッシュは200件または64 MBを超えると自動整理されます。",
+      "生活家計簿｜収支カテゴリ、月間予算、明細、統計を備えた生活家計簿を追加し、使用中のプレイヤー人格に連動するようにしました。",
+      "多言語｜プレイヤー情報、連絡先、ログイン報酬、カレンダー、一緒に音楽、カップルスペース、App 名、チャット設定の英語・日本語・韓国語表示を拡充しました。",
+      "画面改善｜誤削除を防ぐため人格一覧の操作を整理し、夜色テーマのイメージ画像、音声吹き出し、財布の配色と文字の見やすさを改善しました。",
+      "安定性｜端末データベースへの書き込み、機能データの切り替え、端末シークレット、ノート、音楽、メッセージ状態の安全性と安定性を強化しました。",
+    ],
+    ko: [
+      "07/30 대규모 업데이트",
+      "플레이어 페르소나 | 이름, 성별, 아바타를 각각 저장할 수 있는 플레이어 페르소나를 최대 8개까지 추가했습니다. 플레이어 앱, 채팅 목록, 채팅방에서 빠르게 전환하고 현재 사용 중인 페르소나를 계속 확인할 수 있습니다.",
+      "페르소나 데이터 | 페르소나를 전환하면 채팅, AI 기억과 상태, 캐릭터 폰 데이터, 폰 지갑, 소셜, 데이팅, 커플 공간도 함께 전환됩니다. 크리스탈, 로그인 장부, 뽑기 아이템, 월드북, 일기, 펫, 산장은 공용으로 유지됩니다.",
+      "채팅 기억 | 채팅 설정에 장기 기억 보기를 추가하여 채팅방을 나가지 않고 생성된 기억을 확인할 수 있습니다.",
+      "월드북 | 전체 페이지는 가져오기, 편집, 삭제에 집중하도록 정리하고 실제 사용 여부는 채팅방별로 설정합니다. AUTO 키워드와 PIN 상주는 월드북과 항목이 모두 활성화된 경우에만 작동합니다.",
+      "텍스트 음성 변환 | 생성된 음성을 기기 데이터베이스에 저장하고 재사용하여 다시 재생할 때의 대기 시간을 줄였습니다. 캐시는 200개 또는 64 MB를 넘으면 자동으로 정리됩니다.",
+      "생활 장부 | 수입·지출 분류, 월 예산, 내역, 통계를 제공하는 생활 장부를 추가하고 현재 플레이어 페르소나에 연결했습니다.",
+      "다국어 | 플레이어 정보, 연락처, 로그인 보상, 달력, 함께 음악 듣기, 커플 공간, 앱 이름, 채팅 설정의 영어·일본어·한국어 지원을 보강했습니다.",
+      "화면 개선 | 실수로 삭제하지 않도록 페르소나 목록 동작을 단순화하고, 야간 테마의 예시 이미지, 음성 말풍선, 지갑 색상과 글자 가독성을 개선했습니다.",
+      "안정성 | 기기 데이터베이스 쓰기, 기능 데이터 전환, 기기 비밀정보, 노트, 음악, 메시지 상태의 안전성과 안정성을 강화했습니다.",
+    ],
+  },
   "1.2.2": {
     en: ["07/10 Update", "Yunyin Villa beta is now open!", "This release opens farming, expeditions, shops, and other systems so players can begin collecting resources and managing the villa.", "Character customization is not available yet and will continue to be updated in future versions.", "Adjusted several phone app screens where text or information could be cut off, improving display in Gallery, Music, Shop, Map, Browser, and Screen Time.", "Redesigned Wallet with character filters, monthly income and expense totals, weekly charts, and monthly recaps", "Improved chat layout and message display; Enter now creates a new line on mobile and messages are sent only with the Send button", "Unified layouts across themes, added Peach Mousse and a theme-effects toggle, and refined visual effects", "Improved Settings, Custom CSS, and overall app interface stability", "Expanded the character phone with themed apps and improved chat refresh and player contact notes", "Added a global interface font selector"],
     ja: ["07/10 更新", "「雲隠山荘」ベータ版を公開しました！", "今回は農場、秘境、ショップなどの遊びを先行公開し、資源収集と経営要素を体験できるようになりました。", "キャラクター調整機能は現在未公開で、今後のバージョンで引き続き更新予定です。", "スマホアプリの一部画面で情報が表示しきれない問題を調整し、アルバム、音楽、ショップ、地図、ブラウザ、使用履歴の表示を改善しました。", "キャラクター別フィルター、月間収支、週別グラフ、月次まとめを備えたウォレット画面に刷新", "チャットのレイアウトとメッセージ表示を改善し、モバイルでは Enter で改行、送信ボタンでのみ送信するよう変更", "各テーマのレイアウトを統一し、ピーチムースとテーマ演出スイッチを追加、エフェクト表示を改善", "設定、カスタム CSS、各アプリ画面の構成と安定性を改善", "テーマ対応アプリを備えたキャラクタースマホを拡張し、チャット更新とプレイヤー連絡先メモを改善", "全体のインターフェースフォント選択機能を追加"],

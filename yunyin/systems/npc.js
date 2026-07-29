@@ -46,8 +46,12 @@ export function spawnNpcs(save, map, characters = []) {
     if (bound) {
       const charId = save.settings.bindings[bound.seed];
       const character = characters.find((item) => item.id === charId);
-      const helperSpot = map.plots?.[0] || { x: spawn[0] + 1, y: spawn[1] };
-      actors.push({ seed: bound.seed, charId, helper: true, name: character?.name || bound.name, appearance: bound.appearance ? sanitizeAppearance(bound.appearance) : randomAppearance(bound.seed), x: helperSpot.x, y: helperSpot.y, px: helperSpot.x * TILE, py: helperSpot.y * TILE, path: [], stepT: 0, facing: "down", moving: false, waitUntil: Infinity, bubble: null, rand: rngOf(`${bound.seed}:farm-helper:${today}`) });
+      const firstPlot = map.plots?.[0];
+      const helperSpot = firstPlot
+        ? nearestWalkable(firstPlot.x - 1, firstPlot.y, map.w, map.h, (x, y) => npcBlocked(map, x, y))
+        : nearestWalkable(spawn[0] + 1, spawn[1], map.w, map.h, (x, y) => npcBlocked(map, x, y));
+      const waitingSpot = helperSpot || { x: spawn[0] + 1, y: spawn[1] };
+      actors.push({ seed: bound.seed, charId, helper: true, name: character?.name || bound.name, appearance: bound.appearance ? sanitizeAppearance(bound.appearance) : randomAppearance(bound.seed), x: waitingSpot.x, y: waitingSpot.y, px: waitingSpot.x * TILE, py: waitingSpot.y * TILE, path: [], stepT: 0, facing: "right", moving: false, waitUntil: Infinity, bubble: null, rand: rngOf(`${bound.seed}:farm-helper:${today}`) });
     }
     const idleCount = Math.floor(roll(`${save.createdAt}:${today}`, "farm-idle-count") * 3); // 0～2
     const idleSeeds = seeds.filter((def) => def !== bound).slice(0, idleCount);

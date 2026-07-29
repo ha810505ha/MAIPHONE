@@ -1,12 +1,13 @@
 import React, { Suspense, lazy } from "react";
 import { yunyinGenerateLinePack } from "../../services/yunyinAiBridge.js";
+import { loadMusicApp } from "../../utils/featurePreload.js";
 
 // App 畫面一律按需載入，避免首頁先解析玩家尚未開啟的完整功能。
 const PetHome = lazy(() => import("../../PetHome.jsx"));
 const GameCenter = lazy(() => import("./GameCenter.jsx"));
 const AnswerBookApp = lazy(() => import("./AnswerBookApp.jsx"));
 const NotesApp = lazy(() => import("./NotesApp.jsx"));
-const MusicApp = lazy(() => import("./MusicApp.jsx"));
+const MusicApp = lazy(loadMusicApp);
 const CoupleApp = lazy(() => import("./CoupleApp.jsx"));
 const CalendarApp = lazy(() => import("./CalendarApp.jsx"));
 const YunyinGame = lazy(() => import("../../yunyin/YunyinGame.jsx"));
@@ -40,9 +41,9 @@ export default function AppRouter({ currentApp, renderers, game, closeApp, t, tr
     );
     case "lbook": return withSuspense(<AnswerBookApp closeApp={closeApp} title={t("answerBook")} />);
     case "notebook": return withSuspense(<NotesApp onBack={closeApp} />);
-    case "music": return withSuspense(<MusicApp closeApp={closeApp} apiConfig={apiConfig} characters={game?.characters || []} playerProfile={playerProfile} />);
-    case "couple": return withSuspense(<CoupleApp closeApp={closeApp} characters={game?.characters || []} chatHistory={chatHistory || {}} setChatHistory={setChatHistory} playerProfile={playerProfile} apiConfig={apiConfig} />);
-    case "calendar": return withSuspense(<CalendarApp closeApp={closeApp} />);
+    case "music": return withSuspense(<MusicApp closeApp={closeApp} apiConfig={apiConfig} characters={game?.characters || []} playerProfile={playerProfile} tr={tr} />);
+    case "couple": return withSuspense(<CoupleApp closeApp={closeApp} characters={game?.characters || []} chatHistory={chatHistory || {}} setChatHistory={setChatHistory} playerProfile={playerProfile} apiConfig={apiConfig} tr={tr} />);
+    case "calendar": return withSuspense(<CalendarApp closeApp={closeApp} tr={tr} />);
     default: return null;
   }
 }

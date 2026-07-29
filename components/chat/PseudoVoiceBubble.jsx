@@ -76,7 +76,7 @@ export default function PseudoVoiceBubble({ pseudoVoice, compact = false, playba
         </span>
       )}
       {transcriptOpen && (
-        <span style={{ display: "block", margin: "2px 6px 6px", padding: "6px 8px", borderRadius: 8, background: "rgba(255,255,255,.22)", fontSize: 11, lineHeight: 1.5, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+        <span className="mp-pseudo-voice-transcript">
           {pseudoVoice.transcript}
         </span>
       )}

@@ -12,7 +12,7 @@ const CATEGORY_BY_APP = {
 const CATEGORY_ORDER = ["social", "character", "play", "tools"];
 const APP_LIBRARY_PAGE_SIZE = 20;
 
-export function AllAppsDrawer({ open, apps, placedIds, renderAppIcon, tr, onClose, onOpenApp, onApplyHome }) {
+export function AllAppsDrawer({ open, apps, placedIds, renderAppIcon, tr, onClose, onOpenApp, onApplyHome, onPreloadApp }) {
   const [query, setQuery] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -287,7 +287,11 @@ export function AllAppsDrawer({ open, apps, placedIds, renderAppIcon, tr, onClos
                 const selected = selectedIds.has(app.id);
                 return (
                   <div className={`mp-library-app ${selectionMode ? "is-selecting" : ""} ${selectionMode && selected ? "is-selected" : ""} ${selectionMode && placed && !selected ? "is-removing" : ""}`} key={app.id}>
-                    <button className="mp-library-open" onClick={() => selectionMode ? toggleSelection(app.id) : onOpenApp(app.id)}>
+                    <button className="mp-library-open"
+                      onPointerEnter={() => { void onPreloadApp?.(app.id); }}
+                      onPointerDown={() => { void onPreloadApp?.(app.id); }}
+                      onFocus={() => { void onPreloadApp?.(app.id); }}
+                      onClick={() => selectionMode ? toggleSelection(app.id) : onOpenApp(app.id)}>
                       <span className={`mp-icon-c ${app.iconUrl ? "mp-icon-c-img" : ""}`}>{renderAppIcon(app, app.iconUrl ? (app.iconSize || 56) : 26)}</span>
                       <span>{app.name}</span>
                     </button>
@@ -320,7 +324,7 @@ export function AllAppsDrawer({ open, apps, placedIds, renderAppIcon, tr, onClos
   );
 }
 
-export function FolderPanel({ folder, appById, renderAppIcon, tr, onClose, onRename, onOpenApp, onRemoveApp }) {
+export function FolderPanel({ folder, appById, renderAppIcon, tr, onClose, onRename, onOpenApp, onRemoveApp, onPreloadApp }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(folder?.name || "");
   if (!folder) return null;
@@ -344,7 +348,7 @@ export function FolderPanel({ folder, appById, renderAppIcon, tr, onClose, onRen
             if (!app) return null;
             return (
               <div className="mp-folder-app" key={appId}>
-                <button onClick={() => onOpenApp(appId)}>
+                <button onPointerEnter={() => { void onPreloadApp?.(appId); }} onPointerDown={() => { void onPreloadApp?.(appId); }} onFocus={() => { void onPreloadApp?.(appId); }} onClick={() => onOpenApp(appId)}>
                   <span className={`mp-icon-c ${app.iconUrl ? "mp-icon-c-img" : ""}`}>{renderAppIcon(app, app.iconUrl ? (app.iconSize || 56) : 26)}</span>
                   <span>{app.name}</span>
                 </button>

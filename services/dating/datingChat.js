@@ -58,12 +58,12 @@ export function buildDatingSystemPrompt(entry, datingProfile, playerName, catchU
   return catchUp ? base + offlineCatchUp(entry, catchUp.pendingCount, catchUp.awayMinutes) : base;
 }
 
-export async function generateDatingReply({ entry, messages, datingProfile, playerName, apiConfig, catchUp }) {
+export async function generateDatingReply({ entry, messages, datingProfile, playerName, apiConfig, catchUp, signal }) {
   const history = messages.slice(-30).map((item) => ({
     role: item.role === "user" ? "user" : "assistant",
     content: item.content,
   }));
-  const reply = await callAI(history, apiConfig, buildDatingSystemPrompt(entry, datingProfile, playerName, catchUp));
+  const reply = await callAI(history, apiConfig, buildDatingSystemPrompt(entry, datingProfile, playerName, catchUp), { signal });
   return String(reply || "").replace(/^[「"']|[」"']$/g, "").trim();
 }
 

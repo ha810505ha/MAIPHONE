@@ -63,6 +63,7 @@ globalThis.indexedDB = {
 };
 
 const { readEntity, saveFeatureEntities } = await import("../utils/indexedDbStorage.js");
+const { resetFeatureData } = await import("../services/featureBackupService.js");
 
 await saveFeatureEntities([
   ["ent_notes", [{ id: "old-note" }]],
@@ -77,4 +78,12 @@ await assert.rejects(() => saveFeatureEntities([
 
 assert.equal((await readEntity("ent_notes")).data[0].id, "old-note");
 assert.equal((await readEntity("ent_calendar")).data.events[0].id, "old-event");
-console.log("ok: feature backup writes roll back as one IndexedDB transaction");
+
+failOnKey = null;
+await resetFeatureData();
+assert.deepEqual((await readEntity("ent_notes")).data, []);
+assert.equal((await readEntity("ent_calendar")).data, null);
+assert.equal((await readEntity("ent_musicPlayer")).data, null);
+assert.equal((await readEntity("ent_persona_persona-default_dating")).data, null);
+
+console.log("ok: feature backup writes roll back atomically and reset every feature entity");

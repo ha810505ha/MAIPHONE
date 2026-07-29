@@ -1,5 +1,6 @@
 import { loadFeatureEntity, saveFeatureEntity } from "../../utils/indexedDbStorage";
 import { normalizeHomeState } from "../home/homeState";
+import { cropById } from "./farm.js";
 
 // 存檔：永遠不存進度百分比，只存時間戳＋參數，開場用公式回算離線進度。
 const KEY = "mali_yunyin_save_v1";
@@ -76,7 +77,8 @@ const normalizeSave = (raw) => {
   };
   normalized.ver = SAVE_VERSION;
   normalized.farm.plots.forEach((plot) => {
-    if (plot.cropId === "test_sprout") {
+    const plantedAt = Number(plot.plantedAt);
+    if (plot.cropId === "test_sprout" || (plot.cropId && (!cropById(plot.cropId) || !Number.isFinite(plantedAt) || plantedAt <= 0))) {
       plot.cropId = null;
       plot.plantedAt = null;
     }
