@@ -1,8 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { exportToastMessage } from "../../utils/exportFile";
 
-const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
-
 export default function useDataImportExport({ getExportableState, getRollbackState, downloadJsonFile, summarizeImportedData, validateImportedState, applyImportedState, showToast, tr, sanitizeText }) {
   const importRef = useRef(null);
   const [importing, setImporting] = useState(false);
@@ -23,9 +21,6 @@ export default function useDataImportExport({ getExportableState, getRollbackSta
     if (!file) return;
     setImporting(true);
     try {
-      if (file.size > MAX_IMPORT_BYTES) {
-        throw new Error(tr("備份檔案不可超過 25 MB", "Backup files cannot exceed 25 MB", "バックアップファイルは25MB以下にしてください", "백업 파일은 25MB를 초과할 수 없습니다"));
-      }
       const raw = JSON.parse(await file.text());
       validateImportedState?.(raw);
       setPreview({ fileName: file.name, fileSize: file.size, summary: summarizeImportedData(raw), raw });

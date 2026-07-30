@@ -15,6 +15,7 @@ import { buildSystemPrompt } from "./utils/characterParser";
 import { callAI } from "./services/aiService";
 import { fetchElevenLabsDefaultVoices, synthesizeSpeech } from "./services/ttsService";
 import { clearDeviceSecrets, loadAppState, saveAppState, loadFeatureEntity } from "./utils/indexedDbStorage";
+import { preserveMissingDeviceSecrets } from "./utils/deviceSecrets";
 import { buildCalendarPromptContext, takeCalendarChatReminder } from "./services/calendar/calendarPromptContext";
 import { loadFeatureBackup, resetFeatureData, restoreFeatureBackup, summarizeFeatureBackup } from "./services/featureBackupService";
 import { FEATURE_DATA_CHANGED_EVENT, featureDataEventIncludes } from "./services/featureDataLifecycle";
@@ -1965,7 +1966,7 @@ export default function MaliPhone() {
   const applyImportedAppState = async (incoming, { rollback = false } = {}) => {
     const src = incoming?.state && incoming?.format === "maliphone-app-state" ? incoming.state : incoming;
     if (!src || typeof src !== "object") throw new Error(tr("檔案內容不正確", "Invalid file content", "ファイル内容が正しくありません", "파일 내용이 올바르지 않습니다"));
-    const nextState = {
+    let nextState = {
       ...defaultAppState,
       characters: Array.isArray(src.characters) ? src.characters : [],
       activeCharId: src.activeCharId ?? null,
@@ -2014,6 +2015,13 @@ export default function MaliPhone() {
       activePersonaId: src.activePersonaId || null,
       localAppData: src.localAppData && typeof src.localAppData === "object" ? src.localAppData : {},
     };
+    // 一般備份刻意不包含敏感資料；匯入這類備份時保留本裝置現有 Key。
+    // 若備份確實包含 Key，非空的匯入值仍會優先套用。
+    nextState = preserveMissingDeviceSecrets(nextState, {
+      apiConfig,
+      apiPresets,
+      ttsConfig,
+    });
     applyLoadedAppState(nextState);
     setChatModes(nextState.chatModes);
     setChatBackgrounds(nextState.chatBackgrounds);
@@ -2625,7 +2633,7 @@ export default function MaliPhone() {
     }}
   />;
   const renderCharacters = () => <MaliPhoneContactsSurface
-    core={{ t, closeApp, sanitizeImage: sanitizeUserImageUrl, showToast }}
+    core={{ t, tr, closeApp, sanitizeImage: sanitizeUserImageUrl, showToast }}
     data={{ characters, setCharacters, activeCharId }}
     actions={{
       onAdd: () => { setAddCharacterModalSession((session) => session + 1); setEditingCharacter(null); setModal("addChar"); },
