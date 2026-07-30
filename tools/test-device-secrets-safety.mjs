@@ -84,6 +84,8 @@ const {
 const {
   extractDeviceSecrets,
   hydrateDeviceSecrets,
+  mergeDeviceSecrets,
+  preserveMissingDeviceSecrets,
   stripDeviceSecrets,
 } = await import("../utils/deviceSecrets.js");
 
@@ -134,6 +136,38 @@ assert.equal(stripped.apiConfig.apiKey, "");
 assert.deepEqual(stripped.apiPresets.map((preset) => preset.apiKey), ["", ""]);
 assert.equal(stripped.ttsConfig.elevenlabs.apiKey, "");
 assert.deepEqual(hydrateDeviceSecrets(stripped, extracted), legacyState);
+
+const emptyPlaceholderSecrets = {
+  version: 1,
+  apiKey: "",
+  apiPresetKeys: { "preset-1": "", "preset-2": "" },
+  ttsApiKeys: { elevenlabs: "", minimax: "" },
+};
+assert.deepEqual(
+  mergeDeviceSecrets(emptyPlaceholderSecrets, extracted),
+  extracted,
+  "1.2.7 的空密鑰占位不得覆蓋可遷移的舊 Key",
+);
+
+const importedWithoutSecrets = stripDeviceSecrets({
+  ...legacyState,
+  marker: "imported-without-secrets",
+});
+assert.deepEqual(
+  extractDeviceSecrets(preserveMissingDeviceSecrets(importedWithoutSecrets, legacyState)),
+  extracted,
+  "匯入一般備份時應保留本裝置現有 Key",
+);
+const importedWithAnotherKey = {
+  ...importedWithoutSecrets,
+  apiPresets: importedWithoutSecrets.apiPresets.map((preset, index) => ({
+    ...preset,
+    apiKey: index === 0 ? "imported-preset-key" : "",
+  })),
+};
+const preservedImport = preserveMissingDeviceSecrets(importedWithAnotherKey, legacyState);
+assert.equal(preservedImport.apiPresets[0].apiKey, "imported-preset-key");
+assert.equal(preservedImport.apiPresets[1].apiKey, secrets.preset2);
 
 const wrap = (data, rev = 1) => ({
   data,

@@ -114,20 +114,37 @@ function mergeDeviceSecrets(stored, legacy) {
     : {};
   const apiPresetKeys = { ...fallback.apiPresetKeys };
   for (const [key, value] of Object.entries(storedPresetKeys)) {
-    if (key) apiPresetKeys[key] = asSecretString(value);
+    if (!key) continue;
+    const storedValue = asSecretString(value);
+    // 1.2.7 初次啟動可能先建立一份空的裝置密鑰，再讀到仍含 Key 的
+    // 舊資料。空白占位不可蓋掉可復原的舊 Key。
+    if (storedValue || !apiPresetKeys[key]) apiPresetKeys[key] = storedValue;
   }
+  const storedApiKey = asSecretString(stored.apiKey);
+  const storedElevenlabsKey = asSecretString(storedTtsKeys.elevenlabs);
+  const storedMinimaxKey = asSecretString(storedTtsKeys.minimax);
   return normalizeDeviceSecrets({
-    apiKey: hasOwn(stored, "apiKey") ? stored.apiKey : fallback.apiKey,
+    apiKey: hasOwn(stored, "apiKey") && (storedApiKey || !fallback.apiKey)
+      ? storedApiKey
+      : fallback.apiKey,
     apiPresetKeys,
     ttsApiKeys: {
-      elevenlabs: hasOwn(storedTtsKeys, "elevenlabs")
-        ? storedTtsKeys.elevenlabs
+      elevenlabs: hasOwn(storedTtsKeys, "elevenlabs") && (storedElevenlabsKey || !fallback.ttsApiKeys.elevenlabs)
+        ? storedElevenlabsKey
         : fallback.ttsApiKeys.elevenlabs,
-      minimax: hasOwn(storedTtsKeys, "minimax")
-        ? storedTtsKeys.minimax
+      minimax: hasOwn(storedTtsKeys, "minimax") && (storedMinimaxKey || !fallback.ttsApiKeys.minimax)
+        ? storedMinimaxKey
         : fallback.ttsApiKeys.minimax,
     },
   });
+}
+
+function preserveMissingDeviceSecrets(state, fallbackState) {
+  const secrets = mergeDeviceSecrets(
+    extractDeviceSecrets(state),
+    extractDeviceSecrets(fallbackState),
+  );
+  return hydrateDeviceSecrets(stripDeviceSecrets(state), secrets);
 }
 
 function deviceSecretsEqual(left, right) {
@@ -152,5 +169,6 @@ export {
   hydrateDeviceSecrets,
   mergeDeviceSecrets,
   normalizeDeviceSecrets,
+  preserveMissingDeviceSecrets,
   stripDeviceSecrets,
 };

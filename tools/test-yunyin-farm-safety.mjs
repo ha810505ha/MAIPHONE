@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { createInput } from "../yunyin/engine/input.js";
+import { npcAtWorldPoint } from "../yunyin/world/npcHitTest.js";
 import { plotIndexNearPoint } from "../yunyin/world/spatialQueries.js";
 import { canDismissPanelFromBackdrop } from "../yunyin/ui/panelInteraction.js";
 import {
@@ -17,6 +18,7 @@ import {
 
 const NOW = 1_800_000_000_000;
 const npcSource = fs.readFileSync(new URL("../yunyin/systems/npc.js", import.meta.url), "utf8");
+const interactionRouterSource = fs.readFileSync(new URL("../yunyin/world/interactionRouter.js", import.meta.url), "utf8");
 
 const saveWith = ({ realmIdx = 0, coins = 100, plots, inventory = {} } = {}) => ({
   coins,
@@ -44,6 +46,36 @@ const saveWith = ({ realmIdx = 0, coins = 100, plots, inventory = {} } = {}) => 
 {
   assert.match(npcSource, /firstPlot\.x - 1/, "靈田協助角色應站在田邊，而不是站在第一格田上");
   assert.doesNotMatch(npcSource, /helperSpot = map\.plots\?\.\[0\]/, "協助角色不得再直接占用第一格靈田");
+}
+
+{
+  const helper = {
+    helper: true,
+    name: "測試助手",
+    x: 4,
+    y: 20,
+    px: 4 * 32,
+    py: 20 * 32,
+    action: null,
+  };
+  const bodyPoint = { x: helper.px + 16, y: helper.py - 16 };
+  assert.equal(npcAtWorldPoint([helper], bodyPoint.x, bodyPoint.y), helper, "NPC 身體上半部應可互動");
+  assert.equal(npcAtWorldPoint([helper], helper.px - 1, bodyPoint.y), undefined, "角色圖外不得誤觸 NPC");
+  assert.match(
+    interactionRouterSource,
+    /npcAtWorldPoint\(npcs,\s*worldX,\s*worldY\)\s*\|\|\s*npcAtTile/,
+    "世界點擊應優先以完整角色圖判定 NPC",
+  );
+
+  for (const scale of [0.5, 1, 1.5, 2]) {
+    const screenPoint = { x: bodyPoint.x * scale, y: bodyPoint.y * scale };
+    const convertedWorldPoint = { x: screenPoint.x / scale, y: screenPoint.y / scale };
+    assert.equal(
+      npcAtWorldPoint([helper], convertedWorldPoint.x, convertedWorldPoint.y),
+      helper,
+      `${scale}× 應能命中靈田協助 NPC 的完整角色圖`,
+    );
+  }
 }
 
 {

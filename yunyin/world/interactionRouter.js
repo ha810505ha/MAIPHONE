@@ -1,6 +1,7 @@
 import { TILE } from "../engine/tilemap";
 import { activePackLines } from "../systems/ai";
 import { npcAtTile, talkToNpc } from "../systems/npc";
+import { npcAtWorldPoint } from "./npcHitTest";
 import { plotUnlocked } from "../systems/farm";
 import { buildingAt, plotIndexAt, plotIndexNearPoint, portalAt } from "./spatialQueries";
 import { worldInteractionAt } from "./worldInteractions";
@@ -17,7 +18,7 @@ export function routeWorldTap({ screenX, screenY, camera, scale, map, player, np
       else openPanel({ type: "portal", title: `${portal.icon} ${portal.label}` });
     });
   };
-  const npc = npcAtTile(npcs, tileX, tileY);
+  const npc = npcAtWorldPoint(npcs, worldX, worldY) || npcAtTile(npcs, tileX, tileY);
   if (npc) {
     if (npc.helper) openPanel({ type: "farmAssist", title: `${npc.name}的靈田協助`, npc });
     else {
