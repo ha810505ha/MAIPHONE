@@ -169,11 +169,11 @@ export default function PhoneApp({
                 {/* App 格：聊天/錢包 + AI App×7 + 鎖定 App */}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10, marginTop: 2 }}>
                   <button className="mp-icon" style={{ background: "transparent", border: "none", padding: 0 }} onClick={openApp("chatlist")}>
-                    <div className="mp-icon-c mp-icon-c-img" style={{ background: th.card, borderColor: th.cardBorder }}>{renderAppIcon({ id: "chat", name: "聊天", icon: "💬", iconUrl: "./app-icons/chat.png?v=1.1.5" }, 44)}</div>
+                    <div className="mp-icon-c mp-icon-c-img" style={{ background: th.card, borderColor: th.cardBorder }}>{renderAppIcon({ id: "chat", name: "聊天", icon: "💬", iconUrl: "./app-icons/chat.webp?v=20260802" }, 44)}</div>
                     <span className="mp-icon-l" style={{ color: th.textSub }}>{t("chat")}</span>
                   </button>
                   <button className="mp-icon" style={{ background: "transparent", border: "none", padding: 0 }} onClick={openApp("wallet")}>
-                    <div className="mp-icon-c mp-icon-c-img" style={{ background: th.card, borderColor: th.cardBorder }}>{renderAppIcon({ id: "wallet", name: "錢包", icon: "💳", iconUrl: "./app-icons/wallet.png?v=1.1.5" }, 44)}</div>
+                    <div className="mp-icon-c mp-icon-c-img" style={{ background: th.card, borderColor: th.cardBorder }}>{renderAppIcon({ id: "wallet", name: "錢包", icon: "💳", iconUrl: "./app-icons/wallet.webp?v=20260802" }, 44)}</div>
                     <span className="mp-icon-l" style={{ color: th.textSub }}>{t("wallet")}</span>
                   </button>
                   {appTile("🖼️", tr("相簿", "Gallery", "アルバム", "앨범"), "gallery", false)}
