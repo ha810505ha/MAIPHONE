@@ -83,7 +83,7 @@ export default function GachaGame({ characters = [], onBack, onOpenChat }) {
       .sg-summon-stage .sg-carousel-copy{bottom:158px}
       .sg-summon-actions{position:absolute;left:0;right:0;bottom:0;z-index:2;padding:14px 20px calc(18px + env(safe-area-inset-bottom))}
       .sg-summon-actions .sg-draw-buttons{margin-top:0}
-      .sg-summon-actions .sg-odds{display:block;margin-top:12px;text-align:center;color:#fff;font-weight:700;opacity:.92;text-shadow:0 1px 6px rgba(0,0,0,.6)}
+      .sg-summon-actions .sg-odds{display:block;margin-top:10px;text-align:center;color:#fff;font-size:10px;font-weight:500;letter-spacing:.02em;opacity:.5;text-shadow:0 1px 4px rgba(0,0,0,.5)}
       .sg-summon-stage .sg-draw-single{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.55);color:#fff;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);text-shadow:0 1px 4px rgba(0,0,0,.45)}
       .sg-summon-stage .sg-draw-single small{opacity:.86}
       .sg-summon-stage .sg-draw-ten{background:linear-gradient(135deg,#ef8db0,#c8537b);border-color:transparent;color:#fff;box-shadow:0 10px 24px rgba(160,50,90,.5)}
