@@ -52,7 +52,7 @@ export function ThinkingPanel({ content, tr }) {
   const [open, setOpen] = React.useState(false);
   if (!content) return null;
   return (
-    <div className="mp-thinking" onClick={(event) => event.stopPropagation()} style={{ marginTop: 5, alignSelf: "flex-start", maxWidth: "88%" }}>
+    <div className="mp-thinking" onClick={(event) => event.stopPropagation()} style={{ marginBottom: 5, marginLeft: 2, alignSelf: "flex-start", maxWidth: "88%" }}>
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
