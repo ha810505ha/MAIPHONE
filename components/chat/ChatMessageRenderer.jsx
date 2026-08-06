@@ -1,5 +1,6 @@
 import React from "react";
 import { OnlineChatMessage, RealityChatMessage, SystemNoticeMessage, TransferMessage } from "./DirectMessageTypes";
+import { ThinkingPanel } from "./ChatMessageParts";
 
 export default function ChatMessageRenderer({
   messages,
@@ -77,6 +78,7 @@ export default function ChatMessageRenderer({
       highlighted: highlightedThoughtMessageId === message.id,
       displayContent,
       innerThought: canRenderInnerThought(message) ? renderInnerThought(character, message) : null,
+      thinking: message.thinking?.content ? <ThinkingPanel content={message.thinking.content} tr={tr} /> : null,
       onToggle: () => setActiveMessageId((previous) => previous === message.id ? null : message.id),
       onEdit: () => setMessageEditor({ id: message.id, content: message.content || "", mode: getMessageMode(message), pseudoVoice: !!message.pseudoVoice }),
     };
