@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { API_PROVIDERS, VERSION } from "../../constants/appConstants";
+import { API_PROVIDERS, VERSION, DEFAULT_LOCAL_BASE_URL, isLocalProvider } from "../../constants/appConstants";
 import { DEFAULT_APP_STATE } from "../../constants/defaultAppState";
 import { callAI, fetchAvailableModels } from "../../services/aiService";
 import { countUnreadMails } from "../../services/mailbox/mailboxService";
@@ -65,7 +65,39 @@ export default function MaliPhoneSettingsSurface({
 
   const getProviderBaseUrl = (providerId, fallback = "") => {
     const found = API_PROVIDERS.find((item) => item.id === providerId);
-    return providerId === "custom" ? fallback : (found?.baseUrl || fallback || "");
+    // custom 與本地皆讓玩家自己填網址：優先保留現有值，沒有才帶預設。
+    if (providerId === "custom") return fallback;
+    if (isLocalProvider(providerId)) return fallback || found?.baseUrl || DEFAULT_LOCAL_BASE_URL;
+    return found?.baseUrl || fallback || "";
+  };
+
+  // 切換本地/雲端時，記住上一個模式剛填好的設定，切回來時還原，避免玩家重打。
+  const modeStashRef = useRef({});
+  const switchProviderMode = (nextMode) => {
+    const currentMode = isLocalProvider(config.provider) ? "local" : "cloud";
+    if (nextMode === currentMode) return;
+    modeStashRef.current[currentMode] = {
+      provider: config.provider,
+      baseUrl: config.baseUrl,
+      apiKey: config.apiKey,
+      model: config.model,
+      location: config.location,
+    };
+    const stashed = modeStashRef.current[nextMode];
+    if (stashed) {
+      setTempConfig((current) => ({ ...current, ...stashed }));
+      return;
+    }
+    const target = nextMode === "local"
+      ? (API_PROVIDERS.find((item) => item.kind === "local") || API_PROVIDERS[0])
+      : (API_PROVIDERS.find((item) => item.id === "openai") || API_PROVIDERS[0]);
+    setTempConfig((current) => ({
+      ...current,
+      provider: target.id,
+      baseUrl: getProviderBaseUrl(target.id, ""),
+      apiKey: "",
+      model: target.models?.[0] || "",
+    }));
   };
 
   const applyApiPreset = (index) => {
@@ -339,6 +371,7 @@ export default function MaliPhoneSettingsSurface({
       onFetchModels: fetchLatestModels,
       testingConnection,
       onTest: testApiConnection,
+      onModeChange: switchProviderMode,
       onProviderChange: (providerId) => {
         const nextProvider = API_PROVIDERS.find((item) => item.id === providerId);
         setTempConfig((current) => ({

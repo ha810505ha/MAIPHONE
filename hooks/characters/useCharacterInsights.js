@@ -6,6 +6,7 @@ import {
   normalizeCharacterStatusOutput,
 } from "../../utils/characterStatus.js";
 import { messagePlainText } from "../../utils/pseudoImage";
+import { isLocalProvider } from "../../constants/appConstants";
 
 export default function useCharacterInsights({
   characters, chatHistory, memories, apiConfig, setCharacters, setMemories,
@@ -112,7 +113,7 @@ export default function useCharacterInsights({
     const existing = memories[char.id] || [];
     if (existing.length >= 30) { const m = "記憶已滿 30 條，請先刪除後再生成"; notify(m); return { status: "full", message: m }; }
     const isOllamaLocal = apiConfig.provider === "ollama" && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(apiConfig.baseUrl || "");
-    const providerNeedsApiKey = !(apiConfig.provider === "ollama" && isOllamaLocal);
+    const providerNeedsApiKey = !(isLocalProvider(apiConfig.provider) || isOllamaLocal);
     if (providerNeedsApiKey && !apiConfig.apiKey) { const m = "請先設定 API Key"; notify(m); return { status: "no_api_key", message: m }; }
     setGenLoading(true);
     try {

@@ -2,11 +2,12 @@ import { callAI } from "../aiService";
 import { loadFeatureEntity, saveFeatureEntity } from "../../utils/indexedDbStorage";
 import { inferCoupleInviteState } from "../../utils/coupleInviteState";
 import { translate } from "../../utils/i18n";
+import { isLocalProvider } from "../../constants/appConstants";
 
 const DAILY_KEY = "ent_coupleDaily";
 
 const clean = (value, limit = 2000) => String(value || "").replace(/<think>[\s\S]*?<\/think>/gi, "").trim().slice(0, limit);
-const hasApi = (apiConfig) => apiConfig?.provider && (apiConfig.apiKey || apiConfig.provider === "ollama");
+const hasApi = (apiConfig) => apiConfig?.provider && (apiConfig.apiKey || isLocalProvider(apiConfig.provider) || apiConfig.provider === "ollama");
 const charProfile = (character) => clean(character?.description || character?.personality || character?.prompt || character?.persona, 2400);
 const tx = (locale, zh, en, ja, ko) => translate(locale || "zh-TW", zh, en, ja, ko);
 const outputLanguageRule = (locale) => tx(
