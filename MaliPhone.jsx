@@ -165,6 +165,15 @@ export default function MaliPhone() {
   const [groupScenes, setGroupScenes] = useState(defaultAppState.groupScenes);
   const [chatTimeSettings, setChatTimeSettings] = useState(defaultAppState.chatTimeSettings);
   const [innerThoughtSettings, setInnerThoughtSettings] = useState(defaultAppState.innerThoughtSettings);
+  // 思想（思考鏈）顯示總開關：全域顯示偏好，用 localStorage 記住，預設開啟。
+  const [showThinking, setShowThinking] = useState(() => {
+    try { return localStorage.getItem("mali_show_thinking") !== "0"; } catch { return true; }
+  });
+  const toggleShowThinking = () => setShowThinking((value) => {
+    const next = !value;
+    try { localStorage.setItem("mali_show_thinking", next ? "1" : "0"); } catch {}
+    return next;
+  });
   const [proactiveSettings, setProactiveSettings] = useState(defaultAppState.proactiveSettings);
   const [proactiveUnread, setProactiveUnread] = useState(defaultAppState.proactiveUnread);
   const [expandedInnerThoughts, setExpandedInnerThoughts] = useState({});
@@ -2503,6 +2512,7 @@ export default function MaliPhone() {
         cancelNoticeLongPress, retryChatFromNotice, deleteChatMessage, applyUserPlaceholder,
         formatMoney, renderRealityText, renderInnerThought, canRenderInnerThought,
         renderCharacterVoiceAction, getCharacterVoiceBubblePlayback, setMessageEditor, transfers, onResolveTransfer: resolveTransfer,
+        showThinking,
       };
       const selectScreenshotBoundary = (messageId) => {
         if (!chatScreenshotSelection.active) return;
@@ -2552,6 +2562,7 @@ export default function MaliPhone() {
         directSettings={{
           mode: { selectedMode, pending: hasPendingMode, onChange: (mode) => setSelectedChatMode(currentChatChar.id, mode) },
           innerThought: { autoEnabled: isInnerThoughtAutoEnabled(currentChatChar.id), onToggleAuto: () => setInnerThoughtAutoEnabled(currentChatChar.id, !isInnerThoughtAutoEnabled(currentChatChar.id)), open: chatSettingsThoughtsOpen, setOpen: setChatSettingsThoughtsOpen, records: thoughtRecords, visibleRecords: visibleThoughtRecords, page: activeThoughtPage, pageCount: thoughtPageCount, setPage: setThoughtHistoryPage, onJump: jumpToThoughtMessage, locale: uiLanguage, sanitizeText },
+          thinking: { enabled: showThinking, onToggle: toggleShowThinking },
           memory: { memories: memories[currentChatChar.id] || [], applyUserPlaceholder, onEdit: (memory) => setMemoryEditor({ charId: currentChatChar.id, memoryId: memory.id, text: memory.text || "" }), onTogglePin: (memory) => togglePinMemory(currentChatChar.id, memory.id), onDelete: (memory) => deleteMemory(currentChatChar.id, memory.id) },
           proactive: { enabled: isProactiveEnabled(currentChatChar.id), frequency: getProactiveFrequency(currentChatChar.id), onToggle: () => setProactiveEnabled(currentChatChar.id, !isProactiveEnabled(currentChatChar.id)), onFrequencyChange: (frequency) => setProactiveFrequency(currentChatChar.id, frequency) },
           realTime: { enabled: isChatRealTimeEnabled(currentChatChar.id), onToggle: () => setChatRealTimeEnabled(currentChatChar.id, !isChatRealTimeEnabled(currentChatChar.id)) },
