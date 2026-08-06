@@ -20,14 +20,34 @@ const DEFAULT_ALLOWED_ORIGINS = [
   "https://ha810505ha.github.io",
 ];
 
-const corsHeaders = (request, env) => {
-  const origin = request.headers.get("Origin") || "";
+// 原生 App（Capacitor / Ionic）的 WebView 來源不是固定字串：
+//   Android 預設 https://localhost、iOS 預設 capacitor://localhost、
+//   舊版可能是 ionic://localhost 或帶埠號。全部的 hostname 都是 localhost，
+//   所以只要來源主機是 localhost / 127.0.0.1 就一律放行（仍需有效的 API 金鑰才打得到上游）。
+const isLoopbackOrigin = (origin) => {
+  try {
+    const { hostname } = new URL(origin);
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]" || hostname === "::1";
+  } catch (_) {
+    return false;
+  }
+};
+
+const resolveAllowOrigin = (origin, env) => {
+  if (!origin) return "";
   const configured = (env.ALLOWED_ORIGINS || "")
     .split(",")
     .map((x) => x.trim())
     .filter(Boolean);
   const allowedOrigins = [...new Set([...DEFAULT_ALLOWED_ORIGINS, ...configured])];
-  const allowOrigin = allowedOrigins.includes(origin) ? origin : "";
+  if (allowedOrigins.includes(origin)) return origin;
+  if (isLoopbackOrigin(origin)) return origin;
+  return "";
+};
+
+const corsHeaders = (request, env) => {
+  const origin = request.headers.get("Origin") || "";
+  const allowOrigin = resolveAllowOrigin(origin, env);
   return {
     ...(allowOrigin ? { "Access-Control-Allow-Origin": allowOrigin } : {}),
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
