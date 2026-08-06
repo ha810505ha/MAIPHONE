@@ -30,6 +30,7 @@ export default function ChatMessageRenderer({
   screenshotSelection,
   transfers,
   onResolveTransfer,
+  showThinking,
   tr,
 }) {
   const wrapSelectable = (message, content) => {
@@ -78,7 +79,7 @@ export default function ChatMessageRenderer({
       highlighted: highlightedThoughtMessageId === message.id,
       displayContent,
       innerThought: canRenderInnerThought(message) ? renderInnerThought(character, message) : null,
-      thinking: message.thinking?.content ? <ThinkingPanel content={message.thinking.content} tr={tr} /> : null,
+      thinking: (showThinking !== false && message.thinking?.content) ? <ThinkingPanel content={message.thinking.content} tr={tr} /> : null,
       onToggle: () => setActiveMessageId((previous) => previous === message.id ? null : message.id),
       onEdit: () => setMessageEditor({ id: message.id, content: message.content || "", mode: getMessageMode(message), pseudoVoice: !!message.pseudoVoice }),
     };
