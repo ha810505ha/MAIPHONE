@@ -1,6 +1,7 @@
 import { applyCoupleInviteReply, applyCoupleTaskChatState, buildCoupleChatContext, extractCoupleDirectives } from "../couple/coupleDailyService";
 import { PHOTO_RULE_CONTEXT, extractPhotoDirectives } from "../../utils/pseudoImage";
 import { VOICE_MESSAGE_RULE_CONTEXT, extractPseudoVoiceDirectives } from "../../utils/pseudoVoice";
+import { extractThinking } from "../../utils/chatMessageUtils";
 
 export async function generateDirectAssistant({ cid, char, nextForDisplay, selectedMode, um, text, includeRealTime = true, signal }, context) {
   const { formatMessagesForPrompt, pickMemoriesForPrompt, pickLorebookEntriesForPrompt, characterWallets, formatMoney, tr, getPlayerContextBlock, getCalendarContext, getCalendarReminderContext, estimateTokens, totalContextTokenLimit, apiConfig, applyUserPlaceholder, buildChatSystemPrompt, callAI, sanitizeText, normalizeRealityReply, realityChatTextLimit, normalizeAssistantReply, extractTransferDirective, extractTransferResponseDirective, stripModeLabel, stripInternalBlocks, splitAssistantBubbles, createId, wait, setChatHistory, applyCharacterTransferToPlayer, transfers, handleCharacterTransferDecision, characterBlockStates, buildCharacterBlockPromptContext, buildCharacterBlockCapabilityContext, extractCharacterBlockDirective, applyCharacterBlockDirective, isInnerThoughtAutoEnabled, generateInnerThought } = context;
@@ -119,6 +120,8 @@ export async function generateDirectAssistant({ cid, char, nextForDisplay, selec
       const sysP = applyUserPlaceholder(buildChatSystemPrompt(char, boundedContext, apiConfig.model, selectedMode));
       const reply = await callAI(finalHist, apiConfig, sysP, { signal });
       if (requestCancelled()) return;
+      // 攔截思考鏈（角色真心話）；顯示路徑照舊會被 stripInternalBlocks 清乾淨，只是這裡先留一份。
+      const replyThinking = extractThinking(reply).thinking;
       const blockDirective = extractCharacterBlockDirective?.(reply) || { action: null, text: reply };
       const coupleDirective = extractCoupleDirectives(blockDirective.text);
       const cleanReplyRaw = selectedMode === "reality" ? sanitizeText(normalizeRealityReply(coupleDirective.text), realityChatTextLimit) : normalizeAssistantReply(coupleDirective.text);
@@ -184,6 +187,8 @@ export async function generateDirectAssistant({ cid, char, nextForDisplay, selec
         mode: selectedMode,
         interceptedByBlock: selectedMode === "online" && characterBlockStates?.[cid]?.blocked === true,
         time: Date.now(),
+        // 思考鏈掛在整組回覆的第一則氣泡上，只顯示一次。
+        ...(index === 0 && replyThinking ? { thinking: { content: replyThinking } } : {}),
       }));
       let lastAssistantMessage = null;
       for (let i = 0; i < bubbles.length; i++) {
