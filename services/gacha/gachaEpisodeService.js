@@ -1,5 +1,6 @@
 import { callAI } from "../aiService";
 import { fetchWithTimeout, isRequestCancelled, NETWORK_TIMEOUTS } from "../../utils/networkRequest.js";
+import { isLocalProvider } from "../../constants/appConstants";
 
 const clean = (value, limit = 6000) => String(value || "").replace(/<think>[\s\S]*?<\/think>/gi, "").trim().slice(0, limit);
 const OPENING_OUTPUT_MAX_TOKENS = 2000;
@@ -12,7 +13,7 @@ const fallbackOpening = (episode) => ({
 });
 
 export async function generateGachaEpisodeOpening({ episode, character, playerProfile, apiConfig, recentMessages = [], outputLanguage = "繁體中文", signal }) {
-  if (!apiConfig?.provider || (!apiConfig.apiKey && apiConfig.provider !== "ollama")) return fallbackOpening(episode);
+  if (!apiConfig?.provider || (!apiConfig.apiKey && !isLocalProvider(apiConfig.provider) && apiConfig.provider !== "ollama")) return fallbackOpening(episode);
   const recent = recentMessages.filter((message) => ["user", "assistant"].includes(message?.role)).slice(-16).map((message) => `${message.role === "user" ? "玩家" : "角色"}：${clean(message.content, 320)}`).join("\n");
   const modeRule = episode.mode === "reality"
     ? "玩家親手送出心意。旁白描寫同一場景中的交付瞬間；角色開場可以包含一句台詞與極短動作。"
@@ -95,7 +96,7 @@ async function streamCompatibleChat(messages, apiConfig, systemPrompt, onChunk, 
     }
     return output.trim();
   }
-  if (!["openai", "openrouter", "deepseek", "grok", "ollama"].includes(provider)) return null;
+  if (!isLocalProvider(provider) && !["openai", "openrouter", "deepseek", "grok", "ollama"].includes(provider)) return null;
   const headers = { "Content-Type": "application/json" };
   if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
   if (provider === "openrouter") headers["HTTP-Referer"] = "https://maliphone.app";
@@ -125,7 +126,7 @@ async function streamCompatibleChat(messages, apiConfig, systemPrompt, onChunk, 
 }
 
 export async function generateGachaEpisodeReply({ episode, character, playerProfile, apiConfig, nextUserMessage, onChunk, forceEnding = false, signal }) {
-  if (!apiConfig?.provider || (!apiConfig.apiKey && apiConfig.provider !== "ollama")) throw new Error("請先在設定中完成 AI API 設定");
+  if (!apiConfig?.provider || (!apiConfig.apiKey && !isLocalProvider(apiConfig.provider) && apiConfig.provider !== "ollama")) throw new Error("請先在設定中完成 AI API 設定");
   const modeLabel = episode.mode === "reality" ? "現實見面" : "線上聊天／寄送禮物";
   const currentTurn = Math.min(20, Math.max(1, Number(episode.playerMessageCount || 0) + 1));
   const storyPhase = forceEnding

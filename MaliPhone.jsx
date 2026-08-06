@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect, useRef } from "react";
-import { VERSION, DEFAULT_APPS, DOCK_APPS } from "./constants/appConstants";
+import { VERSION, DEFAULT_APPS, DOCK_APPS, isLocalProvider } from "./constants/appConstants";
 import { DATING_ENABLED } from "./config/featureFlags";
 import { getChangelog } from "./constants/changelog";
 import { createSocialFeedHelpers } from "./services/social/socialFeedHelpers";
@@ -2088,7 +2088,7 @@ export default function MaliPhone() {
   });
   const canUseCurrentProvider = () => {
     const isOllamaLocal = apiConfig.provider === "ollama" && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(apiConfig.baseUrl || "");
-    const providerNeedsApiKey = !(apiConfig.provider === "ollama" && isOllamaLocal);
+    const providerNeedsApiKey = !(isLocalProvider(apiConfig.provider) || isOllamaLocal);
     return !providerNeedsApiKey || !!apiConfig.apiKey;
   };
   const { refreshCharacterStatus, togglePinMemory, deleteMemory, generateMemory } = useCharacterInsights({

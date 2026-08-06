@@ -1,6 +1,13 @@
 import { fetchWithTimeout, NETWORK_TIMEOUTS } from "../utils/networkRequest.js";
+import { isLocalProvider } from "../constants/appConstants.js";
 
 const NVIDIA_PROXY_BASE_URL = "https://orange-butterfly-8390.d778105.workers.dev/nvidia";
+
+// Ollama 也可能被玩家指向本機（localhost / 127.0.0.1），此時同樣免 API Key。
+const LOCALHOST_URL_RE = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i;
+const isLocalConnection = (provider, baseUrl) => (
+  isLocalProvider(provider) || (provider === "ollama" && LOCALHOST_URL_RE.test(baseUrl || ""))
+);
 
 const resolveRequestBaseUrl = (provider, configuredBaseUrl) => (
   provider === "nvidia" ? NVIDIA_PROXY_BASE_URL : configuredBaseUrl
@@ -14,8 +21,7 @@ async function callAI(messages, apiConfig, sysPrompt, options = {}) {
     timeoutMs: options.timeoutMs || NETWORK_TIMEOUTS.AI,
   });
   const cleanBaseUrl = (baseUrl || "https://aiplatform.googleapis.com/v1").replace(/\/+$/, "");
-  const isOllamaLocal = provider === "ollama" && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(baseUrl || "");
-  const providerNeedsApiKey = !(provider === "ollama" && isOllamaLocal);
+  const providerNeedsApiKey = !isLocalConnection(provider, baseUrl);
   if (providerNeedsApiKey && !apiKey) throw new Error("請先設定 API Key");
 
   const sys = sysPrompt || "你是一位自然、友善、穩定的 AI 角色助理。";
@@ -147,7 +153,8 @@ async function callAI(messages, apiConfig, sysPrompt, options = {}) {
   }
 
   const headers = { "Content-Type": "application/json" };
-  if (providerNeedsApiKey) headers.Authorization = `Bearer ${apiKey}`;
+  // 本地免 key，但若玩家對受保護的本地/通道端點填了 key，仍要帶上。
+  if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
   if (provider === "openrouter") headers["HTTP-Referer"] = "https://maliphone.app";
 
   const apiMsgs = [
@@ -206,9 +213,36 @@ async function fetchAvailableModels(apiConfig, options = {}) {
     timeoutMs: options.timeoutMs || NETWORK_TIMEOUTS.METADATA,
   });
   const cleanBaseUrl = (baseUrl || "https://aiplatform.googleapis.com/v1").replace(/\/+$/, "");
-  const isOllamaLocal = provider === "ollama" && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(baseUrl || "");
-  const providerNeedsApiKey = !(provider === "ollama" && isOllamaLocal);
+  const providerNeedsApiKey = !isLocalConnection(provider, baseUrl);
   if (providerNeedsApiKey && !apiKey) throw new Error("請先設定 API Key");
+
+  // 本地模型：先試 OpenAI 相容的 /v1/models（LM Studio、llama.cpp…），
+  // 再退回 Ollama 原生的 /api/tags，兩個端點都涵蓋。
+  if (isLocalProvider(provider)) {
+    const cleanBase = (baseUrl || "").replace(/\/+$/, "");
+    const candidates = [
+      `${cleanBase}/models`,
+      `${cleanBase.replace(/\/v1$/i, "")}/api/tags`,
+    ];
+    const localHeaders = {};
+    if (apiKey) localHeaders.Authorization = `Bearer ${apiKey}`;
+    for (const url of candidates) {
+      try {
+        const res = await request(url, { headers: localHeaders });
+        const data = await res.json();
+        if (!res.ok) continue;
+        if (Array.isArray(data?.data)) {
+          const list = data.data.map((m) => m.id).filter(Boolean);
+          if (list.length) return list;
+        }
+        if (Array.isArray(data?.models)) {
+          const list = data.models.map((m) => m.name).filter(Boolean);
+          if (list.length) return list;
+        }
+      } catch (_) {}
+    }
+    throw new Error("本地模型抓取失敗，請確認伺服器已啟動，且允許此網站跨來源連線（CORS）");
+  }
 
   if (provider === "ollama" && /ollama\.com/i.test(baseUrl || "")) {
     const cleanBase = (baseUrl || "").replace(/\/+$/, "");

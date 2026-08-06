@@ -1,7 +1,8 @@
 import { callAI } from "../aiService";
+import { isLocalProvider } from "../../constants/appConstants";
 
 const clean = (value, limit = 2000) => String(value || "").replace(/<think>[\s\S]*?<\/think>/gi, "").trim().slice(0, limit);
-const hasApi = (apiConfig) => apiConfig?.provider && (apiConfig.apiKey || apiConfig.provider === "ollama");
+const hasApi = (apiConfig) => apiConfig?.provider && (apiConfig.apiKey || isLocalProvider(apiConfig.provider) || apiConfig.provider === "ollama");
 const charProfile = (character) => clean(character?.description || character?.personality || character?.prompt || character?.persona, 2000);
 const decodeJsonText = (value) => String(value || "")
   .replace(/\\"/g, "\"")

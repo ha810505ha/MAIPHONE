@@ -1,4 +1,5 @@
 import { callAI } from "../aiService";
+import { isLocalProvider } from "../../constants/appConstants";
 
 const clean = (value, limit = 6000) => String(value || "").replace(/<think>[\s\S]*?<\/think>/gi, "").trim().slice(0, limit);
 
@@ -14,7 +15,7 @@ const fallbackMemory = (episode) => ({
 //   monologue 角色自白（第一人稱，像寫在卡片背面的話）
 //   memoryText 注入日常聊天 prompt 用的長期記憶
 export async function generateSpecialMemorySummary({ episode, character, playerProfile, apiConfig }) {
-  if (!apiConfig?.provider || (!apiConfig.apiKey && apiConfig.provider !== "ollama")) return fallbackMemory(episode);
+  if (!apiConfig?.provider || (!apiConfig.apiKey && !isLocalProvider(apiConfig.provider) && apiConfig.provider !== "ollama")) return fallbackMemory(episode);
   const playerName = clean(playerProfile?.name || "玩家", 100);
   const transcript = (episode.messages || [])
     .filter((message) => ["user", "assistant", "narrator"].includes(message?.role))
