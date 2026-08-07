@@ -1,20 +1,22 @@
 import React from "react";
 import { sortDisplayCharacters } from "../../utils/characterSorting";
+import { lazyWithRetry } from "../../utils/lazyWithRetry.js";
 
-const PlayerProfileApp = React.lazy(() => import("./PlayerProfileApp.jsx"));
-const DatingApp = React.lazy(() => import("./DatingApp.jsx"));
-const ContactsApp = React.lazy(() => import("./ContactsApp.jsx"));
-const SocialApp = React.lazy(() => import("./SocialApp.jsx"));
-const LorebookApp = React.lazy(() => import("./LorebookApp.jsx"));
-const StatusApp = React.lazy(() => import("./StatusApp.jsx"));
+const PlayerProfileApp = lazyWithRetry(() => import("./PlayerProfileApp.jsx"));
+const DatingApp = lazyWithRetry(() => import("./DatingApp.jsx"));
+const ContactsApp = lazyWithRetry(() => import("./ContactsApp.jsx"));
+const SocialApp = lazyWithRetry(() => import("./SocialApp.jsx"));
+const LorebookApp = lazyWithRetry(() => import("./LorebookApp.jsx"));
+const StatusApp = lazyWithRetry(() => import("./StatusApp.jsx"));
 
-export function MaliPhoneStatusSurface({ actions, core, data, state }) {
+export function MaliPhoneStatusSurface({ actions, core, data, state, memoryPrompt }) {
   return (
     <StatusApp
       {...core}
       {...data}
       {...state}
       {...actions}
+      memoryPrompt={memoryPrompt}
       characters={sortDisplayCharacters(data.characters)}
     />
   );

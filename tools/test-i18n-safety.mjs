@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { getChangelog } from "../constants/changelog.js";
 import { UI_TEXT } from "../constants/uiText.js";
 import {
@@ -45,3 +48,28 @@ assert.ok(simplifiedChangelog.some((line) => line.includes("聊天室")));
 assert.ok(simplifiedChangelog.some((line) => line.includes("系统邮箱")));
 
 console.log("ok: zh-CN conversion, overrides, UI text, and changelog fallback stay connected");
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const appDirectory = path.join(repoRoot, "components", "apps");
+const nonLocalizedApps = new Set([
+  "AnswerBookApp.jsx",
+  "DatingApp.jsx",
+]);
+
+for (const fileName of fs.readdirSync(appDirectory).filter((file) => file.endsWith(".jsx"))) {
+  if (nonLocalizedApps.has(fileName)) continue;
+  const source = fs.readFileSync(path.join(appDirectory, fileName), "utf8");
+  if (!/[\u4E00-\u9FFF]/.test(source)) continue;
+  assert.match(
+    source,
+    /\b(?:tr|t)\s*\(|useLocalizedStaticText/,
+    `${fileName} contains Chinese UI text but has no localization hook. Add a translator or explicitly exempt it.`,
+  );
+}
+
+const appRouterSource = fs.readFileSync(path.join(appDirectory, "AppRouter.jsx"), "utf8");
+const notesSource = fs.readFileSync(path.join(appDirectory, "NotesApp.jsx"), "utf8");
+assert.match(appRouterSource, /<NotesApp\s+onBack=\{closeApp\}\s+tr=\{tr\}/, "NotesApp must receive the app translator");
+assert.match(notesSource, /useLocalizedStaticText/, "NotesApp must keep its legacy UI text localized");
+
+console.log("ok: app UI text has a localization path or an explicit product exemption");

@@ -1,10 +1,10 @@
 // 寵物小屋 → MaliPhone 的 AI 橋接。
 // 小屋側丟需求與寵物資料，這裡負責組 prompt、呼叫 callAI。
 // 任何失敗都回 null，日記用內建公版文案 fallback，絕不卡住玩法。
-import { callAI } from "../aiService";
+import { callAI, isAiConfigReady } from "../aiService";
 import { MILESTONES, companionDays, bondTier } from "./petDiary";
 
-const aiReady = (apiConfig) => Boolean(apiConfig?.apiKey);
+const aiReady = (apiConfig) => isAiConfigReady(apiConfig);
 
 const personaOf = (data) => {
   const profile = data.petProfile || {};
@@ -41,7 +41,10 @@ export async function generateMilestoneTexts(keys, data, apiConfig) {
 ${items.map((key) => `- ${key}：${MILESTONES[key].title}（${MILESTONES[key].hint}）`).join("\n")}
 只輸出 JSON 物件，不要任何其他文字或 markdown 圍欄，結構：{${items.map((key) => `"${key}": "日記內容"`).join(", ")}}`;
   try {
-    const raw = await callAI([{ role: "user", content: user }], { ...apiConfig, maxTokens: 4000 }, personaOf(data));
+    const raw = await callAI([{ role: "user", content: user }], { ...apiConfig, maxTokens: 4000 }, personaOf(data), {
+      app: "pet",
+      action: "milestone_generate",
+    });
     const jsonText = String(raw || "").replace(/```(json)?/g, "").trim();
     const start = jsonText.indexOf("{"), end = jsonText.lastIndexOf("}");
     const parsed = JSON.parse(jsonText.slice(start, end + 1));
@@ -71,7 +74,10 @@ export async function generateLifeDiary(dayLog, data, apiConfig) {
 ${noteFacts.join("\n")}
 以這些真實發生的事為素材，寫一篇 50~90 字回顧昨天的日記，挑最有感覺的一兩件事寫，不要流水帳。只輸出日記內容本身。`;
   try {
-    const text = stripQuotes(await callAI([{ role: "user", content: user }], { ...apiConfig, maxTokens: 4000 }, personaOf(data)));
+    const text = stripQuotes(await callAI([{ role: "user", content: user }], { ...apiConfig, maxTokens: 4000 }, personaOf(data), {
+      app: "pet",
+      action: "life_diary_generate",
+    }));
     return text ? text.slice(0, 400) : null;
   } catch {
     return null;
@@ -83,7 +89,10 @@ export async function generateBirthdayDiary(data, apiConfig) {
   if (!aiReady(apiConfig)) return null;
   const user = "今天是你的生日！寫一篇 40~80 字的生日日記，寫下這一天和主人在一起的心情。只輸出日記內容本身。";
   try {
-    const text = stripQuotes(await callAI([{ role: "user", content: user }], { ...apiConfig, maxTokens: 4000 }, personaOf(data)));
+    const text = stripQuotes(await callAI([{ role: "user", content: user }], { ...apiConfig, maxTokens: 4000 }, personaOf(data), {
+      app: "pet",
+      action: "birthday_diary_generate",
+    }));
     return text ? text.slice(0, 400) : null;
   } catch {
     return null;
@@ -96,7 +105,10 @@ export async function generateEntryReply(entry, data, apiConfig) {
   const user = `主人剛剛在日記本裡寫了一篇記事「${entry.title}」：${String(entry.text).slice(0, 150)}
 你偷看到了。用一句 30 字以內的話回應主人寫的內容，像是對主人撒嬌或搭話。只輸出這一句話本身。`;
   try {
-    const text = stripQuotes(await callAI([{ role: "user", content: user }], { ...apiConfig, maxTokens: 4000 }, personaOf(data)));
+    const text = stripQuotes(await callAI([{ role: "user", content: user }], { ...apiConfig, maxTokens: 4000 }, personaOf(data), {
+      app: "pet",
+      action: "diary_entry_reply",
+    }));
     return text ? text.slice(0, 120) : null;
   } catch {
     return null;
@@ -110,7 +122,10 @@ export async function generateNoteReply(entry, note, data, apiConfig) {
 主人剛剛在這篇日記下面補寫了一句：「${String(note).slice(0, 80)}」
 用一句 30 字以內的話回應主人，像是對主人撒嬌或搭話。只輸出這一句話本身。`;
   try {
-    const text = stripQuotes(await callAI([{ role: "user", content: user }], { ...apiConfig, maxTokens: 4000 }, personaOf(data)));
+    const text = stripQuotes(await callAI([{ role: "user", content: user }], { ...apiConfig, maxTokens: 4000 }, personaOf(data), {
+      app: "pet",
+      action: "diary_note_reply",
+    }));
     return text ? text.slice(0, 120) : null;
   } catch {
     return null;

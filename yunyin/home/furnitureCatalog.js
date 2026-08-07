@@ -83,9 +83,10 @@ export const FURNITURE_CATALOG = Object.freeze({
     id: "long_sofa", name: "長沙發", icon: "🛋️", category: "chair",
     placement: FURNITURE_PLACEMENT.FLOOR, footprint: { w: 2, h: 1 }, collision: [[0, 0], [1, 0]],
     price: { coins: 400 }, maxCount: 3,
-    interactions: [{ id: "sit", action: "sit", label: "坐下", minDurationMs: 4000, maxDurationMs: 9000, slots: [
-      { id: "left", approach: [0, 1], facing: "right", renderOffset: [0, -1] },
-      { id: "right", approach: [1, 1], facing: "left", renderOffset: [0, -1] },
+    // 正面素材 → sit_front（見 actorActions）：兩個席位都正面端坐，不套側坐動畫
+    interactions: [{ id: "sit", action: "sit_front", label: "坐下", minDurationMs: 4000, maxDurationMs: 9000, slots: [
+      { id: "left", approach: [0, 1], facing: "down", renderOffset: [0, -1] },
+      { id: "right", approach: [1, 1], facing: "down", renderOffset: [0, -1] },
     ] }],
     fallback: { color: "#6d6a9e", accent: "#c8b96a" },
   }),
@@ -173,10 +174,13 @@ export const FURNITURE_CATALOG = Object.freeze({
     fallback: { color: "#9a86c8", accent: "#e0d8f0" },
   }),
   futon_jp: Object.freeze({
-    id: "futon_jp", name: "和式床墊", icon: "🛌", category: "bed",
+    id: "futon_jp", name: "和式床墊", icon: "🛌", category: "bed", doubleBed: true,
     placement: FURNITURE_PLACEMENT.FLOOR, footprint: { w: 2, h: 1 }, collision: [[0, 0], [1, 0]],
     price: { coins: 260 }, maxCount: 3,
-    interactions: [{ id: "sleep", action: "sleep", label: "睡覺", minDurationMs: 7000, maxDurationMs: 12000, slots: [{ id: "bed", approach: [0, 1], facing: "up", renderOffset: [0, 0] }] }],
+    interactions: [{ id: "sleep", action: "sleep", label: "睡覺", minDurationMs: 7000, maxDurationMs: 12000, slots: [
+      { id: "left", approach: [0, 1], facing: "up", renderOffset: [0, -1] },
+      { id: "right", approach: [1, 1], facing: "up", renderOffset: [0, -1] },
+    ] }],
     fallback: { color: "#e8e4ee", accent: "#b8c8dc" },
   }),
 
@@ -261,8 +265,9 @@ export const FURNITURE_CATALOG = Object.freeze({
     id: "stool_bar_blue", name: "藍皮吧檯凳", icon: "🪑", category: "chair",
     placement: FURNITURE_PLACEMENT.FLOOR, footprint: { w: 1, h: 1 }, collision: [[0, 0]],
     price: { coins: 130 }, maxCount: 6,
-    interactions: [{ id: "sit", action: "sit", label: "坐下", minDurationMs: 4000, maxDurationMs: 9000, slots: [
-      { id: "seat", approach: [0, 1], facing: "right", renderOffset: [0, -1] },
+    // 圓凳沒椅背、素材是正面視角 → sit_front（見 actorActions）
+    interactions: [{ id: "sit", action: "sit_front", label: "坐下", minDurationMs: 4000, maxDurationMs: 9000, slots: [
+      { id: "seat", approach: [0, 1], facing: "down", renderOffset: [0, -1] },
     ] }],
     fallback: { color: "#3a78c8", accent: "#8ab8e8" },
   }),
@@ -270,8 +275,9 @@ export const FURNITURE_CATALOG = Object.freeze({
     id: "stool_bar_red", name: "紅皮吧檯凳", icon: "🪑", category: "chair",
     placement: FURNITURE_PLACEMENT.FLOOR, footprint: { w: 1, h: 1 }, collision: [[0, 0]],
     price: { coins: 130 }, maxCount: 6,
-    interactions: [{ id: "sit", action: "sit", label: "坐下", minDurationMs: 4000, maxDurationMs: 9000, slots: [
-      { id: "seat", approach: [0, 1], facing: "right", renderOffset: [0, -1] },
+    // 圓凳沒椅背、素材是正面視角 → sit_front（見 actorActions）
+    interactions: [{ id: "sit", action: "sit_front", label: "坐下", minDurationMs: 4000, maxDurationMs: 9000, slots: [
+      { id: "seat", approach: [0, 1], facing: "down", renderOffset: [0, -1] },
     ] }],
     fallback: { color: "#c84848", accent: "#e89898" },
   }),
@@ -279,8 +285,9 @@ export const FURNITURE_CATALOG = Object.freeze({
     id: "stool_wood", name: "木圓凳", icon: "🪑", category: "chair",
     placement: FURNITURE_PLACEMENT.FLOOR, footprint: { w: 1, h: 1 }, collision: [[0, 0]],
     price: { coins: 70 }, maxCount: 8,
-    interactions: [{ id: "sit", action: "sit", label: "坐下", minDurationMs: 4000, maxDurationMs: 9000, slots: [
-      { id: "seat", approach: [0, 1], facing: "right", renderOffset: [0, -1] },
+    // 圓凳沒椅背、素材是正面視角 → sit_front（見 actorActions）
+    interactions: [{ id: "sit", action: "sit_front", label: "坐下", minDurationMs: 4000, maxDurationMs: 9000, slots: [
+      { id: "seat", approach: [0, 1], facing: "down", renderOffset: [0, -1] },
     ] }],
     fallback: { color: "#c8a068", accent: "#e0c090" },
   }),
@@ -392,9 +399,10 @@ export const FURNITURE_CATALOG = Object.freeze({
     id: "bench_wood", name: "木長椅", icon: "🪑", category: "chair",
     placement: FURNITURE_PLACEMENT.FLOOR, footprint: { w: 2, h: 1 }, collision: [[0, 0], [1, 0]],
     price: { coins: 180 }, maxCount: 4,
-    interactions: [{ id: "sit", action: "sit", label: "坐下", minDurationMs: 4000, maxDurationMs: 9000, slots: [
-      { id: "left", approach: [0, 1], facing: "right", renderOffset: [0, -1] },
-      { id: "right", approach: [1, 1], facing: "left", renderOffset: [0, -1] },
+    // 正面素材 → sit_front（見 actorActions）
+    interactions: [{ id: "sit", action: "sit_front", label: "坐下", minDurationMs: 4000, maxDurationMs: 9000, slots: [
+      { id: "left", approach: [0, 1], facing: "down", renderOffset: [0, -1] },
+      { id: "right", approach: [1, 1], facing: "down", renderOffset: [0, -1] },
     ] }],
     fallback: { color: "#b07840", accent: "#d8a468" },
   }),
@@ -424,10 +432,12 @@ export const FURNITURE_CATALOG = Object.freeze({
   }),
   armchair: Object.freeze({
     id: "armchair", name: "單人沙發", icon: "🛋️", category: "chair",
-    placement: FURNITURE_PLACEMENT.FLOOR, footprint: { w: 2, h: 1 }, collision: [[0, 0], [1, 0]],
+    // 素材是 64×64（2格見方）正面單椅，footprint 只管占地/碰撞不拉伸圖——
+    // 定 1 格寬圖片才會自動置中蓋在座位格正中央，跟其他單人椅（chair_yellow 等）同款式。
+    placement: FURNITURE_PLACEMENT.FLOOR, footprint: { w: 1, h: 1 }, collision: [[0, 0]],
     price: { coins: 350 }, maxCount: 4,
-    interactions: [{ id: "sit", action: "sit", label: "坐下", minDurationMs: 4000, maxDurationMs: 9000, slots: [
-      { id: "seat", approach: [0, 1], facing: "right", renderOffset: [0, -1] },
+    interactions: [{ id: "sit", action: "sit_front", label: "坐下", minDurationMs: 4000, maxDurationMs: 9000, slots: [
+      { id: "seat", approach: [0, 1], facing: "down", renderOffset: [0, -1] },
     ] }],
     fallback: { color: "#e8b840", accent: "#f4d888" },
   }),

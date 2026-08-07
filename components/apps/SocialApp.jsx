@@ -1,10 +1,46 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import MotionPresence from "../motion/MotionPresence.jsx";
 
 const SOCIAL_PAGE_SIZE = 5;
+const SOCIAL_NOTIFICATION_GROUP_WINDOW_MS = 5 * 60 * 1000;
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;",
 }[char]));
+const getVisibleComments = (post, now = Date.now()) => (
+  (post?.comments || []).filter((comment) => !comment?.time || comment.time <= now)
+);
+const groupSocialActivities = (activities) => {
+  const groups = [];
+  (activities || []).slice(0, 80).forEach((activity) => {
+    if (activity.kind === "post") {
+      groups.push({
+        ...activity,
+        events: [activity],
+        actorNames: [activity.actorName].filter(Boolean),
+      });
+      return;
+    }
+    const existing = groups.find((group) => (
+      group.kind !== "post"
+      && group.postId === activity.postId
+      && group.time - activity.time <= SOCIAL_NOTIFICATION_GROUP_WINDOW_MS
+    ));
+    if (!existing) {
+      groups.push({
+        ...activity,
+        events: [activity],
+        actorNames: [activity.actorName].filter(Boolean),
+      });
+      return;
+    }
+    existing.events.push(activity);
+    existing.isUnread = existing.isUnread || activity.isUnread;
+    if (activity.actorName && !existing.actorNames.includes(activity.actorName)) {
+      existing.actorNames.push(activity.actorName);
+    }
+  });
+  return groups;
+};
 
 export default function SocialApp({
   socialSettingsOpen, setSocialSettingsOpen, socialSettings, setSocialSettings, posts, setPosts,
@@ -15,22 +51,142 @@ export default function SocialApp({
   expandedSocialPosts, setExpandedSocialPosts, shouldClampSocialPost, shouldScrollComments,
   highlightedPostId, activePostMenuId, setActivePostMenuId, showToast, sharePostToChat,
   formatSocialCount, getPostLikeCount, getCommentDepth, getCommentAuthorName,
-  postCommentInputs, setPostCommentInputs, addPostComment,
+  postCommentInputs, setPostCommentInputs, addPostComment, editPlayerComment, deletePlayerComment,
+  socialActivities = [], socialUnreadCount = 0, markSocialReadThrough,
   postLimit = 100, downloadTextFile, exportToastMessage,
 }) {
   const [characterSearch, setCharacterSearch] = useState("");
   const [characterPostingOpen, setCharacterPostingOpen] = useState(true);
+  const [characterPostRefreshing, setCharacterPostRefreshing] = useState(false);
   const [feedPage, setFeedPage] = useState(1);
+  const [socialNotificationsOpen, setSocialNotificationsOpen] = useState(false);
+  const [highlightedNotificationCommentId, setHighlightedNotificationCommentId] = useState(null);
+  const [activePlayerCommentMenu, setActivePlayerCommentMenu] = useState(null);
+  const [editingPlayerComment, setEditingPlayerComment] = useState(null);
   const totalFeedPages = Math.max(1, Math.ceil(posts.length / SOCIAL_PAGE_SIZE));
   const visiblePosts = posts.slice((feedPage - 1) * SOCIAL_PAGE_SIZE, feedPage * SOCIAL_PAGE_SIZE);
+  const groupedSocialActivities = useMemo(
+    () => groupSocialActivities(socialActivities),
+    [socialActivities],
+  );
+  const interactionChanceOptions = [25, 50, 75, 100];
+  const savedInteractionChance = Number(socialSettings?.characterInteractionChance);
+  const interactionChance = interactionChanceOptions.includes(savedInteractionChance)
+    ? savedInteractionChance
+    : 50;
   useEffect(() => setFeedPage((page) => Math.min(page, totalFeedPages)), [totalFeedPages]);
   useEffect(() => setFeedPage(1), [posts[0]?.id]);
+  useEffect(() => {
+    if (
+      !highlightedNotificationCommentId
+      || socialNotificationsOpen
+      || socialSettingsOpen
+    ) return undefined;
+    const scrollTimer = setTimeout(() => {
+      const container = socialFeedRef.current;
+      const target = container
+        ? Array.from(container.querySelectorAll("[data-comment-id]")).find(
+          (node) => node.dataset.commentId === String(highlightedNotificationCommentId),
+        )
+        : null;
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 180);
+    const clearTimer = setTimeout(() => setHighlightedNotificationCommentId(null), 2000);
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(clearTimer);
+    };
+  }, [
+    activeCommentPostId,
+    feedPage,
+    highlightedNotificationCommentId,
+    socialFeedRef,
+    socialNotificationsOpen,
+    socialSettingsOpen,
+  ]);
 
   const goToFeedPage = (page) => {
     setFeedPage(Math.max(1, Math.min(totalFeedPages, page)));
     requestAnimationFrame(() => {
       if (socialFeedRef.current) socialFeedRef.current.scrollTop = 0;
     });
+  };
+
+  const refreshCharacterPost = async () => {
+    if (characterPostRefreshing) return;
+    setCharacterPostRefreshing(true);
+    try {
+      await handleRandomSocialPost();
+    } finally {
+      setCharacterPostRefreshing(false);
+    }
+  };
+
+  const getSocialActivityTitle = (activity) => {
+    const eventCount = activity.events?.length || 1;
+    const names = activity.actorNames || [activity.actorName].filter(Boolean);
+    if (eventCount > 1) {
+      if (names.length === 1) {
+        return tr(
+          `${names[0]} 在 ${activity.postAuthorName} 的貼文留下了 ${eventCount} 則回覆`,
+          `${names[0]} left ${eventCount} replies on ${activity.postAuthorName}'s post`,
+          `${names[0]}が${activity.postAuthorName}の投稿に${eventCount}件返信しました`,
+          `${names[0]}님이 ${activity.postAuthorName}님의 게시물에 답글 ${eventCount}개를 남겼습니다`,
+        );
+      }
+      const shownNames = names.slice(0, 2).join("、");
+      const actorLabel = names.length > 2
+        ? tr(`${shownNames} 等 ${names.length} 位角色`, `${shownNames} and ${names.length - 2} others`, `${shownNames}ほか${names.length - 2}人`, `${shownNames} 외 ${names.length - 2}명`)
+        : shownNames;
+      return tr(
+        `${actorLabel}回覆了 ${activity.postAuthorName} 的貼文`,
+        `${actorLabel} replied to ${activity.postAuthorName}'s post`,
+        `${actorLabel}が${activity.postAuthorName}の投稿に返信しました`,
+        `${actorLabel}님이 ${activity.postAuthorName}님의 게시물에 답글을 남겼습니다`,
+      );
+    }
+    if (activity.kind === "post") {
+      return tr(
+        `${activity.actorName} 發布了新貼文`,
+        `${activity.actorName} published a new post`,
+        `${activity.actorName}が新しい投稿を公開しました`,
+        `${activity.actorName}님이 새 게시물을 올렸습니다`,
+      );
+    }
+    if (activity.kind === "self-comment") {
+      return tr(
+        `${activity.actorName} 補充了自己的貼文`,
+        `${activity.actorName} added to their post`,
+        `${activity.actorName}が自分の投稿に追記しました`,
+        `${activity.actorName}님이 자신의 게시물에 내용을 덧붙였습니다`,
+      );
+    }
+    if (activity.targetKind === "comment") {
+      return tr(
+        `${activity.actorName} 回覆了 ${activity.targetName} 的留言`,
+        `${activity.actorName} replied to ${activity.targetName}'s comment`,
+        `${activity.actorName}が${activity.targetName}のコメントに返信しました`,
+        `${activity.actorName}님이 ${activity.targetName}님의 댓글에 답글을 남겼습니다`,
+      );
+    }
+    return tr(
+      `${activity.actorName} 回覆了 ${activity.postAuthorName} 的貼文`,
+      `${activity.actorName} replied to ${activity.postAuthorName}'s post`,
+      `${activity.actorName}が${activity.postAuthorName}の投稿に返信しました`,
+      `${activity.actorName}님이 ${activity.postAuthorName}님의 게시물에 답글을 남겼습니다`,
+    );
+  };
+
+  const openSocialActivity = (activity) => {
+    const targetIndex = posts.findIndex((post) => post.id === activity.postId);
+    if (targetIndex < 0) return;
+    markSocialReadThrough?.(activity.time);
+    setFeedPage(Math.floor(targetIndex / SOCIAL_PAGE_SIZE) + 1);
+    setActiveCommentPostId(activity.commentId ? activity.postId : null);
+    setSocialReplyTarget(null);
+    setHighlightedNotificationCommentId(activity.commentId || null);
+    setPendingPostScrollId(activity.postId);
+    setSocialNotificationsOpen(false);
   };
 
   const exportSocialArchive = async (bookmarkedOnly = false) => {
@@ -64,20 +220,24 @@ export default function SocialApp({
       const compactedPost = compactAvatarFields(post, authorAvatar);
       return {
         ...compactedPost,
-        comments: (post.comments || []).map((comment) => compactAvatarFields(comment)),
+        comments: getVisibleComments(post).map((comment) => compactAvatarFields(comment)),
         ...(Array.isArray(post.likedBy) ? { likedBy: post.likedBy.map((reaction) => compactAvatarFields(reaction)) } : {}),
       };
     });
     const cards = exportedPosts.map((post) => {
       const authorName = getPostAuthorName(post);
-      const comments = (post.comments || []).map((comment) => {
+      const visibleComments = getVisibleComments(post);
+      const comments = visibleComments.map((comment) => {
         const commentAuthor = getCommentAuthorName(comment, post.charName || authorName);
-        return `<li><b>${escapeHtml(commentAuthor)}</b><span>${escapeHtml(new Date(comment.time || post.time || Date.now()).toLocaleString("zh-TW"))}</span><p>${escapeHtml(comment.content)}</p></li>`;
+        const commentContent = comment.deleted
+          ? tr("此留言已刪除", "This comment was deleted", "このコメントは削除されました", "삭제된 댓글입니다")
+          : comment.content;
+        return `<li><b>${escapeHtml(commentAuthor)}</b><span>${escapeHtml(new Date(comment.time || post.time || Date.now()).toLocaleString("zh-TW"))}</span><p>${escapeHtml(commentContent)}</p></li>`;
       }).join("");
       return `<article>
         <header><div><b>${escapeHtml(authorName)}</b>${post.bookmarked ? "<em>珍藏</em>" : ""}</div><time>${escapeHtml(new Date(post.time || Date.now()).toLocaleString("zh-TW"))}</time></header>
         <div class="content">${escapeHtml(post.content)}</div>
-        <div class="meta">❤️ ${escapeHtml(getPostLikeCount(post))}　💬 ${(post.comments || []).length}</div>
+        <div class="meta">❤️ ${escapeHtml(getPostLikeCount(post))}　💬 ${visibleComments.length}</div>
         ${comments ? `<details><summary>查看留言</summary><ol>${comments}</ol></details>` : ""}
       </article>`;
     }).join("\n");
@@ -103,7 +263,59 @@ export default function SocialApp({
   };
 
   return (
-    socialSettingsOpen ? (
+    socialNotificationsOpen ? (
+      <div className="mp-page">
+        <div className="mp-hdr">
+          <div className="mp-back" onClick={() => setSocialNotificationsOpen(false)}>←</div>
+          <div className="mp-htitle">{tr("通知", "Notifications", "通知", "알림")}</div>
+          {socialUnreadCount > 0 && (
+            <button
+              type="button"
+              className="mp-social-notification-read-all"
+              onClick={() => markSocialReadThrough?.(socialActivities[0]?.time)}
+            >
+              {tr("全部已讀", "Mark all read", "すべて既読", "모두 읽음")}
+            </button>
+          )}
+        </div>
+        <div className="mp-social-notification-list">
+          {groupedSocialActivities.length === 0 ? (
+            <div className="mp-empty">
+              <div className="mp-empty-i">🔔</div>
+              <div className="mp-empty-t">
+                {tr("目前沒有社群通知", "No social notifications yet", "通知はまだありません", "아직 소셜 알림이 없습니다")}
+              </div>
+            </div>
+          ) : groupedSocialActivities.map((activity) => {
+            const avatar = sanitizeUserImageUrl(activity.avatar);
+            const eventCount = activity.events?.length || 1;
+            return (
+              <button
+                type="button"
+                key={activity.id}
+                className={`mp-social-notification-item ${activity.isUnread ? "unread" : ""}`}
+                onClick={() => openSocialActivity(activity)}
+              >
+                <span className="mp-social-notification-avatar">
+                  {avatar
+                    ? <img src={avatar} alt="" />
+                    : (activity.actorName?.slice(0, 1) || "💬")}
+                </span>
+                <span className="mp-social-notification-content">
+                  <strong>{getSocialActivityTitle(activity)}</strong>
+                  <span className="mp-social-notification-preview">{activity.body}</span>
+                  <small>{formatPostTime(activity.time)}</small>
+                </span>
+                {eventCount > 1 && (
+                  <span className="mp-social-notification-group-count">{eventCount}</span>
+                )}
+                {activity.isUnread && <span className="mp-social-notification-unread-dot" />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    ) : socialSettingsOpen ? (
       <div className="mp-page">
         <div className="mp-hdr">
           <div className="mp-back" onClick={() => setSocialSettingsOpen(false)}>←</div>
@@ -129,6 +341,60 @@ export default function SocialApp({
                 <span />
               </button>
             </div>
+          </div>
+          <div className="mp-sg">
+            <div className="mp-sg-t">{tr("角色互動", "Character interactions", "キャラ交流", "캐릭터 상호작용")}</div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>{tr("角色之間可以互動", "Characters can interact", "キャラ同士の交流を許可", "캐릭터끼리 상호작용")}</div>
+                <div style={{ fontSize: 10, color: "var(--mp-txt-l)", marginTop: 3, lineHeight: 1.5 }}>
+                  {tr(
+                    "開啟後，角色可能留言其他角色的貼文；玩家貼文維持原本的回覆方式。",
+                    "When on, characters may comment on other character posts. Player posts keep their current reply behavior.",
+                    "オンにすると、キャラが他のキャラの投稿にコメントすることがあります。プレイヤー投稿の返信方法は変わりません。",
+                    "켜면 캐릭터가 다른 캐릭터 게시물에 댓글을 달 수 있습니다. 플레이어 게시물의 답글 방식은 그대로 유지됩니다.",
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={!!socialSettings?.characterInteractionsEnabled}
+                className={`mp-switch ${socialSettings?.characterInteractionsEnabled ? "active" : ""}`}
+                onClick={() => setSocialSettings((prev) => ({
+                  ...(prev || {}),
+                  characterInteractionsEnabled: !prev?.characterInteractionsEnabled,
+                }))}
+              >
+                <span />
+              </button>
+            </div>
+            {socialSettings?.characterInteractionsEnabled && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 700 }}>{tr("每篇貼文的互動機率", "Interaction chance per post", "投稿ごとの交流確率", "게시물당 상호작용 확률")}</div>
+                <select
+                  className="mp-input"
+                  value={interactionChance}
+                  onChange={(event) => setSocialSettings((prev) => ({
+                    ...(prev || {}),
+                    characterInteractionChance: Number(event.target.value),
+                  }))}
+                  style={{ marginTop: 6 }}
+                >
+                  {interactionChanceOptions.map((chance) => (
+                    <option key={chance} value={chance}>{chance}%</option>
+                  ))}
+                </select>
+                <div style={{ fontSize: 9.5, color: "var(--mp-txt-l)", marginTop: 6, lineHeight: 1.55 }}>
+                  {tr(
+                    "觸發時會依貼文與人設挑選角色，通常 1～2 位、最多 5 位。留言會延遲 30 秒至 5 分鐘顯示。",
+                    "When triggered, characters are chosen from the post and their personas—usually 1–2, up to 5. Comments appear after 30 seconds to 5 minutes.",
+                    "発生時は投稿と設定からキャラを選び、通常1～2人、最大5人が参加します。コメントは30秒～5分後に表示されます。",
+                    "발생 시 게시물과 캐릭터 설정에 따라 보통 1~2명, 최대 5명이 참여합니다. 댓글은 30초~5분 뒤 표시됩니다.",
+                  )}
+                </div>
+              </div>
+            )}
           </div>
           <div className="mp-sg">
             <div className="mp-sg-t" onClick={() => setCharacterPostingOpen((open) => !open)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}><span>{tr("角色發文設定", "Character posting", "キャラ投稿設定", "캐릭터 게시 설정")}</span><span style={{ fontSize: 11, color: "var(--mp-pink-dk)", fontWeight: 700 }}>{characterPostingOpen ? tr("收合", "Collapse", "折りたたむ", "접기") : tr("展開", "Expand", "展開", "펼치기")}</span></div>
@@ -161,7 +427,15 @@ export default function SocialApp({
               })}
             </div>
             <div style={{ marginTop: 12, fontSize: 11, fontWeight: 700 }}>{tr("預設發文頻率", "Default posting frequency", "投稿頻度", "기본 게시 빈도")}</div>
-            <select className="mp-input" value="normal" disabled style={{ marginTop: 6 }}>
+            <select
+              className="mp-input"
+              value={["occasional", "normal", "active"].includes(socialSettings?.frequency) ? socialSettings.frequency : "normal"}
+              onChange={(event) => setSocialSettings((prev) => ({
+                ...(prev || {}),
+                frequency: event.target.value,
+              }))}
+              style={{ marginTop: 6 }}
+            >
               <option value="occasional">{tr("偶爾：每天最多 1 篇", "Occasional: up to 1/day", "時々：1日最大1件", "가끔: 하루 최대 1개")}</option>
               <option value="normal">{tr("一般：每天最多 2～3 篇", "Normal: up to 2–3/day", "通常：1日最大2～3件", "일반: 하루 최대 2~3개")}</option>
               <option value="active">{tr("活躍：每天最多 4～5 篇", "Active: up to 4–5/day", "活発：1日最大4～5件", "활발: 하루 최대 4~5개")}</option>
@@ -234,9 +508,33 @@ export default function SocialApp({
         <div className="mp-back" onClick={closeApp}>←</div>
             <div className="mp-htitle">{t("social")}</div>
         <div className="mp-social-head-actions">
+          <button
+            type="button"
+            className="mp-social-notification-bell"
+            aria-label={tr("社群通知", "Social notifications", "ソーシャル通知", "소셜 알림")}
+            onClick={() => setSocialNotificationsOpen(true)}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />
+            </svg>
+            {socialUnreadCount > 0 && (
+              <span className="mp-social-notification-badge">
+                {socialUnreadCount > 99 ? "99+" : socialUnreadCount}
+              </span>
+            )}
+          </button>
           <button className="mp-pill-btn mp-pill-btn-ghost" onClick={() => setPlayerPostModalOpen(true)}>{tr("發文", "Post", "投稿", "게시")}</button>
           {characters.length > 0 && (
-            <button className="mp-pill-btn" onClick={handleRandomSocialPost}>{t("refresh")}</button>
+            <button
+              className="mp-pill-btn"
+              onClick={refreshCharacterPost}
+              disabled={characterPostRefreshing}
+              aria-busy={characterPostRefreshing}
+            >
+              {characterPostRefreshing
+                ? tr("發文中…", "Posting…", "投稿中…", "게시 중…")
+                : t("refresh")}
+            </button>
           )}
           <button className="mp-pill-btn mp-pill-btn-ghost" onClick={() => setSocialSettingsOpen(true)}>{t("settings")}</button>
         </div>
@@ -253,7 +551,7 @@ export default function SocialApp({
           const authorAvatar = sanitizeUserImageUrl(getPostAuthorAvatar(p));
           const isPlayerPost = getPostAuthorType(p) === "player";
           const likeListText = isPlayerPost ? getLikedByListText(p) : "";
-          const comments = p.comments || [];
+          const comments = getVisibleComments(p);
           const commentsOpen = activeCommentPostId === p.id;
           const replyTarget = socialReplyTarget?.postId === p.id ? socialReplyTarget : null;
           const likesOpen = activeLikePostId === p.id;
@@ -341,7 +639,10 @@ export default function SocialApp({
                   {comments.map((c) => {
                     const depth = getCommentDepth(c);
                     const author = getCommentAuthorName(c, p.charName || authorName);
-                    const canReply = c.role === "assistant" && depth < 2 && c.charId;
+                    const canReply = c.role === "assistant" && c.charId;
+                    const isPlayerOwned = c.role === "user"
+                      && (c.charId === null || c.charId === undefined);
+                    const canManage = isPlayerOwned && !c.deleted;
                     const targetForThis = canReply ? {
                       postId: p.id,
                       commentId: c.id,
@@ -351,19 +652,107 @@ export default function SocialApp({
                       depth,
                     } : null;
                     const isReplyOpen = replyTarget?.commentId === c.id;
+                    const isPlayerMenuOpen = activePlayerCommentMenu?.postId === p.id
+                      && activePlayerCommentMenu?.commentId === c.id;
+                    const isEditing = editingPlayerComment?.postId === p.id
+                      && editingPlayerComment?.commentId === c.id;
                     const replyInputKey = `${p.id}:${c.id}`;
                     return (
-                    <div key={c.id} className={`mp-comment ${depth > 1 ? "reply" : ""} ${canReply ? "clickable" : ""}`}>
+                    <div
+                      key={c.id}
+                      data-comment-id={c.id}
+                      className={`mp-comment ${depth > 1 ? "reply" : ""} ${canReply || canManage ? "clickable" : ""} ${c.deleted ? "deleted" : ""} ${highlightedNotificationCommentId === c.id ? "notification-highlight" : ""}`}
+                    >
                       <div
+                        className="mp-comment-body"
                         onClick={() => {
-                          if (!targetForThis) return;
-                          setSocialReplyTarget((prev) => prev?.postId === p.id && prev?.commentId === c.id ? null : targetForThis);
+                          if (canManage) {
+                            setSocialReplyTarget(null);
+                            setActivePlayerCommentMenu((prev) => (
+                              prev?.postId === p.id && prev?.commentId === c.id
+                                ? null
+                                : { postId: p.id, commentId: c.id }
+                            ));
+                            return;
+                          }
+                          if (targetForThis) {
+                            setActivePlayerCommentMenu(null);
+                            setSocialReplyTarget((prev) => prev?.postId === p.id && prev?.commentId === c.id ? null : targetForThis);
+                          }
                         }}
                       >
                         <span>{author}：</span>
-                        {c.replyToName && <em>{tr(`回覆 ${c.replyToName} `, `Replying to ${c.replyToName} `, `${c.replyToName} に返信 `, `${c.replyToName}에게 답글 `)}</em>}
-                        {c.content}
+                        {!c.deleted && c.replyToName && <em>{tr(`回覆 ${c.replyToName} `, `Replying to ${c.replyToName} `, `${c.replyToName} に返信 `, `${c.replyToName}에게 답글 `)}</em>}
+                        {c.deleted
+                          ? <i className="mp-comment-deleted">{tr("此留言已刪除", "This comment was deleted", "このコメントは削除されました", "삭제된 댓글입니다")}</i>
+                          : c.content}
+                        {!c.deleted && c.editedAt && (
+                          <small className="mp-comment-edited">
+                            {tr("已編輯", "Edited", "編集済み", "수정됨")}
+                          </small>
+                        )}
                       </div>
+                      {isPlayerMenuOpen && !isEditing && (
+                        <div className="mp-comment-manage">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingPlayerComment({
+                                postId: p.id,
+                                commentId: c.id,
+                                draft: c.content,
+                              });
+                              setActivePlayerCommentMenu(null);
+                            }}
+                          >
+                            {tr("編輯", "Edit", "編集", "수정")}
+                          </button>
+                          <button
+                            type="button"
+                            className="danger"
+                            onClick={() => {
+                              if (!window.confirm(tr("確定要刪除這則留言嗎？", "Delete this comment?", "このコメントを削除しますか？", "이 댓글을 삭제할까요?"))) return;
+                              deletePlayerComment(p.id, c.id);
+                              setActivePlayerCommentMenu(null);
+                              setEditingPlayerComment(null);
+                            }}
+                          >
+                            {tr("刪除", "Delete", "削除", "삭제")}
+                          </button>
+                        </div>
+                      )}
+                      {isEditing && (
+                        <div className="mp-comment-input mp-comment-inline-input">
+                          <input
+                            className="mp-sinp"
+                            value={editingPlayerComment.draft}
+                            maxLength={240}
+                            onChange={(event) => setEditingPlayerComment((current) => ({
+                              ...current,
+                              draft: event.target.value,
+                            }))}
+                            onKeyDown={(event) => {
+                              if (event.key !== "Enter") return;
+                              event.preventDefault();
+                              if (editPlayerComment(p.id, c.id, editingPlayerComment.draft)) {
+                                setEditingPlayerComment(null);
+                              }
+                            }}
+                            autoFocus
+                          />
+                          <button className="mp-ibtn" onClick={() => setEditingPlayerComment(null)}>{t("cancel")}</button>
+                          <button
+                            className="mp-ibtn"
+                            onClick={() => {
+                              if (editPlayerComment(p.id, c.id, editingPlayerComment.draft)) {
+                                setEditingPlayerComment(null);
+                              }
+                            }}
+                          >
+                            {tr("儲存", "Save", "保存", "저장")}
+                          </button>
+                        </div>
+                      )}
                       {isReplyOpen && (
                         <div className="mp-comment-input mp-comment-inline-input">
                           <input

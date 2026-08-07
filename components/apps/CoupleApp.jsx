@@ -551,7 +551,7 @@ export default function CoupleApp({ closeApp, characters = [], chatHistory = {},
   // ---- 資料載入中 ----
   if (dailyStore === null) {
     return (
-      <div className="mp-page couple-app-page" style={{ background: "linear-gradient(180deg,#ffe0ea 0%,#ffd7e4 45%,#f3e3ff 100%)" }}>
+      <div className="mp-page couple-app-page" data-mp-surface="light" style={{ background: "linear-gradient(180deg,#ffe0ea 0%,#ffd7e4 45%,#f3e3ff 100%)" }}>
         <div className="mp-hdr" style={{ background: "transparent" }}><div className="mp-back" onClick={closeApp}>←</div><div className="mp-htitle">💞 {tr("情侶空間", "Couple Space", "カップルスペース", "커플 공간")}</div></div>
         <div style={{ flex: 1, display: "grid", placeItems: "center", color: "#a86e84", fontSize: 12 }}>💗</div>
       </div>
@@ -561,7 +561,7 @@ export default function CoupleApp({ closeApp, characters = [], chatHistory = {},
   // ---- 永久空間列表／邀請角色 ----
   if (choosing || !partner) {
     return (
-      <div className="mp-page couple-app-page" style={{ background: "linear-gradient(180deg,#ffe0ea 0%,#ffd7e4 45%,#f3e3ff 100%)" }}>
+      <div className="mp-page couple-app-page" data-mp-surface="light" style={{ background: "linear-gradient(180deg,#ffe0ea 0%,#ffd7e4 45%,#f3e3ff 100%)" }}>
         <div className="mp-hdr" style={{ background: "transparent" }}><div className="mp-back" onClick={() => (partner ? setChoosing(false) : closeApp())}>←</div><div className="mp-htitle">💞 {tr("情侶空間", "Couple Space", "カップルスペース", "커플 공간")}</div></div>
         <div style={{ flex: 1, overflowY: "auto", padding: "6px 16px 26px" }}>
           <div style={{ textAlign: "center", padding: "10px 0 16px" }}>
@@ -601,7 +601,7 @@ export default function CoupleApp({ closeApp, characters = [], chatHistory = {},
     const memories = rarityFilter === "ALL" ? allMemories : allMemories.filter((m) => m.itemRarity === rarityFilter);
     const rarityCounts = allMemories.reduce((acc, m) => { acc[m.itemRarity] = (acc[m.itemRarity] || 0) + 1; return acc; }, {});
     return (
-      <div className="mp-page couple-app-page" style={{ background: "linear-gradient(180deg,#ffe0ea 0%,#ffd7e4 45%,#f3e3ff 100%)" }}>
+      <div className="mp-page couple-app-page" data-mp-surface="light" style={{ background: "linear-gradient(180deg,#ffe0ea 0%,#ffd7e4 45%,#f3e3ff 100%)" }}>
         <div className="mp-hdr" style={{ background: "transparent" }}><div className="mp-back" onClick={() => setView("home")}>←</div><div className="mp-htitle">📖 {tr("我們的回憶", "Our Memories", "二人の思い出", "우리의 추억")}</div></div>
         <div style={{ flex: 1, overflowY: "auto", padding: "2px 16px 28px" }}>
           {allMemories.length > 0 && (
@@ -665,7 +665,7 @@ export default function CoupleApp({ closeApp, characters = [], chatHistory = {},
   const tempDelta = daily?.tempDelta ?? 0;
   const signTime = daily?.signAt ? new Intl.DateTimeFormat(uiLocale, { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(daily.signAt)) : "";
   return (
-    <div className="mp-page couple-app-page" style={{ overflow: "hidden", background: "linear-gradient(180deg,#ffe0ea 0%,#ffd7e4 45%,#f3e3ff 100%)" }}>
+    <div className="mp-page couple-app-page" data-mp-surface="light" style={{ overflow: "hidden", background: "linear-gradient(180deg,#ffe0ea 0%,#ffd7e4 45%,#f3e3ff 100%)" }}>
       <style>{MOONLIT_SIGN_STYLES}</style>
       {daily?.milestones?.fullHeart && <FullHeartBackdrop />}
       <div className="mp-hdr" style={{ position: "relative", zIndex: 1, background: "transparent" }}>

@@ -6,9 +6,10 @@ import { countUnreadMails } from "../../services/mailbox/mailboxService";
 import { hasBalancedBraces, sanitizeCustomCss } from "../../utils/customCss";
 import { clampCropPan } from "../../utils/imageCrop";
 import { sanitizeText } from "../../utils/coreUtils";
+import { lazyWithRetry } from "../../utils/lazyWithRetry.js";
 import { heroImgStyle } from "../home/PeachHero";
 
-const SettingsApp = React.lazy(() => import("./SettingsApp.jsx"));
+const SettingsApp = lazyWithRetry(() => import("./SettingsApp.jsx"));
 
 function sortModelsByProvider(provider, models) {
   const list = [...(models || [])];
@@ -30,6 +31,7 @@ function sortModelsByProvider(provider, models) {
 }
 
 export default function MaliPhoneSettingsSurface({
+  auth,
   api,
   appearance,
   core,
@@ -62,6 +64,24 @@ export default function MaliPhoneSettingsSurface({
   const availableVoices = voice.voices.length
     ? voice.voices
     : (voice.config.elevenlabs?.availableVoices || []);
+
+  const updateHostedTestModel = (providerId, model) => {
+    const patch = { hostedTestProvider: providerId || "", hostedTestModel: model || "" };
+    setTempConfig((current) => ({ ...current, ...patch }));
+    if (api.config?.aiSource === "hosted_test") {
+      api.setConfig((current) => ({ ...current, ...patch }));
+    }
+  };
+
+  const changeAiSource = (source, providerId = "", model = "") => {
+    const patch = {
+      aiSource: source === "hosted_test" ? "hosted_test" : "personal",
+      ...(source === "hosted_test" ? { hostedTestProvider: providerId, hostedTestModel: model } : {}),
+    };
+    setTempConfig((current) => ({ ...current, ...patch }));
+    api.setConfig((current) => ({ ...current, ...patch }));
+    if (source === "hosted_test") setAiConnectionOpen(false);
+  };
 
   const getProviderBaseUrl = (providerId, fallback = "") => {
     const found = API_PROVIDERS.find((item) => item.id === providerId);
@@ -144,6 +164,7 @@ export default function MaliPhoneSettingsSurface({
         [{ role: "user", content: "請只回覆 OK" }],
         config,
         "你是連線測試助手，只能回覆 OK。",
+        { app: "settings", action: "connection_test" },
       );
       const ok = /\bOK\b|ＯＫ/i.test(String(reply || "").trim());
       notify("連線成功", ok
@@ -348,11 +369,20 @@ export default function MaliPhoneSettingsSurface({
           model: nextProvider.models[0] || "",
         }));
       },
+      disabled: config.aiSource === "hosted_test",
       onSave: () => {
         api.setConfig(config);
         notify(tr("設定已儲存", "Settings saved", "設定を保存しました", "설정이 저장되었습니다"), "Settings saved");
       },
       onSavePreset: () => setPresetSavePickerOpen(true),
+    },
+    hostedTestProps: {
+      auth,
+      tr,
+      showToast,
+      apiConfig: config,
+      onSourceChange: changeAiSource,
+      onHostedModelChange: updateHostedTestModel,
     },
     voiceProps: {
       tr,
@@ -387,13 +417,14 @@ export default function MaliPhoneSettingsSurface({
       appearance={settingsAppearance}
       api={settingsApi}
       data={{
-        syncProps: { tr, notify },
+        accountProps: { auth, tr, notify },
         backupProps: {
           tr,
           dataImporting: data.importing,
           dataImportRef: data.importRef,
           onExport: data.onExport,
           onImport: data.onImport,
+          cloudBackupProps: data.cloudBackupProps,
         },
       }}
       about={{

@@ -68,6 +68,21 @@
 在設定頁可以切換不同供應商與模型。  
 若要使用自訂模型，也可以手動輸入模型名稱，再搭配抓取模型按鈕更新清單。
 
+## 測試模型用量報表
+
+測試模型的完整用量不必每次進 Cloudflare Console 查看。先在 `cloudflare-worker-proxy` 使用過 Wrangler 登入，再從專案根目錄執行：
+
+```powershell
+npm run report:mali-usage
+```
+
+工具會從遠端 D1 讀取 metadata-only 紀錄，產生：
+
+- `tmp/mali-usage-report.html`：可搜尋、依 APP／狀態篩選的報表
+- `tmp/mali-usage-report.csv`：方便用 Excel 或試算表分析
+
+報表不包含提示詞或 AI 生成內容；時間以 UTC 顯示。可用 `--limit 1000` 調整讀取筆數。
+
 ## 資料匯入 / 匯出
 
 MaliPhone 支援：

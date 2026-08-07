@@ -85,9 +85,10 @@ export function normalizePersonaCollection(state = {}, defaults = {}) {
   const personas = {};
   for (const id of ids) {
     const item = raw[id] || {};
+    const profileName = String(item.data?.playerProfile?.name || "").trim();
     personas[id] = {
       id,
-      label: String(item.label || item.data?.playerProfile?.name || "玩家人格").trim() || "玩家人格",
+      label: profileName || String(item.label || "玩家人格").trim() || "玩家人格",
       createdAt: Number(item.createdAt) || Date.now(),
       data: {
         ...createEmptyPersonaData(defaults),
@@ -114,7 +115,7 @@ export function serializePersonas(personas, activePersonaId, activeData) {
     ...personas,
     [activePersonaId]: {
       ...current,
-      label: String(current.label || activeData?.playerProfile?.name || "玩家人格").trim() || "玩家人格",
+      label: String(activeData?.playerProfile?.name || current.label || "玩家人格").trim() || "玩家人格",
       data: activeData,
     },
   };

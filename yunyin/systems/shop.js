@@ -1,9 +1,9 @@
 // 丹房坊市：煉製佇列與貨架販售都用時間戳回算，無計時器。
-import { CROPS } from "../data/crops";
-import { RECIPES } from "../data/recipes";
-import { MATERIALS } from "../data/materials";
-import { hasUnlock } from "./cultivation";
-import { BLUEPRINT_FURNITURE_IDS, furnitureById } from "../home/furnitureCatalog";
+import { CROPS } from "../data/crops.js";
+import { RECIPES } from "../data/recipes.js";
+import { MATERIALS } from "../data/materials.js";
+import { hasUnlock } from "./cultivation.js";
+import { BLUEPRINT_FURNITURE_IDS, furnitureById } from "../home/furnitureCatalog.js";
 
 export const SELL_INTERVAL_SEC = 1200; // 貨架每 20 分鐘自動賣出 1 件
 
@@ -62,15 +62,23 @@ export function collectFurnace(save, furnaceIdx = 0, now = Date.now()) {
 }
 
 // ---- 貨架 ----
-export function stockShelf(save, shelfIdx, itemId, now = Date.now()) {
+export function stockShelfQuantity(save, shelfIdx, itemId, quantity, now = Date.now()) {
   const sh = save.shop.shelves[shelfIdx];
   const have = save.inventory[itemId] || 0;
   if (!sh || sh.itemId || have < 1) return "無法上架";
+  const requested = quantity == null ? have : Number(quantity);
+  if (!Number.isSafeInteger(requested) || requested < 1) return "請輸入正確的上架數量";
+  if (requested > have) return "背包數量不足";
   sh.itemId = itemId;
-  sh.stock = have;
+  sh.stock = requested;
   sh.soldUpdatedAt = now;
-  save.inventory[itemId] = 0;
+  save.inventory[itemId] = have - requested;
   return null;
+}
+
+// 保留原有呼叫：未指定數量時仍會把該物品全部上架。
+export function stockShelf(save, shelfIdx, itemId, now = Date.now()) {
+  return stockShelfQuantity(save, shelfIdx, itemId, save.inventory[itemId] || 0, now);
 }
 
 export function unstockShelf(save, shelfIdx) {

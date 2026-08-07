@@ -63,7 +63,13 @@ export async function generateDatingReply({ entry, messages, datingProfile, play
     role: item.role === "user" ? "user" : "assistant",
     content: item.content,
   }));
-  const reply = await callAI(history, apiConfig, buildDatingSystemPrompt(entry, datingProfile, playerName, catchUp), { signal });
+  const reply = await callAI(history, apiConfig, buildDatingSystemPrompt(entry, datingProfile, playerName, catchUp), {
+    signal,
+    feature: "chat",
+    mode: "online",
+    app: "dating",
+    action: "online_reply",
+  });
   return String(reply || "").replace(/^[「"']|[」"']$/g, "").trim();
 }
 

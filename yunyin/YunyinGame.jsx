@@ -193,7 +193,7 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
     let pendingAction = null;                     // 抵達路徑終點後要做的事
     let pendingInteraction = null;                // 行走中的家具席位預約
     let lastHarvest = null;                       // 防止站在田上時連續事件讓收成後立刻進入種植
-    if (import.meta.env.DEV) window.__yy = { player, map, cam, save: gameSave, npcs, open: (type, title) => panelRef.current({ type, title }) }; // 開發用
+    if (import.meta.env.DEV) window.__yy = { player, map, cam, save: gameSave, npcs, open: (type, title) => panelRef.current({ type, title }), markDirty: () => markDirtyRef.current(), addCrystals }; // 開發用
     let ripple = null;                            // 點擊漣漪 { wx, wy, t0 }
     let viewW = 0, viewH = 0, dpr = 1, raf = 0, lastT = 0;
 

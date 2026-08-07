@@ -3,8 +3,8 @@ import {
   IMMERSIVE_APPS,
   LOCK_NOTIFICATION_LIMIT,
   NOTIFICATION_TYPES,
-} from "../../constants/notifications";
-import { messagePreviewText } from "../../utils/pseudoImage";
+} from "../../constants/notifications.js";
+import { messagePreviewText } from "../../utils/pseudoImage.js";
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const bool = (value, fallback) => (typeof value === "boolean" ? value : fallback);
@@ -30,26 +30,102 @@ export function normalizeNotificationSettings(src) {
   };
 }
 
-function collectSocialNotifications({ posts, socialSeenAt }) {
-  const unseen = (posts || [])
-    .filter((post) => {
-      const authorType = post?.authorType || (post?.charId ? "character" : "player");
-      return authorType === "character" && (Number(post?.time) || 0) > (Number(socialSeenAt) || 0);
-    })
-    .sort((a, b) => (Number(b?.time) || 0) - (Number(a?.time) || 0));
-  if (!unseen.length) return [];
-  const latest = unseen[0];
+export function collectSocialActivities({ posts, socialSeenAt, socialNow, characters }) {
+  const seenAt = Number(socialSeenAt) || 0;
+  const visibleAt = Number(socialNow) || Date.now();
+  const characterById = new Map((characters || []).map((character) => [
+    String(character?.id),
+    character,
+  ]));
+  const events = [];
+  (posts || []).forEach((post) => {
+    const postTime = Number(post?.time) || 0;
+    const authorType = post?.authorType || (post?.charId ? "character" : "player");
+    const postAuthor = characterById.get(String(post?.charId));
+    const postAuthorName = post?.authorName || post?.charName || postAuthor?.name || "社群成員";
+    if (
+      authorType === "character"
+      && post?.generationSource === "auto"
+      && postTime > 0
+      && postTime <= visibleAt
+    ) {
+      const author = characterById.get(String(post?.charId));
+      events.push({
+        id: `post:${post.id}`,
+        kind: "post",
+        postId: post.id,
+        commentId: null,
+        actorName: postAuthorName,
+        postAuthorName,
+        targetName: "",
+        targetKind: "post",
+        title: postAuthorName,
+        body: post.content || "",
+        avatar: author?.avatar || post.charAvatar || post.avatar || "",
+        time: postTime,
+        isUnread: postTime > seenAt,
+      });
+    }
+    const commentsById = new Map((post?.comments || []).map((comment) => [
+      String(comment?.id),
+      comment,
+    ]));
+    (post?.comments || []).forEach((comment) => {
+      const commentTime = Number(comment?.time) || 0;
+      if (comment?.role !== "assistant" || commentTime <= 0 || commentTime > visibleAt) return;
+      const commenter = characterById.get(String(comment?.charId));
+      const actorName = comment.charName || commenter?.name || "社群成員";
+      const parentComment = comment?.parentId
+        ? commentsById.get(String(comment.parentId))
+        : null;
+      const targetName = comment.replyToName
+        || (parentComment?.role === "assistant"
+          ? (parentComment.charName || "社群成員")
+          : parentComment
+            ? (postAuthorName || "玩家")
+            : postAuthorName);
+      const isSelfComment = comment?.interactionKind === "self-comment"
+        || (
+          !comment?.parentId
+          && authorType === "character"
+          && String(comment?.charId) === String(post?.charId)
+        );
+      events.push({
+        id: `comment:${post.id}:${comment.id}`,
+        kind: isSelfComment ? "self-comment" : "comment",
+        postId: post.id,
+        commentId: comment.id,
+        actorName,
+        postAuthorName,
+        targetName,
+        targetKind: comment?.parentId ? "comment" : "post",
+        title: actorName,
+        body: comment.content || "",
+        avatar: commenter?.avatar || comment.charAvatar || "",
+        time: commentTime,
+        isUnread: commentTime > seenAt,
+      });
+    });
+  });
+  events.sort((first, second) => second.time - first.time);
+  return events;
+}
+
+function collectSocialNotifications(sources) {
+  const events = collectSocialActivities(sources).filter((event) => event.isUnread);
+  if (!events.length) return [];
+  const latest = events[0];
   return [{
-    id: `${NOTIFICATION_TYPES.SOCIAL}:posts`,
+    id: `${NOTIFICATION_TYPES.SOCIAL}:activity`,
     type: NOTIFICATION_TYPES.SOCIAL,
-    title: latest.charName || latest.authorName || "社群",
-    body: latest.content || "",
-    avatar: latest.charAvatar || latest.avatar || "",
-    fallbackIcon: "🗯️",
-    count: unseen.length,
-    time: Number(latest.time) || 0,
+    title: latest.title,
+    body: latest.body,
+    avatar: latest.avatar,
+    fallbackIcon: latest.kind === "post" ? "🗯️" : "💬",
+    count: events.length,
+    time: latest.time,
     appId: "social",
-    payload: { section: "feed" },
+    payload: { section: "feed", postId: latest.postId },
   }];
 }
 
@@ -169,7 +245,9 @@ export function filterForSurface(list, settings, surface) {
 }
 
 export function selectLockNotifications(list, settings) {
-  return filterForSurface(list, settings, "lockScreen").slice(0, LOCK_NOTIFICATION_LIMIT);
+  return filterForSurface(list, settings, "lockScreen")
+    .filter((item) => item.type !== NOTIFICATION_TYPES.SOCIAL)
+    .slice(0, LOCK_NOTIFICATION_LIMIT);
 }
 
 export function buildBadgeCounts(list, settings) {
@@ -189,6 +267,18 @@ export function canInterrupt({ settings, locked, currentApp, now }) {
   if (IMMERSIVE_APPS.includes(currentApp)) return false;
   return !isQuietHours(settings, now);
 }
+
+/**
+ * 系統通知的抑制條件比橫幅少一項：不看 currentApp 與 locked。
+ * 它只在頁面不在前景時送出（由呼叫端判斷），此時玩家開著哪個 App、
+ * 虛擬手機鎖沒鎖都不構成「正在被打斷」，勿擾時段則照常尊重。
+ */
+export function canNotifySystem({ settings, now }) {
+  if (settings?.enabled === false || settings?.surfaces?.system !== true) return false;
+  return !isQuietHours(settings, now);
+}
+
+export const filterAllowedTypes = (list, settings) => list.filter((item) => typeAllowed(settings, item.type));
 
 // 同時到達多則時合併成一則摘要，不排隊連播。
 export function buildBannerPayload(list) {

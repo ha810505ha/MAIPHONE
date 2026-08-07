@@ -13,7 +13,7 @@ const gestureGuards = {
 export default function LockScreen({ unlocking, notifications, onOpenNotification, onUnlock, gestureHandlers, ft, fd, tr }) {
   return (
     <div className="mp-wrap">
-      <div className="mp-phone">
+      <div className="mp-phone" data-runtime-phone="true">
         <div className={`mp-lock ${unlocking ? "out" : ""}`} {...gestureHandlers} onDoubleClick={onUnlock}>
           <BarClock ft={ft} hideTime />
           <LockClock ft={ft} fd={fd} />

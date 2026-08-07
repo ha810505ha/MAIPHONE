@@ -1,4 +1,4 @@
-const MALIPHONE_AI_PROXY = "https://orange-butterfly-8390.d778105.workers.dev";
+const MALIPHONE_AI_PROXY = "https://maliphone-ai-proxy.d778105.workers.dev";
 const CURRENT_VERSION = "1.2.8";
 
 

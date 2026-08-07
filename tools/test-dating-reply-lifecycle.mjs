@@ -40,7 +40,7 @@ const [hookSource, chatSource, appSource] = await Promise.all([
   readFile(new URL("../services/dating/datingChat.js", import.meta.url), "utf8"),
   readFile(new URL("../components/apps/DatingApp.jsx", import.meta.url), "utf8"),
 ]);
-assert.match(chatSource, /callAI\([^;]+,\s*\{ signal \}\)/s);
+assert.match(chatSource, /callAI\([^;]+signal[^;]+app:\s*"dating"/s);
 assert.match(hookSource, /cancelReply\(profileId, "Profile blocked"\)/);
 assert.match(hookSource, /cancelReply\(profileId, "Profile reported"\)/);
 assert.match(hookSource, /waitForDatingReplyDelay\(remaining, request\.controller\.signal\)/);

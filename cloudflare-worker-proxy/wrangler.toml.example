@@ -2,8 +2,36 @@ name = "maliphone-ai-proxy"
 main = "worker.js"
 compatibility_date = "2026-05-21"
 
-# 多個來源用逗號分隔。這版只給 Claude / Ollama Cloud 代理使用。
-# GitHub Pages 正式網址請填你的 MALIPHONE origin，例如：
-# ALLOWED_ORIGINS = "https://ha810505ha.github.io,http://localhost:5173"
+# Copy this file to wrangler.toml. Do not commit the real file because it contains
+# your Cloudflare resource identifiers.
 [vars]
 ALLOWED_ORIGINS = "https://ha810505ha.github.io,http://localhost:5173"
+SUPABASE_URL = "https://YOUR_PROJECT_REF.supabase.co"
+# This is the public/publishable Supabase key, not a secret or service-role key.
+SUPABASE_PUBLISHABLE_KEY = "YOUR_SUPABASE_PUBLISHABLE_KEY"
+MALI_PLAYER_DAILY_LIMIT = "50"
+MALI_TEST_MODE_ENABLED = "false"
+MALI_CONNECTION_TEST_COOLDOWN_SECONDS = "60"
+MALI_CONNECTION_TEST_DAILY_LIMIT = "20"
+MALI_GEMINI_PRIMARY_DAILY_LIMIT = "1100"
+# Set this only when a separately authorized backup provider is ready.
+MALI_GEMINI_BACKUP_DAILY_LIMIT = "0"
+MALI_GEMINI_PRIMARY_MODEL = "gemma-4-31b-it"
+MALI_GEMINI_BACKUP_MODEL = "gemma-4-26b-a4b-it"
+MALI_PROVIDER_ORDER = "gemini,openrouter"
+MALI_OPENROUTER_MODEL = "deepseek/deepseek-v4-flash"
+MALI_OPENROUTER_MODELS = "deepseek/deepseek-v4-flash,deepseek/deepseek-v4-pro,google/gemini-3.5-flash-lite,google/gemini-3-flash-preview,openai/gpt-5.6-luna,z-ai/glm-4.7-flash,z-ai/glm-5.2"
+MALI_OPENROUTER_DAILY_LIMIT = "1100"
+MALI_OPENROUTER_HTTP_REFERER = "https://ha810505ha.github.io"
+MALI_OPENROUTER_X_TITLE = "MaliPhone"
+MALI_MAX_OUTPUT_TOKENS = "1024"
+
+[[d1_databases]]
+binding = "MALIPHONE_DB"
+database_name = "maliphone-data"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "MALIPHONE_MEDIA"
+bucket_name = "maliphone-media"

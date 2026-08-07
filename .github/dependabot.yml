@@ -1,0 +1,13 @@
+version: 2
+
+# The deploy workflow pins actions to commit SHAs, which means they never pick up
+# security fixes on their own. Dependabot is the counterpart: it opens PRs that bump
+# the pinned SHA and rewrite the trailing version comment.
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci

@@ -3,7 +3,7 @@ import { RECIPES } from "../data/recipes";
 import {
   itemMeta, recipeById, recipeUnlocked, maxBatch,
   startCraft, furnaceDone, collectFurnace, furnaceCount,
-  stockShelf, unstockShelf, settleShelves, SELL_INTERVAL_SEC,
+  stockShelfQuantity, unstockShelf, settleShelves, SELL_INTERVAL_SEC,
   deliverOrder,
 } from "../systems/shop";
 
@@ -24,6 +24,8 @@ export default function ShopPanel({ save, onDirty, onToast, onCrystals, onClose,
   const [, setTick] = useState(0);
   // 每個丹方自己記一個「這次想煉幾爐」，玩家用 +/- 調好一次送出，不用反覆點按鈕
   const [batchByRecipe, setBatchByRecipe] = useState({});
+  // 空貨架先選商品，再選上架數量；每座貨架保留自己的暫存選擇。
+  const [shelfDrafts, setShelfDrafts] = useState({});
 
   // 面板開著時每秒回算：貨架賣出即時進帳、丹爐進度會動
   useEffect(() => {
@@ -148,20 +150,90 @@ export default function ShopPanel({ save, onDirty, onToast, onCrystals, onClose,
             </div>
           );
         }
+        const shelfKey = String(sh.id ?? idx);
+        const draft = shelfDrafts[shelfKey];
+        const selectedItemId = draft?.itemId;
+        const selectedHave = selectedItemId ? (inv[selectedItemId] || 0) : 0;
+        const selectedMeta = selectedItemId ? itemMeta(selectedItemId) : null;
+        const selectedQuantity = Math.min(
+          selectedHave,
+          Math.max(1, Math.trunc(Number(draft?.quantity) || 1)),
+        );
+        const setSelectedQuantity = (quantity) => {
+          const nextQuantity = Math.min(
+            selectedHave,
+            Math.max(1, Math.trunc(Number(quantity) || 1)),
+          );
+          setShelfDrafts((current) => ({
+            ...current,
+            [shelfKey]: { ...current[shelfKey], quantity: nextQuantity },
+          }));
+        };
+        const clearShelfDraft = () => {
+          setShelfDrafts((current) => {
+            const next = { ...current };
+            delete next[shelfKey];
+            return next;
+          });
+        };
         return (
           <div key={sh.id} style={{ ...rowStyle, flexDirection: "column", alignItems: "stretch" }}>
-            <div style={{ fontSize: 12, color: "#8a7a6a", marginBottom: invEntries.length ? 6 : 0 }}>空貨架 {sh.id + 1} — 選擇上架物品：</div>
+            <div style={{ fontSize: 12, color: "#8a7a6a", marginBottom: invEntries.length ? 6 : 0 }}>
+              空貨架 {sh.id + 1} — {selectedMeta && selectedHave > 0 ? "選擇上架數量：" : "選擇上架物品："}
+            </div>
             {invEntries.length === 0 ? (
               <div style={{ fontSize: 11, color: "#b0a494" }}>（背包沒有可賣的東西）</div>
+            ) : selectedMeta && selectedHave > 0 ? (
+              <>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 22 }}>{selectedMeta.icon}</span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <b style={{ display: "block", fontSize: 13 }}>{selectedMeta.name}</b>
+                    <small style={{ color: "#8a7a6a" }}>背包持有 {selectedHave} 件</small>
+                  </span>
+                  <button style={{ ...btnStyle(false), padding: "6px 9px", fontSize: 11 }} onClick={clearShelfDraft}>重選</button>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                  <button style={{ ...btnStyle(false), padding: "7px 11px" }} disabled={selectedQuantity <= 1} onClick={() => setSelectedQuantity(selectedQuantity - 1)}>−</button>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min="1"
+                    max={selectedHave}
+                    value={selectedQuantity}
+                    aria-label={`${selectedMeta.name}上架數量`}
+                    onChange={(event) => setSelectedQuantity(event.target.value)}
+                    onFocus={(event) => event.target.select()}
+                    style={{
+                      width: 58, boxSizing: "border-box", border: "1px solid #d8c9b8", borderRadius: 10,
+                      padding: "7px 5px", background: "#fff", color: "#5d5147", textAlign: "center", fontSize: 13, fontWeight: 700,
+                    }}
+                  />
+                  <button style={{ ...btnStyle(false), padding: "7px 11px" }} disabled={selectedQuantity >= selectedHave} onClick={() => setSelectedQuantity(selectedQuantity + 1)}>＋</button>
+                  <button style={{ ...btnStyle(false), padding: "7px 9px", fontSize: 11 }} disabled={selectedQuantity >= selectedHave} onClick={() => setSelectedQuantity(selectedHave)}>全部</button>
+                  <button style={{ ...btnStyle(true), marginLeft: "auto" }} onClick={() => {
+                    const err = stockShelfQuantity(save, idx, selectedItemId, selectedQuantity);
+                    if (err) {
+                      onToast(err);
+                    } else {
+                      onToast(`${selectedMeta.icon} ${selectedMeta.name} ×${selectedQuantity} 已上架`);
+                      clearShelfDraft();
+                      onDirty();
+                    }
+                    setTick((t) => t + 1);
+                  }}>上架</button>
+                </div>
+              </>
             ) : (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {invEntries.map(([id, n]) => {
                   const m = itemMeta(id);
                   return (
                     <button key={id} style={btnStyle(false)} onClick={() => {
-                      const err = stockShelf(save, idx, id);
-                      if (err) onToast(err); else { onToast(`${m.icon} ${m.name} ×${n} 已上架`); onDirty(); }
-                      setTick((t) => t + 1);
+                      setShelfDrafts((current) => ({
+                        ...current,
+                        [shelfKey]: { itemId: id, quantity: 1 },
+                      }));
                     }}>{m.icon}{m.name} ×{n}</button>
                   );
                 })}

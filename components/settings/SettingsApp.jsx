@@ -5,10 +5,11 @@ import HeroImageSettings from "./HeroImageSettings";
 import InterfaceSettings from "./InterfaceSettings";
 import ApiPresetSettings from "./ApiPresetSettings";
 import AiConnectionSettings from "./AiConnectionSettings";
+import MaliTestModelSettings from "./MaliTestModelSettings";
 import VoiceApiSettings from "./VoiceApiSettings";
 import ImageApiSettings from "./ImageApiSettings";
 import ApiPresetModal from "./ApiPresetModal";
-import AccountSyncSettings from "./AccountSyncSettings";
+import AccountSettingsSection from "../auth/AccountSettingsSection";
 import DataBackupSettings from "./DataBackupSettings";
 import AboutInfoSettings from "./AboutInfoSettings";
 import ResetDataSettings from "./ResetDataSettings";
@@ -35,9 +36,9 @@ export default function SettingsApp({ closeApp, t, tr, tab, setTab, nightTheme, 
         </div>
         {tab === "appearance" && <><div className="mp-sg"><div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, cursor: "pointer" }} onClick={appearance.toggleOpen}><div><div className="mp-sg-t" style={{ marginBottom: 2 }}>{tr("主題與外觀", "Theme & appearance", "テーマと外観", "테마 및 외관")}</div><div style={{ fontSize: 10, color: "var(--mp-txt-l)" }}>{tr("主題、桌面立繪與自訂 CSS", "Theme, desktop image, and custom CSS", "テーマ、立ち絵、カスタム CSS", "테마, 데스크톱 이미지, 사용자 CSS")}</div></div><span style={{ fontSize: 11, fontWeight: 800, color: "var(--mp-pink-dk)" }}>{appearance.open ? tr("收合", "Collapse", "折りたたむ", "접기") : tr("展開", "Expand", "展開", "펼치기")}</span></div>{appearance.open && <div style={{ display: "flex", flexDirection: "column", marginTop: 12 }}><ThemeSettings {...appearance.themeProps} /><CustomCssSettings {...appearance.cssProps} /><HeroImageSettings {...appearance.heroProps} /></div>}</div><InterfaceSettings {...appearance.interfaceProps} /></>}
         {tab === "notifications" && <NotificationSettings tr={tr} {...notifications} />}
-        {tab === "api" && <><ApiPresetSettings {...api.presetProps} /><AiConnectionSettings {...api.connectionProps} /><VoiceApiSettings {...api.voiceProps} />{IMAGE_GEN_ENABLED && <ImageApiSettings tr={tr} />}</>}
+        {tab === "api" && <><ApiPresetSettings {...api.presetProps} /><AiConnectionSettings {...api.connectionProps} /><MaliTestModelSettings {...api.hostedTestProps} /> <VoiceApiSettings {...api.voiceProps} />{IMAGE_GEN_ENABLED && <ImageApiSettings tr={tr} />}</>}
         {modals.preset && <ApiPresetModal {...modals.preset} />}
-        {tab === "data" && <><SystemMailboxSettings /><AccountSyncSettings {...data.syncProps} /><DataBackupSettings {...data.backupProps} /></>}
+        {tab === "data" && <><SystemMailboxSettings /><AccountSettingsSection {...data.accountProps} /><DataBackupSettings {...data.backupProps} /></>}
         {tab === "about" && <><AboutInfoSettings {...about.infoProps} /><ResetDataSettings {...about.resetProps} /></>}
       </div>
     </div>

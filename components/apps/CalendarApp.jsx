@@ -256,7 +256,14 @@ export default function CalendarApp({ closeApp, tr }) {
               <button type="button" onClick={() => startEdit(event)} style={{ flex: 1, minWidth: 0, border: 0, background: "transparent", padding: 0, textAlign: "left" }}>
                 <div style={{ fontSize: 12.5, fontWeight: 800, color: "var(--mp-txt)" }}>{event.time && <span style={{ color: "var(--calendar-accent)", marginRight: 6 }}>{event.time}</span>}{event.title}{event.recurring ? " ↻" : ""}</div>
                 {event.note && <div style={{ fontSize: 10, color: "var(--calendar-muted)", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{event.note}</div>}
-                <div style={{ fontSize: 8.5, color: "var(--calendar-muted)", marginTop: 3 }}>{event.source === "ics" ? tr("匯入", "Imported", "読み込み", "가져옴") : tr("手動", "Manual", "手動", "직접 입력")} · {tr("點擊編輯", "Tap to edit", "タップして編集", "눌러서 편집")}</div>
+                <div style={{ fontSize: 8.5, color: "var(--calendar-muted)", marginTop: 3 }}>
+                  {event.source === "ics"
+                    ? tr("匯入", "Imported", "読み込み", "가져옴")
+                    : event.source === "chat"
+                      ? tr("聊天約定", "Chat appointment", "チャットの約束", "채팅 약속")
+                      : tr("手動", "Manual", "手動", "직접 입력")}
+                  {event.characterId && event.characterName ? ` · ${event.characterName}` : ""} · {tr("點擊編輯", "Tap to edit", "タップして編集", "눌러서 편집")}
+                </div>
               </button>
               <button type="button" title={event.visibleToChar ? tr("角色看得到（點擊改為私人）", "Visible to characters (tap to make private)", "キャラに表示（タップで非公開）", "캐릭터에게 공개(눌러서 비공개)") : tr("只有你看得到（點擊開放給角色）", "Private (tap to share with characters)", "自分のみ（タップでキャラに公開）", "나만 보기(눌러서 캐릭터에게 공개)")} onClick={() => toggleVisible(event.id)}
                 style={{ border: 0, background: "transparent", fontSize: 15 }}>{event.visibleToChar ? "🩷" : "🔒"}</button>

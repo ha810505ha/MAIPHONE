@@ -120,6 +120,10 @@ import xingluSeed from "../assets/crops/xinglu_Seed.png";
 import xingluSprout from "../assets/crops/xinglu_Sprout.png";
 import xingluStage1 from "../assets/crops/xinglu_Stage_1.png";
 import xingluRipe from "../assets/crops/xinglu_Ripe.png";
+import lingmuSeed from "../assets/crops/lingmu_Seed.png";
+import lingmuSprout from "../assets/crops/lingmu_Sprout.png";
+import lingmuStage1 from "../assets/crops/lingmu_Stage_1.png";
+import lingmuRipe from "../assets/crops/lingmu_Ripe.png";
 
 export const BUILDING_IMAGES = {
   hall: hallImg,
@@ -255,4 +259,5 @@ export const CROP_IMAGES = {
   qingling: [qinglingSeed, qinglingSprout, qinglingStage1, qinglingRipe],
   yuehua: [yuehuaSeed, yuehuaSprout, yuehuaStage1, yuehuaRipe],
   xinglu: [xingluSeed, xingluSprout, xingluStage1, xingluRipe],
+  lingmu: [lingmuSeed, lingmuSprout, lingmuStage1, lingmuRipe],
 };

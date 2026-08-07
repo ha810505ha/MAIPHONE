@@ -1,7 +1,7 @@
-import { callAI } from "../aiService";
+import { callAI, isAiConfigReady } from "../aiService";
 
 const clean = (value, limit = 2000) => String(value || "").replace(/<think>[\s\S]*?<\/think>/gi, "").trim().slice(0, limit);
-const hasApi = (apiConfig) => apiConfig?.provider && (apiConfig.apiKey || apiConfig.provider === "ollama");
+const hasApi = (apiConfig) => isAiConfigReady(apiConfig);
 const charProfile = (character) => clean(character?.description || character?.personality || character?.prompt || character?.persona, 2000);
 const decodeJsonText = (value) => String(value || "")
   .replace(/\\"/g, "\"")
@@ -53,7 +53,10 @@ export async function generateMusicReaction({ track, character, playerProfile, a
 2. 可以聊歌名給你的聯想、氣氛、或跟對方的互動，但不要假裝知道歌詞內容細節。
 3. 不要提到系統、AI、播放器這類詞，不要用引號包住整句。`;
   try {
-    const raw = await callAI([{ role: "user", content: "（歌開始播了，說點什麼吧）" }], { ...apiConfig, maxTokens: Math.min(800, Math.max(500, Number(apiConfig.maxTokens) || 800)) }, systemPrompt);
+    const raw = await callAI([{ role: "user", content: "（歌開始播了，說點什麼吧）" }], { ...apiConfig, maxTokens: Math.min(800, Math.max(500, Number(apiConfig.maxTokens) || 800)) }, systemPrompt, {
+      app: "music",
+      action: "track_reaction",
+    });
     const text = clean(raw, 200);
     return text || null;
   } catch {
@@ -76,6 +79,7 @@ export async function generateSongPick({ request, character, playerProfile, apiC
     [{ role: "user", content: retry ? "上次輸出被截斷。請重新輸出完整且精簡的單行 JSON，務必包含完整 reason 與結尾大括號。" : "請依規則輸出點歌 JSON。" }],
     { ...apiConfig, maxTokens: Math.min(1600, Math.max(1000, Number(apiConfig.maxTokens) || 1200)) },
     systemPrompt,
+    { app: "music", action: retry ? "track_pick_retry" : "track_pick" },
   );
   let parsed = parseSongPickResponse(await requestPick(false));
   const firstReason = clean(parsed?.reason, 120);

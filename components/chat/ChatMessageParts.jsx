@@ -16,7 +16,7 @@ export function CharacterVoiceAction({ visible, collapseWhenHidden, status, onTo
   );
 }
 
-export function InnerThoughtPanel({ thought, expanded, loading, unseen, onToggle, onRegenerate, tr }) {
+export function InnerThoughtPanel({ thought, expanded, loading, unseen, onToggle, onRegenerate, trailingAction, tr }) {
   return (
     <div className={`mp-thought ${expanded && thought ? "expanded" : ""}`} onClick={(event) => event.stopPropagation()}>
       <div className="mp-thought-bar">
@@ -41,6 +41,7 @@ export function InnerThoughtPanel({ thought, expanded, loading, unseen, onToggle
             <RefreshCw size={13} strokeWidth={2.1} aria-hidden="true" />
           </button>
         )}
+        {trailingAction}
       </div>
       {thought && expanded && <div className="mp-thought-content">{thought}</div>}
     </div>

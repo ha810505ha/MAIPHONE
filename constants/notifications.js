@@ -21,7 +21,8 @@ export const DEFAULT_NOTIFICATION_SETTINGS = Object.freeze({
   enabled: true,
   types: Object.freeze({ message: true, match: true, like: true, social: true, wallet: true, mailbox: true }),
   quietHours: Object.freeze({ enabled: false, start: "23:00", end: "08:00" }),
-  surfaces: Object.freeze({ banner: true, lockScreen: true, badge: true }),
+  // system 預設關閉：它需要瀏覽器權限，得由玩家主動開啟才問。
+  surfaces: Object.freeze({ banner: true, lockScreen: true, badge: true, system: false }),
   // 與其他項目不同：這個省的是 API 額度，不是打擾，所以獨立成一個開關。
   pauseProactive: false,
 });

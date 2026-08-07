@@ -1,37 +1,10 @@
+import { useState } from "react";
 import { gid, sanitizeText } from "../../utils/coreUtils";
 import { createImageCropState, drawCoverCrop } from "../../utils/imageCrop";
 
 export default function useGroupChatController({
   characters,
   currentChatGroup,
-  groupCoverCrop,
-  groupEditCoverCrop,
-  groupCreateMemberIds,
-  groupCreateName,
-  groupCreateRulePrompt,
-  groupCreateCover,
-  groupEditGroupId,
-  groupEditMemberIds,
-  groupEditName,
-  groupEditRulePrompt,
-  groupEditUseRealTime,
-  groupEditCover,
-  setGroupCoverCrop,
-  setGroupEditCoverCrop,
-  setGroupCreateCover,
-  setGroupEditCover,
-  setGroupCreateName,
-  setGroupCreateRulePrompt,
-  setGroupCreateMemberIds,
-  setGroupCreateSearch,
-  setGroupCreateOpen,
-  setGroupEditGroupId,
-  setGroupEditName,
-  setGroupEditRulePrompt,
-  setGroupEditUseRealTime,
-  setGroupEditMemberIds,
-  setGroupEditSearch,
-  setGroupEditOpen,
   setGroupChats,
   setGroupScenes,
   setCurrentChatGroup,
@@ -40,6 +13,23 @@ export default function useGroupChatController({
   notify,
   tr,
 }) {
+  const [groupCreateOpen, setGroupCreateOpen] = useState(false);
+  const [groupCreateName, setGroupCreateName] = useState("");
+  const [groupCreateRulePrompt, setGroupCreateRulePrompt] = useState("");
+  const [groupCreateMemberIds, setGroupCreateMemberIds] = useState([]);
+  const [groupCreateSearch, setGroupCreateSearch] = useState("");
+  const [groupCreateCover, setGroupCreateCover] = useState("");
+  const [groupEditOpen, setGroupEditOpen] = useState(false);
+  const [groupEditGroupId, setGroupEditGroupId] = useState(null);
+  const [groupEditName, setGroupEditName] = useState("");
+  const [groupEditRulePrompt, setGroupEditRulePrompt] = useState("");
+  const [groupEditUseRealTime, setGroupEditUseRealTime] = useState(true);
+  const [groupEditMemberIds, setGroupEditMemberIds] = useState([]);
+  const [groupEditSearch, setGroupEditSearch] = useState("");
+  const [groupEditCover, setGroupEditCover] = useState("");
+  const [groupCoverCrop, setGroupCoverCrop] = useState(null);
+  const [groupEditCoverCrop, setGroupEditCoverCrop] = useState(null);
+
   const getGroupMembers = (group) => {
     const ids = Array.isArray(group?.memberIds) && group.memberIds.length ? group.memberIds : characters.map((c) => c.id);
     return characters.filter((c) => ids.includes(c.id));
@@ -203,7 +193,94 @@ export default function useGroupChatController({
     notify(tr("已建立群組", "Group created", "グループを作成しました", "그룹이 생성되었습니다"), `Group created: ${name || fallbackName}`);
   };
 
+  const getGroupChatModalProps = ({ displayCharacters = characters } = {}) => ({
+    open: Boolean(groupCreateOpen || groupEditOpen || groupCoverCrop || groupEditCoverCrop),
+    props: {
+      characters: displayCharacters,
+      tr,
+      showToast,
+      create: {
+        open: groupCreateOpen,
+        name: groupCreateName,
+        setName: setGroupCreateName,
+        cover: groupCreateCover,
+        setCover: setGroupCreateCover,
+        memberIds: groupCreateMemberIds,
+        setMemberIds: setGroupCreateMemberIds,
+        search: groupCreateSearch,
+        setSearch: setGroupCreateSearch,
+        rulePrompt: groupCreateRulePrompt,
+        setRulePrompt: setGroupCreateRulePrompt,
+        onCoverUpload: handleGroupCreateCoverUp,
+        onClose: () => setGroupCreateOpen(false),
+        onSubmit: createGroupChat,
+      },
+      edit: {
+        open: groupEditOpen,
+        name: groupEditName,
+        setName: setGroupEditName,
+        cover: groupEditCover,
+        setCover: setGroupEditCover,
+        memberIds: groupEditMemberIds,
+        setMemberIds: setGroupEditMemberIds,
+        search: groupEditSearch,
+        setSearch: setGroupEditSearch,
+        rulePrompt: groupEditRulePrompt,
+        setRulePrompt: setGroupEditRulePrompt,
+        useRealTime: groupEditUseRealTime,
+        setUseRealTime: setGroupEditUseRealTime,
+        onCoverUpload: handleGroupEditCoverUp,
+        onClose: () => setGroupEditOpen(false),
+        onSubmit: saveEditGroup,
+        onDelete: deleteGroupChat,
+      },
+      crop: {
+        createValue: groupCoverCrop,
+        setCreateValue: setGroupCoverCrop,
+        editValue: groupEditCoverCrop,
+        setEditValue: setGroupEditCoverCrop,
+        onApply: applyGroupCoverCrop,
+        onClose: () => {
+          setGroupCoverCrop(null);
+          setGroupEditCoverCrop(null);
+        },
+      },
+    },
+  });
+
   return {
+    groupCreateOpen,
+    groupCreateName,
+    groupCreateRulePrompt,
+    groupCreateMemberIds,
+    groupCreateSearch,
+    groupCreateCover,
+    groupEditOpen,
+    groupEditGroupId,
+    groupEditName,
+    groupEditRulePrompt,
+    groupEditUseRealTime,
+    groupEditMemberIds,
+    groupEditSearch,
+    groupEditCover,
+    groupCoverCrop,
+    groupEditCoverCrop,
+    setGroupCreateOpen,
+    setGroupCreateName,
+    setGroupCreateRulePrompt,
+    setGroupCreateMemberIds,
+    setGroupCreateSearch,
+    setGroupCreateCover,
+    setGroupEditOpen,
+    setGroupEditGroupId,
+    setGroupEditName,
+    setGroupEditRulePrompt,
+    setGroupEditUseRealTime,
+    setGroupEditMemberIds,
+    setGroupEditSearch,
+    setGroupEditCover,
+    setGroupCoverCrop,
+    setGroupEditCoverCrop,
     getGroupMembers,
     openCreateGroup,
     openEditGroup,
@@ -213,5 +290,6 @@ export default function useGroupChatController({
     deleteGroupChat,
     createGroupChat,
     applyGroupCoverCrop,
+    getGroupChatModalProps,
   };
 }

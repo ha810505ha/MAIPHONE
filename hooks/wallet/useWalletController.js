@@ -20,6 +20,8 @@ export default function useWalletController({
   setTransferNote,
   setTransferModalOpen,
   setChatHistory,
+  getActiveRoomId,
+  updateRoomMessages,
   setWalletGenLoading,
   defaultWallet,
   characterWalletTxLimit,
@@ -145,9 +147,10 @@ export default function useWalletController({
     }
     return false;
   };
-  const decideIncomingTransferForCharacter = async (transfer, char) => {
+  const decideIncomingTransferForCharacter = async (transfer, char, { roomId = null, historySnapshot = null } = {}) => {
     if (!canUseCurrentProvider()) return;
-    const recent = (chatHistory?.[char.id] || []).slice(-8).map((message) => {
+    const sourceHistory = Array.isArray(historySnapshot) ? historySnapshot : (chatHistory?.[char.id] || []);
+    const recent = sourceHistory.slice(-8).map((message) => {
       if (message.role === "transfer") return `[轉帳] 玩家轉給你 ${formatMoney(message.amount || 0)}${message.note ? `，備註：${message.note}` : ""}`;
       if (message.role === "user") return `玩家：${sanitizeText(message.content || "", 240)}`;
       if (message.role === "assistant") return `${char.name}：${sanitizeText(message.content || "", 240)}`;
@@ -170,14 +173,21 @@ ${recent || "（無）"}
 
 格式：{"decision":"accept","reply":"謝謝，那我就收下了。"}`;
     try {
-      const raw = await callAI([{ role: "user", content: prompt }], apiConfig, "你是角色轉帳處理器，只能輸出有效 JSON。");
+      const raw = await callAI([{ role: "user", content: prompt }], apiConfig, "你是角色轉帳處理器，只能輸出有效 JSON。", {
+        app: "wallet",
+        action: "transfer_decision",
+      });
       const match = String(raw || "").match(/\{[\s\S]*\}/);
       if (!match) return;
       const parsed = JSON.parse(match[0]);
       const decision = ["accept", "return", "pending"].includes(parsed.decision) ? parsed.decision : "return";
       handleCharacterTransferDecision(transfer, decision);
       const reply = sanitizeText(parsed.reply || "", 800).trim();
-      if (reply) setChatHistory((history) => ({ ...history, [char.id]: [...(history[char.id] || []), { id: gid(), role: "assistant", content: reply, mode: "online", interceptedByBlock: characterBlockStates?.[char.id]?.playerBlocksCharacter === true || characterBlockStates?.[char.id]?.blocked === true, time: Date.now() }] }));
+      if (reply) {
+        const replyMessage = { id: gid(), role: "assistant", content: reply, mode: "online", interceptedByBlock: characterBlockStates?.[char.id]?.playerBlocksCharacter === true || characterBlockStates?.[char.id]?.blocked === true, time: Date.now() };
+        if (typeof updateRoomMessages === "function") updateRoomMessages(char.id, roomId, (messages) => [...messages, replyMessage]);
+        else setChatHistory((history) => ({ ...history, [char.id]: [...(history[char.id] || []), replyMessage] }));
+      }
     } catch (error) {
       showToast(`${tr("角色暫時無法處理轉帳", "The character cannot process the transfer right now", "キャラクターは現在送金を処理できません", "캐릭터가 지금 이체를 처리할 수 없습니다")}：${sanitizeText(error?.message || "", 100)}`);
     }
@@ -189,6 +199,7 @@ ${recent || "（無）"}
     const currentBalance = Number(wallet?.balance || 0);
     if (currentBalance < amount) { showToast(tr("餘額不足", "Insufficient balance", "残高不足", "잔액 부족")); return; }
     const cid = currentChatChar.id;
+    const roomId = getActiveRoomId?.(cid) || null;
     const note = sanitizeText(transferNote, 60);
     const now = Date.now();
     const transferId = gid();
@@ -215,17 +226,21 @@ ${recent || "（無）"}
     try {
       appendPlayerWalletTx("expense", amount, note ? stripUserPlaceholder(`轉帳給${currentChatChar.name}（待收下）｜${note}`) : `轉帳給${currentChatChar.name}（待收下）`, transfer, now);
       setTransfers((items) => [transfer, ...(items || [])]);
-      setChatHistory((h) => ({ ...h, [cid]: [...(h[cid] || []), transferMsg] }));
+      if (typeof updateRoomMessages === "function") updateRoomMessages(cid, roomId, (messages) => [...messages, transferMsg]);
+      else setChatHistory((h) => ({ ...h, [cid]: [...(h[cid] || []), transferMsg] }));
       setTransferAmount("");
       setTransferNote("");
       setTransferModalOpen(false);
       showToast(tr("轉帳已送出，等待對方處理", "Transfer sent and awaiting a response", "送金しました。相手の処理を待っています", "이체를 보냈으며 상대방의 처리를 기다리는 중입니다"));
-      await decideIncomingTransferForCharacter(transfer, currentChatChar);
+      await decideIncomingTransferForCharacter(transfer, currentChatChar, {
+        roomId,
+        historySnapshot: [...(chatHistory?.[cid] || []), transferMsg],
+      });
     } finally {
       setTransferSubmitting(false);
     }
   };
-  const applyCharacterTransferToPlayer = ({ cid, char, amount, note, time, displayAtEnd = true }) => {
+  const applyCharacterTransferToPlayer = ({ cid, char, amount, note, time, displayAtEnd = true, appendMessage = null }) => {
     const safeAmount = Math.max(0, Math.round(Number(amount) || 0));
     if (!cid || !char || !safeAmount) return null;
     const safeNote = sanitizeText(note || "", 60);
@@ -252,10 +267,13 @@ ${recent || "（無）"}
     };
     appendCharacterWalletTx("expense", safeAmount, safeNote ? stripUserPlaceholder(`轉帳給玩家（待收下）｜${safeNote}`) : "轉帳給玩家（待收下）", transfer, now);
     setTransfers((items) => [transfer, ...(items || [])]);
-    setChatHistory((h) => {
-      const next = [...(h[cid] || []), transferMsg];
-      return { ...h, [cid]: displayAtEnd ? next : next };
-    });
+    if (typeof appendMessage === "function") appendMessage(transferMsg);
+    else {
+      setChatHistory((h) => {
+        const next = [...(h[cid] || []), transferMsg];
+        return { ...h, [cid]: displayAtEnd ? next : next };
+      });
+    }
     return transferMsg;
   };
   const normalizeWalletData = (data) => {
@@ -387,7 +405,10 @@ ${roleProfile || "（無）"}`;
       const raw = await callAI([{
         role: "user",
         content: `${getOutputLanguageDirective()}\n\n${walletPrompt}`,
-      }], apiConfig, "你是角色生活流水生成器，只能輸出有效 JSON。");
+      }], apiConfig, "你是角色生活流水生成器，只能輸出有效 JSON。", {
+        app: "wallet",
+        action: isRefresh ? "ledger_refresh" : "initial_generate",
+      });
       const match = String(raw || "").match(/\{[\s\S]*\}/);
       if (!match) throw new Error("模型未回傳 JSON");
       const parsed = JSON.parse(match[0]);

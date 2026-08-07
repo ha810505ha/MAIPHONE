@@ -28,24 +28,22 @@ export default function PlayerProfileApp({
         <div style={{ display: "grid", gap: 8, maxHeight: 320, overflowY: "auto", overscrollBehavior: "contain", paddingRight: 2 }}>
           {Object.values(persona.personas || {}).map((item) => {
             const active = item.id === persona.activePersonaId;
-            const avatar = sanitizeImage(active ? profile?.avatar : item.data?.playerProfile?.avatar);
-            return <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 10px", borderRadius: 14, background: active ? "rgba(244,143,177,.15)" : "rgba(255,255,255,.55)", border: active ? "1px solid rgba(244,143,177,.45)" : "1px solid rgba(0,0,0,.06)" }}>
+            const itemProfile = active ? profile : item.data?.playerProfile;
+            const itemName = String(itemProfile?.name || item.label || tr("玩家人格", "Persona", "人格", "페르소나")).trim();
+            const avatar = sanitizeImage(itemProfile?.avatar);
+            return <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 10px", borderRadius: 14, background: active ? "color-mix(in srgb,var(--mp-pink) 15%,var(--mp-card-bg))" : "var(--mp-card-bg)", border: active ? "1px solid color-mix(in srgb,var(--mp-pink) 48%,var(--mp-card-border))" : "1px solid var(--mp-card-border)", color: "var(--mp-page-text,var(--mp-txt))" }}>
               <div className="mp-av" style={{ width: 38, height: 38 }}>{avatar ? <img src={avatar} alt="" /> : "👤"}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12, fontWeight: 800 }}>{item.label}</div>
-                <div style={{ fontSize: 10, color: "var(--mp-txt-l)" }}>{item.data?.playerProfile?.gender || tr("未設定性別", "Gender not set", "性別未設定", "성별 미설정")}{active ? ` · ${tr("使用中", "Active", "使用中", "사용 중")}` : ""}</div>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "var(--mp-page-text,var(--mp-txt))" }}>{itemName}</div>
+                <div style={{ fontSize: 10, color: "var(--mp-page-text-muted,var(--mp-txt-l))" }}>{itemProfile?.gender || tr("未設定性別", "Gender not set", "性別未設定", "성별 미설정")}{active ? ` · ${tr("使用中", "Active", "使用中", "사용 중")}` : ""}</div>
               </div>
-              {!active && <button className="mp-ibtn" onClick={() => persona.onSwitch(item.id)}>{tr("切換", "Switch", "切り替え", "전환")}</button>}
-              {active && <button className="mp-ibtn" onClick={() => {
-                const label = window.prompt(tr("人格名稱", "Persona name", "人格名", "페르소나 이름"), item.label);
-                if (label?.trim()) persona.onRename(item.id, label.trim());
-              }}>{tr("改名", "Rename", "名前変更", "이름 변경")}</button>}
+              {!active && <button className="mp-ibtn" style={{ background: "color-mix(in srgb,var(--mp-info) 14%,var(--mp-card-bg))", borderColor: "color-mix(in srgb,var(--mp-info) 38%,var(--mp-card-border))", color: "var(--mp-info)" }} onClick={() => persona.onSwitch(item.id)}>{tr("切換", "Switch", "切り替え", "전환")}</button>}
               {active && Object.keys(persona.personas || {}).length > 1 && <button className="mp-ibtn-r" onClick={() => {
                 if (window.confirm(tr(
-                  `刪除「${item.label}」？此人格的聊天與關係資料將無法復原。`,
-                  `Delete “${item.label}”? This persona's chats and relationship data cannot be restored.`,
-                  `「${item.label}」を削除しますか？この人格のチャットと関係データは復元できません。`,
-                  `“${item.label}” 페르소나를 삭제할까요? 이 페르소나의 채팅과 관계 데이터는 복구할 수 없습니다.`
+                  `刪除「${itemName}」？此人格的聊天與關係資料將無法復原。`,
+                  `Delete “${itemName}”? This persona's chats and relationship data cannot be restored.`,
+                  `「${itemName}」を削除しますか？この人格のチャットと関係データは復元できません。`,
+                  `“${itemName}” 페르소나를 삭제할까요? 이 페르소나의 채팅과 관계 데이터는 복구할 수 없습니다.`
                 ))) persona.onDelete(item.id);
               }}>{tr("刪除", "Delete", "削除", "삭제")}</button>}
             </div>;
@@ -54,8 +52,8 @@ export default function PlayerProfileApp({
         <button className="mp-save" disabled={personaLimitReached} style={{ width: "100%", marginTop: 10, opacity: personaLimitReached ? 0.55 : 1, cursor: personaLimitReached ? "not-allowed" : "pointer" }} onClick={() => {
           if (personaLimitReached) return;
           const label = window.prompt(
-            tr("新玩家人格名稱", "New persona name", "新しいプレイヤー人格名", "새 플레이어 페르소나 이름"),
-            tr("新人格", "New persona", "新しい人格", "새 페르소나")
+            tr("新玩家姓名", "New player name", "新しいプレイヤー名", "새 플레이어 이름"),
+            tr("新玩家", "New player", "新しいプレイヤー", "새 플레이어")
           );
           if (label?.trim()) persona.onCreate(label.trim());
         }}>{personaLimitReached

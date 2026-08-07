@@ -21,6 +21,13 @@ export function buildThemeCss({
       --mp-lock-bg:${activeTheme?.surfaces?.lockBg || "linear-gradient(160deg,#fce4ec 0%,#f8bbd0 30%,#e8eaf6 60%,#b3e5fc 100%)"};
       --mp-card-bg:var(--mp-surface);
       --mp-card-border:var(--mp-glass-b);
+      /* App pages should consume these semantic tokens instead of hard-coded foreground colors. */
+      --mp-page-surface:var(--mp-surface);
+      --mp-page-text:var(--mp-txt);
+      --mp-page-text-muted:var(--mp-txt-l);
+      --mp-page-border:var(--mp-glass-b);
+      --mp-page-control-bg:var(--mp-surface);
+      --mp-page-on-accent:#fff;
       --mp-accent:var(--mp-pink-dk);
       --mp-accent-soft:var(--mp-pink-lt);
       --mp-on-accent:#fff;
@@ -42,6 +49,12 @@ export function buildThemeCss({
     .mp-lock{background:var(--mp-lock-bg);}
     .mp-lock-hint{max-width:min(82vw,320px);padding:0 12px;text-align:center;line-height:1.4;word-break:keep-all;overflow-wrap:anywhere;font-size:12px;}
     .mp-page{background:${activeTheme?.surfaces?.pageBg || "linear-gradient(180deg,#fce4ec 0%,#fff 30%)"};}
+    /* Use this only for an intentionally fixed light art direction (for example, a paper notebook).
+       It keeps the shared phone chrome readable even while the rest of the phone is in Night. */
+    .mp-page[data-mp-surface="light"]{--mp-page-surface:rgba(255,255,255,.88);--mp-page-text:#57434b;--mp-page-text-muted:#8d7580;--mp-page-border:#ead6dd;--mp-page-control-bg:rgba(255,250,248,.94);--mp-page-on-accent:#fff;color:var(--mp-page-text);}
+    .mp-page[data-mp-surface="light"]>.mp-hdr{background:var(--mp-page-control-bg);border-color:var(--mp-page-border);}
+    .mp-page[data-mp-surface="light"]>.mp-hdr .mp-htitle{color:var(--mp-page-text);}
+    .mp-page[data-mp-surface="light"]>.mp-hdr .mp-back{background:var(--mp-page-text);border-color:rgba(87,67,75,.22);color:var(--mp-page-on-accent);box-shadow:0 3px 10px rgba(87,67,75,.18);}
     ${isNightTheme ? `
       .mp-page{background:${activeTheme.surfaces.pageBg};}
       .mp-cr{background:linear-gradient(180deg,rgba(36,27,51,.97),rgba(26,22,37,.99));}
@@ -85,8 +98,6 @@ export function buildThemeCss({
       .mp-cw-desc,.mp-ci-prev,.mp-lbl,.mp-mode-hint{color:#b8a8c9;}
       .mp-msg-t,.mp-reality-t,.mp-char-counter{color:#81728f;}
       .mp-htitle,.mp-clock-big,.mp-clock-day,.mp-lock-time,.mp-cw-name,.mp-ctitle,.mp-sec-ct,.mp-persona,.mp-icon-l{color:#f0e6f5;}
-      .mp-page:has(.lr-page)>.mp-hdr .mp-htitle{color:#57434b;}
-      .mp-page:has(.lr-page)>.mp-hdr .mp-back{background:#57434b;border-color:rgba(87,67,75,.22);color:#fff;box-shadow:0 3px 10px rgba(87,67,75,.18);}
       .mp-lock-notif{background:rgba(47,36,64,.72);border-color:rgba(165,201,232,.24);}
       .mp-lock-notif-name{color:#f0e6f5;}
       .mp-ibtn,.mp-ibtn-chat{background:rgba(165,201,232,.1);border-color:rgba(165,201,232,.3);color:#a5c9e8;}

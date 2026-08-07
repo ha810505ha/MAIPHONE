@@ -1,7 +1,21 @@
 import { useEffect } from "react";
 import { gid, sanitizeText } from "../../utils/coreUtils";
-import { buildSystemPrompt } from "../../utils/characterParser";
 import { callAI } from "../../services/aiService";
+import {
+  CHARACTER_INTERACTION_REPLY_MAX_DELAY_MS,
+  SOCIAL_COMMENT_INPUT_TOKEN_LIMIT,
+  SOCIAL_COMMENT_OUTPUT_TOKEN_LIMIT,
+  SOCIAL_POST_INPUT_TOKEN_LIMIT,
+  SOCIAL_POST_OUTPUT_TOKEN_LIMIT,
+  deletePlayerSocialComment,
+  editPlayerSocialComment,
+  fitSocialInputTokenLimit,
+  getSocialAutoPostDailyLimit,
+  rollCharacterInteractionDelay,
+  selectCharacterInteractionParticipants,
+  shouldStartCharacterInteraction,
+  withSocialOutputTokenLimit,
+} from "../../services/social/characterInteraction";
 
 export default function useSocialFeed({
   apiConfig,
@@ -34,7 +48,7 @@ export default function useSocialFeed({
   canUseCurrentProvider,
   showToast,
   tr,
-  getPlayerContextBlock,
+  buildSocialSystemPrompt,
   buildSocialPostPrompt,
   rollCharacterPostLikes,
   getPlayerDisplayName,
@@ -45,21 +59,139 @@ export default function useSocialFeed({
   insertCommentAfterThread,
   buildSocialCommentReplyPrompt,
   getPostAuthorType,
+  scoreCharacterForCharacterPost,
+  getCharacterCommentReplyChance,
+  buildCharacterPostInteractionPrompt,
+  buildCharacterReplyToCommentPrompt,
 }) {
-  const generatePost = async (char) => {
+  const socialPostApiConfig = withSocialOutputTokenLimit(
+    apiConfig,
+    SOCIAL_POST_OUTPUT_TOKEN_LIMIT,
+  );
+  const socialCommentApiConfig = withSocialOutputTokenLimit(
+    apiConfig,
+    SOCIAL_COMMENT_OUTPUT_TOKEN_LIMIT,
+  );
+  const callSocialAI = (messages, requestApiConfig, systemPrompt, inputTokenLimit, action = "generate") => {
+    const request = fitSocialInputTokenLimit({
+      messages,
+      systemPrompt,
+      maxInputTokens: inputTokenLimit,
+    });
+    return callAI(request.messages, requestApiConfig, request.systemPrompt, {
+      app: "social",
+      action,
+    });
+  };
+  const buildCharacterInteractionSystemPrompt = (char, mode) => buildSocialSystemPrompt(char, {
+    mode,
+    includePlayerRelationship: false,
+  });
+
+  const generateCharacterPostInteractions = async (post, author) => {
+    if (!socialSettings?.characterInteractionsEnabled || !post?.id || !author?.id) return;
+    if (!canUseCurrentProvider()) return;
+    if (!shouldStartCharacterInteraction(socialSettings?.characterInteractionChance)) return;
+
+    const participants = selectCharacterInteractionParticipants({
+      characters,
+      authorId: author.id,
+      recentPosts: posts,
+      scoreCharacter: (char) => scoreCharacterForCharacterPost(char, post, author),
+    });
+    if (!participants.length) return;
+
+    for (const char of participants) {
+      const isSelfComment = String(char.id) === String(author.id);
+      try {
+        const ai = await callSocialAI([{
+          role: "user",
+          content: buildCharacterPostInteractionPrompt({
+            char,
+            post,
+            author,
+            isSelfComment,
+          }),
+        }], socialCommentApiConfig, buildCharacterInteractionSystemPrompt(char, "角色社群留言"), SOCIAL_COMMENT_INPUT_TOKEN_LIMIT, "character_post_interaction");
+        const content = sanitizeText(String(ai || "").replace(/^["「]|["」]$/g, "").trim(), 120);
+        if (!content) continue;
+        const visibleAt = Math.max(Date.now(), Number(post.time) || 0)
+          + rollCharacterInteractionDelay();
+        const characterComment = {
+          id: gid(),
+          role: "assistant",
+          charId: char.id,
+          charName: char.name,
+          content,
+          depth: 1,
+          time: visibleAt,
+          interactionSource: "character-to-character",
+          interactionKind: isSelfComment ? "self-comment" : "comment",
+        };
+        setPosts((prev) => prev.map((item) => (
+          item.id === post.id
+            ? { ...item, comments: insertCommentAfterThread(item.comments || [], null, characterComment) }
+            : item
+        )));
+
+        if (isSelfComment || Math.random() >= getCharacterCommentReplyChance(author)) continue;
+        try {
+          const authorReply = await callSocialAI([{
+            role: "user",
+            content: buildCharacterReplyToCommentPrompt({
+              char: author,
+              post,
+              targetComment: characterComment,
+            }),
+          }], socialCommentApiConfig, buildCharacterInteractionSystemPrompt(author, "貼文作者回覆"), SOCIAL_COMMENT_INPUT_TOKEN_LIMIT, "character_post_reply");
+          const replyContent = sanitizeText(String(authorReply || "").replace(/^["「]|["」]$/g, "").trim(), 120);
+          if (!replyContent) continue;
+          const replyVisibleAt = Math.max(Date.now(), visibleAt) + rollCharacterInteractionDelay({
+            maximum: CHARACTER_INTERACTION_REPLY_MAX_DELAY_MS,
+          });
+          const replyComment = {
+            id: gid(),
+            role: "assistant",
+            charId: author.id,
+            charName: author.name,
+            content: replyContent,
+            parentId: characterComment.id,
+            replyToName: char.name,
+            depth: 2,
+            time: replyVisibleAt,
+            interactionSource: "character-to-character",
+            interactionKind: "author-reply",
+          };
+          setPosts((prev) => prev.map((item) => (
+            item.id === post.id
+              ? {
+                  ...item,
+                  comments: insertCommentAfterThread(
+                    item.comments || [],
+                    characterComment.id,
+                    replyComment,
+                  ),
+                }
+              : item
+          )));
+        } catch (_) {}
+      } catch (_) {}
+    }
+  };
+
+  const generatePost = async (char, generationSource = "manual") => {
     if (!canUseCurrentProvider()) { showToast(tr("請先完成 AI 連線設定（API Key）", "Please finish AI connection setup (API key) first", "先にAI接続設定（APIキー）を完了してください", "먼저 AI 연결 설정(API 키)을 완료해주세요")); return; }
     try {
-      const sysP = `${buildSystemPrompt(char, getPlayerContextBlock())}
-
-[目前輸出模式：社群貼文]
-以下社群貼文規則優先於上方「聊天規則」中關於即時通訊、只輸出私訊內容的限制。
-你正在替 {{char}} 產生一則公開/半公開社群動態。貼文要像角色自己發的近況，不是對 {{user}} 的私訊。`;
-      const t = await callAI([{
+      const sysP = buildSocialSystemPrompt(char, {
+        mode: "社群貼文",
+        includePlayerRelationship: false,
+      });
+      const t = await callSocialAI([{
         role: "user",
         content: buildSocialPostPrompt(char),
-      }], apiConfig, sysP);
+      }], socialPostApiConfig, sysP, SOCIAL_POST_INPUT_TOKEN_LIMIT, "character_post_generate");
         const content = sanitizeText(String(t || "").replace(/^["「]|["」]$/g, "").trim(), 120) || "今天也算是有好好過完了。";
-        setPosts(p => [{
+        const post = {
           id: gid(),
           authorType: "character",
           authorName: char.name,
@@ -70,8 +202,11 @@ export default function useSocialFeed({
           time: Date.now(),
           likes: rollCharacterPostLikes(char),
           liked: false,
-        }, ...p]);
+          generationSource,
+        };
+        setPosts(p => [post, ...p]);
         showToast(tr(`${char.name} 已發佈貼文`, `${char.name} published a post`, `${char.name} が投稿しました`, `${char.name}님이 게시물을 올렸습니다`));
+        void generateCharacterPostInteractions(post, char);
       } catch (err) {
         showToast(`${tr("發文失敗", "Failed to post", "投稿に失敗しました", "게시 실패")}：${err.message}`);
       }
@@ -84,7 +219,15 @@ export default function useSocialFeed({
       return;
     }
     const c = pickRandomSocialCharacter();
-    if (!c) return;
+    if (!c) {
+      showToast(tr(
+        "目前沒有允許發文的角色",
+        "No characters are currently allowed to post",
+        "現在投稿できるキャラがいません",
+        "현재 게시할 수 있는 캐릭터가 없습니다",
+      ));
+      return false;
+    }
     const lastForChar = socialLastPostByCharRef.current?.[c.id] || 0;
     const charLeft = SOCIAL_CHAR_COOLDOWN_MS - (nowTs - lastForChar);
     if (charLeft > 0) {
@@ -93,7 +236,13 @@ export default function useSocialFeed({
     }
     socialLastGlobalPostAtRef.current = nowTs;
     socialLastPostByCharRef.current = { ...(socialLastPostByCharRef.current || {}), [c.id]: nowTs };
-    generatePost(c);
+    showToast(tr(
+      `${c.name} 正在準備貼文…`,
+      `${c.name} is preparing a post…`,
+      `${c.name} が投稿を準備しています…`,
+      `${c.name}님이 게시물을 준비하고 있습니다…`,
+    ));
+    return generatePost(c, "manual");
   };
   const pickRandomSocialCharacter = () => {
     if (!Array.isArray(characters) || characters.length === 0) return null;
@@ -111,14 +260,14 @@ export default function useSocialFeed({
     if (!post?.id || !responders.length || !canUseCurrentProvider()) return;
     for (const char of responders) {
       try {
-        const sysP = `${buildSystemPrompt(char, getPlayerContextBlock())}
-
-[目前輸出模式：社群留言]
-以下規則優先於上方聊天規則。你正在替 {{char}} 在公開/半公開社群貼文下方留言，內容要像社群互動，不是私訊。`;
-        const ai = await callAI([{
+        const sysP = buildSocialSystemPrompt(char, {
+          mode: "回覆玩家貼文",
+          includePlayerRelationship: true,
+        });
+        const ai = await callSocialAI([{
           role: "user",
           content: buildPlayerPostReplyPrompt(char, post),
-        }], apiConfig, sysP);
+        }], socialCommentApiConfig, sysP, SOCIAL_COMMENT_INPUT_TOKEN_LIMIT, "player_post_reply");
         const reply = sanitizeText(String(ai || "").replace(/^["「]|["」]$/g, "").trim(), 120);
         if (!reply) continue;
         const charComment = {
@@ -183,7 +332,7 @@ export default function useSocialFeed({
       content: text,
       parentId: target?.commentId || null,
       replyToName: target?.authorName || "",
-      depth: target ? Math.min(3, parentDepth + 1) : 1,
+      depth: target ? parentDepth + 1 : 1,
       time: Date.now(),
     };
     setPosts((prev) => prev.map((p) => (
@@ -196,15 +345,18 @@ export default function useSocialFeed({
       ? characters.find((c) => c.id === target.charId)
       : characters.find((c) => c.id === post.charId);
     if (!canUseCurrentProvider()) return;
-    if (!char || userComment.depth >= 3) return;
+    if (!char) return;
     try {
-      const sysP = buildSystemPrompt(char, getPlayerContextBlock());
-      const ai = await callAI([{
+      const sysP = buildSocialSystemPrompt(char, {
+        mode: "回覆玩家留言",
+        includePlayerRelationship: true,
+      });
+      const ai = await callSocialAI([{
         role: "user",
         content: target
           ? buildSocialCommentReplyPrompt({ char, post, targetComment: target, userText: text })
           : `你剛發了一則貼文：「${post.content}」\n{{user}} 留言：「${text}」\n請用角色口吻回覆 1 句自然留言，最多 45 字。`,
-      }], apiConfig, sysP);
+      }], socialCommentApiConfig, sysP, SOCIAL_COMMENT_INPUT_TOKEN_LIMIT, target ? "comment_reply" : "post_comment_reply");
       const reply = sanitizeText(ai || "", 120).trim() || "收到，謝謝你的留言。";
       const charComment = {
         id: gid(),
@@ -214,15 +366,71 @@ export default function useSocialFeed({
         content: reply,
         parentId: userComment.id,
         replyToName: getPlayerDisplayName(),
-        depth: Math.min(3, userComment.depth + 1),
+        depth: userComment.depth + 1,
         time: Date.now(),
       };
       setPosts((prev) => prev.map((p) => (
-        p.id === postId
-          ? { ...p, comments: insertCommentAfterThread(p.comments || [], userComment.id, charComment) }
-          : p
+        p.id !== postId
+          ? p
+          : (() => {
+              const currentComments = p.comments || [];
+              const liveUserComment = currentComments.find((comment) => comment.id === userComment.id);
+              if (
+                !liveUserComment
+                || liveUserComment.deleted
+                || liveUserComment.content !== text
+              ) return p;
+              return {
+                ...p,
+                comments: insertCommentAfterThread(currentComments, userComment.id, charComment),
+              };
+            })()
       )));
     } catch (_) {}
+  };
+  const editPlayerComment = (postId, commentId, nextContent) => {
+    const content = sanitizeText(nextContent, 240).trim();
+    if (!content) {
+      showToast(tr("留言不能是空白", "Comment can't be empty", "コメントを空にすることはできません", "댓글은 비워둘 수 없습니다"));
+      return false;
+    }
+    const post = posts.find((item) => item.id === postId);
+    const comment = (post?.comments || []).find((item) => item.id === commentId);
+    if (
+      comment?.role !== "user"
+      || (comment?.charId !== null && comment?.charId !== undefined)
+      || comment?.deleted
+    ) return false;
+    setPosts((prev) => prev.map((item) => (
+      item.id === postId
+        ? {
+            ...item,
+            comments: editPlayerSocialComment(item.comments, commentId, content),
+          }
+        : item
+    )));
+    showToast(tr("留言已編輯", "Comment edited", "コメントを編集しました", "댓글을 수정했습니다"));
+    return true;
+  };
+  const deletePlayerComment = (postId, commentId) => {
+    const post = posts.find((item) => item.id === postId);
+    const comments = post?.comments || [];
+    const comment = comments.find((item) => item.id === commentId);
+    if (
+      comment?.role !== "user"
+      || (comment?.charId !== null && comment?.charId !== undefined)
+      || comment?.deleted
+    ) return false;
+    setPosts((prev) => prev.map((item) => (
+      item.id === postId
+        ? {
+            ...item,
+            comments: deletePlayerSocialComment(item.comments, commentId),
+          }
+        : item
+    )));
+    showToast(tr("留言已刪除", "Comment deleted", "コメントを削除しました", "댓글을 삭제했습니다"));
+    return true;
   };
   const sharePostToChat = (post) => {
     if (getPostAuthorType(post) !== "character" || !post.charId) {
@@ -232,7 +440,10 @@ export default function useSocialFeed({
     if (!window.confirm(tr("要分享到此角色聊天室嗎？", "Share to this character's chatroom?", "このキャラクターのチャットルームに共有しますか？", "이 캐릭터의 채팅방에 공유할까요?"))) return;
     const char = characters.find((c) => c.id === post.charId);
     if (!char) return;
-    const lines = (post.comments || []).slice(-4).map((c) => `${c.role === "assistant" ? (c.charName || post.charName) : "{{user}}"}：${c.content}`);
+    const lines = (post.comments || [])
+      .filter((comment) => !comment?.deleted && (!comment?.time || comment.time <= Date.now()))
+      .slice(-4)
+      .map((c) => `${c.role === "assistant" ? (c.charName || post.charName) : "{{user}}"}：${c.content}`);
     const rawBody = [`貼文：${post.content}`, ...(lines.length ? ["留言：", ...lines] : [])].join("\n");
     const approxTokens = Math.ceil(rawBody.length / 3.5);
     const content = approxTokens <= SHARE_RAW_TOKEN_LIMIT
@@ -271,6 +482,15 @@ export default function useSocialFeed({
   const runSocialAutoPostSweep = () => {
     if (!hydrated || !socialSettings?.autoPost || socialAutoPostingRef.current || !canUseCurrentProvider()) return;
     if (!Array.isArray(characters) || !characters.length) return;
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const dailyLimit = getSocialAutoPostDailyLimit(socialSettings?.frequency);
+    const automaticPostsToday = (posts || []).filter((post) => (
+      getPostAuthorType(post) === "character"
+      && post?.generationSource === "auto"
+      && (Number(post?.time) || 0) >= startOfToday.getTime()
+    )).length;
+    if (automaticPostsToday >= dailyLimit) return;
     if (!socialAutoPostGapRef.current) socialAutoPostGapRef.current = rollSocialAutoPostGap();
     const lastCharPost = (posts || []).find((p) => getPostAuthorType(p) === "character");
     const lastAt = Math.max(lastCharPost?.time || 0, socialLastGlobalPostAtRef.current || 0);
@@ -281,8 +501,11 @@ export default function useSocialFeed({
     socialLastGlobalPostAtRef.current = Date.now();
     socialLastPostByCharRef.current = { ...(socialLastPostByCharRef.current || {}), [c.id]: Date.now() };
     socialAutoPostGapRef.current = rollSocialAutoPostGap(c);
-    generatePost(c).finally(() => { socialAutoPostingRef.current = false; });
+    generatePost(c, "auto").finally(() => { socialAutoPostingRef.current = false; });
   };
+  useEffect(() => {
+    socialAutoPostGapRef.current = 0;
+  }, [socialSettings?.frequency, socialSettings?.frequencyByCharacter]);
   useEffect(() => {
     if (!hydrated || !socialSettings?.autoPost) return;
     const onVisible = () => { if (document.visibilityState === "visible") runSocialAutoPostSweep(); };
@@ -303,6 +526,8 @@ export default function useSocialFeed({
     handleRandomSocialPost,
     submitPlayerPost,
     addPostComment,
+    editPlayerComment,
+    deletePlayerComment,
     sharePostToChat,
   };
 }

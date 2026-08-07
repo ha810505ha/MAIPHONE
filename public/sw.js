@@ -51,6 +51,32 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
+let pendingNotificationClick = null;
+
+// 系統通知點擊：把既有分頁叫回前景並轉發目的地，沒有分頁就開一個。
+// 實際的跳轉邏輯留在頁面裡（openNotification），這裡只做傳話。
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const notification = event.notification.data || null;
+  event.waitUntil((async () => {
+    const clientList = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    const existing = clientList.find((client) => client.url.startsWith(self.registration.scope));
+    if (existing) {
+      await existing.focus();
+      existing.postMessage({ type: "NOTIFICATION_CLICK", notification });
+      return;
+    }
+    const opened = await self.clients.openWindow(BASE_PATH);
+    // 新開的分頁還沒掛上 listener，等它 ready 後由頁面自己來拿。
+    if (opened) pendingNotificationClick = notification;
+  })());
+});
+
 self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'CLAIM_PENDING_NOTIFICATION') {
+    event.source?.postMessage({ type: "NOTIFICATION_CLICK", notification: pendingNotificationClick });
+    pendingNotificationClick = null;
+    return;
+  }
   if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
 });

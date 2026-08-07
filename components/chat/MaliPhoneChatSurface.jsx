@@ -1,10 +1,11 @@
 import React from "react";
 import { loadChatView } from "../../utils/featurePreload";
+import { lazyWithRetry } from "../../utils/lazyWithRetry.js";
 
-const ChatView = React.lazy(loadChatView);
-const DirectChatView = React.lazy(() => import("./DirectChatView.jsx"));
-const ChatScreenshotModal = React.lazy(() => import("./ChatScreenshotModal.jsx"));
-const MemoryToastCard = React.lazy(() => import("./MemoryToastCard.jsx"));
+const ChatView = lazyWithRetry(loadChatView);
+const DirectChatView = lazyWithRetry(() => import("./DirectChatView.jsx"));
+const ChatScreenshotModal = lazyWithRetry(() => import("./ChatScreenshotModal.jsx"));
+const MemoryToastCard = lazyWithRetry(() => import("./MemoryToastCard.jsx"));
 
 const MODEL_LABELS = {
   openai: { short: "GPT", full: "OpenAI" },
@@ -18,6 +19,12 @@ const MODEL_LABELS = {
 };
 
 function getModelLabels(apiConfig) {
+  if (apiConfig?.aiSource === "hosted_test") {
+    return {
+      modelShort: "TEST",
+      modelFull: `Test LLM · ${apiConfig?.hostedTestModel || "-"}`,
+    };
+  }
   const provider = apiConfig?.provider || "openai";
   const labels = MODEL_LABELS[provider] || { short: "AI", full: provider };
   return {
@@ -35,6 +42,9 @@ export default function MaliPhoneChatSurface({
   directHeader,
   directMessageList,
   directMessageRenderer,
+  directCalendarReminder,
+  directStoryStatus,
+  directStoryNote,
   directSettings,
   directSettingsOpen,
   group,
@@ -73,6 +83,9 @@ export default function MaliPhoneChatSurface({
           settingsOpen={directSettingsOpen}
           settings={directSettings}
           blockBanner={directBlockBanner}
+          calendarReminder={directCalendarReminder}
+          storyStatus={directStoryStatus}
+          storyNote={directStoryNote}
           messageList={directMessageList}
           messageRenderer={directMessageRenderer}
           composer={directComposer}

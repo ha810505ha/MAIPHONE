@@ -17,6 +17,20 @@ const normalizeModernColors = (value) => String(value || "").replace(/color\(srg
   return `rgba(${values[0]},${values[1]},${values[2]},${Number.isFinite(alpha) ? alpha : 1})`;
 });
 
+const screenshotFallback = (property) => ({
+  color: "#4b3741",
+  "background-color": "transparent",
+  "background-image": "none",
+  "border-top-color": "#ead8df",
+  "border-right-color": "#ead8df",
+  "border-bottom-color": "#ead8df",
+  "border-left-color": "#ead8df",
+  "outline-color": "#c85a7e",
+  "box-shadow": "none",
+  "text-shadow": "none",
+  "text-decoration-color": "#4b3741",
+}[property] || "transparent");
+
 const sanitizeScreenshotCloneColors = (clonedDocument) => {
   const root = clonedDocument.querySelector("[data-chat-screenshot-capture]");
   if (!root) return;
@@ -26,9 +40,30 @@ const sanitizeScreenshotCloneColors = (clonedDocument) => {
     if (!computed) return;
     properties.forEach((property) => {
       const value = computed.getPropertyValue(property);
-      if (value?.includes("color(")) node.style.setProperty(property, normalizeModernColors(value), "important");
+      if (!value) return;
+      const normalized = normalizeModernColors(value);
+      const safeValue = /color-mix\(|\bvar\(/i.test(normalized)
+        ? screenshotFallback(property)
+        : normalized;
+      if (safeValue !== value) node.style.setProperty(property, safeValue, "important");
     });
   });
+};
+
+const getCaptureSafeCss = (isNightTheme) => {
+  const palette = isNightTheme
+    ? { page: "#181420", surface: "#2f2440", text: "#f0e6f5", muted: "#b8a8c9", line: "#4a3a61", accent: "#f48fb1", accentSoft: "#4b3a62", user: "#d95e88" }
+    : { page: "#fffafc", surface: "#fff", text: "#4b3741", muted: "#927482", line: "#ead8df", accent: "#c85a7e", accentSoft: "#fde4ec", user: "#df7196" };
+  return `
+    .mp-chat-capture{--mp-txt:${palette.text}!important;--mp-txt-l:${palette.muted}!important;--mp-surface:${palette.surface}!important;--mp-line:${palette.line}!important;--mp-pink-dk:${palette.accent}!important;--mp-pink-lt:${palette.accentSoft}!important;--mp-glass:${palette.surface}!important;--mp-glass-b:${palette.line}!important;--mp-glass-s:none!important;background:${palette.page}!important;color:${palette.text}!important}
+    .mp-chat-capture,.mp-chat-capture *{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+    .mp-chat-capture .mp-msg-ai{background:${palette.surface}!important;color:${palette.text}!important;border-color:${palette.line}!important;box-shadow:0 4px 12px rgba(76,47,62,.12)!important}
+    .mp-chat-capture .mp-msg-user{background:${palette.user}!important;color:#fff!important;box-shadow:0 4px 12px rgba(136,58,87,.18)!important}
+    .mp-chat-capture .mp-msg-note,.mp-chat-capture .mp-thought-content{background:${palette.surface}!important;color:${palette.text}!important;border-color:${palette.line}!important}
+    .mp-chat-capture .mp-hdr,.mp-chat-capture .mp-inp-bar{background:${palette.surface}!important;border-color:${palette.line}!important;color:${palette.text}!important}
+    .mp-chat-capture .mp-inp{background:${isNightTheme ? "#251c32" : "#fffafc"}!important;color:${palette.muted}!important;border-color:${palette.line}!important}
+    .mp-chat-capture *::before,.mp-chat-capture *::after{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+  `;
 };
 
 export default function ChatScreenshotModal({ open, onClose, onReselect, messages, initialSelectedIds = [], character, modelShort, sceneBar, mode, rendererProps, backgroundUrl, isNightTheme = false, tr }) {
@@ -127,7 +162,7 @@ export default function ChatScreenshotModal({ open, onClose, onReselect, message
     </div>
     <div aria-hidden="true" style={{ position: "fixed", left: -12000, top: 0, width: LIMITS.width, pointerEvents: "none" }}>
       <div ref={captureRef} data-chat-screenshot-capture className={`mp-chat-capture mp-chat-mode-${mode}`} style={{ boxSizing: "border-box", width: LIMITS.width, minHeight: 860, display: "flex", flexDirection: "column", overflow: "hidden", background: isNightTheme ? "linear-gradient(180deg,#241b33,#181420)" : "linear-gradient(180deg,#fce4ec,#fffafc)", color: "var(--mp-txt)" }}>
-        <style>{`.mp-chat-capture .mp-msg-ai{box-shadow:0 4px 12px rgba(244,143,177,.12)}.mp-chat-capture .mp-msg-note{border-color:rgba(95,118,131,.55)}.mp-chat-capture .mp-thought-content{border-left-color:rgba(233,30,99,.29)}.mp-chat-capture .mp-msg-editbtn{border-color:rgba(244,143,177,.36)}.mp-chat-capture .mp-mode-sep:before{background:linear-gradient(90deg,transparent,rgba(95,118,131,.4))}.mp-chat-capture .mp-mode-sep:after{background:linear-gradient(90deg,rgba(95,118,131,.4),transparent)}.mp-chat-capture .mp-mode-sep span{border-color:rgba(95,118,131,.22)}`}</style>
+        <style>{`${getCaptureSafeCss(isNightTheme)}.mp-chat-capture .mp-mode-sep:before{background:linear-gradient(90deg,transparent,rgba(95,118,131,.4))}.mp-chat-capture .mp-mode-sep:after{background:linear-gradient(90deg,rgba(95,118,131,.4),transparent)}.mp-chat-capture .mp-mode-sep span{border-color:rgba(95,118,131,.22)}`}</style>
         <div className="mp-hdr" style={{ minHeight: 64, boxSizing: "border-box" }}>
           <div className="mp-back">←</div>
           <span style={{ color: "var(--mp-pink-dk)", fontSize: 17 }}>♥</span>

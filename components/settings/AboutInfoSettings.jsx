@@ -1,6 +1,29 @@
-import React from "react";
+import React, { useState } from "react";
+import {
+  clearRuntimeDiagnostics,
+  copyRuntimeDiagnostics,
+  getRuntimeDiagnostics,
+} from "../../services/diagnostics/runtimeDiagnostics.js";
 
 export default function AboutInfoSettings({ tr, version, currentChangelogTitle, currentChangelog, versionOpen, setVersionOpen, disclaimerOpen, setDisclaimerOpen }) {
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const [diagnostics, setDiagnostics] = useState(() => getRuntimeDiagnostics());
+  const [copyState, setCopyState] = useState("idle");
+  const refreshDiagnostics = () => {
+    const records = getRuntimeDiagnostics();
+    setDiagnostics(records);
+    return records;
+  };
+  const copyDiagnostics = async () => {
+    const records = refreshDiagnostics();
+    const copied = await copyRuntimeDiagnostics(records);
+    setCopyState(copied ? "copied" : "failed");
+  };
+  const clearDiagnostics = () => {
+    clearRuntimeDiagnostics();
+    setDiagnostics([]);
+    setCopyState("idle");
+  };
   return <>
               <div className="mp-sg">
                 <div className="mp-sg-t">{tr("版本資訊", "Version info", "バージョン情報", "버전 정보")}</div>
@@ -18,6 +41,54 @@ export default function AboutInfoSettings({ tr, version, currentChangelogTitle, 
                       return <li key={idx}>{detail.length ? <><strong>{title}</strong><span>{detail.join("｜")}</span></> : <span>{item}</span>}</li>;
                     })}
                   </ol>
+                )}
+              </div>
+              <div className="mp-sg">
+                <div className="mp-sg-t">{tr("錯誤診斷", "Error diagnostics", "エラー診断", "오류 진단")}</div>
+                <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.7,marginBottom:8}}>
+                  {tr(
+                    "發生空白畫面或 App 異常時，技術紀錄會保留在這台裝置。只包含版本、App 路徑與錯誤資訊，不包含聊天內容或 API Key。",
+                    "Technical logs are kept on this device after blank screens or app errors. They include version, app route, and error details—not chats or API keys.",
+                    "白い画面やアプリ異常が発生した場合、技術ログはこの端末に保存されます。バージョン、アプリ経路、エラー情報のみで、会話やAPIキーは含みません。",
+                    "빈 화면이나 앱 오류가 발생하면 기술 기록이 이 기기에 보관됩니다. 버전, 앱 경로, 오류 정보만 포함하며 채팅 내용이나 API 키는 포함하지 않습니다.",
+                  )}
+                </div>
+                <div className="mp-version-row" onClick={() => {
+                  if (!diagnosticsOpen) refreshDiagnostics();
+                  setDiagnosticsOpen((value) => !value);
+                  setCopyState("idle");
+                }}>
+                  <span>{tr(`最近錯誤紀錄：${diagnostics.length} 筆`, `${diagnostics.length} recent error(s)`, `最近のエラー：${diagnostics.length}件`, `최근 오류 기록: ${diagnostics.length}개`)}</span>
+                  <span>{diagnosticsOpen ? tr("收合", "Collapse", "折りたたむ", "접기") : tr("查看", "View", "表示", "보기")}</span>
+                </div>
+                {diagnosticsOpen && (
+                  <div style={{padding:"10px 2px 2px"}}>
+                    {diagnostics.length === 0 ? (
+                      <div style={{fontSize:11,color:"var(--mp-txt-l)",padding:"4px 2px 10px"}}>{tr("目前沒有錯誤紀錄。", "No error records yet.", "エラー記録はありません。", "오류 기록이 없습니다.")}</div>
+                    ) : diagnostics.map((record) => (
+                      <details key={record.id} style={{border:"1px solid var(--mp-line)",borderRadius:12,padding:"9px 10px",marginBottom:7,background:"var(--mp-surface)",fontSize:10,color:"var(--mp-txt-l)"}}>
+                        <summary style={{cursor:"pointer",fontWeight:800,color:"var(--mp-txt)"}}>
+                          {new Date(record.at).toLocaleString()} · {record.appId || "unknown"}
+                        </summary>
+                        <div style={{marginTop:7,lineHeight:1.6,overflowWrap:"anywhere",whiteSpace:"pre-wrap"}}>
+                          <b>{record.kind || "runtime"}</b><br />
+                          {record.message || "Unknown error"}
+                          {record.recentApps?.length ? <><br />{tr("操作路徑", "App path", "アプリ経路", "앱 경로")}：{record.recentApps.join(" → ")}</> : null}
+                          {record.stack ? <><br /><br />{record.stack}</> : null}
+                        </div>
+                      </details>
+                    ))}
+                    <div style={{display:"flex",gap:8,marginTop:8}}>
+                      <button type="button" className="mp-save" style={{flex:1}} disabled={!diagnostics.length} onClick={copyDiagnostics}>
+                        {copyState === "copied"
+                          ? tr("✓ 已複製", "✓ Copied", "✓ コピー済み", "✓ 복사됨")
+                          : copyState === "failed"
+                            ? tr("複製失敗", "Copy failed", "コピー失敗", "복사 실패")
+                            : tr("複製全部錯誤", "Copy all errors", "すべてコピー", "모든 오류 복사")}
+                      </button>
+                      <button type="button" className="mp-ibtn" style={{flex:1}} disabled={!diagnostics.length} onClick={clearDiagnostics}>{tr("清除紀錄", "Clear logs", "記録を消去", "기록 삭제")}</button>
+                    </div>
+                  </div>
                 )}
               </div>
               <div className="mp-sg">
