@@ -1,15 +1,18 @@
 import { applyCoupleInviteReply, applyCoupleTaskChatState, buildCoupleChatContext, extractCoupleDirectives } from "../couple/coupleDailyService";
+import { CALENDAR_APPOINTMENT_RULE_CONTEXT, extractCalendarEventDirective } from "../calendar/calendarChatAppointments.js";
 import { PHOTO_RULE_CONTEXT, extractPhotoDirectives } from "../../utils/pseudoImage";
 import { VOICE_MESSAGE_RULE_CONTEXT, extractPseudoVoiceDirectives } from "../../utils/pseudoVoice";
+import { appendAssistantSwipeGroup } from "../../utils/assistantSwipeGroups.js";
 
-export async function generateDirectAssistant({ cid, char, nextForDisplay, selectedMode, um, text, includeRealTime = true, signal }, context) {
-  const { formatMessagesForPrompt, pickMemoriesForPrompt, pickLorebookEntriesForPrompt, characterWallets, formatMoney, tr, getPlayerContextBlock, getCalendarContext, getCalendarReminderContext, estimateTokens, totalContextTokenLimit, apiConfig, applyUserPlaceholder, buildChatSystemPrompt, callAI, sanitizeText, normalizeRealityReply, realityChatTextLimit, normalizeAssistantReply, extractTransferDirective, extractTransferResponseDirective, stripModeLabel, stripInternalBlocks, splitAssistantBubbles, createId, wait, setChatHistory, applyCharacterTransferToPlayer, transfers, handleCharacterTransferDecision, characterBlockStates, buildCharacterBlockPromptContext, buildCharacterBlockCapabilityContext, extractCharacterBlockDirective, applyCharacterBlockDirective, isInnerThoughtAutoEnabled, generateInnerThought } = context;
+export async function generateDirectAssistant({ cid, roomId, char, nextForDisplay, selectedMode, um, text, includeRealTime = true, swipeTargetId = null, signal }, context) {
+  const { formatMessagesForPrompt, pickMemoriesForPrompt, pickLorebookEntriesForPrompt, characterWallets, formatMoney, tr, getPlayerContextBlock, getCalendarContext, getCalendarReminderContext, isCalendarProposalDuplicate, estimateTokens, totalContextTokenLimit, apiConfig, applyUserPlaceholder, buildChatSystemPrompt, callAI, sanitizeText, normalizeRealityReply, realityChatTextLimit, normalizeAssistantReply, extractTransferDirective, extractTransferResponseDirective, stripModeLabel, stripInternalBlocks, splitAssistantBubbles, createId, wait, updateChatMessages, applyCharacterTransferToPlayer, transfers, handleCharacterTransferDecision, characterBlockStates, buildCharacterBlockPromptContext, buildCharacterBlockCapabilityContext, extractCharacterBlockDirective, applyCharacterBlockDirective, isInnerThoughtAutoEnabled, generateInnerThought } = context;
       const requestCancelled = () => signal?.aborted === true;
       const now = new Date();
-      const nowDate = new Intl.DateTimeFormat("zh-TW", { year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+      const nowDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      const nowWeekday = new Intl.DateTimeFormat("zh-TW", { weekday: "long" }).format(now);
       const nowTime = new Intl.DateTimeFormat("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false }).format(now);
       const nowTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Taipei";
-      const nowContext = includeRealTime ? `[系統時間] 目前時間：${nowDate} ${nowTime} (${nowTz})` : "";
+      const nowContext = includeRealTime ? `[系統時間] 目前日期：${nowDate}（${nowWeekday}）；目前時間：${nowTime}；時區：${nowTz}` : "";
       const hist = formatMessagesForPrompt(nextForDisplay.slice(-30)).slice(-20);
       const hasCurrentImage = !!um.image;
       // 視覺 token 只花在本輪新圖：舊圖一律改用摘要文字，不再重送 image。
@@ -22,8 +25,8 @@ export async function generateDirectAssistant({ cid, char, nextForDisplay, selec
       const memoryContext = picked.map((m, i) => `- ${i + 1}. ${m.text}`).join("\n");
       const loreHits = pickLorebookEntriesForPrompt(cid, safeHist);
       const coupleTaskContext = await buildCoupleChatContext(cid);
-      const calendarContext = getCalendarContext?.(text || safeHist.at(-1)?.content || "") || "";
-      const calendarReminderContext = getCalendarReminderContext?.() || "";
+      const calendarContext = getCalendarContext?.(text || safeHist.at(-1)?.content || "", cid) || "";
+      const calendarReminderContext = um?.noticeType === "calendar_story_start" ? "" : (getCalendarReminderContext?.(cid) || "");
       const blockContext = buildCharacterBlockPromptContext?.({ state: characterBlockStates?.[cid], mode: selectedMode, now: Date.now() }) || "";
       const blockCapabilityContext = buildCharacterBlockCapabilityContext?.(selectedMode) || "";
       const pinnedLore = loreHits.filter((x) => x.mode === "PIN");
@@ -77,6 +80,7 @@ export async function generateDirectAssistant({ cid, char, nextForDisplay, selec
         { text: coupleTaskContext, keep: 30 },
         { text: calendarContext, keep: 35 },
         { text: calendarReminderContext, keep: 75 },
+        { text: CALENDAR_APPOINTMENT_RULE_CONTEXT, keep: 72 },
         { text: blockContext, keep: 85 },
         { text: blockCapabilityContext, keep: 82 },
         { text: walletContext, keep: 70 },
@@ -117,11 +121,21 @@ export async function generateDirectAssistant({ cid, char, nextForDisplay, selec
       }
       const finalHist = boundedHist.map((m) => ({ ...m, content: applyUserPlaceholder(m.content) }));
       const sysP = applyUserPlaceholder(buildChatSystemPrompt(char, boundedContext, apiConfig.model, selectedMode));
-      const reply = await callAI(finalHist, apiConfig, sysP, { signal });
+      const reply = await callAI(finalHist, apiConfig, sysP, {
+        signal,
+        feature: "chat",
+        mode: selectedMode === "reality" ? "reality" : "online",
+        app: "chat",
+        action: "direct_reply",
+      });
       if (requestCancelled()) return;
       const blockDirective = extractCharacterBlockDirective?.(reply) || { action: null, text: reply };
       const coupleDirective = extractCoupleDirectives(blockDirective.text);
-      const cleanReplyRaw = selectedMode === "reality" ? sanitizeText(normalizeRealityReply(coupleDirective.text), realityChatTextLimit) : normalizeAssistantReply(coupleDirective.text);
+      const calendarDirective = extractCalendarEventDirective(coupleDirective.text);
+      const calendarProposalIsDuplicate = calendarDirective.proposal
+        ? await isCalendarProposalDuplicate?.(calendarDirective.proposal, cid)
+        : false;
+      const cleanReplyRaw = selectedMode === "reality" ? sanitizeText(normalizeRealityReply(calendarDirective.text), realityChatTextLimit) : normalizeAssistantReply(calendarDirective.text);
       const responseExtracted = extractTransferResponseDirective(cleanReplyRaw);
       const extracted = extractTransferDirective(responseExtracted.text);
       // 標記必須在切氣泡前剝除，否則 [[PHOTO:...]] 會原樣顯示在氣泡裡。
@@ -130,6 +144,17 @@ export async function generateDirectAssistant({ cid, char, nextForDisplay, selec
         : { text: extracted.text, voices: [] };
       const photoExtracted = extractPhotoDirectives(voiceExtracted.text);
       const cleanReply = stripModeLabel(stripInternalBlocks(photoExtracted.text));
+      if (swipeTargetId) {
+        const candidateBubbles = cleanReply.trim()
+          ? (selectedMode === "reality" ? [cleanReply] : splitAssistantBubbles(cleanReply))
+          : [];
+        if (!candidateBubbles.length) throw new Error(tr("沒有收到可用的替代回覆", "No usable alternative reply was received", "代替の返信を受け取れませんでした", "사용할 수 있는 대체 답변을 받지 못했어요"));
+        const candidateTime = Date.now();
+        updateChatMessages(cid, roomId, (messages) => (
+          appendAssistantSwipeGroup(messages, swipeTargetId, candidateBubbles, candidateTime, createId)
+        ));
+        return;
+      }
       const pendingTransfer = allowTransfer ? extracted.transfer : null;
       const transferResponse = allowTransfer ? responseExtracted.response : null;
       const currentCharWalletBalance = Math.max(0, Number(characterWallets[cid]?.balance || 0));
@@ -148,10 +173,9 @@ export async function generateDirectAssistant({ cid, char, nextForDisplay, selec
         imageSummary = sanitizeText(`${base}重點：${cleanReply}`.slice(0, 220), 220);
       }
       if (hasCurrentImage && imageSummary) {
-        setChatHistory((h) => ({
-          ...h,
-          [cid]: (h[cid] || []).map((m) => (m.id === um.id ? { ...m, imageSummary } : m)),
-        }));
+        updateChatMessages(cid, roomId, (messages) => (
+          messages.map((message) => (message.id === um.id ? { ...message, imageSummary } : message))
+        ));
       }
       const bubbles = cleanReply.trim() ? (selectedMode === "reality" ? [cleanReply] : splitAssistantBubbles(cleanReply)) : [];
       const photoMessages = photoExtracted.photos.map((photo) => ({
@@ -184,6 +208,9 @@ export async function generateDirectAssistant({ cid, char, nextForDisplay, selec
         mode: selectedMode,
         interceptedByBlock: selectedMode === "online" && characterBlockStates?.[cid]?.blocked === true,
         time: Date.now(),
+        ...(calendarDirective.proposal && !calendarProposalIsDuplicate && index === bubbles.length - 1
+          ? { calendarProposal: { ...calendarDirective.proposal, status: "pending" } }
+          : {}),
       }));
       let lastAssistantMessage = null;
       for (let i = 0; i < bubbles.length; i++) {
@@ -192,20 +219,20 @@ export async function generateDirectAssistant({ cid, char, nextForDisplay, selec
         if (requestCancelled()) return;
         lastAssistantMessage = { ...assistantMessages[i], time: Date.now() };
         assistantMessages[i] = lastAssistantMessage;
-        setChatHistory(h => ({ ...h, [cid]: [...(h[cid] || []), lastAssistantMessage] }));
+        updateChatMessages(cid, roomId, (messages) => [...messages, lastAssistantMessage]);
       }
       for (const voiceMessage of voiceMessages) {
         await wait(320);
         if (requestCancelled()) return;
         const sent = { ...voiceMessage, time: Date.now() };
         lastAssistantMessage = sent;
-        setChatHistory(h => ({ ...h, [cid]: [...(h[cid] || []), sent] }));
+        updateChatMessages(cid, roomId, (messages) => [...messages, sent]);
       }
       for (const photoMessage of photoMessages) {
         await wait(320);
         if (requestCancelled()) return;
         const sent = { ...photoMessage, time: Date.now() };
-        setChatHistory(h => ({ ...h, [cid]: [...(h[cid] || []), sent] }));
+        updateChatMessages(cid, roomId, (messages) => [...messages, sent]);
       }
       if (requestCancelled()) return;
       const inviteResult = await applyCoupleInviteReply(cid, coupleDirective.inviteState);
@@ -215,16 +242,23 @@ export async function generateDirectAssistant({ cid, char, nextForDisplay, selec
           : inviteResult.status === "declined"
             ? "💞 對方婉拒了這次情侶空間邀請。"
             : "💞 這次情侶空間邀請暫時沒有得到明確回覆。";
-        setChatHistory((h) => ({ ...h, [cid]: [...(h[cid] || []), { id: createId(), role: "system_notice", content: inviteNotice, time: Date.now() }] }));
+        updateChatMessages(cid, roomId, (messages) => [...messages, { id: createId(), role: "system_notice", content: inviteNotice, time: Date.now() }]);
       }
       if (pendingTransfer?.amount > 0 && canApplyPendingTransfer) {
         await wait(220);
         if (requestCancelled()) return;
-        applyCharacterTransferToPlayer({ cid, char, amount: pendingTransfer.amount, note: pendingTransfer.note, time: Date.now() });
+        applyCharacterTransferToPlayer({
+          cid,
+          char,
+          amount: pendingTransfer.amount,
+          note: pendingTransfer.note,
+          time: Date.now(),
+          appendMessage: (message) => updateChatMessages(cid, roomId, (messages) => [...messages, message]),
+        });
       } else if (transferFailureNotice) {
         await wait(220);
         if (requestCancelled()) return;
-        setChatHistory((h) => ({ ...h, [cid]: [...(h[cid] || []), { id: createId(), role: "system_notice", content: transferFailureNotice, time: Date.now() }] }));
+        updateChatMessages(cid, roomId, (messages) => [...messages, { id: createId(), role: "system_notice", content: transferFailureNotice, time: Date.now() }]);
       }
       if (transferResponse?.transferId && incomingPendingTransfer?.id === transferResponse.transferId) {
         const forcedDecision = Number(incomingPendingTransfer.pendingCount || 0) >= 2 && transferResponse.decision === "pending" ? "return" : transferResponse.decision;
@@ -232,7 +266,13 @@ export async function generateDirectAssistant({ cid, char, nextForDisplay, selec
       }
       if (lastAssistantMessage && isInnerThoughtAutoEnabled(cid) && Math.random() < 0.25) {
         const snapshot = [...nextForDisplay, ...assistantMessages];
-        void generateInnerThought({ char, messageId: lastAssistantMessage.id, source: "auto", historySnapshot: snapshot });
+        void generateInnerThought({
+          char,
+          messageId: lastAssistantMessage.id,
+          source: "auto",
+          historySnapshot: snapshot,
+          updateMessages: (updater) => updateChatMessages(cid, roomId, updater),
+        });
       }
       if (blockDirective.action) applyCharacterBlockDirective?.(cid, blockDirective.action);
 }

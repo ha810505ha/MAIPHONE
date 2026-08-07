@@ -1,12 +1,13 @@
 import React from "react";
 import DesktopPet from "../../DesktopPet";
+import { lazyWithRetry } from "../../utils/lazyWithRetry.js";
 import MotionPresence from "../motion/MotionPresence";
 
-const GroupChatModals = React.lazy(() => import("../chat/GroupChatModals.jsx"));
-const AddCharacterModal = React.lazy(() => import("../characters/AddCharacterModal.jsx"));
-const DataImportPreviewModal = React.lazy(() => import("../settings/DataImportPreviewModal.jsx"));
-const ChatroomImportPreviewModal = React.lazy(() => import("../settings/ChatroomImportPreviewModal.jsx"));
-const CustomCssGuide = React.lazy(() => import("../../CustomCssGuide.jsx"));
+const GroupChatModals = lazyWithRetry(() => import("../chat/GroupChatModals.jsx"));
+const AddCharacterModal = lazyWithRetry(() => import("../characters/AddCharacterModal.jsx"));
+const DataImportPreviewModal = lazyWithRetry(() => import("../settings/DataImportPreviewModal.jsx"));
+const ChatroomImportPreviewModal = lazyWithRetry(() => import("../settings/ChatroomImportPreviewModal.jsx"));
+const CustomCssGuide = lazyWithRetry(() => import("../../CustomCssGuide.jsx"));
 
 export default function MaliPhoneOverlays({
   currentApp,

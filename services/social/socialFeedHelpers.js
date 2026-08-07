@@ -21,15 +21,45 @@ export function createSocialFeedHelpers({
   const buildRecentChatForSocialPost = (char) => {
     const list = (chatHistory[char.id] || [])
       .filter((m) => m.role === "user" || m.role === "assistant")
-      .slice(-16)
+      .slice(-8)
       .map((m) => {
         const speaker = m.role === "user" ? "{{user}}" : char.name;
         const mode = getModeLabel(getMessageMode(m));
-        const body = sanitizeText(messagePlainText(m, "[圖片]"), 180).replace(/\s+/g, " ").trim();
+        const body = sanitizeText(messagePlainText(m, "[圖片]"), 120).replace(/\s+/g, " ").trim();
         return body ? `[${mode}] ${speaker}：${body}` : "";
       })
       .filter(Boolean);
     return list.join("\n");
+  };
+  const buildSocialSystemPrompt = (
+    char,
+    { mode = "社群互動", includePlayerRelationship = false } = {},
+  ) => {
+    const compactField = (value, maximum) => sanitizeText(String(value || "").trim(), maximum).trim();
+    const name = compactField(char?.name, 80) || "角色";
+    const description = compactField(char?.description, 500);
+    const personality = compactField(char?.personality, 500);
+    const coreStyle = compactField(char?.systemPrompt, 600);
+    const relationship = includePlayerRelationship
+      ? compactField(char?.relationshipToUser, 300)
+      : "";
+    const playerName = includePlayerRelationship
+      ? compactField(playerProfile?.nickname || playerProfile?.name || "玩家", 40)
+      : "";
+    return [
+      getOutputLanguageDirective({ includePlayerContext: includePlayerRelationship }),
+      `[社群角色]\n名稱：${name}`,
+      description ? `[角色描述]\n${description}` : "",
+      personality ? `[個性／說話方式]\n${personality}` : "",
+      coreStyle ? `[核心設定／說話方式]\n${coreStyle}` : "",
+      relationship ? `[與玩家關係]\n${relationship}` : "",
+      playerName ? `[玩家稱呼]\n${playerName}` : "",
+      `[目前輸出模式：${mode}]
+[社群輸出規則]
+- 維持角色人格與說話方式，只輸出最終要發佈的內容。
+- 這是公開／半公開社群，不是即時私訊；不要輸出角色名、前綴、旁白、Markdown 或規則說明。
+- 只根據當次提供的公開貼文與留言內容互動，不得捏造未提供的共同經歷。`,
+    ].filter(Boolean).join("\n\n");
   };
   const buildSocialPostPrompt = (char) => {
     const recentChat = buildRecentChatForSocialPost(char);
@@ -39,9 +69,7 @@ export function createSocialFeedHelpers({
       .map((p, i) => `${i + 1}. ${sanitizeText(p.content || "", 80)}`)
       .filter(Boolean)
       .join("\n");
-    return `${getOutputLanguageDirective()}
-
-請替角色「${char.name}」寫一則可發在社群上的近況貼文。
+    return `請替角色「${char.name}」寫一則可發在社群上的近況貼文。
 
 社群定位：
 - 這是朋友或熟人可能看得到的動態，不是私訊。
@@ -130,7 +158,13 @@ ${recentPosts || "（無）"}`;
     const totalLines = list.reduce((sum, c) => sum + Math.ceil(String(c?.content || "").length / 26) + String(c?.content || "").split(/\r?\n/).length - 1, 0);
     return list.length > 6 || totalChars > 420 || totalLines > 10;
   };
-  const getCommentDepth = (comment) => Math.min(3, Math.max(1, Number(comment?.depth) || (comment?.parentId ? 2 : 1)));
+  const getCommentDepth = (comment) => {
+    const savedDepth = Number(comment?.depth);
+    if (Number.isFinite(savedDepth) && savedDepth >= 1) {
+      return Math.floor(savedDepth);
+    }
+    return comment?.parentId ? 2 : 1;
+  };
   const getCommentAuthorName = (comment, fallback = "") => (
     comment?.role === "assistant" ? (comment.charName || fallback) : getPlayerDisplayName()
   );
@@ -162,9 +196,7 @@ ${recentPosts || "（無）"}`;
       .map((text, idx) => `- ${idx + 1}. ${text}`)
       .join("\n");
   };
-  const buildSocialCommentReplyPrompt = ({ char, post, targetComment, userText }) => `${getOutputLanguageDirective()}
-
-社群貼文：「${post.content}」
+  const buildSocialCommentReplyPrompt = ({ char, post, targetComment, userText }) => `社群貼文：「${post.content}」
 ${targetComment ? `你上一則留言：「${targetComment.content}」\n` : ""}{{user}} 回覆你：「${userText}」
 
 請用角色「${char.name}」的口吻回覆這則社群留言。
@@ -172,6 +204,57 @@ ${targetComment ? `你上一則留言：「${targetComment.content}」\n` : ""}{
 - 這是公開/半公開社群留言，不是私訊。
 - 回覆 1 句，最多 45 字。
 - 不要公開私聊原文或敏感細節，不要角色名標籤，不要引號，不要解釋。`;
+  const getCharacterPersonaText = (char) => [
+    char?.name,
+    char?.description,
+    char?.personality,
+    char?.scenario,
+    char?.systemPrompt,
+    char?.relationshipToUser,
+    char?.creatorNotes,
+    Array.isArray(char?.tags) ? char.tags.join(" ") : "",
+  ].filter(Boolean).join("\n");
+  const getCharacterSocialDisposition = (char) => {
+    const persona = normalizeForMatch(getCharacterPersonaText(char));
+    const outgoing = /(健談|外向|活潑|熱情|幽默|話多|親切|開朗|愛聊天|吐槽|關心|社交|talkative|outgoing|lively|friendly|cheerful|sociable|chatty|おしゃべり|明るい|사교적|수다)/i;
+    const reserved = /(內向|寡言|冷淡|沉默|怕生|害羞|孤僻|不善言辭|安靜|introvert|quiet|reserved|shy|aloof|無口|人見知り|内向的|과묵|내향|낯가림)/i;
+    if (outgoing.test(persona)) return "outgoing";
+    if (reserved.test(persona)) return "reserved";
+    return "normal";
+  };
+  const scoreCharacterForCharacterPost = (char, post, author) => {
+    const queryTokens = tokenizeForRecall(post?.content || "");
+    const overlap = countTokenOverlap(getCharacterPersonaText(char), queryTokens);
+    const disposition = getCharacterSocialDisposition(char);
+    const dispositionScore = disposition === "outgoing" ? 7 : disposition === "reserved" ? -4 : 1;
+    const selfCommentAdjustment = String(char?.id) === String(author?.id) ? -1 : 0;
+    return overlap * 3 + dispositionScore + selfCommentAdjustment;
+  };
+  const getCharacterCommentReplyChance = (char) => {
+    const disposition = getCharacterSocialDisposition(char);
+    if (disposition === "outgoing") return 0.85;
+    if (disposition === "reserved") return 0.4;
+    return 0.65;
+  };
+  const buildCharacterPostInteractionPrompt = ({ char, post, author, isSelfComment }) => `${isSelfComment
+    ? `這是你剛發佈的社群貼文：「${post.content}」`
+    : `社群成員「${author?.name || post?.charName || "某位角色"}」發佈了貼文：「${post.content}」`}
+
+${isSelfComment
+    ? `請依照「${char.name}」的人格，在自己的貼文下補充一則自然留言，像是突然想到的後續、補充說明或生活感的小句子。`
+    : `請依照「${char.name}」的人格與說話方式，在這則貼文下留一則自然回應。`}
+- 只根據貼文公開內容互動，把對方視為同一社群中的普通成員。
+- 不要捏造共同回憶、私下關係、世界觀事件或未提供的經歷。
+- 除非貼文明確提到 {{user}}，否則不要把玩家帶進留言。
+- 只輸出 1 則留言，最多 45 字；不要輸出姓名、引號、旁白或格式標記。
+- ${isSelfComment ? "不要只是重複原貼文，也不要假裝在回覆另一個人。" : "可以認同、提問、關心、吐槽或延續話題，但不要過度熟絡。"} `;
+  const buildCharacterReplyToCommentPrompt = ({ char, post, targetComment }) => `你剛發佈的社群貼文：「${post.content}」
+社群成員「${targetComment?.charName || "某位角色"}」留言：「${targetComment?.content || ""}」
+
+請依照「${char.name}」的人格與說話方式，自然回覆這則留言：
+- 只根據貼文與留言內容互動，不要捏造共同回憶、私下關係或世界觀事件。
+- 除非內容明確提到 {{user}}，否則不要把玩家帶進回覆。
+- 回覆 1 句，最多 45 字；不要輸出姓名、引號、旁白或格式標記。`;
   const countTokenOverlap = (source, queryTokens) => {
     if (!queryTokens?.size) return 0;
     const sourceTokens = tokenizeForRecall(source);
@@ -256,32 +339,19 @@ ${targetComment ? `你上一則留言：「${targetComment.content}」\n` : ""}{
       .map((x) => x.char);
   };
   const buildPlayerPostReplyPrompt = (char, post) => {
-    const recentChat = buildRecentChatForSocialPost(char);
-    const memoryText = (memories[char.id] || [])
-      .filter((m) => m?.text)
-      .slice(-5)
-      .map((m) => `- ${m.text}`)
-      .join("\n");
-    return `${getOutputLanguageDirective()}
+    return `玩家在社群發了一則公開貼文：「${post.content}」
 
-玩家在社群發了一則公開貼文：「${post.content}」
-
-請判斷角色「${char.name}」是否會留言，並直接輸出留言內容。
+請直接用角色「${char.name}」的口吻輸出留言內容。
 規則：
 - 這是社群留言，不是私訊，不要像只對玩家一個人撒嬌或報備。
-- 可以根據角色設定、近期聊天主題、記憶做自然延伸，但不可公開私聊原文或敏感細節。
+- 只根據角色設定、與玩家的關係及這篇公開貼文回應。
 - 若貼文和角色沒有強關聯，也可以用普通朋友會留下的短回應。
-- 請輸出 1 句，最多 45 字，不要角色名標籤、不要引號、不要解釋。
-
-近期聊天參考（只能參考情緒與主題）：
-${recentChat || "（沒有近期聊天）"}
-
-記憶參考：
-${memoryText || "（無）"}`;
+- 請輸出 1 句，最多 45 字，不要角色名標籤、不要引號、不要解釋。`;
   };
 
   return {
     buildRecentChatForSocialPost,
+    buildSocialSystemPrompt,
     buildSocialPostPrompt,
     formatPostTime,
     getPostAuthorName,
@@ -301,6 +371,10 @@ ${memoryText || "（無）"}`;
     insertCommentAfterThread,
     buildMemoryDigest,
     buildSocialCommentReplyPrompt,
+    scoreCharacterForCharacterPost,
+    getCharacterCommentReplyChance,
+    buildCharacterPostInteractionPrompt,
+    buildCharacterReplyToCommentPrompt,
     countTokenOverlap,
     scoreCharacterForPlayerPost,
     pickPlayerPostReactors,

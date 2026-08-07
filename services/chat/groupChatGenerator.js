@@ -16,7 +16,13 @@ export async function generateGroupReplies({ group, members, messages, currentIm
   const safeHistory = history.map((message, index) => currentImage && index === history.length - 1 ? message : { ...message, image: null });
   const recent = safeHistory.map((message) => `${message.role === "user" ? "玩家" : (message.speakerName || "群組")}: ${message.content || "[圖片]"}`).join("\n");
   const systemPrompt = [includeRealTime ? `[系統時間] 目前時間：${date} ${time} (${timezone})` : "", buildSystemPrompt(group, memberNames, memberProfiles, recent), PHOTO_RULE_CONTEXT].filter(Boolean).join("\n\n");
-  const raw = await callAI(safeHistory, apiConfig, systemPrompt, { signal });
+  const raw = await callAI(safeHistory, apiConfig, systemPrompt, {
+    signal,
+    feature: "chat",
+    mode: "group",
+    app: "chat",
+    action: "group_reply",
+  });
   const parsed = parseReplies(stripInternalBlocks(raw));
   const normalizeSpeaker = (value) => String(value || "")
     .trim()

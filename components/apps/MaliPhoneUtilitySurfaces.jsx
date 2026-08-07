@@ -1,9 +1,10 @@
 import React, { useState } from "react";
 import { loadPhoneApp } from "../../utils/featurePreload";
+import { lazyWithRetry } from "../../utils/lazyWithRetry.js";
 
-const PhoneApp = React.lazy(loadPhoneApp);
-const WalletSettingsApp = React.lazy(() => import("./WalletSettingsApp.jsx"));
-const WalletLedgerView = React.lazy(() => import("../wallet/WalletLedgerView.jsx"));
+const PhoneApp = lazyWithRetry(loadPhoneApp);
+const WalletSettingsApp = lazyWithRetry(() => import("./WalletSettingsApp.jsx"));
+const WalletLedgerView = lazyWithRetry(() => import("../wallet/WalletLedgerView.jsx"));
 
 export function MaliPhoneWalletSurface({
   characters,

@@ -42,13 +42,14 @@ export default {
   ],
   decorations: [
     { id: "plaza_fountain", img: "plazaFountain", x: 17, y: 12, w: 3, h: 2, renderScale: 1.1, blocking: true },
-    { id: "plaza_bench_left", img: "plazaBench", x: 13, y: 16, w: 2, h: 1, blocking: true, interactions: [{ id: "sit", action: "sit", label: "坐下", minDurationMs: 4000, maxDurationMs: 9000, slots: [
-      { id: "left", approach: [0, 1], facing: "right", renderOffset: [0, -1] },
-      { id: "right", approach: [1, 1], facing: "left", renderOffset: [0, -1] },
+    // 長椅素材是正面視角 → sit_front（正面端坐，不套只有側面的 sit 動畫；見 actorActions）
+    { id: "plaza_bench_left", img: "plazaBench", x: 13, y: 16, w: 2, h: 1, blocking: true, interactions: [{ id: "sit", action: "sit_front", label: "坐下", minDurationMs: 4000, maxDurationMs: 9000, slots: [
+      { id: "left", approach: [0, 1], facing: "down", renderOffset: [0, -1] },
+      { id: "right", approach: [1, 1], facing: "down", renderOffset: [0, -1] },
     ] }] },
-    { id: "plaza_bench_right", img: "plazaBench", x: 21, y: 12, w: 2, h: 1, blocking: true, interactions: [{ id: "sit", action: "sit", label: "坐下", minDurationMs: 4000, maxDurationMs: 9000, slots: [
-      { id: "left", approach: [0, 1], facing: "right", renderOffset: [0, -1] },
-      { id: "right", approach: [1, 1], facing: "left", renderOffset: [0, -1] },
+    { id: "plaza_bench_right", img: "plazaBench", x: 21, y: 12, w: 2, h: 1, blocking: true, interactions: [{ id: "sit", action: "sit_front", label: "坐下", minDurationMs: 4000, maxDurationMs: 9000, slots: [
+      { id: "left", approach: [0, 1], facing: "down", renderOffset: [0, -1] },
+      { id: "right", approach: [1, 1], facing: "down", renderOffset: [0, -1] },
     ] }] },
   ],
   cityLots: [

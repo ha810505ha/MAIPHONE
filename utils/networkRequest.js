@@ -1,3 +1,5 @@
+import { recordRuntimeDiagnostic } from "../services/diagnostics/runtimeDiagnostics.js";
+
 export const NETWORK_TIMEOUTS = Object.freeze({
   DEFAULT: 30_000,
   METADATA: 12_000,
@@ -5,6 +7,16 @@ export const NETWORK_TIMEOUTS = Object.freeze({
   AI: 120_000,
   MEDIA: 180_000,
 });
+
+const describeRequest = (input) => {
+  try {
+    const raw = typeof input === "string" ? input : input?.url;
+    const url = new URL(String(raw || ""), globalThis.location?.href || "http://localhost/");
+    return `${url.origin}${url.pathname}`.slice(0, 500);
+  } catch {
+    return "network request";
+  }
+};
 
 export class NetworkTimeoutError extends Error {
   constructor(timeoutMs) {
@@ -139,11 +151,24 @@ export async function fetchWithTimeout(input, init = {}, options = {}) {
     if (externalSignal?.aborted) return createAbortError(externalSignal.reason);
     return error;
   };
+  const reportNetworkError = (error, kind = "network-error") => {
+    if (externalSignal?.aborted && !timeoutError) return;
+    recordRuntimeDiagnostic({
+      kind,
+      error,
+      source: `${String(fetchInit.method || "GET").toUpperCase()} ${describeRequest(input)}`,
+    });
+  };
   try {
     const response = await fetch(input, { ...fetchInit, signal: controller.signal });
+    if (response?.status >= 400) {
+      reportNetworkError(new Error(`HTTP ${response.status}`), "network-http");
+    }
     return wrapResponse(response, finish, normalizeError);
   } catch (error) {
     finish();
-    throw normalizeError(error);
+    const normalizedError = normalizeError(error);
+    reportNetworkError(normalizedError);
+    throw normalizedError;
   }
 }

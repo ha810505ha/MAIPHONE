@@ -19,6 +19,7 @@ import { MILESTONES, MILESTONE_ORDER, evaluateMilestones, normalizePetHome, comp
 import { generateMilestoneTexts, generateLifeDiary, generateBirthdayDiary, generateNoteReply, generateEntryReply } from "./services/pet/petDiaryAiBridge";
 import { petLine } from "./services/pet/petLines";
 import { downloadJsonFile } from "./utils/exportFile";
+import { isAiConfigReady } from "./services/aiService";
 
 const ACTIONS = {
   feed: { label: "餵食", icon: "🥕", message: "好好吃！", fullMessage: "肚子已經飽飽的～", stat: "hunger", exp: 5, delta: { hunger: 22, mood: 3 }, coins: 2, duration: 3000 },
@@ -80,7 +81,7 @@ function PetHomeRuntime({ onClose, initialData, initialSettings, apiConfig }) {
   const aiMilestoneBusyRef = useRef(false);
   const aiLifeBusyRef = useRef(false);
 
-  const aiEnabled = settings.aiDiary !== false && Boolean(apiConfig?.apiKey);
+  const aiEnabled = settings.aiDiary !== false && isAiConfigReady(apiConfig);
 
   const playAnim = (name, duration) => {
     clearTimeout(animTimerRef.current);
@@ -496,7 +497,7 @@ function PetHomeRuntime({ onClose, initialData, initialSettings, apiConfig }) {
             <label className="pet-setting-row"><span><b>回小屋休息時間</b><small>拖進小屋後暫時不再出現</small></span><select className="pet-setting-select" value={settings.desktopPetReturnMinutes} onChange={(e) => setSettings((old) => ({ ...old, desktopPetReturnMinutes: Number(e.target.value) }))}>{[3,5,10,15,20,30].map((minute) => <option key={minute} value={minute}>{minute} 分鐘</option>)}</select></label>
           </div>
           <div className="pet-setting-group"><h3>✨ AI 日記</h3>
-            <label className="pet-setting-row"><span><b>AI 個人化日記</b><small>{apiConfig?.apiKey ? "由 AI 依個性撰寫回憶、日常與回應" : "尚未設定 AI 連線，將使用內建文案"}</small></span><input type="checkbox" checked={settings.aiDiary !== false} onChange={(e) => setSettings((old) => ({ ...old, aiDiary: e.target.checked }))} /></label>
+            <label className="pet-setting-row"><span><b>AI 個人化日記</b><small>{isAiConfigReady(apiConfig) ? "由 AI 依個性撰寫回憶、日常與回應" : "尚未設定 AI 連線，將使用內建文案"}</small></span><input type="checkbox" checked={settings.aiDiary !== false} onChange={(e) => setSettings((old) => ({ ...old, aiDiary: e.target.checked }))} /></label>
           </div>
           <div className="pet-setting-group"><h3>🔔 提醒</h3>
             <label className="pet-setting-row"><span><b>照顧提醒</b><small>寵物需要照顧時通知</small></span><input type="checkbox" checked={settings.reminders} onChange={(e) => setSettings((old) => ({ ...old, reminders: e.target.checked }))} /></label>

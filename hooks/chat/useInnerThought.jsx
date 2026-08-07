@@ -2,14 +2,17 @@ import React from "react";
 import { InnerThoughtPanel } from "../../components/chat/ChatMessageParts";
 import { pseudoImagePromptLine } from "../../utils/pseudoImage";
 import { pseudoVoicePromptLine } from "../../utils/pseudoVoice";
+import { getMaliTestPlayerError } from "../../services/cloud/maliTestService";
 
 export default function useInnerThought({
   chatHistory,
-  chatScenes,
+  getActiveStoryStatus,
   innerThoughtLoading,
   expandedInnerThoughts,
   apiConfig,
   setChatHistory,
+  getActiveRoomId,
+  updateRoomMessages,
   setInnerThoughtLoading,
   setExpandedInnerThoughts,
   pickMemoriesForPrompt,
@@ -45,8 +48,9 @@ export default function useInnerThought({
     return !clean || !/[。！？…～!?.」』"'）)\]】]$/.test(clean);
   };
 
-  const generateInnerThought = async ({ char, messageId, source = "manual", historySnapshot = null }) => {
+  const generateInnerThought = async ({ char, messageId, source = "manual", historySnapshot = null, updateMessages = null }) => {
     if (!char?.id || !messageId || innerThoughtLoading[messageId]) return;
+    const sourceRoomId = getActiveRoomId?.(char.id) || null;
     const fullHistory = Array.isArray(historySnapshot) ? historySnapshot : (chatHistory[char.id] || []);
     const targetIndex = fullHistory.findIndex((message) => message.id === messageId);
     if (targetIndex < 0 || fullHistory[targetIndex]?.role !== "assistant") return;
@@ -80,10 +84,12 @@ export default function useInnerThought({
       content: sanitizeText(`${message.pseudoVoice ? "" : (message.content || "")}${pseudoImagePromptLine(message.pseudoImage, message.role === "user" ? "{{user}}" : "你")}${pseudoVoicePromptLine(message.pseudoVoice, message.role === "user" ? "{{user}}" : "你")}`.trim() || (message.image ? "[圖片]" : ""), 1200),
     }));
     const memoryContext = pickMemoriesForPrompt(char.id, contextMessages).map((memory, index) => `- ${index + 1}. ${memory.text}`).join("\n");
-    const scene = chatScenes?.[char.id] || {};
+    const scene = getActiveStoryStatus?.(char.id) || {};
     const sceneContext = [
-      scene.location ? `地點：${sanitizeText(scene.location, 30)}` : "",
-      scene.note ? `備註：${sanitizeText(scene.note, 100)}` : "",
+      scene.scene ? `當前場景：${sanitizeText(scene.scene, 240)}` : "",
+      scene.relationship ? `當前關係：${sanitizeText(scene.relationship, 240)}` : "",
+      scene.mood ? `當前情緒：${sanitizeText(scene.mood, 240)}` : "",
+      scene.current ? `進行中：${sanitizeText(scene.current, 240)}` : "",
     ].filter(Boolean).join("\n");
     const prompt = `${getOutputLanguageDirective()}
 
@@ -108,27 +114,39 @@ ${targetReply || target.content || "（無文字）"}`;
     setInnerThoughtLoading((previous) => ({ ...previous, [messageId]: true }));
     try {
       const thoughtMessages = [...contextMessages, { role: "user", content: thoughtInstruction }];
-      let raw = await callAI(thoughtMessages, { ...apiConfig, maxTokens: 3000 }, applyUserPlaceholder(prompt));
+      let raw = await callAI(thoughtMessages, { ...apiConfig, maxTokens: 3000 }, applyUserPlaceholder(prompt), {
+        app: "chat",
+        action: "inner_thought",
+      });
       if (isIncompleteInnerThought(raw)) {
         raw = await callAI([
           ...thoughtMessages,
           { role: "assistant", content: raw },
           { role: "user", content: "上一版心聲在語意未完成處中斷。請重新輸出一版完整的心聲，維持 1 到 2 句、最多 80 字，只輸出心聲本身。" },
-        ], { ...apiConfig, maxTokens: 3000 }, applyUserPlaceholder(prompt));
+        ], { ...apiConfig, maxTokens: 3000 }, applyUserPlaceholder(prompt), {
+          app: "chat",
+          action: "inner_thought_retry",
+        });
       }
       if (isIncompleteInnerThought(raw)) throw new Error(tr("模型回傳的心聲不完整，請再試一次", "The generated thought was incomplete. Please try again.", "生成された心の声が不完全です。もう一度お試しください", "생성된 속마음이 완전하지 않습니다. 다시 시도해주세요"));
       const content = normalizeInnerThought(raw);
       if (!content) throw new Error(tr("模型沒有產生心聲", "No inner thought was generated", "心の声が生成されませんでした", "속마음이 생성되지 않았습니다"));
-      setChatHistory((previous) => ({
-        ...previous,
-        [char.id]: (previous[char.id] || []).map((message) => message.id === messageId
-          ? { ...message, innerThought: { content, generatedAt: Date.now(), source, seen: source !== "auto" } }
-          : message),
-      }));
+      const applyThought = (messages) => messages.map((message) => message.id === messageId
+        ? { ...message, innerThought: { content, generatedAt: Date.now(), source, seen: source !== "auto" } }
+        : message);
+      if (typeof updateMessages === "function") updateMessages(applyThought);
+      else if (typeof updateRoomMessages === "function") updateRoomMessages(char.id, sourceRoomId, applyThought);
+      else {
+        setChatHistory((previous) => ({
+          ...previous,
+          [char.id]: applyThought(previous[char.id] || []),
+        }));
+      }
       setExpandedInnerThoughts((previous) => ({ ...previous, [messageId]: source !== "auto" }));
       if (source === "auto") showToast(`${char.name || tr("角色", "The character", "キャラ", "캐릭터")}${tr(" 好像在想些什麼…", " seems to be thinking about something...", " は何か考えているみたい…", "이(가) 뭔가 생각하는 것 같아…")}`);
     } catch (error) {
-      showToast(`${tr("心聲生成失敗", "Failed to generate inner thought", "心の声の生成に失敗しました", "속마음 생성 실패")}：${sanitizeText(error?.message || "", 120)}`);
+      const playerError = getMaliTestPlayerError(error, tr);
+      showToast(playerError || `${tr("心聲生成失敗", "Failed to generate inner thought", "心の声の生成に失敗しました", "속마음 생성 실패")}：${sanitizeText(error?.message || "", 120)}`);
     } finally {
       setInnerThoughtLoading((previous) => ({ ...previous, [messageId]: false }));
     }

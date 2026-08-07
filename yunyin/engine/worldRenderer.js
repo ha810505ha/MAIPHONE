@@ -1,5 +1,6 @@
 import { TILE } from "./tilemap";
 import { drawActor } from "./sprite";
+import { actorRenderPos } from "./actorActions";
 import { getImage, isReady } from "./assets";
 import { BUILDING_IMAGES, WORLD_DECOR_IMAGES, TILE_IMAGES, CROP_IMAGES, FURNITURE_IMAGES } from "../data/assetUrls";
 import { cropById, plotStage, plotUnlocked } from "../systems/farm";
@@ -178,8 +179,13 @@ export function drawFarmPlot(ctx, plotDefinition, index, now, { camera, scale, s
         ctx.strokeStyle = "rgba(255, 205, 90, .9)"; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(sx + tileSize / 2, sy + tileSize / 2, tileSize * 0.4 * pulse, 0, Math.PI * 2); ctx.stroke();
       }
-      if (cropImage && isReady(cropImage)) ctx.drawImage(cropImage, sx + tileSize * 0.05, sy + tileSize * 0.05, tileSize * 0.9, tileSize * 0.9);
-      else if (stage === 0) {
+      if (cropImage && isReady(cropImage)) {
+        // 等比例繪製、底部貼齊土壤格：作物素材有 32×32 也有 32×64（高的作物往上長），
+        // 原本寬高都塞成正方形，會把兩格高的成熟作物（例：星露籽）壓扁。
+        const drawWidth = tileSize * 0.9;
+        const drawHeight = drawWidth * (cropImage.naturalHeight / cropImage.naturalWidth);
+        ctx.drawImage(cropImage, sx + tileSize * 0.05, sy + tileSize * 0.95 - drawHeight, drawWidth, drawHeight);
+      } else if (stage === 0) {
         ctx.fillStyle = "#4a3826";
         ctx.fillRect(sx + tileSize * 0.34, sy + tileSize * 0.46, tileSize * 0.08, tileSize * 0.08);
         ctx.fillRect(sx + tileSize * 0.58, sy + tileSize * 0.46, tileSize * 0.08, tileSize * 0.08);
@@ -193,10 +199,10 @@ export function drawFarmPlot(ctx, plotDefinition, index, now, { camera, scale, s
 }
 
 export function drawCharacter(ctx, actor, appearance, camera, scale, now) {
-  const offset = actor.action?.renderOffset || { x: 0, y: 0 };
+  const pos = actorRenderPos(actor);
   drawActor(ctx, appearance, {
-    sx: (actor.px + offset.x * TILE - camera.x) * scale,
-    sy: (actor.py + offset.y * TILE - camera.y) * scale,
+    sx: (pos.x - camera.x) * scale,
+    sy: (pos.y - camera.y) * scale,
     ts: TILE * scale,
     facing: actor.facing,
     moving: actor.moving,
@@ -208,9 +214,9 @@ export function drawCharacter(ctx, actor, appearance, camera, scale, now) {
 export function drawNpcLabel(ctx, npc, label, camera, scale) {
   if (!label) return;
   const tileSize = TILE * scale;
-  const offset = npc.action?.renderOffset || { x: 0, y: 0 };
-  const x = (npc.px + offset.x * TILE - camera.x) * scale + tileSize / 2;
-  const y = (npc.py + offset.y * TILE - camera.y) * scale - tileSize * 0.9;
+  const pos = actorRenderPos(npc);
+  const x = (pos.x - camera.x) * scale + tileSize / 2;
+  const y = (pos.y - camera.y) * scale - tileSize * 0.9;
   ctx.font = `${8 * scale}px sans-serif`; ctx.textAlign = "center"; ctx.fillStyle = "rgba(255,255,255,.95)";
   ctx.strokeStyle = "rgba(0,0,0,.5)"; ctx.lineWidth = 3; ctx.strokeText(label, x, y); ctx.fillText(label, x, y);
   if (npc.helper) {
@@ -221,9 +227,9 @@ export function drawNpcLabel(ctx, npc, label, camera, scale) {
 
 export function drawSpeechBubble(ctx, npc, camera, scale, viewWidth) {
   const tileSize = TILE * scale;
-  const offset = npc.action?.renderOffset || { x: 0, y: 0 };
-  const centerX = (npc.px + offset.x * TILE - camera.x) * scale + tileSize / 2;
-  const topY = (npc.py + offset.y * TILE - camera.y) * scale - tileSize * 1.4;
+  const pos = actorRenderPos(npc);
+  const centerX = (pos.x - camera.x) * scale + tileSize / 2;
+  const topY = (pos.y - camera.y) * scale - tileSize * 1.4;
   ctx.font = `${10 * scale}px sans-serif`;
   const maxWidth = Math.min(220, viewWidth - 24), padding = 12, lineHeight = 13 * scale;
   const lines = []; let line = "";

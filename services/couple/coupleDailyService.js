@@ -1,4 +1,4 @@
-import { callAI } from "../aiService";
+import { callAI, isAiConfigReady } from "../aiService";
 import { loadFeatureEntity, saveFeatureEntity } from "../../utils/indexedDbStorage";
 import { inferCoupleInviteState } from "../../utils/coupleInviteState";
 import { translate } from "../../utils/i18n";
@@ -6,7 +6,7 @@ import { translate } from "../../utils/i18n";
 const DAILY_KEY = "ent_coupleDaily";
 
 const clean = (value, limit = 2000) => String(value || "").replace(/<think>[\s\S]*?<\/think>/gi, "").trim().slice(0, limit);
-const hasApi = (apiConfig) => apiConfig?.provider && (apiConfig.apiKey || apiConfig.provider === "ollama");
+const hasApi = (apiConfig) => isAiConfigReady(apiConfig);
 const charProfile = (character) => clean(character?.description || character?.personality || character?.prompt || character?.persona, 2400);
 const tx = (locale, zh, en, ja, ko) => translate(locale || "zh-TW", zh, en, ja, ko);
 const outputLanguageRule = (locale) => tx(
@@ -194,7 +194,10 @@ export async function generateLoveSign({ character, playerProfile, recentMessage
 4. ${outputLanguageRule(locale)}
 5. 不得提及系統、AI。只輸出合法 JSON：{"level":"…","tip":"…","text":"…"}`;
   try {
-    const raw = await callAI([{ role: "user", content: "請寫這支戀愛簽的 JSON。" }], { ...apiConfig, maxTokens: Math.min(2000, Number(apiConfig.maxTokens) || 2000) }, systemPrompt);
+    const raw = await callAI([{ role: "user", content: "請寫這支戀愛簽的 JSON。" }], { ...apiConfig, maxTokens: Math.min(2000, Number(apiConfig.maxTokens) || 2000) }, systemPrompt, {
+      app: "couple",
+      action: "love_sign_generate",
+    });
     const parsed = JSON.parse(clean(raw, 800).replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, ""));
     const level = clean(parsed?.level, 24) || localizedSignLevels(locale)[0];
     const tip = clean(parsed?.tip, 40) || fallbackSigns(locale)[0].tip;
@@ -218,7 +221,10 @@ export async function generateDailyTask({ character, playerProfile, recentMessag
 2. ${outputLanguageRule(locale)}
 3. 不得提及系統、AI、抽卡券。只輸出合法 JSON：{"text":"…"}`;
   try {
-    const raw = await callAI([{ role: "user", content: "請出今天的小任務 JSON。" }], { ...apiConfig, maxTokens: Math.min(300, Number(apiConfig.maxTokens) || 300) }, systemPrompt);
+    const raw = await callAI([{ role: "user", content: "請出今天的小任務 JSON。" }], { ...apiConfig, maxTokens: Math.min(300, Number(apiConfig.maxTokens) || 300) }, systemPrompt, {
+      app: "couple",
+      action: "daily_task_generate",
+    });
     const parsed = JSON.parse(clean(raw, 600).replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, ""));
     const text = clean(parsed?.text, 160);
     return text ? { text } : fallbackTask(character.id, locale);
@@ -248,6 +254,7 @@ ${transcript || "（今天還沒有聊天紀錄。）"}
     [{ role: "user", content: "請驗收並輸出 JSON。" }],
     { ...apiConfig, maxTokens: Math.max(200, Math.min(400, Number(apiConfig.maxTokens) || 400)) },
     systemPrompt,
+    { app: "couple", action: "daily_task_judge" },
   );
   const parsed = parseTaskVerdict(raw);
   if (!parsed) throw new Error(tx(locale, "角色的驗收回覆不完整，請再試一次", "The character's response was incomplete. Please try again.", "キャラの確認結果が不完全です。もう一度お試しください。", "캐릭터의 확인 응답이 불완전합니다. 다시 시도하세요."));

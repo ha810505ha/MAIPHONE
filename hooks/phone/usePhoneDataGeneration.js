@@ -65,7 +65,10 @@ ${roleProfile || "（無）"}
 ${recent || "（尚無）"}
 `,
       }];
-      const raw = await callAI(prompt, apiConfig, "你是手機聊天資料生成器，只能輸出有效 JSON。");
+      const raw = await callAI(prompt, apiConfig, "你是手機聊天資料生成器，只能輸出有效 JSON。", {
+        app: "phone",
+        action: "npc_chats_refresh",
+      });
       const parsed = parseJsonObjectFromText(raw);
       const threadsRaw = Array.isArray(parsed?.threads) ? parsed.threads : [];
       const generatedAt = Date.now();
@@ -152,7 +155,10 @@ ${recent || "（尚無）"}
 玩家暱稱：${sanitizeText(playerProfile?.nickname || "未設定", 40)}
 近期互動：\n${recentPlayerChat || "尚無對話"}`,
       }];
-      const raw = await callAI(prompt, { ...apiConfig, maxTokens: 500 }, "你是角色手機聯絡人資料生成器，只能輸出有效 JSON。");
+      const raw = await callAI(prompt, { ...apiConfig, maxTokens: 500 }, "你是角色手機聯絡人資料生成器，只能輸出有效 JSON。", {
+        app: "phone",
+        action: "player_contact_refresh",
+      });
       const parsed = parseJsonObjectFromText(raw) || {};
       const parsedContact = parsed.playerContact && typeof parsed.playerContact === "object"
         ? parsed.playerContact
@@ -172,7 +178,10 @@ ${recent || "（尚無）"}
         const retryRaw = await callAI([{
           role: "user",
           content: `${getOutputLanguageDirective()}\n請以 ${char.name} 的視角，只輸出一則 2~16 字、詞語完整的玩家聯絡人短備註名，例如「我家那位」或「最重要的人」。不要輸出未完成片段，不要 JSON、英文、標籤、引號或說明。玩家關係（最高優先）：${explicitRelationship || "未設定"}\n近期互動：${recentPlayerChat || "尚無"}`,
-        }], { ...apiConfig, maxTokens: 500 }, "你只輸出聯絡人備註文字。");
+        }], { ...apiConfig, maxTokens: 500 }, "你只輸出聯絡人備註文字。", {
+          app: "phone",
+          action: "player_contact_refresh_retry",
+        });
         nextNote = sanitizeText(String(retryRaw || "").replace(/^[「『"']+|[」』"']+$/g, "").trim(), 16)
           .replace(/^\s*(?:thought|note|memo|remark|備註)\s*[:：-]?\s*/i, "").trim();
       }
@@ -233,7 +242,11 @@ ${recent || "（尚無）"}
       const playerFormalName = sanitizeText(playerProfile?.name || "玩家", 40);
       const ctx = buildPhonePromptContext(char, chatHistory, playerFormalName);
       const prompt = [{ role: "user", content: buildPhoneAppPrompt(appId, getOutputLanguageDirective(), ctx, extra) }];
-      const raw = await callAI(prompt, apiConfig, "你是手機 App 資料生成器，只能輸出有效 JSON。");
+      const safeAppId = String(appId || "app").toLowerCase().replace(/[^a-z0-9_-]/g, "_").slice(0, 24);
+      const raw = await callAI(prompt, apiConfig, "你是手機 App 資料生成器，只能輸出有效 JSON。", {
+        app: "phone",
+        action: `app_${safeAppId}_refresh`,
+      });
       const data = sanitizePhoneAppData(appId, parseJsonObjectFromText(raw), phoneAppCache[char.id]?.[appId]?.data, { playerName: playerFormalName, charName: char.name });
       if (!data) throw new Error(tr("模型未回傳可用資料", "Model returned no usable data", "モデルが有効なデータを返しませんでした", "모델이 사용 가능한 데이터를 반환하지 않았습니다"));
       setPhoneAppCache((prev) => ({

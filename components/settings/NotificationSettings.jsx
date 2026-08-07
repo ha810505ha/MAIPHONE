@@ -16,9 +16,22 @@ const Row = ({ label, hint, children }) => (
   </div>
 );
 
-export default function NotificationSettings({ tr, settings, updateSettings }) {
+export default function NotificationSettings({ tr, settings, updateSettings, systemPermission, requestSystemPermission }) {
   const patchSection = (section, key, value) => updateSettings({ [section]: { ...settings[section], [key]: value } });
   const off = !settings.enabled;
+  const systemUnsupported = systemPermission === "unsupported";
+  const systemBlocked = systemPermission === "denied";
+  // 開啟時才請求權限；玩家拒絕就不要把開關留在開著的假象。
+  const toggleSystem = async (value) => {
+    if (!value) return patchSection("surfaces", "system", false);
+    const result = await requestSystemPermission?.();
+    patchSection("surfaces", "system", result === "granted");
+  };
+  const systemHint = systemUnsupported
+    ? tr("這個瀏覽器不支援系統通知。", "This browser does not support system notifications.", "このブラウザはシステム通知に対応していません。", "이 브라우저는 시스템 알림을 지원하지 않습니다.")
+    : systemBlocked
+      ? tr("通知權限已被封鎖，請到瀏覽器的網站設定改回「允許」。", "Notification permission is blocked. Re-allow it in your browser's site settings.", "通知が拒否されています。ブラウザのサイト設定で許可してください。", "알림 권한이 차단되었습니다. 브라우저 사이트 설정에서 허용해 주세요.")
+      : tr("切到別的分頁時，改用電腦或手機本身的通知提醒你。需要保持頁面開著。", "When you switch tabs, alerts come from your device instead. The page must stay open.", "他のタブに移動中は端末側の通知でお知らせします。ページは開いたままにしてください。", "다른 탭으로 이동하면 기기 알림으로 알려줍니다. 페이지는 열어 두어야 합니다.");
   const typeLabels = [
     ["message", tr("角色訊息", "Character messages", "キャラのメッセージ", "캐릭터 메시지")],
     ["match", tr("信風配對", "Matches", "マッチング", "매칭")],
@@ -47,6 +60,10 @@ export default function NotificationSettings({ tr, settings, updateSettings }) {
           <Switch checked={settings.surfaces[key]} disabled={off} onChange={(value) => patchSection("surfaces", key, value)} />
         </Row>
       ))}
+      <Row label={tr("系統通知", "System notifications", "システム通知", "시스템 알림")} hint={systemHint}>
+        <Switch checked={settings.surfaces.system} disabled={off || systemUnsupported || systemBlocked}
+          onChange={toggleSystem} />
+      </Row>
     </div>
 
     <div className="mp-sg">

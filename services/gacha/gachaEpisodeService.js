@@ -1,4 +1,4 @@
-import { callAI } from "../aiService";
+import { callAI, isAiConfigReady, isHostedTestMode } from "../aiService";
 import { fetchWithTimeout, isRequestCancelled, NETWORK_TIMEOUTS } from "../../utils/networkRequest.js";
 
 const clean = (value, limit = 6000) => String(value || "").replace(/<think>[\s\S]*?<\/think>/gi, "").trim().slice(0, limit);
@@ -12,7 +12,7 @@ const fallbackOpening = (episode) => ({
 });
 
 export async function generateGachaEpisodeOpening({ episode, character, playerProfile, apiConfig, recentMessages = [], outputLanguage = "繁體中文", signal }) {
-  if (!apiConfig?.provider || (!apiConfig.apiKey && apiConfig.provider !== "ollama")) return fallbackOpening(episode);
+  if (!isAiConfigReady(apiConfig)) return fallbackOpening(episode);
   const recent = recentMessages.filter((message) => ["user", "assistant"].includes(message?.role)).slice(-16).map((message) => `${message.role === "user" ? "玩家" : "角色"}：${clean(message.content, 320)}`).join("\n");
   const modeRule = episode.mode === "reality"
     ? "玩家親手送出心意。旁白描寫同一場景中的交付瞬間；角色開場可以包含一句台詞與極短動作。"
@@ -50,7 +50,11 @@ export async function generateGachaEpisodeOpening({ episode, character, playerPr
 narration：使用指定語言、第二人稱「你」，60～140 字；描寫送出心意後的第一個瞬間與場景，停在角色開口前，不含任何角色台詞、引號、標題、條列或換行。
 characterOpening：使用指定語言，20～70 字；必須銜接旁白、符合角色與關係、留下玩家回應空間，不替玩家回答，不含換行。現實模式可有極短動作；線上模式只能是角色傳來的訊息，不得有括號動作或面對面描寫。`;
   try {
-    const raw = await callAI([{ role: "user", content: "請依規則生成送出心意後的第一幕。保持短篇，只在必要時使用完整輸出上限。" }], { ...apiConfig, maxTokens: Math.min(OPENING_OUTPUT_MAX_TOKENS, Number(apiConfig.maxTokens) || OPENING_OUTPUT_MAX_TOKENS) }, systemPrompt, { signal });
+    const raw = await callAI([{ role: "user", content: "請依規則生成送出心意後的第一幕。保持短篇，只在必要時使用完整輸出上限。" }], { ...apiConfig, maxTokens: Math.min(OPENING_OUTPUT_MAX_TOKENS, Number(apiConfig.maxTokens) || OPENING_OUTPUT_MAX_TOKENS) }, systemPrompt, {
+      signal,
+      app: "gacha",
+      action: "episode_opening",
+    });
     const normalized = clean(raw, 7000).replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
     const parsed = JSON.parse(normalized);
     const narration = clean(parsed?.narration, 420);
@@ -63,6 +67,7 @@ characterOpening：使用指定語言，20～70 字；必須銜接旁白、符�
 }
 
 async function streamCompatibleChat(messages, apiConfig, systemPrompt, onChunk, signal) {
+  if (isHostedTestMode(apiConfig)) return null;
   const { provider, baseUrl, apiKey, model } = apiConfig;
   const temperature = apiConfig.temperatureEnabled && Number.isFinite(Number(apiConfig.temperature))
     ? Math.max(0, Math.min(2, Number(apiConfig.temperature))) : null;
@@ -125,7 +130,7 @@ async function streamCompatibleChat(messages, apiConfig, systemPrompt, onChunk, 
 }
 
 export async function generateGachaEpisodeReply({ episode, character, playerProfile, apiConfig, nextUserMessage, onChunk, forceEnding = false, signal }) {
-  if (!apiConfig?.provider || (!apiConfig.apiKey && apiConfig.provider !== "ollama")) throw new Error("請先在設定中完成 AI API 設定");
+  if (!isAiConfigReady(apiConfig)) throw new Error("請先在設定中啟用可用的 AI 來源");
   const modeLabel = episode.mode === "reality" ? "現實見面" : "線上聊天／寄送禮物";
   const currentTurn = Math.min(20, Math.max(1, Number(episode.playerMessageCount || 0) + 1));
   const storyPhase = forceEnding
@@ -162,7 +167,13 @@ ${clean(playerProfile?.name ? `姓名：${playerProfile.name}\n${playerProfile.d
   const history = (episode.messages || []).filter((message) => message.role !== "system").slice(-30).map((message) => ({ role: message.role === "user" ? "user" : "assistant", content: clean(message.content, 4000) }));
   history.push({ role: "user", content: forceEnding ? "（請依照目前劇情自然完成這段特別篇，這是角色的最後一則回覆。）" : clean(nextUserMessage, 4000) });
   const streamed = await streamCompatibleChat(history, apiConfig, systemPrompt, onChunk, signal);
-  const raw = streamed ?? await callAI(history, { ...apiConfig, maxTokens: Math.min(1800, Number(apiConfig.maxTokens) || 1800) }, systemPrompt, { signal });
+  const raw = streamed ?? await callAI(history, { ...apiConfig, maxTokens: Math.min(1800, Number(apiConfig.maxTokens) || 1800) }, systemPrompt, {
+    signal,
+    feature: "chat",
+    mode: episode.mode === "reality" ? "reality" : "online",
+    app: "gacha",
+    action: "episode_reply",
+  });
   const reply = clean(raw, 5000);
   if (!reply) throw new Error("AI 沒有回傳內容，請重試");
   if (streamed == null) onChunk?.(reply);

@@ -132,7 +132,16 @@ const saveWith = ({ realmIdx = 0, coins = 100, plots, inventory = {} } = {}) => 
   const panel = { type: "plant", dismissReadyAt: NOW + 500 };
   assert.equal(canDismissPanelFromBackdrop(panel, NOW), false, "種植面板剛開啟時不得被背景幽靈點擊關閉");
   assert.equal(canDismissPanelFromBackdrop(panel, NOW + 499), false);
-  assert.equal(canDismissPanelFromBackdrop(panel, NOW + 500), true, "保護時間結束後仍可點背景關閉");
+  assert.equal(
+    canDismissPanelFromBackdrop(panel, NOW + 10_000),
+    false,
+    "種植面板只能透過選擇作物或取消按鈕關閉",
+  );
+  assert.equal(
+    canDismissPanelFromBackdrop({ type: "inventory", dismissReadyAt: NOW + 500 }, NOW + 500),
+    true,
+    "其他延遲面板在保護時間結束後仍可點背景關閉",
+  );
   assert.equal(canDismissPanelFromBackdrop({ type: "inventory" }, NOW), true, "一般面板維持原本的背景關閉行為");
 }
 

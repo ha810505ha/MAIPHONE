@@ -1,7 +1,7 @@
 // 雲隱山莊 → MaliPhone 的 AI 橋接。
 // 遊戲側只丟角色 id 與需求，這裡負責找角色卡、組 prompt、呼叫 callAI。
 // 任何失敗都回 null，遊戲用內建句庫 fallback，絕不卡住遊戲。
-import { callAI } from "./aiService";
+import { callAI, isAiConfigReady } from "./aiService";
 
 const charPersona = (char) => {
   let p = `你是「${char.name}」。`;
@@ -15,7 +15,7 @@ const charPersona = (char) => {
 // 成功回傳 { 池名: [句...] }，任何失敗回 null。
 export async function yunyinGenerateLinePack(charId, poolSpec, apiConfig, characters) {
   const char = characters.find((c) => c.id === charId);
-  if (!char || !apiConfig?.apiKey) return null;
+  if (!char || !isAiConfigReady(apiConfig)) return null;
 
   const sys = `${charPersona(char)}
 [情境]
@@ -37,7 +37,10 @@ export async function yunyinGenerateLinePack(charId, poolSpec, apiConfig, charac
     .map(([k, n]) => `"${k}": [${n} 句「${poolDesc[k] || k}」]`)
     .join(", ")}}`;
 
-  const raw = await callAI([{ role: "user", content: user }], { ...apiConfig, maxTokens: 2000 }, sys);
+  const raw = await callAI([{ role: "user", content: user }], { ...apiConfig, maxTokens: 2000 }, sys, {
+    app: "yunyin",
+    action: "game_event_generate",
+  });
   try {
     const jsonText = String(raw || "").replace(/```(json)?/g, "").trim();
     const start = jsonText.indexOf("{"), end = jsonText.lastIndexOf("}");

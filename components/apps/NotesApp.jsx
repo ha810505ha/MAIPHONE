@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import DOMPurify from "dompurify";
 import { confirmLocalized } from "../../utils/i18n";
+import { useLocalizedStaticText } from "../../utils/useLocalizedStaticText";
 import {
   loadFeatureEntity,
   saveFeatureEntity,
@@ -9,6 +10,28 @@ import { FEATURE_DATA_CHANGED_EVENT, featureDataEventIncludes } from "../../serv
 import { NOTES_ENTITY_KEY, upsertNoteDraft } from "../../utils/notesPersistence";
 
 const KEY = NOTES_ENTITY_KEY;
+const NOTE_UI_TEXT = {
+  "\u7cfb\u7d71\u5b57\u9ad4": ["System", "\u30b7\u30b9\u30c6\u30e0", "\uc2dc\uc2a4\ud15c"],
+  "\u9ed1\u9ad4": ["Sans-serif", "\u30b4\u30b7\u30c3\u30af", "\uace0\ub515"],
+  "\u660e\u9ad4": ["Serif", "\u660e\u671d", "\uba85\uc870"],
+  "\u5fae\u8edf\u6b63\u9ed1\u9ad4": ["Microsoft JhengHei", "Microsoft JhengHei", "Microsoft JhengHei"],
+  "\u7b49\u5bec\u5b57\u9ad4": ["Monospace", "\u7b49\u5e45", "\uace0\uc815\ud3ed"],
+  "\u6b63\u5728\u8b80\u53d6\u7b46\u8a18\u2026": ["Loading notes\u2026", "\u30e1\u30e2\u3092\u8aad\u307f\u8fbc\u307f\u4e2d\u2026", "\uba54\ubaa8\ub97c \ubd88\ub7ec\uc624\ub294 \uc911\u2026"],
+  "\u65b0\u589e\u7b46\u8a18": ["New note", "\u65b0\u3057\u3044\u30e1\u30e2", "\uc0c8 \uba54\ubaa8"],
+  "\u81ea\u52d5\u5132\u5b58": ["Auto-saved", "\u81ea\u52d5\u4fdd\u5b58", "\uc790\ub3d9 \uc800\uc7a5"],
+  "\u6a19\u984c": ["Title", "\u30bf\u30a4\u30c8\u30eb", "\uc81c\ubaa9"],
+  "\u4e00\u822c": ["General", "\u4e00\u822c", "\uc77c\ubc18"],
+  "\u79c1\u5bc6": ["Private", "\u975e\u516c\u958b", "\ube44\uacf5\uac1c"],
+  "\ud83d\udd12 \u79c1\u5bc6": ["\ud83d\udd12 Private", "\ud83d\udd12 \u975e\u516c\u958b", "\ud83d\udd12 \ube44\uacf5\uac1c"],
+  "\u5b57\u8272 \u25be": ["Text color \u25be", "\u6587\u5b57\u8272 \u25be", "\uae00\uc790\uc0c9 \u25be"],
+  "\u7b46\u8a18": ["Notes", "\u30e1\u30e2", "\uba54\ubaa8"],
+  "\u641c\u5c0b\u7b46\u8a18": ["Search notes", "\u30e1\u30e2\u3092\u691c\u7d22", "\uba54\ubaa8 \uac80\uc0c9"],
+  "\u5168\u90e8": ["All", "\u3059\u3079\u3066", "\uc804\uccb4"],
+  "\u9084\u6c92\u6709\u7b46\u8a18\uff0c\u9ede\u64ca\u53f3\u4e0b\u89d2\u925b\u7b46\u958b\u59cb\u8a18\u9304": ["No notes yet. Tap the pencil to start writing.", "\u30e1\u30e2\u306f\u307e\u3060\u3042\u308a\u307e\u305b\u3093\u3002\u53f3\u4e0b\u306e\u925b\u7b46\u304b\u3089\u66f8\u304d\u59cb\u3081\u307e\u3057\u3087\u3046\u3002", "\uc544\uc9c1 \uba54\ubaa8\uac00 \uc5c6\uc5b4\uc694. \uc624\ub978\ucabd \uc544\ub798 \uc5f0\ud544\uc744 \ub20c\ub7ec \uc791\uc131\ud558\uc138\uc694."],
+  "\u672a\u547d\u540d\u7b46\u8a18": ["Untitled note", "\u7121\u984c\u306e\u30e1\u30e2", "\uc81c\ubaa9 \uc5c6\ub294 \uba54\ubaa8"],
+  "\u5c1a\u672a\u8f38\u5165\u5167\u5bb9": ["No content yet", "\u5185\u5bb9\u306f\u307e\u3060\u3042\u308a\u307e\u305b\u3093", "\uc544\uc9c1 \ub0b4\uc6a9\uc774 \uc5c6\uc5b4\uc694"],
+  "\u522a\u9664": ["Delete", "\u524a\u9664", "\uc0ad\uc81c"],
+};
 const COLORS = [
   "#57434b",
   "#9b4d68",
@@ -64,7 +87,7 @@ const htmlOf = (value = "") =>
         .replace(/>/g, "&gt;")
         .replace(/\n/g, "<br>");
 
-export default function NotesApp({ onBack }) {
+export default function NotesApp({ onBack, tr }) {
   const [notes, setNotes] = useState(null),
     [query, setQuery] = useState(""),
     [filter, setFilter] = useState("all"),
@@ -74,11 +97,24 @@ export default function NotesApp({ onBack }) {
   const editorRef = useRef(null),
     selectionRef = useRef(null),
     timerRef = useRef(null),
+    rootRef = useRef(null),
     notesRef = useRef(notes),
     draftRef = useRef(draft),
     latestContentRef = useRef(null);
   notesRef.current = notes;
   draftRef.current = draft;
+  const localizeNoteUi = (value) => {
+    const matchedEntry = Object.entries(NOTE_UI_TEXT).find(([zh, translations]) => (
+      zh === value || translations.includes(value)
+    ));
+    if (matchedEntry) return tr(matchedEntry[0], ...matchedEntry[1]);
+    const color = value.match(/^(?:\u5957\u7528 |Apply )(#[0-9a-f]{6})(?: \u5b57\u8272| text color)$/i)
+      || value.match(/^(#[0-9a-f]{6}) (?:\u306e\u6587\u5b57\u8272\u3092\u9069\u7528|\uae00\uc790\uc0c9 \uc801\uc6a9)$/i);
+    return color
+      ? tr(`\u5957\u7528 ${color[1]} \u5b57\u8272`, `Apply ${color[1]} text color`, `${color[1]} \u306e\u6587\u5b57\u8272\u3092\u9069\u7528`, `${color[1]} \uae00\uc790\uc0c9 \uc801\uc6a9`)
+      : value;
+  };
+  useLocalizedStaticText(rootRef, localizeNoteUi);
   const write = async (next) => {
     notesRef.current = next;
     setNotes(next);
@@ -231,7 +267,8 @@ export default function NotesApp({ onBack }) {
   if (notes === null)
     return (
       <div
-        className="mp-page"
+      className="mp-page"
+      ref={rootRef}
         style={{ display: "grid", placeItems: "center" }}
       >
         正在讀取筆記⋯
@@ -241,6 +278,8 @@ export default function NotesApp({ onBack }) {
     return (
       <div
         className="mp-page"
+        ref={rootRef}
+        data-mp-surface="light"
         style={{
           background: "linear-gradient(180deg,#fffaf8,#fdecef)",
           color: "#57434b",
@@ -425,6 +464,12 @@ export default function NotesApp({ onBack }) {
     setDraft(next);
   };
   const remove = async (note) => {
+    if (document.documentElement.lang !== "zh-TW") {
+      if (window.confirm(tr("\u78ba\u5b9a\u8981\u522a\u9664\u9019\u7bc7\u7b46\u8a18\u55ce\uff1f", "Delete this note?", "\u3053\u306e\u30e1\u30e2\u3092\u524a\u9664\u3057\u307e\u3059\u304b\uff1f", "\uc774 \uba54\ubaa8\ub97c \uc0ad\uc81c\ud560\uae4c\uc694?"))) {
+        await write(notes.filter((n) => n.id !== note.id));
+      }
+      return;
+    }
     if (confirmLocalized("確定要刪除這篇筆記嗎？"))
       await write(notes.filter((n) => n.id !== note.id));
   };
@@ -438,10 +483,12 @@ export default function NotesApp({ onBack }) {
     );
   return (
     <div
-      className="mp-page"
+        className="mp-page"
+        ref={rootRef}
+      data-mp-surface="light"
       style={{
         background: "linear-gradient(180deg,#fffaf8,#fdecef)",
-        color: "#57434b",
+        color: "var(--mp-page-text)",
         overflowY: "auto",
         position: "relative",
         height: "100%",

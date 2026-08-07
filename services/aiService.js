@@ -1,12 +1,68 @@
 import { fetchWithTimeout, NETWORK_TIMEOUTS } from "../utils/networkRequest.js";
+import { recordRuntimeDiagnostic } from "./diagnostics/runtimeDiagnostics.js";
+import { getMaliTestRuntime } from "./cloud/maliTestRuntime.js";
+import { runMaliTextGeneration } from "./cloud/maliTestService.js";
 
-const NVIDIA_PROXY_BASE_URL = "https://orange-butterfly-8390.d778105.workers.dev/nvidia";
+const NVIDIA_PROXY_BASE_URL = "https://maliphone-ai-proxy.d778105.workers.dev/nvidia";
 
 const resolveRequestBaseUrl = (provider, configuredBaseUrl) => (
   provider === "nvidia" ? NVIDIA_PROXY_BASE_URL : configuredBaseUrl
 );
 
-async function callAI(messages, apiConfig, sysPrompt, options = {}) {
+export const isHostedTestMode = (apiConfig) => apiConfig?.aiSource === "hosted_test";
+
+export const isAiConfigReady = (apiConfig) => {
+  if (isHostedTestMode(apiConfig)) return Boolean(apiConfig?.hostedTestProvider && apiConfig?.hostedTestModel);
+  const provider = apiConfig?.provider;
+  if (!provider) return false;
+  const isOllamaLocal = provider === "ollama" && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(apiConfig?.baseUrl || "");
+  return isOllamaLocal || Boolean(apiConfig?.apiKey);
+};
+
+const extractHostedText = (payload) => (
+  payload?.response?.candidates?.[0]?.content?.parts?.map((part) => part?.text || "").join("")
+  || payload?.response?.choices?.[0]?.message?.content
+  || ""
+);
+
+async function callHostedTestRequest(messages, apiConfig, sysPrompt, options = {}) {
+  const runtime = getMaliTestRuntime();
+  if (!runtime.session?.access_token) {
+    throw new Error("測試 LLM 需要先登入可用的測試帳號");
+  }
+  if (!apiConfig?.hostedTestProvider || !apiConfig?.hostedTestModel) {
+    throw new Error("請先在測試模型面板選擇可用模型");
+  }
+  if (messages.some((message) => message?.image)) {
+    throw new Error("測試 LLM 目前只支援文字，不會傳送圖片內容");
+  }
+  const contents = messages
+    .filter((message) => message?.role !== "system")
+    .map((message) => ({
+      role: message?.role === "assistant" ? "model" : "user",
+      parts: [{ text: String(message?.content || "") }],
+    }));
+  if (!contents.length) contents.push({ role: "user", parts: [{ text: "請回覆。" }] });
+  const maxOutputTokens = Number(apiConfig.maxTokens) > 0 ? Number(apiConfig.maxTokens) : 4000;
+  const payload = await runMaliTextGeneration(runtime.session, runtime.environment, {
+    provider: apiConfig.hostedTestProvider,
+    model: apiConfig.hostedTestModel,
+    feature: options.feature || "other",
+    mode: options.mode || "app",
+    app: options.app || options.feature || "other",
+    action: options.action || "generate",
+    maxOutputTokens,
+    systemPrompt: sysPrompt || "",
+    contents,
+    signal: options.signal,
+  });
+  const text = extractHostedText(payload);
+  if (!text.trim()) throw new Error("測試 LLM 沒有回傳文字內容");
+  return text;
+}
+
+async function callAIRequest(messages, apiConfig, sysPrompt, options = {}) {
+  if (isHostedTestMode(apiConfig)) return callHostedTestRequest(messages, apiConfig, sysPrompt, options);
   const { provider, baseUrl: configuredBaseUrl, apiKey, model } = apiConfig;
   const baseUrl = resolveRequestBaseUrl(provider, configuredBaseUrl);
   const request = (url, init) => fetchWithTimeout(url, init, {
@@ -196,6 +252,19 @@ async function callAI(messages, apiConfig, sysPrompt, options = {}) {
     throw new Error(`[${provider}/${model}] ${rawMsg}`);
   }
   return data?.choices?.[0]?.message?.content || "";
+}
+
+async function callAI(messages, apiConfig, sysPrompt, options = {}) {
+  try {
+    return await callAIRequest(messages, apiConfig, sysPrompt, options);
+  } catch (error) {
+    recordRuntimeDiagnostic({
+      kind: "ai-error",
+      error,
+      source: `aiService:${isHostedTestMode(apiConfig) ? "hosted_test" : String(apiConfig?.provider || "unknown")}`,
+    });
+    throw error;
+  }
 }
 
 async function fetchAvailableModels(apiConfig, options = {}) {

@@ -9,9 +9,9 @@ assert.equal(featureDataEventIncludes(changed, "ent_dating"), false);
 assert.equal(featureDataEventIncludes({ detail: { keys: [] } }, "ent_dating"), true);
 
 const source = async (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
-const [backup, main, music, dating, gacha] = await Promise.all([
+const [backup, reset, music, dating, gacha] = await Promise.all([
   source("services/featureBackupService.js"),
-  source("MaliPhone.jsx"),
+  source("hooks/data/useAppReset.js"),
   source("contexts/MusicPlayerContext.jsx"),
   source("hooks/dating/useDatingApp.js"),
   source("contexts/GachaContext.jsx"),
@@ -19,7 +19,7 @@ const [backup, main, music, dating, gacha] = await Promise.all([
 
 assert(backup.includes("dispatchFeatureDataChanged(writes.keys(), reason)"), "feature restore must announce changed entities");
 assert(backup.includes("export function resetFeatureData()"), "feature data must expose one reset entry point");
-assert(main.includes("await resetFeatureData()"), "clear-all must reset feature entities before clearing the UI");
+assert(reset.includes("await resetFeatureData()"), "clear-all must reset feature entities before clearing the UI");
 for (const [name, text] of [["music", music], ["dating", dating], ["gacha", gacha]]) {
   assert(text.includes("FEATURE_DATA_CHANGED_EVENT"), `${name} runtime must reload after import/reset`);
   assert(text.includes("featureDataEventIncludes"), `${name} runtime must filter lifecycle events by entity`);

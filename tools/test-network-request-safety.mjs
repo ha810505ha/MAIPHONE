@@ -124,7 +124,7 @@ try {
     "system",
   );
   assert.equal(output, "ok");
-  assert.equal(requestUrl, "https://orange-butterfly-8390.d778105.workers.dev/nvidia/chat/completions");
+  assert.equal(requestUrl, "https://maliphone-ai-proxy.d778105.workers.dev/nvidia/chat/completions");
   assert.equal(requestInit.headers.Authorization, "Bearer nvapi-test");
   assert.equal(JSON.parse(requestInit.body).max_tokens, 500);
 

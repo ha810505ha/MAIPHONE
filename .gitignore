@@ -18,6 +18,37 @@ coverage/
 !.env.example
 !**/.env.example
 
+# Certificates, mobile signing files, Firebase/service-account credentials and local deployment secrets
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.mobileprovision
+**/google-services.json
+**/GoogleService-Info.plist
+**/service-account*.json
+**/*serviceAccount*.json
+**/credentials*.json
+.dev.vars
+**/.dev.vars
+.envrc
+*.tfvars
+secrets/
+*.secrets.*
+
+# Build packages and local database files must never be published as source
+*.apk
+*.aab
+*.ipa
+*.db
+*.sqlite
+*.sqlite3
+
+# Actual Cloudflare deployment binding IDs stay local; commit only the example.
+cloudflare-worker-proxy/wrangler.toml
+
 # Local Codex/editor workspace state
 .local/
 .codex-remote-attachments/

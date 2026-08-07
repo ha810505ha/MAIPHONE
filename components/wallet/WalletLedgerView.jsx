@@ -20,6 +20,17 @@ export default function WalletLedgerView({ wallet, setWallet, characters, closeA
   const storyBalance = Number(wallet?.balance || 0);
   const lifeBalance = Number(wallet?.life?.balance || 0);
   const lifeTxCount = (wallet?.life?.transactions || []).length;
+  const compactMoney = (value) => {
+    const amount = Math.abs(Number(value) || 0);
+    const unit = [[1e16, "京"], [1e12, "兆"], [1e8, "億"], [1e4, "萬"]]
+      .find(([threshold]) => amount >= threshold);
+    if (!unit) return formatMoney(amount);
+    const [threshold, suffix] = unit;
+    const scaled = amount / threshold;
+    const maximumFractionDigits = scaled >= 100 ? 0 : scaled >= 10 ? 1 : 2;
+    return `${scaled.toLocaleString("zh-TW", { maximumFractionDigits })}${suffix}`;
+  };
+  const compactCurrency = (value) => `${value < 0 ? "-" : ""}$${compactMoney(value)}`;
   // 生活記帳允許負餘額，負號要放在錢號前面。
   const money = (n) => `${n < 0 ? "-" : ""}$${formatMoney(Math.abs(n))}`;
   const crystalTransactions = [...(crystalLedger || [])].filter((entry) => crystalFilter === "all" || entry.type === crystalFilter);
@@ -50,19 +61,19 @@ export default function WalletLedgerView({ wallet, setWallet, characters, closeA
   <div className="mp-cm">
     <div className="mp-bank">
       <span className="mp-bank-label">{tr("總資產","Total assets","総資産","총자산")}</span>
-      <div className="mp-bank-amt">{money(storyBalance+lifeBalance)}</div>
+      <div className="mp-bank-amt" title={money(storyBalance + lifeBalance)} aria-label={money(storyBalance + lifeBalance)}>{compactCurrency(storyBalance + lifeBalance)}</div>
       <div className="mp-bank-sum">{tr("手機","Phone","スマホ","폰")} ${formatMoney(storyBalance)} ＋ {tr("生活","Life","生活","생활")} {money(lifeBalance)}</div>
     </div>
     {/* 兩本帳各自獨立：劇情扣款永遠不動生活帳戶，總資產只是顯示層加總。 */}
     <div className="mp-acct-row">
       <div className="mp-acct story">
         <div className="mp-acct-top"><span>📱 {tr("手機錢包","Phone wallet","スマホ財布","폰 지갑")}</span><button className="mp-bank-edit" onClick={setBalance}>✎</button></div>
-        <b>${formatMoney(storyBalance)}</b>
+        <b title={`$${formatMoney(storyBalance)}`} aria-label={`$${formatMoney(storyBalance)}`}>${compactMoney(storyBalance)}</b>
         <small onClick={()=>setTab("month")}>{mDate.getMonth()+1}{tr("月","","月","월")}・{tr("送出","Sent","送った","보냄")} ${formatMoney(expense)} ↔ {tr("收到","Received","もらった","받음")} ${formatMoney(income)}</small>
       </div>
       <button type="button" className="mp-acct life" onClick={()=>setTab("life")}>
         <div className="mp-acct-top"><span>📒 {tr("生活記帳","Life ledger","生活家計簿","생활 가계부")}</span><span className="mp-crystal-link">›</span></div>
-        <b>{money(lifeBalance)}</b>
+        <b title={money(lifeBalance)} aria-label={money(lifeBalance)}>{compactCurrency(lifeBalance)}</b>
         <small>{lifeTxCount?tr(`已記 ${lifeTxCount} 筆`,`${lifeTxCount} entries`,`${lifeTxCount} 件`,`${lifeTxCount}건`):tr("開始記帳","Start tracking","記帳を始める","기록 시작")}</small>
       </button>
     </div>

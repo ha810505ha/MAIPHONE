@@ -22,21 +22,28 @@ export default function usePersonaController({ defaults, onApplyPersona, onBefor
     return normalized;
   }, [defaults]);
 
-  const switchPersona = useCallback(async (personaId, captureCurrent) => {
+  const switchPersona = useCallback(async (personaId, captureCurrent, options = {}) => {
     const targetId = String(personaId || "");
     if (!targetId || targetId === activePersonaId || !personas[targetId]) return false;
     await onBeforeSwitch?.();
     const currentData = captureCurrent();
+    const currentName = String(currentData?.playerProfile?.name || "").trim();
     const nextPersonas = {
       ...personas,
       ...(activePersonaId && personas[activePersonaId]
-        ? { [activePersonaId]: { ...personas[activePersonaId], data: currentData } }
+        ? {
+            [activePersonaId]: {
+              ...personas[activePersonaId],
+              label: currentName || personas[activePersonaId].label,
+              data: currentData,
+            },
+          }
         : {}),
     };
     setPersonas(nextPersonas);
     setActivePersonaStorageId(targetId);
     setActivePersonaId(targetId);
-    onApplyPersona(nextPersonas[targetId].data);
+    onApplyPersona(nextPersonas[targetId].data, options);
     dispatchFeatureDataChanged(PERSONA_FEATURE_KEYS, "persona-switch");
     return true;
   }, [activePersonaId, onApplyPersona, onBeforeSwitch, personas]);
@@ -58,14 +65,6 @@ export default function usePersonaController({ defaults, onApplyPersona, onBefor
     ));
     return id;
   }, [defaults, personas]);
-
-  const renamePersona = useCallback((personaId, label) => {
-    const safe = String(label || "").trim();
-    if (!safe) return;
-    setPersonas((current) => current[personaId]
-      ? { ...current, [personaId]: { ...current[personaId], label: safe } }
-      : current);
-  }, []);
 
   const deletePersona = useCallback(async (personaId) => {
     if (!personas[personaId] || Object.keys(personas).length <= 1) return false;
@@ -102,7 +101,6 @@ export default function usePersonaController({ defaults, onApplyPersona, onBefor
     hydratePersonas,
     maxPersonas: MAX_PERSONAS,
     personas,
-    renamePersona,
     resetPersonas,
     setActivePersonaId,
     switchPersona,

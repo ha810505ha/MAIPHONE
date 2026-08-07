@@ -32,6 +32,11 @@ import {
   stripUserPlaceholder,
 } from "../utils/chatMessageUtils.js";
 import { sortChatThreads, sortGroupChats } from "../utils/chatSorting.js";
+import {
+  appendAssistantSwipeGroup,
+  findTailAssistantSwipeAnchor,
+  replaceAssistantSwipeGroup,
+} from "../utils/assistantSwipeGroups.js";
 
 const original = [{ id: "m1", content: "before request" }];
 const userMessage = { id: "m2", content: "request" };
@@ -114,6 +119,20 @@ assert.deepEqual(
 );
 assert.equal(isGemmaModel("gemma-3-27b"), true);
 assert.equal(isGemmaModel("gpt-5"), false);
+
+const groupedReply = [
+  { id: "swipe-user", role: "user", content: "hello" },
+  { id: "swipe-a1", role: "assistant", replyGroupId: "swipe-group", replyGroupIndex: 0, replyGroupSize: 2, content: "first bubble" },
+  { id: "swipe-a2", role: "assistant", replyGroupId: "swipe-group", replyGroupIndex: 1, replyGroupSize: 2, content: "second bubble" },
+  { id: "swipe-notice", role: "system_notice", content: "metadata notice" },
+];
+assert.equal(findTailAssistantSwipeAnchor(groupedReply), "swipe-a2", "a trailing notice must not hide the response swipe control");
+const refreshedGroupedReply = appendAssistantSwipeGroup(groupedReply, "swipe-a2", ["new first", "new second", "new third"], 99, () => "swipe-new");
+assert.deepEqual(refreshedGroupedReply.filter((message) => message.replyGroupId === "swipe-group").map((message) => message.content), ["new first", "new second", "new third"]);
+assert.equal(refreshedGroupedReply.find((message) => message.id === "swipe-a2")?.swipes?.length, 2);
+const restoredGroupedReply = replaceAssistantSwipeGroup(refreshedGroupedReply, "swipe-a2", 0, () => "swipe-new");
+assert.deepEqual(restoredGroupedReply.filter((message) => message.replyGroupId === "swipe-group").map((message) => message.content), ["first bubble", "second bubble"]);
+assert.equal(findTailAssistantSwipeAnchor([...restoredGroupedReply, { id: "swipe-next-user", role: "user", content: "continue" }]), null, "continuing the story must hide old swipe choices");
 
 const transferDirective = extractTransferDirective("給你 [[TRANSFER:amount=120;note=午餐]]");
 assert.equal(transferDirective.text, "給你");

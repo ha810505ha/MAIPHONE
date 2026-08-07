@@ -7,8 +7,9 @@ import ChatRealTimeSettings from "./ChatRealTimeSettings";
 import ChatBackgroundSettings from "./ChatBackgroundSettings";
 import ChatLorebookSettings from "./ChatLorebookSettings";
 import ChatroomManagement from "./ChatroomManagement";
+import ChatStorySettings from "./ChatStorySettings";
 
-export default function ChatSettingsPanel({ tr, mode, innerThought, memory, proactive, realTime, background, lorebook, management, contact }) {
+export default function ChatSettingsPanel({ tr, mode, innerThought, memory, proactive, realTime, story, background, lorebook, management, contact }) {
   const [activeTab, setActiveTab] = useState("interaction");
   const characterName = management?.character?.name || tr("角色", "Character", "キャラクター", "캐릭터");
   const tabs = [
@@ -17,6 +18,7 @@ export default function ChatSettingsPanel({ tr, mode, innerThought, memory, proa
     ["lorebook", tr("世界書", "Lorebook", "世界観", "월드북")],
     ["management", tr("管理", "Manage", "管理", "관리")],
     ["contact", tr("聯絡", "Contact", "連絡", "연락")],
+    ["tools", tr("工具", "Tools", "ツール", "도구")],
   ];
 
   return (
@@ -35,8 +37,7 @@ export default function ChatSettingsPanel({ tr, mode, innerThought, memory, proa
           <ChatModeSettings {...mode} tr={tr} />
           <InnerThoughtSettings {...innerThought} tr={tr} />
           <ChatMemorySettings {...memory} tr={tr} />
-          <ProactiveMessageSettings {...proactive} tr={tr} />
-          <ChatRealTimeSettings {...realTime} tr={tr} />
+          <ChatStorySettings {...story} tr={tr} showQuickActions={false} />
         </>}
 
         {activeTab === "appearance" && <>
@@ -51,17 +52,24 @@ export default function ChatSettingsPanel({ tr, mode, innerThought, memory, proa
 
         {activeTab === "management" && <>
           <div className="mp-chat-tab-intro"><b>{tr("目前聊天室資料", "Current chat data", "現在のチャットデータ", "현재 채팅 데이터")}</b><span>{tr("以下操作只處理聊天室資料，不會刪除角色。", "These actions affect chat data only and do not delete the character.", "以下の操作はチャットデータのみを対象とし、キャラクターは削除されません。", "아래 작업은 채팅 데이터에만 적용되며 캐릭터는 삭제되지 않습니다.")}</span></div>
+          <ChatRealTimeSettings {...realTime} tr={tr} />
           <ChatroomManagement {...management} tr={tr} />
         </>}
 
         {activeTab === "contact" && <>
           <div className="mp-chat-tab-intro mp-chat-tab-intro-contact"><b>{tr("角色層級設定", "Character-level settings", "キャラクター単位の設定", "캐릭터 단위 설정")}</b><span>{tr(`變更會套用至 ${characterName} 的所有線上聊天室。`, `Changes apply to all online chats with ${characterName}.`, `変更は${characterName}とのすべてのオンラインチャットに適用されます。`, `변경 사항은 ${characterName}의 모든 온라인 채팅에 적용됩니다.`)}</span></div>
+          <ProactiveMessageSettings {...proactive} tr={tr} />
           <div className="mp-cc mp-chat-contact-card">
             <div><b>{contact?.blockState?.blocked ? tr(`${characterName} 已被封鎖`, `${characterName} is blocked`, `${characterName}はブロック中`, `${characterName} 차단됨`) : tr(`封鎖 ${characterName}`, `Block ${characterName}`, `${characterName}をブロック`, `${characterName} 차단`)}</b><p>{tr("封鎖後仍能查看對方嘗試傳送的訊息；圖片、轉帳與現實模式仍可使用。", "Intercepted messages remain visible; photos, transfers, and reality mode remain available.", "ブロック後もメッセージを確認でき、画像・送金・現実モードは利用できます。", "차단 후에도 메시지를 볼 수 있으며 사진·송금·현실 모드는 사용할 수 있습니다.")}</p>{contact?.blockState?.blockedAt && <small>{tr("封鎖時間：", "Blocked since: ", "ブロック日時：", "차단 시각: ")}{new Date(contact.blockState.blockedAt).toLocaleString()}</small>}</div>
             {contact?.blockState?.blocked
               ? <button type="button" className="is-unblock" onClick={contact.onUnblock}>{tr("解除封鎖", "Unblock", "ブロック解除", "차단 해제")}</button>
               : <button type="button" onClick={() => { if (window.confirm(tr(`確定要封鎖 ${characterName}？`, `Block ${characterName}?`, `${characterName}をブロックしますか？`, `${characterName}을 차단할까요?`))) contact?.onBlock?.(); }}>{tr("封鎖", "Block", "ブロック", "차단")}</button>}
           </div>
+        </>}
+
+        {activeTab === "tools" && <>
+          <div className="mp-chat-tab-intro"><b>{tr("劇情工具", "Story tools", "ストーリーツール", "스토리 도구")}</b><span>{tr("整理目前聊天室與分支使用的輔助功能；未來可再加入更多選用工具。", "Manage optional tools for the current chat route. More tools can be added here later.", "現在のチャットルート用ツールを管理します。今後さらに追加できます。", "현재 채팅 경로의 선택 도구를 관리합니다. 이후 더 추가할 수 있습니다.")}</span></div>
+          <ChatStorySettings {...story} tr={tr} showNote={false} />
         </>}
       </div>
     </div>

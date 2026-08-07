@@ -28,7 +28,7 @@ export default function CustomCssSettings({
         spellCheck={false}
         placeholder={"例如：\n.mp-dock { border-radius: 28px; }\n.mp-icon-c { box-shadow: 0 4px 12px #f3a8bd66; }"}
         onChange={(event) => { setDraft(event.target.value); setNotice(""); }}
-        style={{ width: "100%", height: 150, boxSizing: "border-box", resize: "vertical", marginTop: 10, padding: 10, border: "1px solid var(--mp-border)", borderRadius: 12, background: "rgba(255,255,255,.72)", color: "var(--mp-txt)", font: "11px/1.55 ui-monospace,monospace" }}
+        style={{ width: "100%", height: 150, boxSizing: "border-box", resize: "vertical", marginTop: 10, padding: 10, border: "1px solid var(--mp-card-border)", borderRadius: 12, background: "var(--mp-page-control-bg,var(--mp-surface))", color: "var(--mp-page-text,var(--mp-txt))", caretColor: "var(--mp-accent,var(--mp-pink-dk))", font: "11px/1.55 ui-monospace,monospace" }}
       />
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "var(--mp-txt-l)", marginTop: 4 }}><span>{notice}</span><span>{draft.length.toLocaleString()} / 30,000</span></div>
       <div style={{ display: "flex", gap: 7, marginTop: 8 }}>

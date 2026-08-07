@@ -77,7 +77,7 @@ export default function ChatBackgroundSettings({ currentChatChar, chatSettingsBa
         {tr("未設定時會維持原本底色。", "If not set, the default background color stays.", "未設定の場合は既定の背景色のままです。", "미설정 시 기본 배경색을 유지합니다.")}
       </div>
       {chatBgEditor?.charId === currentChatChar.id && chatBgEditor.src && (
-        <div style={{ marginTop: 10, padding: 10, borderRadius: 12, background: "rgba(255,255,255,.72)", border: "1px solid rgba(231,197,214,.55)" }}>
+        <div style={{ marginTop: 10, padding: 10, borderRadius: 12, background: "var(--mp-card-bg,var(--mp-surface))", border: "1px solid var(--mp-card-border)", color: "var(--mp-page-text,var(--mp-txt))" }}>
           <div
             style={{
               width: "100%",
@@ -86,11 +86,11 @@ export default function ChatBackgroundSettings({ currentChatChar, chatSettingsBa
               borderRadius: 14,
               overflow: "hidden",
               position: "relative",
-              background: "#f8f1f6",
+              background: "var(--mp-page-control-bg,var(--mp-surface))",
               touchAction: "none",
-              border: "1px solid rgba(231,197,214,.6)",
+              border: "1px solid var(--mp-card-border)",
               marginBottom: 10,
-              boxShadow: "inset 0 0 0 1px rgba(255,255,255,.45)",
+              boxShadow: "inset 0 0 0 1px color-mix(in srgb,var(--mp-card-border) 70%,transparent)",
             }}
             onPointerDown={(e) => {
               e.preventDefault();

@@ -96,6 +96,8 @@ function plansForTarget(actor, map, target, reservedSlots) {
           // （sit/eat/read/phone 都是 horizontal-only；四向動作可以之後在這裡按 candidate 方向算朝向）
           facing: slot.facing || "down",
           renderOffset: { x: candidate.renderOffset?.[0] || 0, y: candidate.renderOffset?.[1] || 0 },
+          // 沒寫就用動作的預設值（sit_front 會抬 1/4 格，見 actorActions）
+          seatLift: interaction.seatLift,
           minDurationMs: interaction.minDurationMs || 3500,
           maxDurationMs: interaction.maxDurationMs || 7000,
         });
