@@ -168,13 +168,10 @@ export default function AccountSettingsSection({ auth, tr, notify }) {
           {renderPasswordInput("new-password", text("新密碼（至少 8 碼）", "New password (8+ characters)"))}
           <button type="button" style={primaryButton} disabled={auth.busy || password.length < 8} onClick={resetPassword}><KeyRound size={16} style={{ verticalAlign: "-3px", marginRight: 6 }} />{text("更新密碼", "Update password")}</button>
         </> : <>
-          <button type="button" style={secondaryButton} disabled={auth.busy} onClick={() => auth.signInWithGoogle()}>{text("使用 Google 繼續", "Continue with Google")}</button>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 8, alignItems: "center", color: "var(--mp-page-text-muted,var(--mp-txt-l))", fontSize: 10 }}><span style={{ height: 1, background: "color-mix(in srgb,var(--mp-card-border) 70%,transparent)" }} /><span>{text("或", "or")}</span><span style={{ height: 1, background: "color-mix(in srgb,var(--mp-card-border) 70%,transparent)" }} /></div>
           <input style={inputStyle} type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" />
           {renderPasswordInput(mode === "register" ? "new-password" : "current-password", text("密碼（至少 8 碼）", "Password (8+ characters)"))}
           <button type="button" style={primaryButton} disabled={auth.busy || !email.trim() || password.length < 8} onClick={submit}>{mode === "register" ? <UserPlus size={16} style={{ verticalAlign: "-3px", marginRight: 6 }} /> : <LogIn size={16} style={{ verticalAlign: "-3px", marginRight: 6}} />}{mode === "register" ? text("建立帳號", "Create account") : text("登入", "Sign in")}</button>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-            <button type="button" disabled={auth.busy} onClick={() => setMode((current) => current === "login" ? "register" : "login")} style={{ border: "none", background: "transparent", color: "var(--mp-pink-dk)", padding: 0, cursor: "pointer", fontWeight: 800, fontSize: 11 }}>{mode === "login" ? text("建立帳號", "Create account") : text("已有帳號？登入", "Already have an account?")}</button>
             <button type="button" disabled={auth.busy} onClick={() => setMode("forgot")} style={{ border: "none", background: "transparent", color: "var(--mp-pink-dk)", padding: 0, cursor: "pointer", fontWeight: 800, fontSize: 11 }}><Mail size={13} style={{ verticalAlign: "-2px", marginRight: 4 }} />{text("忘記密碼？", "Forgot password?")}</button>
           </div>
         </>}

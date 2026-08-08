@@ -40,6 +40,21 @@ assert(
   "an empty selection must render an explicit placeholder",
 );
 
+// --- {{user}} 必須維持變數形式 ---
+// 記憶原文一律存 {{user}}，換玩家人格時才會跟著換稱呼。若壓縮過程把它換成具體名字，
+// 這條摘要就被鎖死在當時那個人格上，之後換人格就會出現兩個以上的名字互相混淆。
+const withUser = buildMemoryCompressionPrompt({
+  template: DEFAULT_MEMORY_COMPRESS_PROMPT,
+  charName: "小明",
+  memories: [{ text: "{{user}} 送了小明一把傘" }],
+});
+assert(withUser.includes("{{user}} 送了小明一把傘"), "memory text must keep {{user}} verbatim when building the prompt");
+assert(!withUser.includes("{{char}}"), "the character placeholder must still be substituted");
+assert(
+  /\{\{user\}\}[\s\S]*原樣保留/.test(DEFAULT_MEMORY_COMPRESS_PROMPT),
+  "the default prompt must tell the model to keep {{user}} as-is",
+);
+
 // --- 選取數量邊界 ---
 assert.equal(validateCompressionSelection([]).ok, false, "an empty selection must be rejected");
 assert.equal(validateCompressionSelection(["a"]).reason, "too_few", "compressing a single memory is meaningless and must be rejected");

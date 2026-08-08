@@ -24,12 +24,14 @@ export default function ChatStoryStatus({ storyStatus, onUpdate, memoryAction, t
     { key: "current", label: tr("進行中", "Now", "進行中", "진행 중"), value: status.current },
     { key: "thread", label: tr("未解伏筆", "Open thread", "未解決", "미해결 복선"), value: status.thread },
     { key: "playerNote", label: tr("玩家備註", "Player note", "プレイヤーメモ", "플레이어 메모"), value: status.playerNote },
-  ].map((item) => ({ ...item, value: item.value || tr("未設定", "Not set", "未設定", "미설정") })), [status.relationship, status.scene, status.mood, status.current, status.thread, status.playerNote, tr]);
+  ].map((item) => ({
+    ...item,
+    value: item.value || tr("未設定", "Not set", "未設定", "미설정"),
+  })), [status.relationship, status.scene, status.mood, status.current, status.thread, status.playerNote, tr]);
   const save = () => {
-    onUpdate?.({ ...draft, locked: status.locked || {} });
+    onUpdate?.({ ...draft, visibility: status.visibility || {} });
     setEditing(false);
   };
-  const toggleLocked = (key) => onUpdate?.({ ...status, locked: { ...(status.locked || {}), [key]: !status?.locked?.[key] } });
   const startSummaryDrag = (event) => {
     const element = summaryScrollRef.current;
     if (!element || event.pointerType === "touch") return;
@@ -68,12 +70,12 @@ export default function ChatStoryStatus({ storyStatus, onUpdate, memoryAction, t
         <p className="mp-story-status-scope">{tr("只影響目前聊天室與分支，不會修改角色設定中的基礎關係。", "Only affects this chat route and does not change the character's base relationship.", "現在のチャットルートだけに影響し、キャラクター設定の基本関係は変更しません。", "현재 채팅 경로에만 적용되며 캐릭터 설정의 기본 관계는 바뀌지 않습니다.")}</p>
         {!editing ? <>
           <div className="mp-story-status-grid">
-            {FIELDS.map(([key, label]) => status[key] ? <div key={key}><small>{tr(label, label, label, label)}{status?.locked?.[key] ? " · 🔒" : ""}</small><span>{status[key]}</span></div> : null)}
+            {FIELDS.map(([key, label]) => status[key] ? <div key={key}><small>{tr(label, label, label, label)}</small><span>{status[key]}</span></div> : null)}
           </div>
           <div className="mp-story-status-actions"><button type="button" className="mp-ibtn" style={{ flex: 1 }} onClick={() => setEditing(true)}>✎ {tr("編輯此刻", "Edit now", "編集", "편집")}</button>{memoryAction}</div>
         </> : <>
           <div className="mp-story-status-edit">
-            {FIELDS.map(([key, label, placeholder]) => <label key={key}><span>{tr(label, label, label, label)}</span><div><input value={draft[key] || ""} placeholder={tr(placeholder, placeholder, placeholder, placeholder)} maxLength={240} onChange={(event) => setDraft((previous) => ({ ...previous, [key]: event.target.value }))} /><button type="button" onClick={() => toggleLocked(key)} title={tr("鎖定此欄位，不讓 AI 更新覆蓋", "Lock this field", "この項目を固定", "이 항목 잠금")}>{status?.locked?.[key] ? "🔒" : "🔓"}</button></div></label>)}
+            {FIELDS.map(([key, label, placeholder]) => <label key={key}><span>{tr(label, label, label, label)}</span><div><input value={draft[key] || ""} placeholder={tr(placeholder, placeholder, placeholder, placeholder)} maxLength={240} onChange={(event) => setDraft((previous) => ({ ...previous, [key]: event.target.value }))} /></div></label>)}
           </div>
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}><button type="button" className="mp-ibtn" style={{ flex: 1 }} onClick={() => { setDraft(status); setEditing(false); }}>{tr("取消", "Cancel", "キャンセル", "취소")}</button><button type="button" className="mp-save" style={{ flex: 1, margin: 0 }} onClick={save}>{tr("儲存", "Save", "保存", "저장")}</button></div>
         </>}

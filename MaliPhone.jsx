@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect, useRef } from "react";
-import { VERSION, DEFAULT_APPS, DOCK_APPS } from "./constants/appConstants";
+import { VERSION, DEFAULT_APPS, DOCK_APPS, isLocalProvider } from "./constants/appConstants";
 import { DATING_ENABLED } from "./config/featureFlags";
 import { getChangelog } from "./constants/changelog";
 import { createSocialFeedHelpers } from "./services/social/socialFeedHelpers";
@@ -149,6 +149,15 @@ export default function MaliPhone() {
   const [groupChats, setGroupChats] = useState(defaultAppState.groupChats);
   const [chatScenes, setChatScenes] = useState(defaultAppState.chatScenes);
   const [groupScenes, setGroupScenes] = useState(defaultAppState.groupScenes);
+  // 思想（思考鏈）顯示總開關：全域顯示偏好，用 localStorage 記住，預設開啟。
+  const [showThinking, setShowThinking] = useState(() => {
+    try { return localStorage.getItem("mali_show_thinking") !== "0"; } catch { return true; }
+  });
+  const toggleShowThinking = () => setShowThinking((value) => {
+    const next = !value;
+    try { localStorage.setItem("mali_show_thinking", next ? "1" : "0"); } catch {}
+    return next;
+  });
   const [chatInput, setChatInput] = useState("");
   const [chatImage, setChatImage] = useState(null);
   const [chatPseudoImage, setChatPseudoImage] = useState(null);
@@ -1702,6 +1711,7 @@ export default function MaliPhone() {
     setProactiveUnread,
     setTransferModalOpen,
     showScrollToBottom,
+    showThinking,
     showToast,
     sortChatThreads,
     startDueCalendarStory,
@@ -1714,6 +1724,7 @@ export default function MaliPhone() {
     thoughtHistoryPage,
     toggleChatPin,
     togglePinMemory,
+    toggleShowThinking,
     transfers,
     tr,
     uiLanguage,

@@ -66,10 +66,34 @@ export function stripUserPlaceholder(value, userDisplayName) {
 export function stripInternalBlocks(value) {
   return String(value || "")
     .replace(/<internal>[\s\S]*?<\/internal>/gi, " ")
-    .replace(/<think>[\s\S]*?<\/think>/gi, " ")
+    // 思考鏈：支援 <think> 與自訂標籤 <思>/<inner>，成對與未關閉都要清掉，避免外洩到氣泡。
+    .replace(/<(think|思|inner)>[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<(?:think|思|inner)>[\s\S]*$/i, " ")
     .replace(/\n{3,}/g, "\n\n")
     .replace(/[ \t]{2,}/g, " ")
     .trim();
+}
+
+// 從模型原始輸出抽出「思考鏈」（角色的內心盤算）。
+// 支援 <think>/<思>/<inner>，成對優先；只有開頭沒關閉（模型忘了收尾）時，把後面整段當思考。
+// 回傳 { thinking, rest }：thinking 是抽出的思考文字，rest 是移除思考後的其餘內容。
+export function extractThinking(value) {
+  const raw = String(value || "");
+  const parts = [];
+  const closed = /<(think|思|inner)>([\s\S]*?)<\/\1>/gi;
+  let match;
+  while ((match = closed.exec(raw))) {
+    const piece = String(match[2] || "").trim();
+    if (piece) parts.push(piece);
+  }
+  let rest = raw.replace(closed, " ");
+  const openOnly = rest.match(/<(?:think|思|inner)>([\s\S]*)$/i);
+  if (openOnly) {
+    const piece = String(openOnly[1] || "").trim();
+    if (piece) parts.push(piece);
+    rest = rest.slice(0, openOnly.index);
+  }
+  return { thinking: parts.join("\n\n").trim(), rest: rest.trim() };
 }
 
 export function displayWalletText(value, userDisplayName) {

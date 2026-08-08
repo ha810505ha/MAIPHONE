@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { normalizePersistedPseudoVoiceMessages } from "../../utils/pseudoVoice";
 import { isRequestRoomActive, updateMessagesInRoomList } from "../../services/chat/chatRoomRouting.js";
 import { replaceAssistantSwipeGroup } from "../../utils/assistantSwipeGroups.js";
+import { STORY_VISIBILITY_DEFAULTS, normalizeStoryVisibility } from "../../constants/storyStatus.js";
 
 export default function useCharacterChatRooms({
   characters,
@@ -43,7 +44,10 @@ export default function useCharacterChatRooms({
     current: typeof status?.current === "string" ? status.current : "",
     thread: typeof status?.thread === "string" ? status.thread : "",
     playerNote: typeof status?.playerNote === "string" ? status.playerNote : "",
-    locked: status?.locked && typeof status.locked === "object" ? status.locked : {},
+    visibility: {
+      thread: normalizeStoryVisibility(status?.visibility?.thread, STORY_VISIBILITY_DEFAULTS.thread),
+      playerNote: normalizeStoryVisibility(status?.visibility?.playerNote, STORY_VISIBILITY_DEFAULTS.playerNote),
+    },
   });
   const normalizeRoomStoryData = (room) => {
     const storyStatus = normalizeStoryStatus(room.storyStatus);

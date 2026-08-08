@@ -48,6 +48,26 @@ export function InnerThoughtPanel({ thought, expanded, loading, unseen, onToggle
   );
 }
 
+// 思考鏈（角色真心話）。與心聲分開：紫色虛線、斜體，預設收合。目前無設定開關，先確認顯示效果。
+export function ThinkingPanel({ content, tr }) {
+  const [open, setOpen] = React.useState(false);
+  if (!content) return null;
+  return (
+    <div className="mp-thinking" onClick={(event) => event.stopPropagation()} style={{ marginBottom: 5, marginLeft: 2, alignSelf: "flex-start", maxWidth: "88%" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        title={open ? tr("收起思想", "Hide thoughts", "思考を隠す", "생각 숨기기") : tr("窺探角色的思想", "Peek at the character's thoughts", "キャラの思考をのぞく", "캐릭터의 생각 엿보기")}
+        style={{ display: "inline-flex", alignItems: "center", gap: 5, border: "1px dashed color-mix(in srgb,#8f7bd6 55%,transparent)", background: "color-mix(in srgb,#8f7bd6 12%,transparent)", color: "#7a67c4", borderRadius: 999, padding: "3px 10px", fontSize: 11, fontWeight: 700, lineHeight: 1.3, cursor: "pointer" }}
+      >
+        <span aria-hidden="true">💭</span>
+        <span>{open ? tr("收起思想", "Hide thoughts", "思考を隠す", "생각 숨기기") : tr("思想", "Thoughts", "思考", "생각")}</span>
+      </button>
+      {open && <div style={{ marginTop: 5, padding: "8px 11px", borderRadius: 12, borderLeft: "2px solid color-mix(in srgb,#8f7bd6 60%,transparent)", background: "color-mix(in srgb,#8f7bd6 9%,var(--mp-surface))", color: "var(--mp-txt-l)", fontSize: 12.5, lineHeight: 1.7, fontStyle: "italic", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{content}</div>}
+    </div>
+  );
+}
+
 export function SceneBar({ title, scene, editor, onStartEditing, onChange, onSave, action, tr }) {
   const label = [scene.location, scene.note].filter(Boolean).join(" · ");
   return (
