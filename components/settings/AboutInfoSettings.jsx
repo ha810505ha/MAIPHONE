@@ -38,7 +38,7 @@ export default function AboutInfoSettings({ tr, version, currentChangelogTitle, 
                   <ol className="mp-version-list">
                     {(currentChangelog.length ? currentChangelog : [tr("這個版本沒有填寫更新內容。", "No update notes were added for this version.", "このバージョンの更新内容は未記入です。", "이 버전의 업데이트 내용이 없습니다.")]).map((item, idx) => {
                       const [title, ...detail] = String(item).split("｜");
-                      return <li key={idx}>{detail.length ? <><strong>{title}</strong><span>{detail.join("｜")}</span></> : <span>{item}</span>}</li>;
+                      return <li key={idx}>{detail.length ? <><strong>{title}</strong><span style={{ whiteSpace: "pre-line" }}>{detail.join("｜")}</span></> : <span>{item}</span>}</li>;
                     })}
                   </ol>
                 )}

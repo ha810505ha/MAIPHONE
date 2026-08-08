@@ -193,6 +193,7 @@ export default function useChatSettingsController({
     story = {},
     management = {},
     contact = {},
+    thinking = {},
   } = {}) => {
     const characterId = character?.id;
     return {
@@ -215,6 +216,7 @@ export default function useChatSettingsController({
         locale,
         sanitizeText,
       },
+      thinking,
       memory: {
         // 聊天設定面板只列活躍記憶；塵封書庫的入口在角色檔案（StatusApp）。
         memories: (memories[characterId] || []).filter((m) => !isArchivedMemory(m)),

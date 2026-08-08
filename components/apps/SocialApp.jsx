@@ -373,7 +373,7 @@ export default function SocialApp({
               <div style={{ marginTop: 12 }}>
                 <div style={{ fontSize: 11, fontWeight: 700 }}>{tr("每篇貼文的互動機率", "Interaction chance per post", "投稿ごとの交流確率", "게시물당 상호작용 확률")}</div>
                 <select
-                  className="mp-input"
+                  className="mp-ssel"
                   value={interactionChance}
                   onChange={(event) => setSocialSettings((prev) => ({
                     ...(prev || {}),
@@ -407,7 +407,7 @@ export default function SocialApp({
                 return { ...(prev || {}), enabledCharacterIds: allSelected ? [] : characters.map((c) => c.id) };
               })}>{(() => { const ids = Array.isArray(socialSettings?.enabledCharacterIds) ? socialSettings.enabledCharacterIds : characters.map((c) => c.id); const all = characters.length > 0 && ids.length === characters.length && characters.every((c) => ids.includes(c.id)); return all ? tr("全不選", "None", "なし", "없음") : tr("全選", "All", "全選", "전체"); })()}</button>
             </div>
-            <input className="mp-input" value={characterSearch} onChange={(e) => setCharacterSearch(e.target.value)} placeholder={tr("搜尋角色名稱", "Search characters", "キャラを検索", "캐릭터 검색")} style={{ marginBottom: 8 }} />
+            <input className="mp-sinp" value={characterSearch} onChange={(e) => setCharacterSearch(e.target.value)} placeholder={tr("搜尋角色名稱", "Search characters", "キャラを検索", "캐릭터 검색")} style={{ marginBottom: 8 }} />
             <div style={{ fontSize: 10, color: "var(--mp-txt-l)", marginBottom: 6 }}>{tr(`已選 ${Array.isArray(socialSettings?.enabledCharacterIds) ? socialSettings.enabledCharacterIds.length : characters.length} 位`, `${Array.isArray(socialSettings?.enabledCharacterIds) ? socialSettings.enabledCharacterIds.length : characters.length} selected`, `${Array.isArray(socialSettings?.enabledCharacterIds) ? socialSettings.enabledCharacterIds.length : characters.length}人選択`, `${Array.isArray(socialSettings?.enabledCharacterIds) ? socialSettings.enabledCharacterIds.length : characters.length}명 선택`)}</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, maxHeight: 390, overflowY: "auto", overscrollBehavior: "contain", padding: "2px 2px 8px" }}>
               {characters.filter((char) => !characterSearch.trim() || String(char.name || "").toLowerCase().includes(characterSearch.trim().toLowerCase())).map((char) => {
@@ -428,7 +428,7 @@ export default function SocialApp({
             </div>
             <div style={{ marginTop: 12, fontSize: 11, fontWeight: 700 }}>{tr("預設發文頻率", "Default posting frequency", "投稿頻度", "기본 게시 빈도")}</div>
             <select
-              className="mp-input"
+              className="mp-ssel"
               value={["occasional", "normal", "active"].includes(socialSettings?.frequency) ? socialSettings.frequency : "normal"}
               onChange={(event) => setSocialSettings((prev) => ({
                 ...(prev || {}),

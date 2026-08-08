@@ -141,6 +141,7 @@ export default function useChatRenderController({
   setProactiveUnread,
   setTransferModalOpen,
   showScrollToBottom,
+  showThinking,
   showToast,
   sortChatThreads,
   startDueCalendarStory,
@@ -153,6 +154,7 @@ export default function useChatRenderController({
   thoughtHistoryPage,
   toggleChatPin,
   togglePinMemory,
+  toggleShowThinking,
   transfers,
   tr,
   uiLanguage,
@@ -283,6 +285,7 @@ export default function useChatRenderController({
       onAddCalendarProposal: addCalendarProposal, onDismissCalendarProposal: dismissCalendarProposal,
       onSelectSwipe: selectAssistantSwipe, onGenerateSwipe: generateAssistantSwipe, onDeleteSwipe: deleteAssistantSwipe,
       onCreateSwipeBranch: (messageId, swipeIndex) => createCharacterBranch(currentChatChar.id, { forkMessageId: messageId, swipeIndex }),
+      showThinking,
     };
     const selectScreenshotBoundary = (messageId) => {
       if (!chatScreenshotSelection.active) return;
@@ -350,6 +353,7 @@ export default function useChatRenderController({
         activeThoughtPage,
         thoughtPageCount,
         onJumpToThought: (messageId) => jumpToThoughtMessage(messageId, currentChatChar.id, msgs.length),
+        thinking: { enabled: showThinking, onToggle: toggleShowThinking },
         locale: uiLanguage,
         applyUserPlaceholder,
         onEditMemory: (memory) => setMemoryEditor({ charId: currentChatChar.id, memoryId: memory.id, text: memory.text || "" }),

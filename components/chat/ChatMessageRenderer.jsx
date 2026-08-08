@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { OnlineChatMessage, RealityChatMessage, SystemNoticeMessage, TransferMessage } from "./DirectMessageTypes";
 import CalendarAppointmentCard from "./CalendarAppointmentCard";
+import { ThinkingPanel } from "./ChatMessageParts";
 import SwipePicker from "./SwipePicker";
 import { findTailAssistantSwipeAnchor } from "../../utils/assistantSwipeGroups.js";
 
@@ -51,6 +52,7 @@ export default function ChatMessageRenderer({
   onGenerateSwipe,
   onDeleteSwipe,
   onCreateSwipeBranch,
+  showThinking,
   tr,
 }) {
   const [pickerMessageId, setPickerMessageId] = useState(null);
@@ -127,6 +129,7 @@ export default function ChatMessageRenderer({
       highlighted: highlightedThoughtMessageId === message.id,
       displayContent,
       innerThought,
+      thinking: (showThinking !== false && message.thinking?.content) ? <ThinkingPanel content={message.thinking.content} tr={tr} /> : null,
       onToggle: () => setActiveMessageId((previous) => previous === message.id ? null : message.id),
       onEdit: () => setMessageEditor({ id: message.id, content: message.content || "", mode: getMessageMode(message), pseudoVoice: !!message.pseudoVoice }),
       swipe,

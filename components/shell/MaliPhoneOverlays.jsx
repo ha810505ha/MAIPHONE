@@ -155,7 +155,7 @@ export default function MaliPhoneOverlays({
                   return (
                     <div key={index} className="mp-update-item">
                       {detail.length
-                        ? <><strong>{title}</strong><span>{detail.join("｜")}</span></>
+                        ? <><strong>{title}</strong><span style={{ whiteSpace: "pre-line" }}>{detail.join("｜")}</span></>
                         : <span>{item}</span>}
                     </div>
                   );

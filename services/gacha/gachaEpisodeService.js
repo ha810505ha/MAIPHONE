@@ -1,5 +1,6 @@
 import { callAI, isAiConfigReady, isHostedTestMode } from "../aiService";
 import { fetchWithTimeout, isRequestCancelled, NETWORK_TIMEOUTS } from "../../utils/networkRequest.js";
+import { isLocalProvider } from "../../constants/appConstants";
 
 const clean = (value, limit = 6000) => String(value || "").replace(/<think>[\s\S]*?<\/think>/gi, "").trim().slice(0, limit);
 const OPENING_OUTPUT_MAX_TOKENS = 2000;
@@ -100,7 +101,7 @@ async function streamCompatibleChat(messages, apiConfig, systemPrompt, onChunk, 
     }
     return output.trim();
   }
-  if (!["openai", "openrouter", "deepseek", "grok", "ollama"].includes(provider)) return null;
+  if (!isLocalProvider(provider) && !["openai", "openrouter", "deepseek", "grok", "ollama"].includes(provider)) return null;
   const headers = { "Content-Type": "application/json" };
   if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
   if (provider === "openrouter") headers["HTTP-Referer"] = "https://maliphone.app";

@@ -18,12 +18,10 @@ export default function PlayerPersonaIndicator({ playerProfile, persona, tr, com
   return (
     <div style={{ position: "relative", flex: compact ? "0 0 auto" : "0 0 auto", marginLeft: compact ? "auto" : 0 }}>
       <button type="button" title={canSwitch ? tr("切換玩家人格", "Switch persona", "人格を切り替え", "페르소나 전환") : name} onClick={(event) => { event.stopPropagation(); togglePersonaMenu(); }} style={{ width: compact ? "auto" : "100%", minWidth: compact ? 0 : "100%", minHeight: slim ? 26 : (compact ? 36 : 28), display: "flex", alignItems: "center", justifyContent: compact ? "flex-start" : "flex-end", gap: slim ? 5 : 6, padding: slim ? "2px 7px 2px 3px" : (compact ? "3px 9px 3px 4px" : "3px 14px"), border: compact ? "1px solid color-mix(in srgb,var(--mp-pink) 34%,transparent)" : 0, borderTop: "1px solid color-mix(in srgb,var(--mp-pink) 24%,transparent)", borderRadius: compact ? 18 : 0, background: compact ? "linear-gradient(135deg,var(--mp-pink-lt),var(--mp-surface))" : "color-mix(in srgb,var(--mp-surface) 88%,transparent)", color: "var(--mp-txt-l)", fontSize: 10, boxSizing: "border-box", cursor: canSwitch ? "pointer" : "default" }}>
-      {(!compact || slim) && <span>{tr("以", "As", "", "")}</span>}
       <span style={{ width: avatarSize, height: avatarSize, flex: `0 0 ${avatarSize}px`, display: "grid", placeItems: "center", overflow: "hidden", borderRadius: "50%", background: "var(--mp-pink-lt)", fontSize: 10 }}>
         {avatar ? <img src={avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : "👤"}
       </span>
       <b style={{ maxWidth: slim ? 78 : 92, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", color: "var(--mp-pink-dk)", fontSize: slim ? 10 : 10.5 }}>{compactName}</b>
-      {!compact && !slim && <span>{tr("身分對話", "", "として会話", "로 대화")}</span>}
       {canSwitch && <span style={{ color: "var(--mp-pink-dk)", fontSize: 8 }}>▾</span>}
       </button>
       {open && <div onClick={(event) => event.stopPropagation()} style={{ position: "absolute", right: compact ? 0 : 12, top: slim ? "auto" : (compact ? "calc(100% + 6px)" : "auto"), bottom: slim ? "calc(100% + 6px)" : (compact ? "auto" : "calc(100% + 6px)"), zIndex: 30, width: 210, maxHeight: 250, overflowY: "auto", padding: 6, border: "1px solid color-mix(in srgb,var(--mp-pink) 34%,transparent)", borderRadius: 16, background: "var(--mp-surface)", boxShadow: "0 12px 30px rgba(73,45,57,.18)" }}>

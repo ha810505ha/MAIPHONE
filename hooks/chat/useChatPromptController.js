@@ -7,6 +7,7 @@ import {
 import { pseudoImagePromptLine } from "../../utils/pseudoImage";
 import { pseudoVoicePromptLine } from "../../utils/pseudoVoice";
 import { MEMORY_RECALL_TUNING, isArchivedMemory, scoreMemoryRecall, selectRecalledMemories } from "../../services/chat/memoryRecall";
+import { getStoryVisibility } from "../../constants/storyStatus.js";
 
 const LOREBOOK_MIN_RECALL_SCORE = 0.9;
 const LOREBOOK_KEYWORD_HIT_SCORE = 3;
@@ -59,14 +60,25 @@ export default function useChatPromptController({
     const route = getActiveRouteContext(charId);
     const status = route.storyStatus;
     const hasCurrentRelationship = String(status.relationship || "").trim();
+    // 伏筆與備註依知情度分流：known 跟其他欄位一起給角色，
+    // quiet／hidden 各自另起一段，明講角色能不能講破。
+    const line = (label, value) => `${label}: ${sanitizeText(value, 240)}`;
+    const hasText = (value) => Boolean(String(value || "").trim());
+    const pickByVisibility = (level) => [
+      ["Open thread", status.thread, getStoryVisibility(status, "thread")],
+      ["Player note", status.playerNote, getStoryVisibility(status, "playerNote")],
+    ].filter(([, value, visibility]) => visibility === level && hasText(value)).map(([label, value]) => line(label, value));
+
     const statusLines = [
       ["Current relationship (route-specific)", status.relationship],
       ["Scene", status.scene],
       ["Mood", status.mood],
       ["Current event", status.current],
-      ["Open thread", status.thread],
-      ["Player note", status.playerNote],
-    ].filter(([, value]) => String(value || "").trim()).map(([label, value]) => `${label}: ${sanitizeText(value, 240)}`);
+    ].filter(([, value]) => hasText(value)).map(([label, value]) => line(label, value))
+      .concat(pickByVisibility("known"));
+    const quietLines = pickByVisibility("quiet");
+    const hiddenLines = pickByVisibility("hidden");
+
     const parts = [];
     if (route.storyNoteEnabled && route.storyNote.trim()) parts.push(`[Story direction for this route]\n${sanitizeText(route.storyNote, 900)}`);
     if (statusLines.length) {
@@ -74,6 +86,20 @@ export default function useChatPromptController({
         ? "Priority rule: For this chat route, Current relationship overrides the character profile's base relationship. Treat the base relationship as background history only."
         : "Priority rule: No current relationship override is set; use the character profile's base relationship.";
       parts.push(`[Current story status — applies only to this chat route]\n${priorityRule}\n${statusLines.join("\n")}`);
+    }
+    if (quietLines.length) {
+      parts.push([
+        "[Unspoken context — {{char}} is aware of this but never brings it up]",
+        "{{char}} knows the following. It may colour their mood, tone, and choices, but they must not raise it, explain it, or push the player to talk about it. Let it stay unsaid unless the player opens the subject first.",
+        quietLines.join("\n"),
+      ].join("\n"));
+    }
+    if (hiddenLines.length) {
+      parts.push([
+        "[Director-only context — {{char}} does NOT know this]",
+        "The following is known to the player and the narrator only. {{char}} must not mention it, must not act as if aware of it, and must not hint that they know. Do not have {{char}} discover it on their own. Use it only to keep the scene consistent and to let dramatic irony work.",
+        hiddenLines.join("\n"),
+      ].join("\n"));
     }
     return parts.join("\n\n");
   };

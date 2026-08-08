@@ -13,11 +13,13 @@ const SPECIAL_MEMORY_FRAME = { SSR: "#c99a4b", SR: "#8f6cc9", R: "#6f9cc9" };
 const VAULT_PAGE_SIZE = 5;
 
 // 壓縮視窗：確認要壓哪幾條，並就地開放改寫提示詞（改壞了也救得回來，因為摘要可手動編輯）。
-function MemoryCompressModal({ tr, charName, selected, prompt, onPrompt, onCancel, onConfirm, busy }) {
+function MemoryCompressModal({ tr, charName, selected, prompt, onPrompt, applyUserPlaceholder, onCancel, onConfirm, busy }) {
+  // 記憶原文一律存 {{user}}，換人格才不會混進舊名字；只有顯示時才換成目前人格的稱呼。
+  const showText = (text) => (applyUserPlaceholder ? applyUserPlaceholder(text) : text);
   const [promptOpen, setPromptOpen] = useState(false);
   const usingDefault = isUsingDefaultCompressPrompt(prompt);
   return (
-    <div className="mp-modal-bg" onClick={onCancel}>
+    <div className="mp-overlay" onClick={onCancel}>
       <div className="mp-modal" onClick={(e) => e.stopPropagation()}>
         <div className="mp-modal-t">{tr("壓縮記憶", "Compress memories", "記憶を圧縮", "기억 압축")}</div>
         <div style={{ fontSize: 12, color: "var(--mp-txt-l)", marginBottom: 8 }}>
@@ -26,7 +28,7 @@ function MemoryCompressModal({ tr, charName, selected, prompt, onPrompt, onCance
         <div style={{ maxHeight: 150, overflowY: "auto", fontSize: 12, lineHeight: 1.6, marginBottom: 8 }}>
           {selected.map((m, i) => (
             <div key={m.id} style={{ padding: "3px 0", borderBottom: "1px solid var(--mp-line)" }}>
-              {i + 1}. {m.text}{m.pinned ? ` · ${tr("已釘選", "Pinned", "固定済み", "고정됨")}` : ""}
+              {i + 1}. {showText(m.text)}{m.pinned ? ` · ${tr("已釘選", "Pinned", "固定済み", "고정됨")}` : ""}
             </div>
           ))}
         </div>
@@ -45,11 +47,11 @@ function MemoryCompressModal({ tr, charName, selected, prompt, onPrompt, onCance
               {tr("可用 {{char}} 代入角色名、{{memories}} 代入選取的記憶。清空即還原預設。", "Use {{char}} for the character name and {{memories}} for the selected memories. Clear the field to restore the default.", "{{char}} はキャラ名、{{memories}} は選択した記憶に置き換わります。空にすると既定に戻ります。", "{{char}}는 캐릭터 이름, {{memories}}는 선택한 기억으로 치환됩니다. 비우면 기본값으로 돌아갑니다.")}
             </div>
             <textarea
-              className="mp-input"
+              className="mp-ta"
               rows={8}
               value={prompt || DEFAULT_MEMORY_COMPRESS_PROMPT}
               onChange={(e) => onPrompt(e.target.value)}
-              style={{ fontSize: 12, lineHeight: 1.5 }}
+              style={{ minHeight: 150, lineHeight: 1.6 }}
             />
             <button className="mp-gbtn" disabled={usingDefault} onClick={() => onPrompt("")} style={{ marginTop: 4 }}>
               {tr("還原預設提示詞", "Restore the default prompt", "既定のプロンプトに戻す", "기본 프롬프트로 복원")}
@@ -93,7 +95,7 @@ function ArchivedMemoryVault({ tr, charId, memories, applyUserPlaceholder, onRes
             {tr("這些記憶不會進入對話，但原文完整保留，可隨時取回。", "These memories stay out of conversations, but the full text is kept and can be restored anytime.", "これらの記憶は会話に入りませんが、原文はそのまま保持され、いつでも戻せます。", "이 기억들은 대화에 들어가지 않지만 원문이 그대로 보존되며 언제든 되돌릴 수 있습니다.")}
           </div>
           <input
-            className="mp-input"
+            className="mp-sinp"
             value={query}
             onChange={(e) => { setQuery(e.target.value); setPage(0); }}
             placeholder={tr("搜尋塵封記憶", "Search the archive", "封印書庫を検索", "봉인 서고 검색")}
@@ -364,6 +366,7 @@ export default function StatusApp({
             selected={selected}
             prompt={memoryPrompt?.value || ""}
             onPrompt={(text) => memoryPrompt?.onChange?.(text)}
+            applyUserPlaceholder={applyUserPlaceholder}
             busy={genLoading}
             onCancel={() => setCompressConfirmOpen(false)}
             onConfirm={async () => {
