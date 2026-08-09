@@ -1,6 +1,15 @@
 import React from "react";
 
 export default function InterfaceSettings({ t, tr, uiLanguage, setUiLanguage, fontSizeScale, setFontSizeScale, screenLockTimeout, setScreenLockTimeout }) {
+  const autoLockDetail = screenLockTimeout === 0
+    ? t("neverLock")
+    : tr(
+      `${screenLockTimeout} 分鐘後自動鎖定`,
+      `Automatically locks after ${screenLockTimeout} ${screenLockTimeout === 1 ? "minute" : "minutes"}`,
+      `${screenLockTimeout}分後に自動ロック`,
+      `${screenLockTimeout}분 후 자동 잠금`,
+    );
+
   return <>
     <div className="mp-sg">
       <div className="mp-sg-t">{tr("介面語言", "Interface language", "表示言語", "인터페이스 언어")}</div>
@@ -19,7 +28,7 @@ export default function InterfaceSettings({ t, tr, uiLanguage, setUiLanguage, fo
           <option value="1">{tr("1 分鐘", "1 minute", "1分", "1분")}</option><option value="3">{tr("3 分鐘", "3 minutes", "3分", "3분")}</option><option value="5">{tr("5 分鐘", "5 minutes", "5分", "5분")}</option><option value="10">{tr("10 分鐘", "10 minutes", "10分", "10분")}</option><option value="0">{t("neverLock")}</option>
         </select>
       </div>
-      <div style={{ fontSize: 10, color: "var(--mp-txt-l)", lineHeight: 1.6 }}>{t("autoLockStatus")}：{screenLockTimeout === 0 ? t("neverLock") : `${screenLockTimeout} 分鐘後自動鎖定`}</div>
+      <div style={{ fontSize: 10, color: "var(--mp-txt-l)", lineHeight: 1.6 }}>{t("autoLockStatus")}：{autoLockDetail}</div>
     </div>
   </>;
 }

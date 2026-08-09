@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { hasBalancedBraces, sanitizeCustomCss, scopeCustomCss } from "../utils/customCss.js";
 
 const projectRoot = resolve(new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
 const source = (path) => readFile(resolve(projectRoot, path), "utf8");
 
-const [themeCss, notesApp, loginRewardApp, coupleApp, accountSettings, cloudBackupSettings, customCssSettings, dataImportPreview, chatroomImportPreview, chatBackgroundSettings] = await Promise.all([
+const [themeCss, notesApp, loginRewardApp, coupleApp, accountSettings, cloudBackupSettings, customCssSettings, customCssGuide, dataImportPreview, chatroomImportPreview, chatBackgroundSettings] = await Promise.all([
   source("styles/themeCss.js"),
   source("components/apps/NotesApp.jsx"),
   source("components/apps/LoginRewardApp.jsx"),
@@ -13,10 +14,20 @@ const [themeCss, notesApp, loginRewardApp, coupleApp, accountSettings, cloudBack
   source("components/auth/AccountSettingsSection.jsx"),
   source("components/settings/CloudBackupSettings.jsx"),
   source("components/settings/CustomCssSettings.jsx"),
+  source("CustomCssGuide.jsx"),
   source("components/settings/DataImportPreviewModal.jsx"),
   source("components/settings/ChatroomImportPreviewModal.jsx"),
   source("components/chat/settings/ChatBackgroundSettings.jsx"),
 ]);
+
+const customCssExample = ".mp-dock { border-radius: 28px; }\n.mp-icon-c { box-shadow: 0 4px 12px #f3a8bd66; }";
+assert.equal(hasBalancedBraces(customCssExample), true, "custom CSS examples must keep balanced braces");
+assert.equal(scopeCustomCss(customCssExample), customCssExample, "older WebViews must retain valid custom CSS");
+assert.match(sanitizeCustomCss('.mp-icon-c{background:url("https://example.com/a.png")}'), /background:none/, "external custom CSS URLs must be blocked");
+assert.match(sanitizeCustomCss(".mp-icon-c{background:url(data:image/png;base64,AAAA)}"), /data:image\/png/, "embedded custom CSS images must remain supported");
+assert.match(customCssGuide, /\["\.pet-app", "寵物小屋主要頁面"\]/, "Pet Home guide must use its current root selector");
+assert.doesNotMatch(customCssGuide, /\["\.pet-home"/, "Pet Home guide must not publish its removed root selector");
+assert.match(customCssSettings, /placeholder=\{tr\(/, "custom CSS placeholder must follow the UI locale");
 
 for (const token of [
   "--mp-page-surface",

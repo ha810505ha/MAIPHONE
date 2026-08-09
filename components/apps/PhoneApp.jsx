@@ -300,7 +300,7 @@ export default function PhoneApp({
                     <div style={{position:"relative",maxWidth:"82%"}}>
                       <div style={{boxSizing:"border-box",overflowWrap:"anywhere",fontSize:12,lineHeight:1.45,padding:"7px 10px",borderRadius:10,background:m.from==="char"?`linear-gradient(135deg, ${phTh.accent}e8, ${phTh.accent})`:phoneChatUi.incoming,color:m.from==="char"?phoneChatUi.outgoingText:phoneChatUi.text,border:m.deliveryStatus?"1px dashed #C92F4B":m.from==="char"?"1px solid transparent":`1px solid ${phoneChatUi.incomingBorder}`,opacity:m.deliveryStatus?.92:1}}>
                         {m.pseudoImage && <div style={{...pseudoImageStyle(m.pseudoImage),width:104,height:78,borderRadius:8,opacity:.9,marginBottom:m.text?5:0}} />}
-                        {m.pseudoVoice && <PseudoVoiceBubble pseudoVoice={m.pseudoVoice} compact />}
+                        {m.pseudoVoice && <PseudoVoiceBubble pseudoVoice={m.pseudoVoice} compact tr={tr} />}
                         {m.text && <div>{m.text}</div>}
                         <div style={{marginTop:3,fontSize:9,textAlign:m.from==="char"?"right":"left",color:m.from==="char"?phoneChatUi.outgoingText:phoneChatUi.sub,opacity:m.from==="char"?.72:.82}}>{new Date(m.time).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"})}</div>
                       </div>

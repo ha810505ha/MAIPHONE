@@ -29,10 +29,11 @@ export default function useGroupChatController({
   const [groupEditCover, setGroupEditCover] = useState("");
   const [groupCoverCrop, setGroupCoverCrop] = useState(null);
   const [groupEditCoverCrop, setGroupEditCoverCrop] = useState(null);
+  const characterList = Array.isArray(characters) ? characters : [];
 
   const getGroupMembers = (group) => {
-    const ids = Array.isArray(group?.memberIds) && group.memberIds.length ? group.memberIds : characters.map((c) => c.id);
-    return characters.filter((c) => ids.includes(c.id));
+    const ids = Array.isArray(group?.memberIds) && group.memberIds.length ? group.memberIds : characterList.map((c) => c.id);
+    return characterList.filter((c) => ids.includes(c.id));
   };
 
   const openGroupCoverCrop = (file, mode = "create") => {
@@ -113,7 +114,7 @@ export default function useGroupChatController({
   };
   const saveEditGroup = () => {
     if (!groupEditGroupId) return;
-    const members = characters.filter((c) => groupEditMemberIds.includes(c.id)).slice(0, 5);
+    const members = characterList.filter((c) => groupEditMemberIds.includes(c.id)).slice(0, 5);
     if (members.length === 0) {
       showToast(tr("請至少選擇 1 位角色", "Select at least 1 character", "少なくとも1人のキャラを選択してください", "캐릭터를 1명 이상 선택해주세요"));
       return;
@@ -171,7 +172,7 @@ export default function useGroupChatController({
       showToast(tr("請至少選擇 1 位角色", "Select at least 1 character", "少なくとも1人のキャラを選択してください", "캐릭터를 1명 이상 선택해주세요"));
       return;
     }
-    const members = characters.filter((c) => groupCreateMemberIds.includes(c.id)).slice(0, 5);
+    const members = characterList.filter((c) => groupCreateMemberIds.includes(c.id)).slice(0, 5);
     const memberLabel = members.map((m) => m.name).join("、");
     const fallbackName = tr(`${memberLabel}的群組聊天室`, `${memberLabel}'s group chat`, `${memberLabel}のグループチャット`, `${memberLabel}의 그룹 채팅`);
     const name = sanitizeText(groupCreateName.trim() || fallbackName, 80);
@@ -193,7 +194,7 @@ export default function useGroupChatController({
     notify(tr("已建立群組", "Group created", "グループを作成しました", "그룹이 생성되었습니다"), `Group created: ${name || fallbackName}`);
   };
 
-  const getGroupChatModalProps = ({ displayCharacters = characters } = {}) => ({
+  const getGroupChatModalProps = ({ displayCharacters = characterList } = {}) => ({
     open: Boolean(groupCreateOpen || groupEditOpen || groupCoverCrop || groupEditCoverCrop),
     props: {
       characters: displayCharacters,

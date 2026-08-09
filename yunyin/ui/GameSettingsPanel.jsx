@@ -2,6 +2,7 @@ import React, { useRef, useState } from "react";
 import { ensureNpcSeeds } from "../systems/npc";
 import { packOf, setActivePackVersion, MAX_PACK_VERSIONS } from "../systems/ai";
 import { exportYunyinSave, importYunyinSaveFile } from "../systems/backup";
+import { useYunyinLocale } from "../i18n/YunyinLocale.jsx";
 
 const Toggle = ({ on, onChange }) => (
   <button onClick={() => onChange(!on)} style={{
@@ -17,13 +18,14 @@ const Toggle = ({ on, onChange }) => (
 
 const row = { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 0", borderBottom: "1px solid #efe6da" };
 
-const POOL_LABELS = {
-  breakthrough_ok: "突破成功", breakthrough_fail: "突破失敗",
-  dungeon: "秘境同行", dungeonBoss: "秘境 Boss",
-  harvest: "收成", rareHarvest: "稀有收成", chat: "閒聊",
+const POOL_LABEL_KEYS = {
+  breakthrough_ok: "settings.poolBreakthroughOk", breakthrough_fail: "settings.poolBreakthroughFail",
+  dungeon: "settings.poolDungeon", dungeonBoss: "settings.poolDungeonBoss",
+  harvest: "settings.poolHarvest", rareHarvest: "settings.poolRareHarvest", chat: "settings.poolChat",
 };
 
 export default function GameSettingsPanel({ save, characters, onDirty, onEditAppearance, onGenerateLines, onClose }) {
+  const { yt, yv } = useYunyinLocale();
   const [, setTick] = useState(0);
   const [genBusy, setGenBusy] = useState(null); // 正在生成句庫的角色 id
   const [genError, setGenError] = useState(null);
@@ -38,14 +40,14 @@ export default function GameSettingsPanel({ save, characters, onDirty, onEditApp
   const setAi = (key, value) => { ai[key] = value; onDirty(); rerender(); };
 
   const aiToggles = [
-    ["breakthrough", "突破時"],
-    ["dungeon", "秘境同行"],
-    ["farm", "靈田收成"],
+    ["breakthrough", yt("settings.replyBreakthrough")],
+    ["dungeon", yt("settings.replyDungeon")],
+    ["farm", yt("settings.replyFarm")],
   ];
 
   return (
     <div style={{ textAlign: "left" }}>
-      <div style={{ fontSize: 13, fontWeight: 800, color: "#4a4038" }}>玩家設定</div>
+      <div style={{ fontSize: 13, fontWeight: 800, color: "#4a4038" }}>{yt("settings.player")}</div>
       <button
         type="button"
         data-yunyin-player-appearance="1"
@@ -53,29 +55,29 @@ export default function GameSettingsPanel({ save, characters, onDirty, onEditApp
         style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, margin: "6px 0 16px", padding: "10px 11px", border: "1px solid #ddd0c1", borderRadius: 12, background: "#fff", color: "#4a4038", textAlign: "left", cursor: "pointer" }}
       >
         <span aria-hidden="true" style={{ width: 34, height: 34, display: "grid", placeItems: "center", flex: "0 0 34px", borderRadius: 11, background: "#f3ecf1", fontSize: 18 }}>👕</span>
-        <span style={{ flex: 1, minWidth: 0 }}><b style={{ display: "block", fontSize: 13 }}>玩家服裝與外觀</b><small style={{ display: "block", marginTop: 2, color: "#8a7a6a", fontSize: 10 }}>調整山莊角色的服裝、髮型與配飾</small></span>
-        <span style={{ color: "#7d5a6e", fontSize: 11, fontWeight: 800 }}>編輯 ›</span>
+        <span style={{ flex: 1, minWidth: 0 }}><b style={{ display: "block", fontSize: 13 }}>{yt("panel.playerAppearance")}</b><small style={{ display: "block", marginTop: 2, color: "#8a7a6a", fontSize: 10 }}>{yt("settings.appearanceDescription")}</small></span>
+        <span style={{ color: "#7d5a6e", fontSize: 11, fontWeight: 800 }}>{yt("common.edit")} ›</span>
       </button>
 
       {/* 角色入駐 */}
-      <div style={{ fontSize: 13, fontWeight: 800, color: "#4a4038" }}>角色入駐</div>
+      <div style={{ fontSize: 13, fontWeight: 800, color: "#4a4038" }}>{yt("settings.residents")}</div>
       <div style={{ fontSize: 11, color: "#8a7a6a", margin: "2px 0 4px", lineHeight: 1.6 }}>
-        把你的角色綁到山莊的居民身上，他們會在你修行時搭話。取消綁定就回歸原本的居民。
+        {yt("settings.residentsDescription")}
       </div>
       {characters.length === 0 && (
-        <div style={{ fontSize: 12, color: "#b0a494", padding: "8px 0" }}>（還沒有任何角色，先去聯絡人建立吧）</div>
+        <div style={{ fontSize: 12, color: "#b0a494", padding: "8px 0" }}>{yt("settings.noCharacters")}</div>
       )}
       {npcDefs.map((def) => {
         const boundId = bindings[def.seed] || "";
         return (
           <div key={def.seed} style={row}>
             <span style={{ fontSize: 13, color: "#4a4038" }}>
-              {def.name}
-              {boundId && <span style={{ fontSize: 11, color: "#7d5a6e", fontWeight: 700 }}>（{characters.find((c) => c.id === boundId)?.name || "?"} 入駐中）</span>}
+              {yv(def.name)}
+              {boundId && <span style={{ fontSize: 11, color: "#7d5a6e", fontWeight: 700 }}>{yt("settings.residing", { name: characters.find((c) => c.id === boundId)?.name || "?" })}</span>}
             </span>
             <button
               onClick={() => onEditAppearance(save.npcs.indexOf(def))}
-              title="編輯外觀"
+              title={yt("settings.editAppearance")}
               style={{ border: "1px solid #d9cdbc", borderRadius: 8, background: "#fff", fontSize: 13, padding: "3px 7px", cursor: "pointer", marginLeft: "auto", marginRight: 6, flexShrink: 0 }}
             >🎨</button>
             <select
@@ -87,7 +89,7 @@ export default function GameSettingsPanel({ save, characters, onDirty, onEditApp
               }}
               style={{ fontSize: 12, padding: "4px 6px", borderRadius: 8, border: "1px solid #d9cdbc", background: "#fff", color: "#4a4038", maxWidth: 130 }}
             >
-              <option value="">－ 無 －</option>
+              <option value="">{yt("common.none")}</option>
               {characters.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
@@ -104,9 +106,9 @@ export default function GameSettingsPanel({ save, characters, onDirty, onEditApp
         if (!charIds.length) return null;
         return (
           <>
-            <div style={{ fontSize: 13, fontWeight: 800, color: "#4a4038", marginTop: 16 }}>角色句庫</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#4a4038", marginTop: 16 }}>{yt("settings.lineLibrary")}</div>
             <div style={{ fontSize: 11, color: "#8a7a6a", margin: "2px 0 4px", lineHeight: 1.6 }}>
-              用角色的設定生成一批專屬台詞，之後所有搭話都從這裡抽、不再花費。句庫跟著角色，換綁或解綁都會保留。
+              {yt("settings.lineLibraryDescription")}
             </div>
             {charIds.map((charId) => {
               const char = characters.find((c) => c.id === charId);
@@ -124,7 +126,7 @@ export default function GameSettingsPanel({ save, characters, onDirty, onEditApp
                         try {
                           const err = await onGenerateLines(charId);
                           if (err) setGenError(`${char.name}：${err}`);
-                        } catch { setGenError(`${char.name}：生成失敗`); }
+                        } catch { setGenError(`${char.name}：${yt("settings.generateFailed")}`); }
                         setGenBusy(null);
                         rerender();
                       }}
@@ -133,7 +135,7 @@ export default function GameSettingsPanel({ save, characters, onDirty, onEditApp
                         cursor: busy || !onGenerateLines ? "default" : "pointer", opacity: busy || !onGenerateLines ? 0.55 : 1,
                         background: "linear-gradient(135deg,#7d5a6e,#9c7089)", color: "#fff",
                       }}
-                    >{busy ? "生成中…" : "🔄 生成句庫"}</button>
+                    >{busy ? yt("settings.generating") : yt("settings.generateLibrary")}</button>
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
                     {Array.from({ length: MAX_PACK_VERSIONS }, (_, i) => {
@@ -151,7 +153,7 @@ export default function GameSettingsPanel({ save, characters, onDirty, onEditApp
                             cursor: v ? "pointer" : "default",
                           }}
                         >
-                          {v ? `版本${i + 1}${isActive ? " ✓" : ""}` : "—"}
+                          {v ? yt("settings.version", { number: i + 1, active: isActive ? " ✓" : "" }) : "—"}
                         </button>
                       );
                     })}
@@ -159,7 +161,7 @@ export default function GameSettingsPanel({ save, characters, onDirty, onEditApp
                       <button
                         onClick={() => setExpandedChar(expandedChar === charId ? null : charId)}
                         style={{ border: "1px solid #d9cdbc", borderRadius: 10, padding: "5px 10px", fontSize: 11, background: "#fff", color: "#6b5d4f", cursor: "pointer", flexShrink: 0 }}
-                      >{expandedChar === charId ? "收合 ▴" : "查看台詞 ▾"}</button>
+                      >{expandedChar === charId ? yt("settings.collapse") : yt("settings.viewLines")}</button>
                     )}
                   </div>
                   {expandedChar === charId && pack?.versions.length > 0 && (() => {
@@ -168,7 +170,7 @@ export default function GameSettingsPanel({ save, characters, onDirty, onEditApp
                       <div style={{ background: "#f7f2ea", borderRadius: 10, padding: "8px 10px", maxHeight: 180, overflowY: "auto" }}>
                         {Object.entries(lines).map(([pool, arr]) => (
                           <div key={pool} style={{ marginBottom: 6 }}>
-                            <div style={{ fontSize: 10, fontWeight: 800, color: "#7d5a6e", marginBottom: 2 }}>{POOL_LABELS[pool] || pool}</div>
+                            <div style={{ fontSize: 10, fontWeight: 800, color: "#7d5a6e", marginBottom: 2 }}>{POOL_LABEL_KEYS[pool] ? yt(POOL_LABEL_KEYS[pool]) : pool}</div>
                             {arr.map((line, li) => (
                               <div key={li} style={{ fontSize: 11, color: "#4a4038", lineHeight: 1.6 }}>・{line}</div>
                             ))}
@@ -181,13 +183,13 @@ export default function GameSettingsPanel({ save, characters, onDirty, onEditApp
               );
             })}
             {genError && <div style={{ fontSize: 11, color: "#a05656", padding: "4px 0" }}>{genError}</div>}
-            {!onGenerateLines && <div style={{ fontSize: 11, color: "#b0a494", padding: "4px 0" }}>（需要先在 MaliPhone 設定好 API 才能生成）</div>}
+            {!onGenerateLines && <div style={{ fontSize: 11, color: "#b0a494", padding: "4px 0" }}>{yt("settings.apiRequired")}</div>}
           </>
         );
       })()}
 
       {/* 觸發點開關：控制「想不想被搭話」；台詞來源全自動（有句庫用角色的，沒有用通用的） */}
-      <div style={{ fontSize: 13, fontWeight: 800, color: "#4a4038", marginTop: 16 }}>角色回覆</div>
+      <div style={{ fontSize: 13, fontWeight: 800, color: "#4a4038", marginTop: 16 }}>{yt("settings.replies")}</div>
       {aiToggles.map(([key, label]) => (
         <div key={key} style={row}>
           <span style={{ fontSize: 13, color: "#4a4038" }}>{label}</span>
@@ -195,16 +197,16 @@ export default function GameSettingsPanel({ save, characters, onDirty, onEditApp
         </div>
       ))}
 
-      <div style={{ fontSize: 13, fontWeight: 800, color: "#4a4038", marginTop: 16 }}>山莊獨立備份</div>
-      <div style={{ fontSize: 11, color: "#8a7a6a", margin: "2px 0 8px", lineHeight: 1.6 }}>只包含雲隱山莊進度、角色句庫與未來的家園資料，不包含聊天、寵物小屋或其他 App 資料。</div>
+      <div style={{ fontSize: 13, fontWeight: 800, color: "#4a4038", marginTop: 16 }}>{yt("settings.backup")}</div>
+      <div style={{ fontSize: 11, color: "#8a7a6a", margin: "2px 0 8px", lineHeight: 1.6 }}>{yt("settings.backupDescription")}</div>
       <div style={{ display: "flex", gap: 8 }}>
-        <button onClick={async () => { setBackupMessage(""); try { await exportYunyinSave(); setBackupMessage("山莊備份已匯出"); } catch (error) { setBackupMessage(error?.message || "匯出失敗"); } }} style={{ flex: 1, border: 0, borderRadius: 10, padding: "8px 0", background: "#7d5a6e", color: "#fff", cursor: "pointer" }}>匯出山莊</button>
-        <button onClick={() => importRef.current?.click()} style={{ flex: 1, border: "1px solid #d9cdbc", borderRadius: 10, padding: "8px 0", background: "#fff", color: "#4a4038", cursor: "pointer" }}>匯入山莊</button>
-        <input ref={importRef} type="file" accept=".json,application/json" hidden onChange={async (event) => { const file = event.target.files?.[0]; event.target.value = ""; if (!file) return; setBackupMessage(""); try { await importYunyinSaveFile(file); setBackupMessage("匯入完成，重新進入山莊後生效"); } catch (error) { setBackupMessage(error?.message || "匯入失敗"); } }} />
+        <button onClick={async () => { setBackupMessage(""); try { await exportYunyinSave(); setBackupMessage(yt("settings.backupExported")); } catch { setBackupMessage(yt("settings.exportFailed")); } }} style={{ flex: 1, border: 0, borderRadius: 10, padding: "8px 0", background: "#7d5a6e", color: "#fff", cursor: "pointer" }}>{yt("settings.export")}</button>
+        <button onClick={() => importRef.current?.click()} style={{ flex: 1, border: "1px solid #d9cdbc", borderRadius: 10, padding: "8px 0", background: "#fff", color: "#4a4038", cursor: "pointer" }}>{yt("settings.import")}</button>
+        <input ref={importRef} type="file" accept=".json,application/json" hidden onChange={async (event) => { const file = event.target.files?.[0]; event.target.value = ""; if (!file) return; setBackupMessage(""); try { await importYunyinSaveFile(file); setBackupMessage(yt("settings.imported")); } catch (error) { setBackupMessage(error?.code === "INVALID_YUNYIN_BACKUP" ? yt("settings.invalidBackup") : yt("settings.importFailed")); } }} />
       </div>
       {backupMessage && <div style={{ fontSize: 11, color: "#7d5a6e", marginTop: 6 }}>{backupMessage}</div>}
 
-      <button onClick={onClose} style={{ width: "100%", marginTop: 14, border: 0, borderRadius: 12, padding: "9px 0", fontSize: 14, background: "#e8ddd0", color: "#6b5d4f", cursor: "pointer" }}>關閉</button>
+      <button onClick={onClose} style={{ width: "100%", marginTop: 14, border: 0, borderRadius: 12, padding: "9px 0", fontSize: 14, background: "#e8ddd0", color: "#6b5d4f", cursor: "pointer" }}>{yt("common.close")}</button>
     </div>
   );
 }

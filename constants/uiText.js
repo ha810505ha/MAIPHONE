@@ -9,6 +9,38 @@ const UI_TEXT = {
 
 UI_TEXT.ja.chooseCard = "キャラカードを選択";
 UI_TEXT.ko.chooseCard = "캐릭터 카드를 선택";
+UI_TEXT.ja.setAsMainCharacter = "メインキャラクターに設定";
+UI_TEXT.ko.setAsMainCharacter = "주요 캐릭터로 설정";
+Object.assign(UI_TEXT.en, {
+  lorebookTitle: "Lorebook",
+  addLorebook: "Add lorebook",
+  noLorebooks: "No lorebooks yet",
+  lorebookEntries: "Entries",
+  untitledLorebook: "Untitled lorebook",
+  lorebookEntry: "Entry",
+  noLorebookEntries: "This lorebook has no entries yet",
+  delete: "Delete",
+});
+Object.assign(UI_TEXT.ja, {
+  lorebookTitle: "世界観",
+  addLorebook: "世界観を追加",
+  noLorebooks: "世界観はまだありません",
+  lorebookEntries: "項目",
+  untitledLorebook: "無題の世界観",
+  lorebookEntry: "項目",
+  noLorebookEntries: "この世界観にはまだ項目がありません",
+  delete: "削除",
+});
+Object.assign(UI_TEXT.ko, {
+  lorebookTitle: "월드북",
+  addLorebook: "월드북 추가",
+  noLorebooks: "아직 월드북이 없습니다",
+  lorebookEntries: "항목",
+  untitledLorebook: "이름 없는 월드북",
+  lorebookEntry: "항목",
+  noLorebookEntries: "이 월드북에는 아직 항목이 없습니다",
+  delete: "삭제",
+});
 
 UI_TEXT["zh-CN"] = new Proxy({}, {
   get: (_target, key) => toSimplifiedChinese(UI_TEXT["zh-TW"][key]),

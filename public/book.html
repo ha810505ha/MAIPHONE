@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>解答之書</title>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Noto+Serif+TC:wght@500;700&family=Dancing+Script:wght@600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Noto+Serif+JP:wght@500;700&family=Noto+Serif+KR:wght@500;700&family=Noto+Serif+TC:wght@500;700&family=Dancing+Script:wght@600;700&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
 
@@ -13,7 +13,7 @@ body{
     display:flex;
     justify-content:center;
     align-items:center;
-    font-family:'Noto Serif TC','Cormorant Garamond',serif;
+    font-family:'Noto Serif TC','Noto Serif JP','Noto Serif KR','Cormorant Garamond',serif;
     color:#5a4a7a;
     overflow:hidden;
     position:relative;
@@ -223,6 +223,8 @@ body{
     position:relative;
     z-index:2;
 }
+html[lang="en"] .cover h2{font-family:'Cormorant Garamond',serif;font-size:34px;letter-spacing:2px;}
+html[lang="ja"] .cover h2,html[lang="ko"] .cover h2{letter-spacing:5px;font-size:34px;}
 
 .cover-divider{
     display:flex;
@@ -321,7 +323,7 @@ body{
 }
 
 .answer-text{
-    font-family:'Noto Serif TC',serif;
+    font-family:'Noto Serif TC','Noto Serif JP','Noto Serif KR',serif;
     font-size:22px;
     font-weight:700;
     background:linear-gradient(135deg,#a878d8 0%,#7088c8 50%,#d878a8 100%);
@@ -350,7 +352,7 @@ button{
     border-radius:30px;
     padding:13px 22px;
     font-size:14px;
-    font-family:'Noto Serif TC',serif;
+    font-family:'Noto Serif TC','Noto Serif JP','Noto Serif KR',serif;
     color:#7058a8;
     font-weight:700;
     letter-spacing:3px;
@@ -390,8 +392,8 @@ button:active{transform:scale(.96);}
     <div class="answer-content">
         <div class="answer-decoration">✦ ⋆ ✦</div>
         <div class="answer-text" id="answer-display"></div>
-        <div class="answer-sub">— the book whispers —</div>
-        <button onclick="resetBook()">闔上書本</button>
+        <div class="answer-sub" id="answer-sub">— the book whispers —</div>
+        <button id="reset-button" onclick="resetBook()">闔上書本</button>
     </div>
 </div>
 
@@ -406,18 +408,19 @@ button:active{transform:scale(.96);}
     <div class="cover-stars">
         <span>✦</span><span>✧</span><span>⋆</span><span>✦</span><span>✧</span><span>⋆</span>
     </div>
-    <div class="cover-title">Book of Whispers</div>
-    <h2>解答之書</h2>
+    <div class="cover-title" id="cover-title">Book of Whispers</div>
+    <h2 id="book-title">解答之書</h2>
     <div class="cover-divider">
         <span class="line"></span><span class="diamond">❖</span><span class="line"></span>
     </div>
-    <p>在心中默念你的問題<br>輕觸封面 翻閱命運</p>
-    <div class="cover-hint">— tap to reveal —</div>
+    <p id="cover-prompt">在心中默念你的問題<br>輕觸封面 翻閱命運</p>
+    <div class="cover-hint" id="cover-hint">— tap to reveal —</div>
 </div>
 
 </div>
 </div>
 
+<script src="./book-i18n.js"></script>
 <script>
 // 產生背景星塵
 const starsContainer=document.getElementById('stars');
@@ -444,7 +447,7 @@ for(let i=0;i<15;i++){
     starsContainer.appendChild(sp);
 }
 
-const answerDatabase = [
+const baseAnswerDatabase = [
   // Positive_Encourage
   { text: "毫無疑問地前進吧。", tag: "Positive_Encourage" },
   { text: "順從你的直覺，它是對的。", tag: "Positive_Encourage" },
@@ -521,6 +524,24 @@ const answerDatabase = [
   { text: "書頁在這裡輕輕闔上了。", tag: "Negative_Stop" },
   { text: "回頭，也是一種前進。", tag: "Negative_Stop" }
 ];
+
+const supportedLocales = ["zh-TW", "zh-CN", "en", "ja", "ko"];
+const requestedLocale = new URLSearchParams(window.location.search).get("lang");
+const activeLocale = supportedLocales.includes(requestedLocale) ? requestedLocale : "zh-TW";
+const bookCopy = window.BOOK_I18N?.[activeLocale] || window.BOOK_I18N?.["zh-TW"];
+const answerDatabase = baseAnswerDatabase.map((answer, index) => ({
+    ...answer,
+    text: bookCopy?.answers?.[index] || answer.text,
+}));
+
+document.documentElement.lang = activeLocale;
+document.title = bookCopy?.documentTitle || "解答之書";
+document.getElementById("cover-title").textContent = bookCopy?.coverTitle || "Book of Whispers";
+document.getElementById("book-title").textContent = bookCopy?.bookTitle || "解答之書";
+document.getElementById("cover-prompt").innerHTML = bookCopy?.prompt || "在心中默念你的問題<br>輕觸封面，翻閱命運";
+document.getElementById("cover-hint").textContent = bookCopy?.hint || "— tap to reveal —";
+document.getElementById("answer-sub").textContent = bookCopy?.whisper || "— the book whispers —";
+document.getElementById("reset-button").textContent = bookCopy?.reset || "闔上書本";
 let currentResult=null;
 let clearAnswerTimer=null;
 
@@ -533,7 +554,7 @@ function drawAnswer(){
     }
     const r=Math.floor(Math.random()*answerDatabase.length);
     currentResult=answerDatabase[r];
-    document.getElementById('answer-display').innerText=currentResult?.text || '書頁微微翻動，但暫時沒有回應。';
+    document.getElementById('answer-display').innerText=currentResult?.text || bookCopy?.fallback || '書頁微微翻動，但暫時沒有回應。';
     book.classList.add('open');
 }
 

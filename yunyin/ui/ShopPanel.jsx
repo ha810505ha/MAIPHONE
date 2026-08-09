@@ -6,6 +6,7 @@ import {
   stockShelfQuantity, unstockShelf, settleShelves, SELL_INTERVAL_SEC,
   deliverOrder,
 } from "../systems/shop";
+import { useYunyinLocale } from "../i18n/YunyinLocale.jsx";
 
 const btnStyle = (primary, enabled = true) => ({
   border: 0, borderRadius: 10, padding: "7px 12px", fontSize: 12, fontWeight: 700,
@@ -19,6 +20,7 @@ const rowStyle = { display: "flex", alignItems: "center", gap: 8, border: "1px s
 // lockTab：true 時只顯示 initialTab 對應的功能（不給切到其他站），符合「丹爐/貨架/訂單是三個不同實體」的動線；
 // 背包改成獨立小按鈕，任一站都能查（純參考資訊，不算跨站功能）。
 export default function ShopPanel({ save, onDirty, onToast, onCrystals, onClose, initialTab = "furnace", lockTab = false }) {
+  const { yt, yv, ym } = useYunyinLocale();
   const [tab, setTab] = useState(initialTab);
   const [showBag, setShowBag] = useState(false);
   const [, setTick] = useState(0);
@@ -49,7 +51,7 @@ export default function ShopPanel({ save, onDirty, onToast, onCrystals, onClose,
       return (
         <div key={idx} style={{ ...rowStyle, opacity: 0.55 }}>
           <span style={{ fontSize: 22 }}>🔒</span>
-          <span style={{ flex: 1, fontSize: 12, color: "#8a7a6a" }}>第 {idx + 1} 座丹爐——突破至<b>築基期</b>後啟用，可同時煉兩爐</span>
+          <span style={{ flex: 1, fontSize: 12, color: "#8a7a6a" }}>{yt("shop.furnaceLocked", { number: idx + 1 })}</span>
         </div>
       );
     }
@@ -57,7 +59,7 @@ export default function ShopPanel({ save, onDirty, onToast, onCrystals, onClose,
       return (
         <div key={idx} style={{ ...rowStyle, opacity: 0.8 }}>
           <span style={{ fontSize: 22 }}>🔥</span>
-          <span style={{ flex: 1, fontSize: 12, color: "#8a7a6a" }}>丹爐 {idx + 1}——空爐待命，從下方丹方開始煉製</span>
+          <span style={{ flex: 1, fontSize: 12, color: "#8a7a6a" }}>{yt("shop.furnaceIdle", { number: idx + 1 })}</span>
         </div>
       );
     }
@@ -68,9 +70,9 @@ export default function ShopPanel({ save, onDirty, onToast, onCrystals, onClose,
       <div key={idx} style={rowStyle}>
         <span style={{ fontSize: 22 }}>{r.icon}</span>
         <span style={{ flex: 1 }}>
-          <b style={{ fontSize: 14 }}>丹爐 {idx + 1}・{r.name}</b>
+          <b style={{ fontSize: 14 }}>{yt("shop.furnaceTitle", { number: idx + 1, name: yv(r.name) })}</b>
           <span style={{ display: "block", fontSize: 11, color: "#8a7a6a" }}>
-            已煉好 {done} / {f.batch} 爐{done < f.batch && `・下一爐約 ${nextMin} 分`}
+            {yt("shop.furnaceProgress", { done, total: f.batch })}{done < f.batch && ` · ${yt("shop.nextBatch", { minutes: nextMin })}`}
           </span>
         </span>
         <button
@@ -78,9 +80,9 @@ export default function ShopPanel({ save, onDirty, onToast, onCrystals, onClose,
           disabled={done < 1}
           onClick={() => {
             const r2 = collectFurnace(save, idx);
-            if (r2) { onToast(`${r2.recipe.icon} ${r2.recipe.name} ×${r2.count} 入袋`); onDirty(); setTick((t) => t + 1); }
+            if (r2) { onToast(yt("shop.collected", { icon: r2.recipe.icon, name: yv(r2.recipe.name), count: r2.count })); onDirty(); setTick((t) => t + 1); }
           }}
-        >收取</button>
+        >{yt("common.collect")}</button>
       </div>
     );
   };
@@ -93,15 +95,15 @@ export default function ShopPanel({ save, onDirty, onToast, onCrystals, onClose,
         {RECIPES.map((r) => {
           const unlocked = recipeUnlocked(r, save.cultivation);
           const max = unlocked ? maxBatch(save, r) : 0;
-          const inText = Object.entries(r.in).map(([k, n]) => `${itemMeta(k).icon}${itemMeta(k).name} ×${n}`).join(" + ");
+          const inText = Object.entries(r.in).map(([k, n]) => `${itemMeta(k).icon}${yv(itemMeta(k).name)} ×${n}`).join(" + ");
           return (
             <div key={r.id} style={{ ...rowStyle, flexDirection: "column", alignItems: "stretch", gap: 8, opacity: unlocked ? 1 : 0.55 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                 <span style={{ fontSize: 22, flexShrink: 0 }}>{r.icon}</span>
                 <span style={{ flex: 1, minWidth: 0 }}>
-                  <b style={{ fontSize: 14 }}>{r.name}{!unlocked && " 🔒"}</b>
+                <b style={{ fontSize: 14 }}>{yv(r.name)}{!unlocked && " 🔒"}</b>
                   <span style={{ display: "block", fontSize: 11, color: "#8a7a6a" }}>
-                    {inText} → 賣 🪙{r.sellPrice}・每爐 {r.craftMin} 分
+                    {yt("shop.recipeDetails", { ingredients: inText, price: r.sellPrice, minutes: r.craftMin })}
                   </span>
                 </span>
               </div>
@@ -113,20 +115,20 @@ export default function ShopPanel({ save, onDirty, onToast, onCrystals, onClose,
                     <button style={{ ...btnStyle(false), padding: "6px 10px" }} disabled={batch <= 1} onClick={() => setBatch(batch - 1)}>−</button>
                     <span style={{ minWidth: 22, textAlign: "center", fontWeight: 700, fontSize: 13 }}>{batch}</span>
                     <button style={{ ...btnStyle(false), padding: "6px 10px" }} disabled={batch >= max} onClick={() => setBatch(batch + 1)}>＋</button>
-                    <button style={{ ...btnStyle(false), padding: "6px 8px", fontSize: 11 }} disabled={batch >= max} onClick={() => setBatch(max)}>最大</button>
+                    <button style={{ ...btnStyle(false), padding: "6px 8px", fontSize: 11 }} disabled={batch >= max} onClick={() => setBatch(max)}>{yt("common.max")}</button>
                     <button style={{ ...btnStyle(true, hasIdleFurnace), marginLeft: 4 }} disabled={!hasIdleFurnace} onClick={() => {
                       const err = startCraft(save, r.id, batch);
-                      if (err) onToast(err); else { onToast(`${r.icon} 開始煉製 ×${batch}`); onDirty(); setBatchByRecipe((prev) => ({ ...prev, [r.id]: 1 })); }
+                      if (err) onToast(ym(err)); else { onToast(yt("shop.craftingStarted", { icon: r.icon, count: batch })); onDirty(); setBatchByRecipe((prev) => ({ ...prev, [r.id]: 1 })); }
                       setTick((t) => t + 1);
-                    }}>煉製</button>
+                    }}>{yt("shop.craft")}</button>
                   </div>
                 );
               })()}
-              {unlocked && max < 1 && <div style={{ fontSize: 11, color: "#b0a494", textAlign: "right" }}>材料不足</div>}
+              {unlocked && max < 1 && <div style={{ fontSize: 11, color: "#b0a494", textAlign: "right" }}>{yt("shop.insufficientMaterials")}</div>}
             </div>
           );
         })}
-        <div style={{ fontSize: 11, color: "#8a7a6a" }}>材料不夠就去靈田種，凝神丹需要更高境界解鎖。</div>
+        <div style={{ fontSize: 11, color: "#8a7a6a" }}>{yt("shop.recipeHint")}</div>
       </div>
     );
   };
@@ -141,12 +143,12 @@ export default function ShopPanel({ save, onDirty, onToast, onCrystals, onClose,
             <div key={sh.id} style={rowStyle}>
               <span style={{ fontSize: 22 }}>{m.icon}</span>
               <span style={{ flex: 1 }}>
-                <b style={{ fontSize: 14 }}>{m.name} ×{sh.stock}</b>
+                <b style={{ fontSize: 14 }}>{yv(m.name)} ×{sh.stock}</b>
                 <span style={{ display: "block", fontSize: 11, color: "#8a7a6a" }}>
-                  🪙{m.sellPrice}/件・下一件約 {nextSec >= 60 ? `${Math.ceil(nextSec / 60)} 分鐘` : `${nextSec} 秒`}
+                  {yt("shop.shelfSale", { price: m.sellPrice, time: nextSec >= 60 ? yt("shop.minutes", { value: Math.ceil(nextSec / 60) }) : yt("shop.seconds", { value: nextSec }) })}
                 </span>
               </span>
-              <button style={btnStyle(false)} onClick={() => { unstockShelf(save, idx); onDirty(); setTick((t) => t + 1); }}>收回</button>
+              <button style={btnStyle(false)} onClick={() => { unstockShelf(save, idx); onDirty(); setTick((t) => t + 1); }}>{yt("shop.unstock")}</button>
             </div>
           );
         }
@@ -179,19 +181,19 @@ export default function ShopPanel({ save, onDirty, onToast, onCrystals, onClose,
         return (
           <div key={sh.id} style={{ ...rowStyle, flexDirection: "column", alignItems: "stretch" }}>
             <div style={{ fontSize: 12, color: "#8a7a6a", marginBottom: invEntries.length ? 6 : 0 }}>
-              空貨架 {sh.id + 1} — {selectedMeta && selectedHave > 0 ? "選擇上架數量：" : "選擇上架物品："}
+              {yt(selectedMeta && selectedHave > 0 ? "shop.emptyShelfQuantity" : "shop.emptyShelfItem", { number: sh.id + 1 })}
             </div>
             {invEntries.length === 0 ? (
-              <div style={{ fontSize: 11, color: "#b0a494" }}>（背包沒有可賣的東西）</div>
+              <div style={{ fontSize: 11, color: "#b0a494" }}>{yt("shop.noSellableItems")}</div>
             ) : selectedMeta && selectedHave > 0 ? (
               <>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 22 }}>{selectedMeta.icon}</span>
                   <span style={{ flex: 1, minWidth: 0 }}>
-                    <b style={{ display: "block", fontSize: 13 }}>{selectedMeta.name}</b>
-                    <small style={{ color: "#8a7a6a" }}>背包持有 {selectedHave} 件</small>
+                    <b style={{ display: "block", fontSize: 13 }}>{yv(selectedMeta.name)}</b>
+                    <small style={{ color: "#8a7a6a" }}>{yt("shop.inventoryOwned", { count: selectedHave })}</small>
                   </span>
-                  <button style={{ ...btnStyle(false), padding: "6px 9px", fontSize: 11 }} onClick={clearShelfDraft}>重選</button>
+                  <button style={{ ...btnStyle(false), padding: "6px 9px", fontSize: 11 }} onClick={clearShelfDraft}>{yt("shop.reselect")}</button>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
                   <button style={{ ...btnStyle(false), padding: "7px 11px" }} disabled={selectedQuantity <= 1} onClick={() => setSelectedQuantity(selectedQuantity - 1)}>−</button>
@@ -201,7 +203,7 @@ export default function ShopPanel({ save, onDirty, onToast, onCrystals, onClose,
                     min="1"
                     max={selectedHave}
                     value={selectedQuantity}
-                    aria-label={`${selectedMeta.name}上架數量`}
+                    aria-label={yt("shop.stockQuantity", { name: yv(selectedMeta.name) })}
                     onChange={(event) => setSelectedQuantity(event.target.value)}
                     onFocus={(event) => event.target.select()}
                     style={{
@@ -210,18 +212,18 @@ export default function ShopPanel({ save, onDirty, onToast, onCrystals, onClose,
                     }}
                   />
                   <button style={{ ...btnStyle(false), padding: "7px 11px" }} disabled={selectedQuantity >= selectedHave} onClick={() => setSelectedQuantity(selectedQuantity + 1)}>＋</button>
-                  <button style={{ ...btnStyle(false), padding: "7px 9px", fontSize: 11 }} disabled={selectedQuantity >= selectedHave} onClick={() => setSelectedQuantity(selectedHave)}>全部</button>
+                  <button style={{ ...btnStyle(false), padding: "7px 9px", fontSize: 11 }} disabled={selectedQuantity >= selectedHave} onClick={() => setSelectedQuantity(selectedHave)}>{yt("shop.all")}</button>
                   <button style={{ ...btnStyle(true), marginLeft: "auto" }} onClick={() => {
                     const err = stockShelfQuantity(save, idx, selectedItemId, selectedQuantity);
                     if (err) {
-                      onToast(err);
+                      onToast(ym(err));
                     } else {
-                      onToast(`${selectedMeta.icon} ${selectedMeta.name} ×${selectedQuantity} 已上架`);
+                      onToast(yt("shop.stocked", { icon: selectedMeta.icon, name: yv(selectedMeta.name), count: selectedQuantity }));
                       clearShelfDraft();
                       onDirty();
                     }
                     setTick((t) => t + 1);
-                  }}>上架</button>
+                  }}>{yt("shop.stock")}</button>
                 </div>
               </>
             ) : (
@@ -234,7 +236,7 @@ export default function ShopPanel({ save, onDirty, onToast, onCrystals, onClose,
                         ...current,
                         [shelfKey]: { itemId: id, quantity: 1 },
                       }));
-                    }}>{m.icon}{m.name} ×{n}</button>
+                    }}>{m.icon}{yv(m.name)} ×{n}</button>
                   );
                 })}
               </div>
@@ -242,61 +244,64 @@ export default function ShopPanel({ save, onDirty, onToast, onCrystals, onClose,
           </div>
         );
       })}
-      <div style={{ fontSize: 11, color: "#8a7a6a" }}>貨架每 {Math.round(SELL_INTERVAL_SEC / 60)} 分鐘自動賣出 1 件，離線也照賣；貨架不產出靈魂結晶。</div>
+      <div style={{ fontSize: 11, color: "#8a7a6a" }}>{yt("shop.shelfHint", { minutes: Math.round(SELL_INTERVAL_SEC / 60) })}</div>
     </div>
   );
 
   const renderOrders = () => (
     <div>
-      {save.shop.orders.length === 0 && <div style={{ fontSize: 12, color: "#8a7a6a" }}>今日沒有行商到訪。</div>}
+      {save.shop.orders.length === 0 && <div style={{ fontSize: 12, color: "#8a7a6a" }}>{yt("shop.noOrders")}</div>}
       {save.shop.orders.map((o) => {
         const m = itemMeta(o.itemId);
         const enough = (inv[o.itemId] || 0) >= o.count;
+        const tierKey = { "普通": "shop.tierNormal", "進階": "shop.tierAdvanced", "稀有": "shop.tierRare" }[o.tier];
+        const tierLabel = tierKey ? yt(tierKey) : o.tier;
         return (
           <div key={o.id} style={{ ...rowStyle, opacity: o.done ? 0.5 : 1 }}>
             <span style={{ fontSize: 22 }}>{m.icon}</span>
             <span style={{ flex: 1 }}>
-              <b style={{ fontSize: 14 }}>{o.tier ? `【${o.tier}】` : ""}{m.name} ×{o.count}</b>
+              <b style={{ fontSize: 14 }}>{tierLabel ? `【${tierLabel}】` : ""}{yv(m.name)} ×{o.count}</b>
               <span style={{ display: "block", fontSize: 11, color: "#8a7a6a" }}>
-                報酬 🪙{o.rewardCoins} + 💎{o.rewardCrystals}{o.rewardBlueprint ? " + 📜圖紙" : ""}{o.rewardMaterials ? ` + ${itemMeta(o.rewardMaterials.id).icon}×${o.rewardMaterials.n}` : ""}（持有 {inv[o.itemId] || 0}）
+                {yt("shop.orderReward", { coins: o.rewardCoins, crystals: o.rewardCrystals, extras: `${o.rewardBlueprint ? yt("shop.blueprintExtra") : ""}${o.rewardMaterials ? ` + ${itemMeta(o.rewardMaterials.id).icon}×${o.rewardMaterials.n}` : ""}`, owned: inv[o.itemId] || 0 })}
               </span>
             </span>
             {o.done ? (
-              <span style={{ fontSize: 12, fontWeight: 700, color: "#3d7a5c" }}>已交付</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#3d7a5c" }}>{yt("shop.delivered")}</span>
             ) : (
               <button style={btnStyle(true, enough)} disabled={!enough} onClick={() => {
                 const r = deliverOrder(save, o.id);
-                if (typeof r === "string") { onToast(r); return; }
-                onCrystals(r.rewardCrystals, { note: `雲隱山莊・行商訂單「${m.name}」` });
-                onToast(`交付完成！🪙+${r.rewardCoins} 💎+${r.rewardCrystals}${r.blueprintName ? `，獲得 📜${r.blueprintName}圖紙` : ""}${r.materials ? `，獲得 ${itemMeta(r.materials.id).icon}${itemMeta(r.materials.id).name}×${r.materials.n}` : ""}`);
+                if (typeof r === "string") { onToast(ym(r)); return; }
+                onCrystals(r.rewardCrystals, { note: yt("shop.orderNote", { name: yv(m.name) }) });
+                const extras = `${r.blueprintName ? yt("shop.gainedBlueprint", { name: yv(r.blueprintName) }) : ""}${r.materials ? yt("shop.gainedMaterial", { icon: itemMeta(r.materials.id).icon, name: yv(itemMeta(r.materials.id).name), count: r.materials.n }) : ""}`;
+                onToast(yt("shop.deliveryComplete", { coins: r.rewardCoins, crystals: r.rewardCrystals, extras }));
                 onDirty();
                 setTick((t) => t + 1);
-              }}>交付</button>
+              }}>{yt("shop.deliver")}</button>
             )}
           </div>
         );
       })}
-      <div style={{ fontSize: 11, color: "#8a7a6a" }}>訂單每日更新，💎 與遊戲中心的抽卡水晶共用。</div>
+      <div style={{ fontSize: 11, color: "#8a7a6a" }}>{yt("shop.orderHint")}</div>
     </div>
   );
 
   const renderBag = () => (
     <div>
-      {invEntries.length === 0 && <div style={{ fontSize: 12, color: "#8a7a6a" }}>背包空空如也。</div>}
+      {invEntries.length === 0 && <div style={{ fontSize: 12, color: "#8a7a6a" }}>{yt("shop.bagEmpty")}</div>}
       {invEntries.map(([id, n]) => {
         const m = itemMeta(id);
         return (
           <div key={id} style={rowStyle}>
             <span style={{ fontSize: 20 }}>{m.icon}</span>
-            <span style={{ flex: 1, fontSize: 13 }}><b>{m.name}</b> ×{n}</span>
-            <span style={{ fontSize: 11, color: "#8a7a6a" }}>參考價 🪙{m.sellPrice}</span>
+            <span style={{ flex: 1, fontSize: 13 }}><b>{yv(m.name)}</b> ×{n}</span>
+            <span style={{ fontSize: 11, color: "#8a7a6a" }}>{yt("shop.referencePrice", { price: m.sellPrice })}</span>
           </div>
         );
       })}
     </div>
   );
 
-  const tabs = [["furnace", "丹爐"], ["shelf", "貨架"], ["order", "訂單"], ["bag", "背包"]];
+  const tabs = [["furnace", yt("shop.tabFurnace")], ["shelf", yt("shop.tabShelf")], ["order", yt("shop.tabOrder")], ["bag", yt("shop.tabBag")]];
   const renderTab = (id) => id === "furnace" ? renderFurnace() : id === "shelf" ? renderShelves() : id === "order" ? renderOrders() : renderBag();
 
   return (
@@ -307,7 +312,7 @@ export default function ShopPanel({ save, onDirty, onToast, onCrystals, onClose,
           <button onClick={() => setShowBag((v) => !v)} style={{
             border: 0, borderRadius: 10, padding: "6px 11px", fontSize: 12, fontWeight: 700, cursor: "pointer",
             background: showBag ? "#7d5a6e" : "#efe6da", color: showBag ? "#fff" : "#6b5d4f",
-          }}>🎒 背包</button>
+          }}>🎒 {yt("shop.tabBag")}</button>
         </div>
       ) : (
         <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
@@ -322,7 +327,7 @@ export default function ShopPanel({ save, onDirty, onToast, onCrystals, onClose,
       <div style={{ maxHeight: 320, overflowY: "auto" }}>
         {lockTab ? (showBag ? renderBag() : renderTab(initialTab)) : renderTab(tab)}
       </div>
-      <button onClick={onClose} style={{ width: "100%", marginTop: 12, border: 0, borderRadius: 12, padding: "9px 0", fontSize: 14, background: "#e8ddd0", color: "#6b5d4f", cursor: "pointer" }}>離開</button>
+      <button onClick={onClose} style={{ width: "100%", marginTop: 12, border: 0, borderRadius: 12, padding: "9px 0", fontSize: 14, background: "#e8ddd0", color: "#6b5d4f", cursor: "pointer" }}>{yt("common.leave")}</button>
     </div>
   );
 }

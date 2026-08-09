@@ -1187,7 +1187,7 @@ export default function MaliPhone() {
     if (!activeCharId) setActiveCharId(nc.id);
     if (!options.silent) {
       setModal(null);
-      showToast(`${nc.name} 已加入`);
+      showToast(tr(`${nc.name} 已加入`, `${nc.name} added`, `${nc.name} を追加しました`, `${nc.name}님을 추가했습니다`));
     }
     return nc;
   };
@@ -1310,7 +1310,7 @@ export default function MaliPhone() {
       delete next[id];
       return next;
     });
-    showToast(`${c?.name || "角色"} 已刪除`);
+    showToast(tr(`${c?.name || "角色"} 已刪除`, `${c?.name || "Character"} deleted`, `${c?.name || "キャラクター"} を削除しました`, `${c?.name || "캐릭터"}을(를) 삭제했습니다`));
   };
 
   const {
@@ -1579,7 +1579,8 @@ export default function MaliPhone() {
     getGroupMembers, openCreateGroup, openEditGroup, saveEditGroup, deleteGroupChat, createGroupChat,
     getGroupChatModalProps,
   } = useGroupChatController({
-    setGroupChats, setGroupScenes, setCurrentChatGroup, sanitizeImageUrl: sanitizeUserImageUrl, showToast, notify, tr,
+    characters, currentChatGroup, setGroupChats, setGroupScenes, setCurrentChatGroup,
+    sanitizeImageUrl: sanitizeUserImageUrl, showToast, notify, tr,
   });
   const { sendGroupMessage, retryGroupMessage: retryGroupFromNotice } = useGroupChatGenerationController({
     currentGroup: currentChatGroup, isTyping, input: chatInput, image: chatImage, pseudoImage: chatPseudoImage,
@@ -1885,9 +1886,9 @@ export default function MaliPhone() {
       activePersonaId: personaController.activePersonaId,
       personas: personaController.personas,
       maxPersonas: personaController.maxPersonas,
-      onSwitch: (id) => personaController.switchPersona(id, captureCurrentPersona).catch((error) => showToast(error?.message || "無法切換玩家人格")),
+      onSwitch: (id) => personaController.switchPersona(id, captureCurrentPersona).catch((error) => showToast(error?.message || tr("無法切換玩家人格", "Could not switch player persona", "プレイヤー人格を切り替えられません", "플레이어 페르소나를 전환할 수 없습니다"))),
       onCreate: (label) => personaController.createPersona(label, { name: label }),
-      onDelete: (id) => personaController.deletePersona(id).catch((error) => showToast(error?.message || "無法刪除玩家人格")),
+      onDelete: (id) => personaController.deletePersona(id).catch((error) => showToast(error?.message || tr("無法刪除玩家人格", "Could not delete player persona", "プレイヤー人格を削除できません", "플레이어 페르ソナ를 삭제할 수 없습니다"))),
     }}
     crop={{
       crop: playerAvatarCrop, setCrop: setPlayerAvatarCrop,
@@ -2038,6 +2039,7 @@ export default function MaliPhone() {
         closeApp,
         t,
         tr,
+        uiLanguage,
         game: {
           page: gamePage,
           setPage: setGamePage,

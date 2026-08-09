@@ -7,7 +7,7 @@ const Y_MIN = 60;
 const Y_MAX_PAD = 120;
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
-export default function FloatingPlayer() {
+export default function FloatingPlayer({ tr = (value) => value }) {
   const mp = useMusicPlayer();
   const layerRef = useRef(null);
   const [drag, setDrag] = useState(null);
@@ -322,7 +322,7 @@ export default function FloatingPlayer() {
             )}
           </div>
 
-          <ExpandedCard mp={mp} inner={inner} />
+          <ExpandedCard mp={mp} inner={inner} tr={tr} />
         </div>
       </div>
 
@@ -350,14 +350,16 @@ export default function FloatingPlayer() {
           ■
         </span>
         <b style={{ fontSize: 9.5, letterSpacing: ".04em", opacity: overStop ? 1 : 0.82 }}>
-          {overStop ? "放開停止播放" : "拖到這裡停止"}
+          {overStop
+            ? tr("放開停止播放", "Release to stop playback", "離して再生を停止", "놓아서 재생 중지")
+            : tr("拖到這裡停止", "Drag here to stop", "ここへドラッグして停止", "여기로 끌어와 중지")}
         </b>
       </div>
     </div>
   );
 }
 
-function ExpandedCard({ mp, inner }) {
+function ExpandedCard({ mp, inner, tr }) {
   return (
     <div
       className="fp-card-view"
@@ -377,7 +379,7 @@ function ExpandedCard({ mp, inner }) {
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <button
           type="button"
-          aria-label="收合播放器"
+          aria-label={tr("收合播放器", "Collapse player", "プレーヤーを閉じる", "플레이어 접기")}
           onClick={() => mp.saveFloat({ ...mp.floatState, mode: "ball" })}
           style={{
             width: 40,
@@ -466,7 +468,7 @@ function ExpandedCard({ mp, inner }) {
       >
         <button
           type="button"
-          aria-label="切換循環模式"
+          aria-label={tr("切換循環模式", "Change repeat mode", "リピートモードを切り替え", "반복 모드 전환")}
           onClick={mp.cycleLoop}
           style={{
             border: 0,
@@ -482,7 +484,7 @@ function ExpandedCard({ mp, inner }) {
         </button>
         <button
           type="button"
-          aria-label="下一首"
+          aria-label={tr("下一首", "Next track", "次の曲", "다음 곡")}
           onClick={mp.next}
           style={{
             border: 0,
@@ -498,7 +500,7 @@ function ExpandedCard({ mp, inner }) {
         <button
           type="button"
           className={`fp-play-toggle ${mp.isPlaying ? "is-playing" : ""}`}
-          aria-label={mp.isPlaying ? "暫停" : "播放"}
+          aria-label={mp.isPlaying ? tr("暫停", "Pause", "一時停止", "일시정지") : tr("播放", "Play", "再生", "재생")}
           aria-pressed={mp.isPlaying}
           onClick={mp.toggle}
         >
@@ -511,7 +513,7 @@ function ExpandedCard({ mp, inner }) {
         </button>
         <button
           type="button"
-          aria-label="停止播放"
+          aria-label={tr("停止播放", "Stop playback", "再生を停止", "재생 중지")}
           onClick={mp.stop}
           style={{
             border: 0,

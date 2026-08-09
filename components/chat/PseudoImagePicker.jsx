@@ -1,11 +1,12 @@
 import React, { useState } from "react";
+import { createPortal } from "react-dom";
 import { createPseudoImage, pseudoImageStyle, PSEUDO_IMAGE_DESC_LIMIT } from "../../utils/pseudoImage";
 
 // 讓玩家用文字「假裝」傳一張照片：對方（AI）只會讀到描述，畫面上則顯示色塊。
 export default function PseudoImagePicker({ onCancel, onConfirm, tr }) {
   const [desc, setDesc] = useState("");
   const preview = createPseudoImage(desc);
-  return <div className="mp-overlay" onClick={onCancel}>
+  const overlay = <div className="mp-overlay" onClick={onCancel}>
     <div className="mp-modal" onClick={(event) => event.stopPropagation()}>
       <div className="mp-modal-t">{tr("傳送示意照片", "Send a mock photo", "イメージ写真を送る", "가상 사진 보내기")}</div>
       <div style={{ fontSize: 11, color: "var(--mp-txt-l)", lineHeight: 1.5, marginBottom: 10 }}>
@@ -36,4 +37,6 @@ export default function PseudoImagePicker({ onCancel, onConfirm, tr }) {
       </div>
     </div>
   </div>;
+
+  return createPortal(overlay, document.querySelector(".mp-phone") || document.body);
 }

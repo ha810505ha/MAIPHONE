@@ -6,7 +6,7 @@ import { plotUnlocked } from "../systems/farm";
 import { buildingAt, plotIndexAt, plotIndexNearPoint, portalAt } from "./spatialQueries";
 import { worldInteractionAt } from "./worldInteractions";
 
-export function routeWorldTap({ screenX, screenY, camera, scale, map, player, npcs, save, hasMap, walkTo, switchMap, openPanel, showToast, onPlotArrive, onWorldInteraction }) {
+export function routeWorldTap({ screenX, screenY, camera, scale, map, player, npcs, save, hasMap, walkTo, switchMap, openPanel, showToast, onPlotArrive, onWorldInteraction, translateText = (key) => key, localizeValue = (value) => value }) {
   const worldX = camera.x + screenX / scale;
   const worldY = camera.y + screenY / scale;
   const tileX = Math.floor(worldX / TILE);
@@ -14,13 +14,13 @@ export function routeWorldTap({ screenX, screenY, camera, scale, map, player, np
   const activatePortal = (portal) => {
     walkTo(portal.x, portal.y, () => {
       if (hasMap(portal.to)) switchMap(portal.to, portal.spawn, { instanceId: portal.instanceId });
-      else if (portal.to === "dungeon") openPanel({ type: "dungeon", title: "🌫️ 秘境" });
-      else openPanel({ type: "portal", title: `${portal.icon} ${portal.label}` });
+      else if (portal.to === "dungeon") openPanel({ type: "dungeon", titleKey: "panel.dungeon" });
+      else openPanel({ type: "portal", title: `${portal.icon} ${localizeValue(portal.label)}` });
     });
   };
   const npc = npcAtWorldPoint(npcs, worldX, worldY) || npcAtTile(npcs, tileX, tileY);
   if (npc) {
-    if (npc.helper) openPanel({ type: "farmAssist", title: `${npc.name}的靈田協助`, npc });
+    if (npc.helper) openPanel({ type: "farmAssist", titleKey: "panel.farmAssist", titleVariables: { name: localizeValue(npc.name) }, npc });
     else {
       // 住客（npc.charId）在自己家裡：優先用 home 池，比通用 chat 池貼近語境
       const characterId = npc.charId || save.settings.bindings[npc.seed];
@@ -40,7 +40,7 @@ export function routeWorldTap({ screenX, screenY, camera, scale, map, player, np
       if (building.to && hasMap(building.to)) {
         switchMap(building.to, building.spawn, { instanceId: building.instanceId });
       } else {
-        openPanel({ type: building.opens, title: building.label, tab: building.panelTab });
+        openPanel({ type: building.opens, title: localizeValue(building.label), tab: building.panelTab });
       }
     });
     return { worldX, worldY };
@@ -60,7 +60,7 @@ export function routeWorldTap({ screenX, screenY, camera, scale, map, player, np
     ? exactPlotIndex
     : plotIndexNearPoint(map, worldX / TILE, worldY / TILE, scale);
   if (plotIndex >= 0) {
-    if (!plotUnlocked(plotIndex, save.cultivation)) showToast("🔒 境界不足，尚未開墾");
+    if (!plotUnlocked(plotIndex, save.cultivation)) showToast(translateText("world.plotLocked"));
     else {
       const plot = map.plots[plotIndex];
       walkTo(plot.x, plot.y, () => onPlotArrive(plotIndex));

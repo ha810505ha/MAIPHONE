@@ -45,6 +45,8 @@ const [
   playerProfileController,
   chatMessageUtils,
   chatSorting,
+  photoSourceChooser,
+  pseudoImagePicker,
 ] = await Promise.all([
   source("components/apps/AppRouter.jsx"),
   source("MaliPhone.jsx"),
@@ -82,6 +84,8 @@ const [
   source("hooks/player/usePlayerProfileController.js"),
   source("utils/chatMessageUtils.js"),
   source("utils/chatSorting.js"),
+  source("components/chat/PhotoSourceChooser.jsx"),
+  source("components/chat/PseudoImagePicker.jsx"),
 ]);
 const appHydration = await source("hooks/data/useAppHydrationController.js");
 const chatImage = await source("hooks/chat/useChatImageController.js");
@@ -409,7 +413,11 @@ for (const domainPath of [
 
 assert(yunyinOverlays.includes('data-yunyin-hud-title-row="1"'), "Yunyin title must keep its own HUD row");
 assert(yunyinOverlays.includes('data-yunyin-hud-resource-stack="1"'), "Yunyin resource balances must stay in the right-side stack");
-assert(yunyinOverlays.includes('aria-label={`金錢 ${coins}`}') && yunyinOverlays.includes('aria-label={`結晶 ${crystals}`}'), "Yunyin resource balances must remain individually accessible");
+assert(
+  yunyinOverlays.includes('aria-label={`${yt("hud.coins")} ${coins}`}')
+    && yunyinOverlays.includes('aria-label={`${yt("hud.crystals")} ${crystals}`}'),
+  "Yunyin resource balances must remain individually accessible with localized labels",
+);
 assert(yunyinOverlays.includes('data-yunyin-action-stack="1"'), "Yunyin actions must stay in the right-side stack");
 assert(!yunyinOverlays.includes('aria-label="角色外觀"'), "player appearance must not consume a map action slot");
 assert(
@@ -423,5 +431,14 @@ assert(featurePreload.includes("requestIdleCallback"), "likely features must war
 assert(musicShell.includes("lazyWithRetry(loadFloatingPlayer)"), "floating player must reuse the shared preload loader");
 assert(phoneGeneration.includes("await loadPhoneAppGen()"), "phone generation must reuse the shared preload loader");
 assert(directGeneration.includes("await loadDirectChatGenerator()"), "direct chat generation must reuse the shared preload loader");
+for (const [name, modalSource] of [
+  ["photo source chooser", photoSourceChooser],
+  ["mock photo picker", pseudoImagePicker],
+]) {
+  assert(
+    modalSource.includes("createPortal(overlay") && modalSource.includes('document.querySelector(".mp-phone")'),
+    `${name} must render against the phone viewport instead of the bottom chat composer`,
+  );
+}
 
 console.log("ok: gallery, animation, route chunking, smart preloading, and Yunyin HUD/settings guards hold");

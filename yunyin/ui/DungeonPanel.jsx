@@ -5,6 +5,7 @@ import {
   eventById, startRun, chooseOption, proceed, finishRun, maxRunsOf, runModEffects,
   DIFFICULTIES, difficultyUnlocked,
 } from "../systems/dungeon";
+import { useYunyinLocale } from "../i18n/YunyinLocale.jsx";
 
 const btn = (primary, enabled = true) => ({
   border: 0, borderRadius: 12, padding: "10px 14px", fontSize: 14, fontWeight: 700,
@@ -13,16 +14,17 @@ const btn = (primary, enabled = true) => ({
   color: primary ? "#fff" : "#6b5d4f",
 });
 
-const fxText = (fx) => {
+const fxText = (fx, yt, yv) => {
   const parts = [];
-  if (fx.exp) parts.push(`修為+${fx.exp}`);
+  if (fx.exp) parts.push(`${yt("dungeon.cultivation")}+${fx.exp}`);
   if (fx.coins) parts.push(`🪙${fx.coins > 0 ? "+" : ""}${fx.coins}`);
   if (fx.hp) parts.push(`🩸${fx.hp > 0 ? "+" : ""}${fx.hp}`);
-  if (fx.item) parts.push(`${itemMeta(fx.item.id).icon}${itemMeta(fx.item.id).name} ×${fx.itemN || fx.item.n}`);
+  if (fx.item) parts.push(`${itemMeta(fx.item.id).icon}${yv(itemMeta(fx.item.id).name)} ×${fx.itemN || fx.item.n}`);
   return parts.join("・");
 };
 
 export default function DungeonPanel({ save, onDirty, onToast, onCompanion, onCrystals, onClose }) {
+  const { yt, yv, ym } = useYunyinLocale();
   const [, setTick] = useState(0);
   const [summary, setSummary] = useState(null);
   const [companionLine, setCompanionLine] = useState(null);
@@ -50,7 +52,7 @@ export default function DungeonPanel({ save, onDirty, onToast, onCompanion, onCr
   const doFinish = (mode) => {
     const s = finishRun(save, mode);
     if (s?.crystals) onCrystals?.(s.crystals, {
-      note: `雲隱山莊・秘境${s.mode === "cleared" ? "通關" : s.mode === "retreat" ? "撤退結算" : "探索結算"}`,
+      note: yt(s.mode === "cleared" ? "dungeon.noteCleared" : s.mode === "retreat" ? "dungeon.noteRetreat" : "dungeon.noteExplore"),
     });
     setSummary(s);
     onDirty();
@@ -58,25 +60,25 @@ export default function DungeonPanel({ save, onDirty, onToast, onCompanion, onCr
 
   // ---- 結算畫面 ----
   if (summary) {
-    const title = summary.mode === "cleared" ? "🎉 通關！" : summary.mode === "retreat" ? "🏃 見好就收" : "💀 力竭出局";
+    const title = summary.mode === "cleared" ? yt("dungeon.clear") : summary.mode === "retreat" ? yt("dungeon.retreat") : yt("dungeon.defeated");
     return (
       <div style={{ textAlign: "center" }}>
         <div style={{ fontSize: 18, fontWeight: 800 }}>{title}</div>
         <div style={{ fontSize: 12, color: "#8a7a6a", marginTop: 4 }}>
-          {summary.difficultyName}・抵達第 {summary.floor} / {summary.totalFloors} 層
-          {summary.mode === "dead" && "・戰利品折損一半"}
+          {yt("dungeon.summaryLocation", { difficulty: yv(summary.difficultyName), floor: summary.floor, total: summary.totalFloors })}
+          {summary.mode === "dead" && yt("dungeon.lootHalved")}
         </div>
         <div style={{ margin: "14px 0", padding: "12px 14px", background: "#f3ece2", borderRadius: 12, fontSize: 13, lineHeight: 2, textAlign: "left" }}>
-          <div>修為 <b style={{ color: "#3d7a5c" }}>+{summary.exp}</b></div>
-          <div>靈石 <b style={{ color: "#b8860b" }}>🪙+{summary.coins}</b></div>
-          <div>靈魂結晶 <b style={{ color: "#b05f88" }}>💎 +{summary.crystals}</b></div>
-          {summary.blueprint && <div>📜 {summary.blueprint.name}圖紙 <b style={{ color: "#8a5c9e" }}>（丹房可解鎖購買）</b></div>}
+          <div>{yt("dungeon.cultivation")} <b style={{ color: "#3d7a5c" }}>+{summary.exp}</b></div>
+          <div>{yt("dungeon.coins")} <b style={{ color: "#b8860b" }}>🪙+{summary.coins}</b></div>
+          <div>{yt("dungeon.crystals")} <b style={{ color: "#b05f88" }}>💎 +{summary.crystals}</b></div>
+          {summary.blueprint && <div>{yt("dungeon.blueprint", { name: yv(summary.blueprint.name) })} <b style={{ color: "#8a5c9e" }}>{yt("dungeon.blueprintHint")}</b></div>}
           {summary.items.map((it) => (
-            <div key={it.id}>{itemMeta(it.id).icon} {itemMeta(it.id).name} <b>×{it.n}</b></div>
+            <div key={it.id}>{itemMeta(it.id).icon} {yv(itemMeta(it.id).name)} <b>×{it.n}</b></div>
           ))}
-          {summary.items.length === 0 && summary.exp === 0 && summary.coins === 0 && <div>兩手空空⋯⋯</div>}
+          {summary.items.length === 0 && summary.exp === 0 && summary.coins === 0 && <div>{yt("dungeon.emptyLoot")}</div>}
         </div>
-        <button style={btn(true)} onClick={onClose}>離開秘境</button>
+        <button style={btn(true)} onClick={onClose}>{yt("dungeon.leaveDungeon")}</button>
       </div>
     );
   }
@@ -86,11 +88,7 @@ export default function DungeonPanel({ save, onDirty, onToast, onCompanion, onCr
     return (
       <div style={{ textAlign: "center" }}>
         <div style={{ fontSize: 32 }}>🌫️</div>
-        <div style={{ fontSize: 13, color: "#6b5d4f", lineHeight: 1.8, margin: "10px 0" }}>
-          迷霧深處藏著稀有藥草、建材與星露籽。<br />
-          每層一個際遇，體力歸零出局掉一半戰利品，<br />
-          隨時撤退可全數帶走。
-        </div>
+        <div style={{ fontSize: 13, color: "#6b5d4f", lineHeight: 1.8, margin: "10px 0", whiteSpace: "pre-line" }}>{yt("dungeon.intro")}</div>
         <div style={{ display: "grid", gap: 6, margin: "0 0 12px", textAlign: "left" }}>
           {DIFFICULTIES.map((d) => {
             const unlocked = difficultyUnlocked(d, save.cultivation);
@@ -103,25 +101,23 @@ export default function DungeonPanel({ save, onDirty, onToast, onCompanion, onCr
               }}>
                 <span style={{ fontSize: 20 }}>{d.icon}</span>
                 <span style={{ flex: 1 }}>
-                  <b style={{ fontSize: 13, color: "#4e4438" }}>{d.name}{!unlocked && " 🔒"}</b>
+                  <b style={{ fontSize: 13, color: "#4e4438" }}>{yv(d.name)}{!unlocked && " 🔒"}</b>
                   <span style={{ display: "block", fontSize: 11, color: "#8a7a6a" }}>
-                    {unlocked ? d.desc : "境界不足（突破後解鎖）"}
+                    {unlocked ? yv(d.desc) : yt("dungeon.realmLocked")}
                   </span>
                 </span>
               </button>
             );
           })}
         </div>
-        <div style={{ fontSize: 12, color: "#8a7a6a", marginBottom: 14 }}>
-          今日剩餘次數：<b>{save.dungeon.runsToday}</b> / {maxRunsOf(save.cultivation)}
-        </div>
+        <div style={{ fontSize: 12, color: "#8a7a6a", marginBottom: 14 }}>{yt("dungeon.runsLeft", { remaining: save.dungeon.runsToday, max: maxRunsOf(save.cultivation) })}</div>
         <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
           <button style={btn(true, save.dungeon.runsToday > 0)} disabled={save.dungeon.runsToday < 1} onClick={() => {
             const err = startRun(save, difficulty);
-            if (err) { onToast(err); return; }
+            if (err) { onToast(ym(err)); return; }
             onDirty(); rerender();
-          }}>踏入迷霧</button>
-          <button style={btn(false)} onClick={onClose}>離開</button>
+          }}>{yt("dungeon.enter")}</button>
+          <button style={btn(false)} onClick={onClose}>{yt("common.leave")}</button>
         </div>
       </div>
     );
@@ -131,7 +127,7 @@ export default function DungeonPanel({ save, onDirty, onToast, onCompanion, onCr
   const header = (
     <>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 700, color: "#6b5d4f" }}>
-        <span>第 {run.floor} / {run.totalFloors} 層</span>
+        <span>{yt("dungeon.floor", { floor: run.floor, total: run.totalFloors })}</span>
         <span>🩸 {run.hp} / {run.hpMax}</span>
       </div>
       <div style={{ height: 8, borderRadius: 4, background: "#e8ddd0", margin: "6px 0 8px", overflow: "hidden" }}>
@@ -140,10 +136,10 @@ export default function DungeonPanel({ save, onDirty, onToast, onCompanion, onCr
       <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 10 }}>
         {run.modifiers.map((mid) => {
           const m = MODIFIERS.find((m) => m.id === mid);
-          return m && <span key={mid} title={m.desc} style={{ fontSize: 10, fontWeight: 700, background: "#ece4f3", color: "#6d5a7d", borderRadius: 8, padding: "3px 8px" }}>{m.label}｜{m.desc}</span>;
+          return m && <span key={mid} title={yv(m.desc)} style={{ fontSize: 10, fontWeight: 700, background: "#ece4f3", color: "#6d5a7d", borderRadius: 8, padding: "3px 8px" }}>{yv(m.label)}｜{yv(m.desc)}</span>;
         })}
         <span style={{ fontSize: 10, fontWeight: 700, background: "#f3ece2", color: "#8a7a6a", borderRadius: 8, padding: "3px 8px" }}>
-          袋中：修為{run.exp}・🪙{run.coins}・物品{Object.values(run.loot).reduce((s, n) => s + n, 0)}
+          {yt("dungeon.bagStatus", { exp: run.exp, coins: run.coins, items: Object.values(run.loot).reduce((s, n) => s + n, 0) })}
         </span>
       </div>
     </>
@@ -155,9 +151,9 @@ export default function DungeonPanel({ save, onDirty, onToast, onCompanion, onCr
       <div style={{ textAlign: "left" }}>
         {header}
         <div style={{ padding: "14px", background: "#f7e6e6", borderRadius: 12, fontSize: 13, color: "#a05656", lineHeight: 1.7 }}>
-          {run.outcome?.text}<br /><b>你力竭倒地，被迷霧送出了秘境⋯⋯</b>
+          {yv(run.outcome?.text)}<br /><b>{yt("dungeon.exhausted")}</b>
         </div>
-        <button style={{ ...btn(true), width: "100%", marginTop: 12 }} onClick={() => doFinish("dead")}>拾起殘餘的戰利品</button>
+        <button style={{ ...btn(true), width: "100%", marginTop: 12 }} onClick={() => doFinish("dead")}>{yt("dungeon.collectRemains")}</button>
       </div>
     );
   }
@@ -169,8 +165,8 @@ export default function DungeonPanel({ save, onDirty, onToast, onCompanion, onCr
       <div style={{ textAlign: "left" }}>
         {header}
         <div style={{ padding: "12px 14px", background: o.ok ? "#e4f2ea" : "#f7e6e6", borderRadius: 12, fontSize: 13, color: o.ok ? "#3d5c4c" : "#a05656", lineHeight: 1.7 }}>
-          {o.text}
-          {fxText(o.fx) && <div style={{ marginTop: 6, fontWeight: 700 }}>{fxText(o.fx)}</div>}
+          {yv(o.text)}
+          {fxText(o.fx, yt, yv) && <div style={{ marginTop: 6, fontWeight: 700 }}>{fxText(o.fx, yt, yv)}</div>}
         </div>
         {companionLine && (
           <div style={{ marginTop: 8, fontSize: 12, color: "#6d5a7d", background: "#ece4f3", borderRadius: 10, padding: "8px 11px", lineHeight: 1.6 }}>
@@ -179,11 +175,11 @@ export default function DungeonPanel({ save, onDirty, onToast, onCompanion, onCr
         )}
         <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
           {run.state === "cleared" ? (
-            <button style={{ ...btn(true), flex: 1 }} onClick={() => doFinish("cleared")}>收取全部戰利品</button>
+            <button style={{ ...btn(true), flex: 1 }} onClick={() => doFinish("cleared")}>{yt("dungeon.collectAll")}</button>
           ) : (
             <>
-              <button style={{ ...btn(true), flex: 1 }} onClick={() => { proceed(save); onDirty(); rerender(); }}>繼續深入</button>
-              <button style={{ ...btn(false), flex: 1 }} onClick={() => doFinish("retreat")}>撤退帶走</button>
+              <button style={{ ...btn(true), flex: 1 }} onClick={() => { proceed(save); onDirty(); rerender(); }}>{yt("dungeon.continue")}</button>
+              <button style={{ ...btn(false), flex: 1 }} onClick={() => doFinish("retreat")}>{yt("dungeon.retreatWithLoot")}</button>
             </>
           )}
         </div>
@@ -197,15 +193,15 @@ export default function DungeonPanel({ save, onDirty, onToast, onCompanion, onCr
     <div style={{ textAlign: "left" }}>
       {header}
       <div style={{ textAlign: "center", fontSize: 34, margin: "4px 0 8px" }}>{ev.icon}</div>
-      <div style={{ fontSize: 13, color: "#4a4038", lineHeight: 1.8, padding: "0 2px", marginBottom: 12 }}>{ev.text}</div>
+      <div style={{ fontSize: 13, color: "#4a4038", lineHeight: 1.8, padding: "0 2px", marginBottom: 12 }}>{yv(ev.text)}</div>
       {ev.choices.map((ch, i) => (
         <button key={i} onClick={() => { chooseOption(save, i); tryCompanion(save.dungeon.activeRun); onDirty(); rerender(); }} style={{
           display: "block", width: "100%", textAlign: "left", marginBottom: 8,
           border: "1px solid #d9cdbc", borderRadius: 12, padding: "10px 12px",
           background: "#fff", cursor: "pointer",
         }}>
-          <b style={{ fontSize: 13 }}>{ch.label}</b>
-          <span style={{ display: "block", fontSize: 11, color: "#8a7a6a", marginTop: 2 }}>{ch.hint}</span>
+          <b style={{ fontSize: 13 }}>{yv(ch.label)}</b>
+          <span style={{ display: "block", fontSize: 11, color: "#8a7a6a", marginTop: 2 }}>{yv(ch.hint)}</span>
         </button>
       ))}
     </div>

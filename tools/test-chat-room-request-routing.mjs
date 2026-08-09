@@ -51,6 +51,7 @@ const composerSource = fs.readFileSync(new URL("../components/chat/DirectChatCom
 const appSource = fs.readFileSync(new URL("../MaliPhone.jsx", import.meta.url), "utf8");
 const renderControllerSource = fs.readFileSync(new URL("../hooks/chat/useChatRenderController.jsx", import.meta.url), "utf8");
 const roomManagerSource = fs.readFileSync(new URL("../components/chat/ChatRoomManager.jsx", import.meta.url), "utf8");
+const groupControllerSource = fs.readFileSync(new URL("../hooks/chat/useGroupChatController.js", import.meta.url), "utf8");
 
 assert.match(directHookSource, /roomId = getActiveRoomId/);
 assert.match(directHookSource, /generateAssistant\(\{ cid: characterId, roomId,/);
@@ -72,5 +73,8 @@ assert.match(roomsHookSource, /restoreRoom/);
 assert.match(roomsHookSource, /sortOrder/);
 assert.match(roomManagerSource, /ReadonlyMessages/);
 assert.doesNotMatch(roomManagerSource, /callAI|generateAssistant|updateRoomMessages/);
+assert.match(appSource, /useGroupChatController\(\{\s*characters, currentChatGroup,/);
+assert.match(groupControllerSource, /const characterList = Array\.isArray\(characters\) \? characters : \[\]/);
+assert.match(groupControllerSource, /return characterList\.filter/);
 
 console.log("chat room request routing: ok");

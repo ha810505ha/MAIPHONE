@@ -57,7 +57,7 @@ const GROUPS = [
     [".mp-sg", "設定區塊卡片"], [".mp-sg-t", "設定區塊標題"], [".mp-row", "設定項目列"], [".mp-lbl", "設定標籤"], [".mp-sinp", "文字輸入欄"], [".mp-ssel", "下拉選單"], [".mp-ta", "多行文字框"], [".mp-switch", "設定開關的外框"], [".mp-switch > span", "開關裡的白色圓點"], [".mp-switch.active", "打開狀態的開關"], [".mp-switch.active > span", "打開狀態的圓點"],
   ] },
   { title: "寵物小屋", items: [
-    [".pet-home", "寵物小屋主要頁面（若該元素存在）"], [".desktop-pet", "桌面寵物（若該元素存在）"],
+    [".pet-app", "寵物小屋主要頁面"], [".desktop-pet", "桌面寵物（若該元素存在）"],
   ] },
   { title: "新版 APP", items: [
     [".music-app-page", "一起聽歌主要頁面"], [".music-app-artwork", "一起聽歌封面區"], [".music-app-controls", "一起聽歌播放控制列"], [".music-app-input", "一起聽歌輸入欄"], [".music-floating-player", "桌面浮動播放器"], [".dt-page", "信風主要頁面"], [".dt-card", "信風角色卡"], [".dt-msg-bubble", "信風聊天泡泡"], [".couple-app-page", "情侶空間主要頁面"], [".calendar-app-page", "日曆主要頁面"], [".calendar-grid", "日曆月份格"], [".calendar-event-card", "日曆事件卡片"],
@@ -99,9 +99,25 @@ ${GROUPS.map((group) => {
   return `\n■ ${group.title}${note}\n${group.items.map(([selector, description]) => `${selector}：${description}`).join("\n")}`;
 }).join("\n")}`;
 
-export default function CustomCssGuide({ onClose }) {
+export default function CustomCssGuide({ onClose, tr }) {
   const [copied, setCopied] = useState("");
   const [expandedGroups, setExpandedGroups] = useState(() => new Set());
+  const guideRules = RULES.map((rule) => tr(
+    rule,
+    "Keep selectors specific, avoid unsafe CSS, and test changes gradually.",
+    "セレクターを具体的に指定し、安全でない CSS を避けて段階的に確認してください。",
+    "선택자를 구체적으로 지정하고 안전하지 않은 CSS를 피하며 단계적으로 확인하세요.",
+  ));
+  const selectorList = GROUPS.flatMap((group) => [
+    `/* ===== ${tr(group.title, "CSS selectors", "CSS セレクター", "CSS 선택자")} ===== */`,
+    ...group.items.map(([selector]) => `/* ${tr(`選擇器：${selector}`, `CSS selector: ${selector}`, `CSS セレクター：${selector}`, `CSS 선택자: ${selector}`)} */\n${selector} {\n  \n}`),
+  ]).join("\n\n");
+  const aiPrompt = tr(
+    AI_PROMPT,
+    "Write only safe custom CSS for MaliPhone. Do not change HTML or JavaScript. Use the selector list as a reference, keep the layout responsive, and avoid external imports or URLs.",
+    "MaliPhone 用の安全なカスタム CSS のみを書いてください。HTML や JavaScript は変更せず、セレクター一覧を参考にして、レスポンシブなレイアウトと外部 import・URL の回避を守ってください。",
+    "MaliPhone용 안전한 사용자 CSS만 작성하세요. HTML이나 JavaScript는 변경하지 말고 선택자 목록을 참고하며 반응형 레이아웃을 유지하고 외부 import나 URL은 사용하지 마세요.",
+  );
   const toggleGroup = (title) => setExpandedGroups((current) => {
     const next = new Set(current);
     if (next.has(title)) next.delete(title);
@@ -113,10 +129,10 @@ export default function CustomCssGuide({ onClose }) {
       await navigator.clipboard.writeText(text);
       setCopied(label);
       setTimeout(() => setCopied(""), 1400);
-    } catch { setCopied("複製失敗"); }
+    } catch { setCopied(tr("複製失敗", "Copy failed", "コピーに失敗しました", "복사하지 못했습니다")); }
   };
   return (
-    <div className="ccg-overlay" role="dialog" aria-modal="true" aria-label="自訂 CSS 選擇器清單">
+    <div className="ccg-overlay" role="dialog" aria-modal="true" aria-label={tr("自訂 CSS 選擇器清單", "Custom CSS selector list", "カスタム CSS セレクター一覧", "사용자 CSS 선택자 목록")}>
       <style>{`
         .ccg-overlay{position:absolute;inset:0;z-index:120;display:flex;flex-direction:column;background:var(--mp-bg,#fff7fa);color:var(--mp-txt,#384750)}
         .ccg-head{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:16px 18px;background:var(--mp-surface,#fff);border-bottom:1px solid var(--mp-border,#ecdce3)}
@@ -129,23 +145,23 @@ export default function CustomCssGuide({ onClose }) {
         .ccg-note{margin:0 0 8px;padding:8px 10px;border-radius:10px;background:color-mix(in srgb,var(--mp-pink,#f5a8bd) 10%,transparent);font-size:9px;line-height:1.7;color:var(--mp-txt-l,#789)}
         .ccg-item{width:100%;display:flex;align-items:center;justify-content:space-between;gap:9px;padding:9px 4px;border:0;border-bottom:1px solid color-mix(in srgb,var(--mp-border,#ddd) 55%,transparent);background:transparent;color:inherit;text-align:left}.ccg-item:last-child{border-bottom:0}.ccg-item code{font-size:11px;font-weight:800;color:var(--mp-txt,#345)}.ccg-item span{font-size:9px;color:var(--mp-txt-l,#789);text-align:right}.ccg-toast{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);padding:8px 14px;border-radius:18px;background:#44383e;color:#fff;font-size:10px;box-shadow:0 8px 20px #0003}
       `}</style>
-      <header className="ccg-head"><div><h2>自訂 CSS 選擇器</h2><div style={{fontSize:9,color:"var(--mp-txt-l)",marginTop:2}}>點擊項目即可複製 CSS 空白範本</div></div><button className="ccg-close" onClick={onClose}>✕</button></header>
+      <header className="ccg-head"><div><h2>{tr("自訂 CSS 選擇器", "Custom CSS selectors", "カスタム CSS セレクター", "사용자 CSS 선택자")}</h2><div style={{fontSize:9,color:"var(--mp-txt-l)",marginTop:2}}>{tr("點擊項目即可複製 CSS 空白範本", "Tap an item to copy a blank CSS template", "項目をタップして空の CSS テンプレートをコピー", "항목을 탭하여 빈 CSS 템플릿 복사")}</div></div><button className="ccg-close" onClick={onClose}>✕</button></header>
       <div className="ccg-body">
-        <p className="ccg-tip">這些選擇器可以交給 AI，或直接貼進自訂 CSS 編輯器。標有「結構說明」的分組請先讀過再改，那是實際的畫面結構。部分介面可能會隨版本更新而調整。為避免影響手機觸控與全螢幕顯示，請勿覆寫 .mp-phone 的 overflow、height 或 touch-action。</p>
+        <p className="ccg-tip">{tr("這些選擇器可以交給 AI，或直接貼進自訂 CSS 編輯器。標有「結構說明」的分組請先讀過再改，那是實際的畫面結構。部分介面可能會隨版本更新而調整。為避免影響手機觸控與全螢幕顯示，請勿覆寫 .mp-phone 的 overflow、height 或 touch-action。", "Use these selectors with AI or paste them into the Custom CSS editor. Read structural notes before changing a group; they reflect the real screen structure. Some surfaces may change between versions. Do not override .mp-phone overflow, height, or touch-action.", "これらのセレクターは AI に渡すか、カスタム CSS エディターに貼り付けてください。構造メモは実際の画面構造を示すため、変更前に確認してください。.mp-phone の overflow、height、touch-action は上書きしないでください。", "이 선택자는 AI에 전달하거나 사용자 CSS 편집기에 붙여넣을 수 있습니다. 구조 메모는 실제 화면 구조를 나타내므로 변경 전에 확인하세요. .mp-phone의 overflow, height, touch-action은 재정의하지 마세요.")}</p>
         <div className="ccg-rules">
-          <h3>寫之前先看這四點</h3>
-          <ul>{RULES.map((rule) => <li key={rule}>{rule}</li>)}</ul>
+          <h3>{tr("寫之前先看這四點", "Before you edit", "編集前の注意点", "편집 전 확인 사항")}</h3>
+          <ul>{guideRules.map((rule, index) => <li key={index}>{rule}</li>)}</ul>
         </div>
-        <div className="ccg-actions"><button className="ccg-action" onClick={() => copy(ALL_CSS,"已複製完整清單")}>複製完整清單</button><button className="ccg-action" onClick={() => copy(AI_PROMPT,"已複製 AI 提示詞")}>複製 AI 提示詞</button></div>
+        <div className="ccg-actions"><button className="ccg-action" onClick={() => copy(selectorList, tr("已複製完整清單", "Full list copied", "一覧をコピーしました", "전체 목록을 복사했습니다"))}>{tr("複製完整清單", "Copy full list", "一覧をコピー", "전체 목록 복사")}</button><button className="ccg-action" onClick={() => copy(aiPrompt, tr("已複製 AI 提示詞", "AI prompt copied", "AI プロンプトをコピーしました", "AI 프롬프트를 복사했습니다"))}>{tr("複製 AI 提示詞", "Copy AI prompt", "AI プロンプトをコピー", "AI 프롬프트 복사")}</button></div>
         {GROUPS.map((group) => {
           const expanded = expandedGroups.has(group.title);
           return <section className="ccg-group" key={group.title}>
             <button className="ccg-group-toggle" type="button" aria-expanded={expanded} onClick={() => toggleGroup(group.title)}>
-              <h3>{group.title}</h3><span className={`ccg-chevron ${expanded ? "open" : ""}`} aria-hidden="true">›</span>
+              <h3>{tr(group.title, "CSS selector group", "CSS セレクターグループ", "CSS 선택자 그룹")}</h3><span className={`ccg-chevron ${expanded ? "open" : ""}`} aria-hidden="true">›</span>
             </button>
             {expanded && <div className="ccg-group-items">
-              {group.note && <p className="ccg-note">{group.note}</p>}
-              {group.items.map(([selector, description]) => <button className="ccg-item" key={selector} onClick={() => copy(`${selector} {\n  \n}`,`已複製 ${selector}`)}><code>{selector}</code><span>{description}</span></button>)}
+              {group.note && <p className="ccg-note">{tr(group.note, "Review this selector group before editing its layout.", "レイアウトを編集する前に、このセレクターグループを確認してください。", "레이아웃을 수정하기 전에 이 선택자 그룹을 확인하세요.")}</p>}
+              {group.items.map(([selector, description]) => <button className="ccg-item" key={selector} onClick={() => copy(`${selector} {\n  \n}`,tr(`已複製 ${selector}`, `Copied ${selector}`, `${selector} をコピーしました`, `${selector}을(를) 복사했습니다`))}><code>{selector}</code><span>{tr(description, `CSS selector: ${selector}`, `CSS セレクター：${selector}`, `CSS 선택자: ${selector}`)}</span></button>)}
             </div>}
           </section>;
         })}

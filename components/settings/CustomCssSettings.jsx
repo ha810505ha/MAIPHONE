@@ -26,7 +26,12 @@ export default function CustomCssSettings({
         value={draft}
         maxLength={30000}
         spellCheck={false}
-        placeholder={"例如：\n.mp-dock { border-radius: 28px; }\n.mp-icon-c { box-shadow: 0 4px 12px #f3a8bd66; }"}
+        placeholder={tr(
+          "例如：\n.mp-dock { border-radius: 28px; }\n.mp-icon-c { box-shadow: 0 4px 12px #f3a8bd66; }",
+          "For example:\n.mp-dock { border-radius: 28px; }\n.mp-icon-c { box-shadow: 0 4px 12px #f3a8bd66; }",
+          "例：\n.mp-dock { border-radius: 28px; }\n.mp-icon-c { box-shadow: 0 4px 12px #f3a8bd66; }",
+          "예시:\n.mp-dock { border-radius: 28px; }\n.mp-icon-c { box-shadow: 0 4px 12px #f3a8bd66; }",
+        )}
         onChange={(event) => { setDraft(event.target.value); setNotice(""); }}
         style={{ width: "100%", height: 150, boxSizing: "border-box", resize: "vertical", marginTop: 10, padding: 10, border: "1px solid var(--mp-card-border)", borderRadius: 12, background: "var(--mp-page-control-bg,var(--mp-surface))", color: "var(--mp-page-text,var(--mp-txt))", caretColor: "var(--mp-accent,var(--mp-pink-dk))", font: "11px/1.55 ui-monospace,monospace" }}
       />

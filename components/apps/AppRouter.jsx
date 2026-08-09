@@ -13,12 +13,12 @@ const CoupleApp = lazyWithRetry(() => import("./CoupleApp.jsx"));
 const CalendarApp = lazyWithRetry(() => import("./CalendarApp.jsx"));
 const YunyinGame = lazyWithRetry(() => import("../../yunyin/YunyinGame.jsx"));
 
-function AppLoading({ dark = false }) {
-  return <div className="mp-page" style={{ display: "grid", placeItems: "center", background: dark ? "#1c2733" : "var(--mp-page-bg)", color: dark ? "#fff" : "var(--mp-txt)" }}>載入中⋯</div>;
+function AppLoading({ dark = false, tr }) {
+  return <div className="mp-page" style={{ display: "grid", placeItems: "center", background: dark ? "#1c2733" : "var(--mp-page-bg)", color: dark ? "#fff" : "var(--mp-txt)" }}>{tr("載入中⋯", "Loading…", "読み込み中…", "불러오는 중…")}</div>;
 }
 
 const withSuspense = (content, options = {}) => (
-  <Suspense fallback={<AppLoading dark={!!options.dark} />}>{content}</Suspense>
+  <Suspense fallback={<AppLoading dark={!!options.dark} tr={options.tr || ((value) => value)} />}>{content}</Suspense>
 );
 
 function UnknownApp({ appId, closeApp, tr }) {
@@ -46,24 +46,25 @@ function PlaceholderApp({ icon, title, closeApp, t }) {
   return <div className="mp-page"><div className="mp-hdr"><div className="mp-back" onClick={closeApp}>←</div><div className="mp-htitle">{icon} {title}</div></div><div className="mp-empty" style={{ flex: 1 }}><div className="mp-empty-i">{icon}</div><div className="mp-empty-t">{t("comingSoon")}<br />{t("stayTuned")}</div></div></div>;
 }
 
-export default function AppRouter({ currentApp, renderers, game, closeApp, t, tr, yunyin, apiConfig, playerProfile, chatHistory, setChatHistory }) {
+export default function AppRouter({ currentApp, renderers, game, closeApp, t, tr, uiLanguage, yunyin, apiConfig, playerProfile, chatHistory, setChatHistory }) {
   if (!currentApp) return null;
   if (renderers?.[currentApp]) {
-    return withSuspense(renderers[currentApp]());
+    return withSuspense(renderers[currentApp](), { tr });
   }
   switch (currentApp) {
     case "gallery": return <PlaceholderApp icon="🖼️" title={t("gallery")} closeApp={closeApp} t={t} />;
     case "game": return withSuspense(<GameCenter page={game.page} setPage={game.setPage} closeApp={closeApp} t={t} tr={tr} characters={game.characters} onOpenChat={game.onOpenChat} />);
-    case "petHome": return withSuspense(<PetHome onClose={closeApp} apiConfig={apiConfig} />);
+    case "petHome": return withSuspense(<PetHome onClose={closeApp} apiConfig={apiConfig} uiLanguage={uiLanguage} />, { tr });
     case "yunyin": return withSuspense(
       <YunyinGame
         onBack={closeApp}
+        uiLanguage={uiLanguage}
         characters={yunyin?.characters || []}
-        onAiGenerate={yunyin ? (charId, poolSpec) => yunyinGenerateLinePack(charId, poolSpec, yunyin.apiConfig, yunyin.characters) : null}
+        onAiGenerate={yunyin ? (charId, poolSpec) => yunyinGenerateLinePack(charId, poolSpec, yunyin.apiConfig, yunyin.characters, uiLanguage) : null}
       />,
-      { dark: true },
+      { dark: true, tr },
     );
-    case "lbook": return withSuspense(<AnswerBookApp closeApp={closeApp} title={t("answerBook")} />);
+    case "lbook": return withSuspense(<AnswerBookApp closeApp={closeApp} title={t("answerBook")} locale={uiLanguage} />, { tr });
     case "notebook": return withSuspense(<NotesApp onBack={closeApp} tr={tr} />);
     case "music": return withSuspense(<MusicApp closeApp={closeApp} apiConfig={apiConfig} characters={game?.characters || []} playerProfile={playerProfile} tr={tr} />);
     case "couple": return withSuspense(<CoupleApp closeApp={closeApp} characters={game?.characters || []} chatHistory={chatHistory || {}} setChatHistory={setChatHistory} playerProfile={playerProfile} apiConfig={apiConfig} tr={tr} />);

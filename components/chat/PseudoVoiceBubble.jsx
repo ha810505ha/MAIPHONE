@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
-import { pseudoVoiceBubbleWidth } from "../../utils/pseudoVoice";
+import { pseudoVoiceBubbleWidth, resolvePseudoVoiceDuration } from "../../utils/pseudoVoice";
 
-export default function PseudoVoiceBubble({ pseudoVoice, compact = false, playback = null }) {
+export default function PseudoVoiceBubble({ pseudoVoice, compact = false, playback = null, tr = (value) => value }) {
   const [simulatedPlaying, setSimulatedPlaying] = useState(false);
   const [textActionOpen, setTextActionOpen] = useState(false);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const timerRef = useRef(null);
-  const duration = Math.max(2, Number(pseudoVoice?.duration) || 2);
+  const duration = resolvePseudoVoiceDuration(pseudoVoice);
   const width = compact ? Math.min(180, pseudoVoiceBubbleWidth(duration)) : pseudoVoiceBubbleWidth(duration);
   const usesTts = typeof playback?.onToggle === "function";
   const status = usesTts ? playback.status : (simulatedPlaying ? "playing" : "idle");
@@ -37,8 +37,8 @@ export default function PseudoVoiceBubble({ pseudoVoice, compact = false, playba
         <button
           type="button"
           onClick={togglePlayback}
-          aria-label={`${playing ? "暫停" : "播放"}語音訊息，${duration} 秒`}
-          title={usesTts ? "播放時才產生角色語音" : "播放語音訊息"}
+          aria-label={tr(`${playing ? "暫停" : "播放"}語音訊息，${duration} 秒`, `${playing ? "Pause" : "Play"} voice message, ${duration} seconds`, `${playing ? "一時停止" : "再生"}・音声メッセージ（${duration}秒）`, `${playing ? "일시정지" : "재생"} 음성 메시지, ${duration}초`)}
+          title={usesTts ? tr("播放時才產生角色語音", "Character voice is generated when played", "再生時にキャラクターボイスを生成します", "재생할 때 캐릭터 음성을 생성합니다") : tr("播放語音訊息", "Play voice message", "音声メッセージを再生", "음성 메시지 재생")}
           style={{ width: 20, minWidth: 20, padding: 0, border: 0, background: "transparent", color: "inherit", fontSize: 15, cursor: "pointer" }}
         >
           {loading ? "…" : playing ? "Ⅱ" : "▶"}
@@ -46,8 +46,8 @@ export default function PseudoVoiceBubble({ pseudoVoice, compact = false, playba
         <button
           type="button"
           onClick={(event) => { event.stopPropagation(); setTextActionOpen((open) => !open); }}
-          aria-label="顯示語音文字選項"
-          title="顯示文字"
+          aria-label={tr("顯示語音文字選項", "Show voice transcript options", "音声テキストのオプションを表示", "음성 텍스트 옵션 표시")}
+          title={tr("顯示文字", "Show transcript", "テキストを表示", "텍스트 보기")}
           style={{ flex: 1, minWidth: 0, height: 28, padding: 0, border: 0, background: "transparent", color: "inherit", display: "flex", alignItems: "center", gap: 2, overflow: "hidden", cursor: "pointer" }}
         >
           {Array.from({ length: compact ? 12 : 18 }, (_, index) => (
@@ -71,7 +71,7 @@ export default function PseudoVoiceBubble({ pseudoVoice, compact = false, playba
             onClick={(event) => { event.stopPropagation(); setTranscriptOpen((open) => !open); setTextActionOpen(false); }}
             style={{ border: "1px solid currentColor", borderRadius: 99, padding: "2px 8px", background: "rgba(255,255,255,.18)", color: "inherit", fontSize: 9, fontWeight: 700, cursor: "pointer" }}
           >
-            {transcriptOpen ? "收起文字" : "轉文字"}
+            {transcriptOpen ? tr("收起文字", "Hide transcript", "テキストを閉じる", "텍스트 접기") : tr("轉文字", "Transcript", "文字起こし", "텍스트로 보기")}
           </button>
         </span>
       )}

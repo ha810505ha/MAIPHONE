@@ -13,15 +13,23 @@ const charPersona = (char) => {
 
 // 生成個人句庫：一次呼叫產出全部觸發池的台詞 JSON（poolSpec = { 池名: 句數 }）。
 // 成功回傳 { 池名: [句...] }，任何失敗回 null。
-export async function yunyinGenerateLinePack(charId, poolSpec, apiConfig, characters) {
+export async function yunyinGenerateLinePack(charId, poolSpec, apiConfig, characters, locale = "zh-TW") {
   const char = characters.find((c) => c.id === charId);
   if (!char || !isAiConfigReady(apiConfig)) return null;
+
+  const outputLanguage = {
+    "zh-TW": "繁體中文",
+    "zh-CN": "簡體中文",
+    en: "英文",
+    ja: "日文",
+    ko: "韓文",
+  }[locale] || "繁體中文";
 
   const sys = `${charPersona(char)}
 [情境]
 你住在玩家經營的修仙莊園「雲隱山莊」，陪伴玩家修行、種靈田、闖秘境。
 [任務]
-為下列遊戲時機各寫台詞，以你的角色口吻對玩家說，每句 30 字以內、繁體中文、不要旁白動作描寫、不要引號。
+為下列遊戲時機各寫台詞，以你的角色口吻對玩家說，每句簡短自然。所有台詞必須使用${outputLanguage}，不要旁白動作描寫、不要引號。
 只輸出 JSON 物件，不要任何其他文字或 markdown 圍欄。`;
 
   const poolDesc = {

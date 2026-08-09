@@ -12,16 +12,31 @@ const normalizeState = (value) => ({
   claimedGrantIds: Array.isArray(value?.claimedGrantIds) ? [...new Set(value.claimedGrantIds.map(String))] : [],
 });
 
-export async function loadMailbox() {
+export async function loadMailbox(locale = "zh-TW") {
   const state = normalizeState(await loadFeatureEntity(MAILBOX_KEY, EMPTY_STATE));
   const now = Date.now();
   const mails = SYSTEM_MAILS
     .map((mail) => {
+      const translation = mail.translations?.[locale];
+      const attachments = (mail.attachments || []).map((item, index) => ({
+        ...item,
+        label: translation?.attachments?.[index]?.label || item.label,
+      }));
       const createdAt = new Date(mail.createdAt).getTime();
       const expiresAt = mail.expiresAt
         ? new Date(mail.expiresAt).getTime()
         : createdAt + MAIL_RETENTION_MS;
-      return { ...mail, expiresAt: new Date(expiresAt).toISOString(), expiresAtMs: expiresAt };
+      return {
+        ...mail,
+        ...(translation ? {
+          sender: translation.sender || mail.sender,
+          title: translation.title || mail.title,
+          content: translation.content || mail.content,
+        } : {}),
+        attachments,
+        expiresAt: new Date(expiresAt).toISOString(),
+        expiresAtMs: expiresAt,
+      };
     })
     .filter((mail) => Number.isFinite(mail.expiresAtMs) && mail.expiresAtMs > now)
     .map(({ expiresAtMs, ...mail }) => ({

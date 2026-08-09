@@ -1,3 +1,6 @@
+import { legacyPersonalityName, normalizePetProfile } from "./petProfile.js";
+import { localizedAfkDiary, localizedAfkGreeting, localizedAfkMilestone, localizedBirthday, localizedMilestone } from "./petDiaryLocales.js";
+
 const DAY = 86400000;
 
 const pick = (lines) => lines[Math.floor(Math.random() * lines.length)];
@@ -116,15 +119,22 @@ const BIRTHDAY_LINES = {
 };
 
 const pickLines = (set, profile) => {
-  const personality = profile?.primaryPersonality;
+  const personality = legacyPersonalityName(profile?.primaryPersonality);
   return pick((personality && set[personality]) || set.default || [""]);
 };
 
-export const birthdayLine = (profile) => pickLines(BIRTHDAY_LINES, profile);
+export const birthdayLine = (profile, locale = "zh-TW") => {
+  const fallback = pickLines(BIRTHDAY_LINES, profile);
+  return localizedBirthday(locale, "我的生日！", fallback)[1];
+};
+
+export const birthdayEntryTitle = (locale = "zh-TW") => localizedBirthday(locale, "我的生日！", "")[0];
+export const milestoneForLocale = (key, locale = "zh-TW") => localizedMilestone(locale, key, MILESTONES[key]);
+export const afkMilestoneForLocale = (key, locale = "zh-TW") => localizedAfkMilestone(locale, key, AFK_MILESTONES[key]);
 
 const lineFor = (milestone, profile) => pickLines(milestone.lines || { default: [milestone.title] }, profile);
 
-export function evaluateMilestones(data) {
+export function evaluateMilestones(data, locale = "zh-TW") {
   let next = data;
   let changed = false;
   for (const key of MILESTONE_ORDER) {
@@ -136,13 +146,15 @@ export function evaluateMilestones(data) {
     }
     const at = Date.now();
     next.milestones[key] = at;
-    next.diary.unshift({ id: `auto-${key}-${at}`, at, type: "auto", milestone: key, icon: milestone.icon, title: milestone.title, text: lineFor(milestone, next.petProfile), note: "", aiPending: true });
+    const localized = milestoneForLocale(key, locale);
+    next.diary.unshift({ id: `auto-${key}-${at}`, at, type: "auto", milestone: key, icon: milestone.icon, title: localized.title, text: lineFor(localized, next.petProfile), note: "", aiPending: true });
   }
   return next;
 }
 
-export function normalizePetHome(raw) {
+export function normalizePetHome(raw, locale = "zh-TW") {
   const data = { ...raw };
+  data.petProfile = normalizePetProfile(data.petProfile);
   if (!Number(data.adoptedAt)) data.adoptedAt = Date.now();
   if (!Number.isFinite(Number(data.bond))) data.bond = 20;
   if (!Array.isArray(data.diary)) data.diary = [];
@@ -150,7 +162,7 @@ export function normalizePetHome(raw) {
   if (!data.counters || typeof data.counters !== "object") data.counters = {};
   if (!data.sceneVisits || typeof data.sceneVisits !== "object") data.sceneVisits = {};
   if (!Number(data.lastCareAt)) data.lastCareAt = Date.now();
-  return evaluateMilestones(data);
+  return evaluateMilestones(data, locale);
 }
 
 // 當日活動流水：餵食次數、去過的場景、主人手寫的日記，隔天做為「有料才寫」日記的素材。
@@ -205,9 +217,9 @@ const AFK_GREETINGS = [
   }],
 ];
 
-export const afkGreeting = (idleDays, profile) => {
+export const afkGreeting = (idleDays, profile, locale = "zh-TW") => {
   const tier = AFK_GREETINGS.find(([days]) => idleDays >= days);
-  return tier ? pickLines(tier[1], profile) : "";
+  return tier ? localizedAfkGreeting(locale, tier[0], pickLines(tier[1], profile)) : "";
 };
 
 // 主人不在的日子，寵物在第 3、5、10、15 天各寫一篇等待日記（回來時回填日期）
@@ -241,12 +253,15 @@ export const AFK_MILESTONES = {
   afk15: { icon: "🕯️", title: "很長很長的等待", hint: "不管第幾天，牠都在原地等你" },
 };
 
-export const afkDiaryEntries = (idleDays, lastCareAt, profile) => {
+export const afkDiaryEntries = (idleDays, lastCareAt, profile, locale = "zh-TW") => {
   const base = Number(lastCareAt);
   if (!base) return [];
   return AFK_DIARY
     .filter(([days]) => idleDays >= days)
-    .map(([days, icon, title, lines]) => ({ id: `afk-${days}-${base}`, at: base + days * DAY, type: "life", icon, title, text: pickLines(lines, profile), note: "" }))
+    .map(([days, icon, title, lines]) => {
+      const localized = localizedAfkDiary(locale, days, title, pickLines(lines, profile));
+      return { id: `afk-${days}-${base}`, at: base + days * DAY, type: "life", icon, title: localized[0], text: localized[1], note: "" };
+    })
     .sort((a, b) => b.at - a.at);
 };
 

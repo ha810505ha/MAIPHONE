@@ -1,7 +1,7 @@
 {
   "name": "maliphone",
   "private": true,
-  "version": "1.2.9",
+  "version": "1.2.10",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -57,7 +57,7 @@
     "@capacitor/local-notifications": "^8.2.0",
     "@capawesome/capacitor-google-sign-in": "^0.1.2",
     "@supabase/supabase-js": "^2.57.0",
-    "dompurify": "^3.4.12",
+    "dompurify": "^3.4.13",
     "html2canvas": "^1.4.1",
     "lucide-react": "^1.21.0",
     "opencc-js": "^1.4.1",

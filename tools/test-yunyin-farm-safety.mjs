@@ -4,6 +4,7 @@ import { createInput } from "../yunyin/engine/input.js";
 import { npcAtWorldPoint } from "../yunyin/world/npcHitTest.js";
 import { plotIndexNearPoint } from "../yunyin/world/spatialQueries.js";
 import { canDismissPanelFromBackdrop } from "../yunyin/ui/panelInteraction.js";
+import { mergedPortalVisuals } from "../yunyin/world/portalVisuals.js";
 import {
   AURA_MUL,
   HARVEST_REPLANT_GUARD_MS,
@@ -28,6 +29,19 @@ const saveWith = ({ realmIdx = 0, coins = 100, plots, inventory = {} } = {}) => 
     plots: plots || Array.from({ length: 9 }, (_, id) => ({ id, cropId: null, plantedAt: null })),
   },
 });
+
+{
+  const doorway = [
+    { x: 12, y: 14, to: "residence", spawn: [17, 16], label: "離開小屋", icon: "🚪" },
+    { x: 13, y: 14, to: "residence", spawn: [17, 16], label: "離開小屋", icon: "🚪" },
+  ];
+  const visuals = mergedPortalVisuals(doorway);
+  assert.equal(visuals.length, 1, "相鄰且同目的地的雙格出口應只繪製一個傳送點");
+  assert.equal(visuals[0].x, 12.5, "合併後的傳送點應置中在雙格門口");
+  assert.equal(visuals[0].y, 14);
+  assert.equal(doorway.length, 2, "合併顯示不得刪除原本兩格的點擊範圍");
+  assert.equal(mergedPortalVisuals([{ ...doorway[0] }, { ...doorway[1], to: "gate" }]).length, 2, "不同目的地不得合併");
+}
 
 {
   const map = {

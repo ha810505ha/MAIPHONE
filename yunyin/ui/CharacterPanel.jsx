@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { DEFAULT_APPEARANCE, sanitizeAppearance, randomAppearance, drawActor } from "../engine/sprite";
 import { CHAR_MANIFEST } from "../data/charManifest";
+import { useYunyinLocale } from "../i18n/YunyinLocale.jsx";
 
 const FACINGS = ["down", "left", "up", "right"];
 const cycleIn = (arr, cur, dir) => arr[(arr.indexOf(cur) + dir + arr.length) % arr.length];
@@ -9,6 +10,7 @@ const accName = (style) => style.replace(/^\d+_/, "").replace(/_/g, " ");
 
 // 泛用外觀編輯器：value 是目前外觀（玩家或 NPC），onSave 拿到編輯結果——由呼叫端決定存到哪
 export default function CharacterPanel({ value, onSave, onClose }) {
+  const { yt } = useYunyinLocale();
   const [draft, setDraft] = useState(() => sanitizeAppearance(value));
   const [facing, setFacing] = useState("down");
   const canvasRef = useRef(null);
@@ -42,15 +44,15 @@ export default function CharacterPanel({ value, onSave, onClose }) {
 
   const rows = [
     {
-      label: "膚色", value: `${draft.body}/${m.bodies.length}`,
+      label: yt("appearance.skin"), value: `${draft.body}/${m.bodies.length}`,
       cycle: (dir) => setDraft((d) => ({ ...d, body: cycleIn(m.bodies, d.body, dir) })),
     },
     {
-      label: "眼睛", value: `${draft.eyes}/${m.eyes.length}`,
+      label: yt("appearance.eyes"), value: `${draft.eyes}/${m.eyes.length}`,
       cycle: (dir) => setDraft((d) => ({ ...d, eyes: cycleIn(m.eyes, d.eyes, dir) })),
     },
     {
-      label: "髮型", value: draft.hair ? `${draft.hair.style}/${m.hair.length}` : "光頭",
+      label: yt("appearance.hair"), value: draft.hair ? `${draft.hair.style}/${m.hair.length}` : yt("appearance.bald"),
       cycle: (dir) => setDraft((d) => {
         const next = cycleIn(hairStyles, d.hair?.style ?? null, dir);
         if (next === null) return { ...d, hair: null };
@@ -59,11 +61,11 @@ export default function CharacterPanel({ value, onSave, onClose }) {
       }),
     },
     hairDef && {
-      label: "髮色", value: `${draft.hair.color}/${hairDef.colors.length}`,
+      label: yt("appearance.hairColor"), value: `${draft.hair.color}/${hairDef.colors.length}`,
       cycle: (dir) => setDraft((d) => ({ ...d, hair: { ...d.hair, color: cycleIn(hairDef.colors, d.hair.color, dir) } })),
     },
     {
-      label: "服裝", value: `${draft.outfit.style}/${m.outfits.length}`,
+      label: yt("appearance.outfit"), value: `${draft.outfit.style}/${m.outfits.length}`,
       cycle: (dir) => setDraft((d) => {
         const next = cycleIn(m.outfits.map((o) => o.style), d.outfit.style, dir);
         const def = m.outfits.find((o) => o.style === next);
@@ -71,11 +73,11 @@ export default function CharacterPanel({ value, onSave, onClose }) {
       }),
     },
     {
-      label: "衣色", value: `${draft.outfit.color}/${outfitDef.colors.length}`,
+      label: yt("appearance.outfitColor"), value: `${draft.outfit.color}/${outfitDef.colors.length}`,
       cycle: (dir) => setDraft((d) => ({ ...d, outfit: { ...d.outfit, color: cycleIn(outfitDef.colors, d.outfit.color, dir) } })),
     },
     {
-      label: "配飾", value: draft.accessory ? accName(draft.accessory.style) : "無",
+      label: yt("appearance.accessory"), value: draft.accessory ? accName(draft.accessory.style) : yt("common.none"),
       cycle: (dir) => setDraft((d) => {
         const next = cycleIn(accStyles, d.accessory?.style ?? null, dir);
         if (next === null) return { ...d, accessory: null };
@@ -84,7 +86,7 @@ export default function CharacterPanel({ value, onSave, onClose }) {
       }),
     },
     accDef && accDef.colors.length > 1 && {
-      label: "飾色", value: `${draft.accessory.color}/${accDef.colors.length}`,
+      label: yt("appearance.accessoryColor"), value: `${draft.accessory.color}/${accDef.colors.length}`,
       cycle: (dir) => setDraft((d) => ({ ...d, accessory: { ...d.accessory, color: cycleIn(accDef.colors, d.accessory.color, dir) } })),
     },
   ].filter(Boolean);
@@ -98,7 +100,7 @@ export default function CharacterPanel({ value, onSave, onClose }) {
         <div style={{ textAlign: "center", width: 120, flex: "0 0 120px" }}>
           <canvas ref={canvasRef} width={140} height={190} style={{ width: 120, height: 163, borderRadius: 12, display: "block", imageRendering: "pixelated" }} />
           <button onClick={() => setFacing(FACINGS[(FACINGS.indexOf(facing) + 1) % 4])} style={{ ...arrowBtn, width: "100%", marginTop: 6, fontSize: 12 }}>
-            轉身 ↻
+            {yt("appearance.turn")}
           </button>
         </div>
         {/* 部位調整 */}
@@ -115,12 +117,12 @@ export default function CharacterPanel({ value, onSave, onClose }) {
       </div>
 
       <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-        <button style={{ ...arrowBtn, width: "auto", padding: "0 14px", height: 38 }} onClick={() => setDraft(randomAppearance(`${Date.now()}-${Math.random()}`))}>🎲 隨機</button>
-        <button style={{ ...arrowBtn, width: "auto", padding: "0 14px", height: 38 }} onClick={() => setDraft({ ...DEFAULT_APPEARANCE })}>還原</button>
+        <button style={{ ...arrowBtn, width: "auto", padding: "0 14px", height: 38 }} onClick={() => setDraft(randomAppearance(`${Date.now()}-${Math.random()}`))}>{yt("common.random")}</button>
+        <button style={{ ...arrowBtn, width: "auto", padding: "0 14px", height: 38 }} onClick={() => setDraft({ ...DEFAULT_APPEARANCE })}>{yt("common.reset")}</button>
         <button
           onClick={() => { onSave(draft); onClose(); }}
           style={{ flex: 1, border: 0, borderRadius: 12, height: 38, fontSize: 14, fontWeight: 700, cursor: "pointer", background: "linear-gradient(135deg,#7d5a6e,#9c7089)", color: "#fff" }}
-        >完成</button>
+        >{yt("common.done")}</button>
       </div>
     </div>
   );

@@ -17,11 +17,18 @@ export function estimatePseudoVoiceDuration(text) {
   if (!value) return 0;
   const hanCount = (value.match(/[\u3400-\u9fff]/g) || []).length;
   const words = value.replace(/[\u3400-\u9fff]/g, " ").match(/[A-Za-z0-9]+(?:['’-][A-Za-z0-9]+)*/g) || [];
+  const spokenWordUnits = words.reduce((total, word) => total + Math.max(1, word.length / 5), 0);
   const otherCount = value.replace(/[\s\u3400-\u9fffA-Za-z0-9'’\-]/g, "").length;
   const shortPauses = (value.match(/[，,、；;：:]/g) || []).length * 0.16;
   const longPauses = (value.match(/[。！？!?…]/g) || []).length * 0.34;
-  const seconds = hanCount / 3.6 + words.length / 2.5 + otherCount / 5 + shortPauses + longPauses;
+  const seconds = hanCount / 3.6 + spokenWordUnits / 2.5 + otherCount / 5 + shortPauses + longPauses;
   return Math.max(2, Math.min(60, Math.ceil(seconds)));
+}
+
+export function resolvePseudoVoiceDuration(pseudoVoice) {
+  const estimated = estimatePseudoVoiceDuration(pseudoVoice?.transcript);
+  if (estimated) return estimated;
+  return Math.max(2, Math.min(60, Number(pseudoVoice?.duration) || 2));
 }
 
 export function createPseudoVoice(transcript) {
@@ -57,6 +64,16 @@ export function normalizePersistedPseudoVoiceMessages(messages) {
   const normalized = [];
 
   messages.forEach((message) => {
+    if (message?.pseudoVoice?.transcript) {
+      const duration = resolvePseudoVoiceDuration(message.pseudoVoice);
+      if (duration !== Number(message.pseudoVoice.duration)) {
+        changed = true;
+        normalized.push({ ...message, pseudoVoice: { ...message.pseudoVoice, duration } });
+      } else {
+        normalized.push(message);
+      }
+      return;
+    }
     if (message?.role !== "assistant" || message.pseudoVoice || typeof message.content !== "string") {
       normalized.push(message);
       return;
@@ -87,7 +104,7 @@ export function normalizePersistedPseudoVoiceMessages(messages) {
 
 export function pseudoVoicePromptLine(pseudoVoice, senderLabel) {
   if (!pseudoVoice?.transcript) return "";
-  return `\n[語音訊息] ${senderLabel}傳了一段約 ${pseudoVoice.duration || estimatePseudoVoiceDuration(pseudoVoice.transcript)} 秒的語音，語音內容是：「${pseudoVoice.transcript}」`;
+  return `\n[語音訊息] ${senderLabel}傳了一段約 ${resolvePseudoVoiceDuration(pseudoVoice)} 秒的語音，語音內容是：「${pseudoVoice.transcript}」`;
 }
 
 export function pseudoVoiceBubbleWidth(duration) {

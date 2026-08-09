@@ -63,12 +63,23 @@ for (const [name, code, marker] of [
   ["login reward", login, 'source: "login"'],
   ["system mailbox", mailbox, 'source: "mailbox"'],
   ["Yunyin default", yunyin, 'source: "yunyin"'],
-  ["Yunyin dungeon", dungeon, "雲隱山莊・秘境"],
-  ["Yunyin order", shop, "雲隱山莊・行商訂單"],
-  ["Yunyin resident request", resident, "雲隱山莊・完成"],
   ["furniture purchase", furniture, 'source: "furniture"'],
 ]) {
   assert(code.includes(marker), `${name} must identify its crystal transaction`);
 }
+
+assert(
+  dungeon.includes("onCrystals?.(s.crystals")
+    && ["dungeon.noteCleared", "dungeon.noteRetreat", "dungeon.noteExplore"].every((key) => dungeon.includes(key)),
+  "Yunyin dungeon must identify localized crystal transactions",
+);
+assert(
+  shop.includes("onCrystals(r.rewardCrystals") && shop.includes('yt("shop.orderNote"'),
+  "Yunyin orders must identify localized crystal transactions",
+);
+assert(
+  resident.includes("onCrystals?.(result.reward.crystals") && resident.includes('yt("resident.requestNote"'),
+  "Yunyin resident requests must identify localized crystal transactions",
+);
 
 console.log("ok: crystal balance migration, 30-entry cap, wallet history, and all reward sources stay connected");

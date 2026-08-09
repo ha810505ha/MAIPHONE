@@ -211,7 +211,7 @@ export function drawCharacter(ctx, actor, appearance, camera, scale, now) {
   });
 }
 
-export function drawNpcLabel(ctx, npc, label, camera, scale) {
+export function drawNpcLabel(ctx, npc, label, camera, scale, helperLabel = "照料中") {
   if (!label) return;
   const tileSize = TILE * scale;
   const pos = actorRenderPos(npc);
@@ -221,7 +221,7 @@ export function drawNpcLabel(ctx, npc, label, camera, scale) {
   ctx.strokeStyle = "rgba(0,0,0,.5)"; ctx.lineWidth = 3; ctx.strokeText(label, x, y); ctx.fillText(label, x, y);
   if (npc.helper) {
     ctx.font = `${6.5 * scale}px sans-serif`; ctx.fillStyle = "rgba(255,239,180,.98)"; ctx.strokeStyle = "rgba(70,45,35,.72)"; ctx.lineWidth = 2;
-    ctx.fillText("照料中", x, y + 8 * scale);
+    ctx.fillText(helperLabel, x, y + 8 * scale);
   }
 }
 

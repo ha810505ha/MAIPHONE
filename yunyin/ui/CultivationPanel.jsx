@@ -1,13 +1,20 @@
 import React, { useEffect, useState } from "react";
 import { REALMS } from "../data/realms";
 import { realmOf, isMaxRealm, settleExp, canBreakthrough, attemptBreakthrough } from "../systems/cultivation";
+import { useYunyinLocale } from "../i18n/YunyinLocale.jsx";
 
-const UNLOCK_LABELS = {
-  plot_4: "靈田第 4 格", plot_5: "靈田第 5 格", plot_6: "靈田第 6 格", plot_7: "靈田第 7 格", plot_8: "靈田第 8 格",
-  recipe_ningshen: "丹方：凝神丹", furnace_2: "第 2 座丹爐", dungeon_depth_2: "秘境深度 2", dungeon_depth_3: "秘境深度 3",
+const unlockLabel = (key, yt) => {
+  const plot = /^plot_(\d+)$/.exec(key);
+  const depth = /^dungeon_depth_(\d+)$/.exec(key);
+  if (plot) return yt("cultivation.unlockPlot", { number: plot[1] });
+  if (depth) return yt("cultivation.unlockDepth", { number: depth[1] });
+  if (key === "recipe_ningshen") return yt("cultivation.unlockRecipe");
+  if (key === "furnace_2") return yt("cultivation.unlockFurnace");
+  return key;
 };
 
 export default function CultivationPanel({ save, onDirty, onCompanion, onClose }) {
+  const { yt, yv } = useYunyinLocale();
   const [, setTick] = useState(0);
   const [result, setResult] = useState(null); // 突破結果訊息
   const [companionLine, setCompanionLine] = useState(null); // 入駐角色的一句話
@@ -30,8 +37,8 @@ export default function CultivationPanel({ save, onDirty, onCompanion, onClose }
     const r = attemptBreakthrough(c);
     if (!r) return;
     setResult(r.ok
-      ? { ok: true, text: `突破成功！晉入「${r.realmName}」` }
-      : { ok: false, text: "心魔來襲，突破失敗⋯⋯修為折損一成，需調息一個時辰。" });
+      ? { ok: true, text: yt("cultivation.breakthroughSuccess", { realm: yv(r.realmName) }) }
+      : { ok: false, text: yt("cultivation.breakthroughFailed") });
     onDirty();
     setTick((t) => t + 1);
     // 入駐角色的反應（AI 或句庫，取不到就安靜）
@@ -47,8 +54,8 @@ export default function CultivationPanel({ save, onDirty, onCompanion, onClose }
   return (
     <div style={{ textAlign: "left" }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-        <div style={{ fontSize: 22, fontWeight: 800 }}>{realm.name}</div>
-        <div style={{ fontSize: 12, color: "#8a7a6a" }}>修為 +{realm.ratePerMin}/分</div>
+        <div style={{ fontSize: 22, fontWeight: 800 }}>{yv(realm.name)}</div>
+        <div style={{ fontSize: 12, color: "#8a7a6a" }}>{yt("cultivation.rate", { rate: realm.ratePerMin })}</div>
       </div>
       {/* 修為條 */}
       <div style={{ marginTop: 12, height: 14, borderRadius: 7, background: "#e8ddd0", overflow: "hidden" }}>
@@ -61,8 +68,8 @@ export default function CultivationPanel({ save, onDirty, onCompanion, onClose }
 
       {nextRealm && (
         <div style={{ marginTop: 12, fontSize: 12, color: "#6b5d4f", background: "#f3ece2", borderRadius: 10, padding: "8px 10px", lineHeight: 1.7 }}>
-          <b>下一境「{nextRealm.name}」解鎖：</b><br />
-          {nextRealm.unlocks.length ? nextRealm.unlocks.map((k) => UNLOCK_LABELS[k] || k).join("、") : "—"}
+          <b>{yt("cultivation.nextUnlocks", { realm: yv(nextRealm.name) })}</b><br />
+          {nextRealm.unlocks.length ? nextRealm.unlocks.map((key) => unlockLabel(key, yt)).join(" · ") : "—"}
         </div>
       )}
 
@@ -87,10 +94,10 @@ export default function CultivationPanel({ save, onDirty, onCompanion, onClose }
               background: canBreakthrough(c) ? "linear-gradient(135deg,#7d5a6e,#9c7089)" : "#d8cfc4", color: "#fff",
             }}
           >
-            {cdLeftMin > 0 ? `調息中（${cdLeftMin} 分）` : pct >= 100 ? "嘗試突破" : "修為未滿"}
+            {cdLeftMin > 0 ? yt("cultivation.recovering", { minutes: cdLeftMin }) : pct >= 100 ? yt("cultivation.attempt") : yt("cultivation.notFull")}
           </button>
         )}
-        <button onClick={onClose} style={{ flex: 1, border: 0, borderRadius: 12, padding: "10px 0", fontSize: 14, background: "#e8ddd0", color: "#6b5d4f", cursor: "pointer" }}>離開</button>
+        <button onClick={onClose} style={{ flex: 1, border: 0, borderRadius: 12, padding: "10px 0", fontSize: 14, background: "#e8ddd0", color: "#6b5d4f", cursor: "pointer" }}>{yt("common.leave")}</button>
       </div>
     </div>
   );

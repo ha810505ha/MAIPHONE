@@ -38,7 +38,7 @@ export default function SettingsApp({ closeApp, t, tr, tab, setTab, nightTheme, 
         {tab === "notifications" && <NotificationSettings tr={tr} {...notifications} />}
         {tab === "api" && <><ApiPresetSettings {...api.presetProps} /><AiConnectionSettings {...api.connectionProps} /><MaliTestModelSettings {...api.hostedTestProps} /> <VoiceApiSettings {...api.voiceProps} />{IMAGE_GEN_ENABLED && <ImageApiSettings tr={tr} />}</>}
         {modals.preset && <ApiPresetModal {...modals.preset} />}
-        {tab === "data" && <><SystemMailboxSettings /><AccountSettingsSection {...data.accountProps} /><DataBackupSettings {...data.backupProps} /></>}
+        {tab === "data" && <><SystemMailboxSettings tr={tr} locale={data.locale} /><AccountSettingsSection {...data.accountProps} /><DataBackupSettings {...data.backupProps} /></>}
         {tab === "about" && <><AboutInfoSettings {...about.infoProps} /><ResetDataSettings {...about.resetProps} /></>}
       </div>
     </div>

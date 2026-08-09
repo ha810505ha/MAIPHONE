@@ -35,7 +35,7 @@ function ReadonlyMessages({ room, tr }) {
     const innerThought = !isUser && message.innerThought?.content
       ? <div className="mp-thought-content">{message.innerThought.content}</div>
       : null;
-    const shared = { message, isUser, active: false, highlighted: false, displayContent, innerThought, voiceAction: null, onToggle: () => {}, onEdit: () => {} };
+    const shared = { message, tr, isUser, active: false, highlighted: false, displayContent, innerThought, voiceAction: null, onToggle: () => {}, onEdit: () => {} };
     return message.mode === "reality"
       ? <RealityChatMessage key={message.id} {...shared} renderedContent={<div style={{ whiteSpace: "pre-wrap" }}>{displayContent}</div>} />
       : <OnlineChatMessage key={message.id} {...shared} voicePlayback={null} />;

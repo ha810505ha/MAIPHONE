@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { appendGroupMessages, appendUniqueMessages, removeGroupMessage } from "../utils/messageState.js";
-import { extractPseudoVoiceDirectives, normalizePersistedPseudoVoiceMessages } from "../utils/pseudoVoice.js";
+import { estimatePseudoVoiceDuration, extractPseudoVoiceDirectives, normalizePersistedPseudoVoiceMessages } from "../utils/pseudoVoice.js";
 import { messagePreviewText } from "../utils/pseudoImage.js";
 import { inferCoupleInviteState } from "../utils/coupleInviteState.js";
 import { reviewCoupleInviteReplies } from "../utils/coupleInviteReview.js";
@@ -175,6 +175,7 @@ const canonicalVoice = extractPseudoVoiceDirectives("等等\n[[VOICE_MESSAGE]]�
 assert.equal(canonicalVoice.text, "等等");
 assert.equal(canonicalVoice.voices.length, 1);
 assert.equal(canonicalVoice.voices[0].transcript, "我很快就到。");
+assert.equal(estimatePseudoVoiceDuration("a".repeat(100)), 8);
 
 // Gemini 等模型可能把 VOICE 誤拼成 COICE；不能讓內部格式原樣出現在聊天氣泡。
 const misspelledVoice = extractPseudoVoiceDirectives("[[COICE_MESSAGE]]妳這語氣是在敷衍我嗎？[[/COICE_MESSAGE]]");
@@ -199,6 +200,11 @@ assert.equal(recoveredHistory[0].content, "先說一句。");
 assert.equal(recoveredHistory[1].id, "old-ai_recovered_voice_1");
 assert.equal(recoveredHistory[1].pseudoVoice.transcript, "再用語音說。");
 assert.equal(recoveredHistory[2].content, "[[COICE_MESSAGE]]玩家原文不應被改寫");
+
+const correctedVoiceDuration = normalizePersistedPseudoVoiceMessages([
+  { id: "old-player-voice", role: "user", content: "", pseudoVoice: { transcript: "a".repeat(100), duration: 2 } },
+]);
+assert.equal(correctedVoiceDuration[0].pseudoVoice.duration, 8);
 
 const pseudoImagePreview = messagePreviewText(
   { role: "assistant", content: "", pseudoImage: { desc: "不能顯示在列表裡的備註", hue: 20 } },

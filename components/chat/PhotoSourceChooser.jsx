@@ -1,8 +1,9 @@
 import React from "react";
+import { createPortal } from "react-dom";
 
 // 點「相片」後的來源選單：上傳真照片 vs 傳示意色塊。兩者平行呈現，不預設主角。
 export default function PhotoSourceChooser({ onUpload, onPseudo, onCancel, tr }) {
-  return <div className="mp-overlay" onClick={onCancel}>
+  const overlay = <div className="mp-overlay" onClick={onCancel}>
     <div className="mp-modal" style={{ maxWidth: 340 }} onClick={(event) => event.stopPropagation()}>
       <div className="mp-modal-t">{tr("傳送相片", "Send a photo", "写真を送る", "사진 보내기")}</div>
       <div style={{ display: "flex", gap: 10 }}>
@@ -20,4 +21,6 @@ export default function PhotoSourceChooser({ onUpload, onPseudo, onCancel, tr })
       <button className="mp-save" style={{ width: "100%", marginTop: 12, background: "linear-gradient(135deg,#b0bec5,#90a4ae)" }} onClick={onCancel}>{tr("取消", "Cancel", "キャンセル", "취소")}</button>
     </div>
   </div>;
+
+  return createPortal(overlay, document.querySelector(".mp-phone") || document.body);
 }

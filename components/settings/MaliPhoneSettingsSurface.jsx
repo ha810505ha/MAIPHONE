@@ -450,6 +450,7 @@ export default function MaliPhoneSettingsSurface({
       appearance={settingsAppearance}
       api={settingsApi}
       data={{
+        locale: appearance.interface.uiLanguage,
         accountProps: { auth, tr, notify },
         backupProps: {
           tr,

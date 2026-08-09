@@ -61,7 +61,7 @@ export default function MaliPhoneShell({
             <AllAppsDrawer {...libraryProps} />
             <FolderPanel {...folderProps} />
             <AppRouter {...routerProps} />
-            <MusicShellLayer currentApp={currentApp} />
+            <MusicShellLayer currentApp={currentApp} tr={routerProps.tr} />
             <NotificationBanner {...notificationProps} />
             {globalLayer}
           </AppRuntimeBoundary>

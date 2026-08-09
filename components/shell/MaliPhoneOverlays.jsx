@@ -1,5 +1,6 @@
 import React from "react";
 import DesktopPet from "../../DesktopPet";
+import { parseChangelogItem } from "../../utils/changelog.js";
 import { lazyWithRetry } from "../../utils/lazyWithRetry.js";
 import MotionPresence from "../motion/MotionPresence";
 
@@ -58,7 +59,7 @@ export default function MaliPhoneOverlays({
 
       {customCssGuide?.open && (
         <React.Suspense fallback={null}>
-          <CustomCssGuide onClose={customCssGuide.onClose} />
+          <CustomCssGuide onClose={customCssGuide.onClose} tr={tr} />
         </React.Suspense>
       )}
 
@@ -151,12 +152,11 @@ export default function MaliPhoneOverlays({
                   ? updateNotice.items
                   : [tr("這個版本沒有填寫更新內容。", "No update notes were added for this version.", "このバージョンの更新内容は未記入です。", "이 버전의 업데이트 내용이 없습니다.")]
                 ).map((item, index) => {
-                  const [title, ...detail] = String(item).split("｜");
+                  const { title, detail } = parseChangelogItem(item);
                   return (
                     <div key={index} className="mp-update-item">
-                      {detail.length
-                        ? <><strong>{title}</strong><span style={{ whiteSpace: "pre-line" }}>{detail.join("｜")}</span></>
-                        : <span>{item}</span>}
+                      {title && <strong>{title}</strong>}
+                      <span style={{ whiteSpace: "pre-line" }}>{detail}</span>
                     </div>
                   );
                 })}

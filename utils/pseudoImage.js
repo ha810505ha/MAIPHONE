@@ -1,6 +1,6 @@
 // 示意圖片：畫面上顯示色塊，實際只把描述文字送進模型，完全不佔用視覺 token。
 // 也讓不支援讀圖的模型能參與「傳照片」的互動。
-import { estimatePseudoVoiceDuration } from "./pseudoVoice.js";
+import { resolvePseudoVoiceDuration } from "./pseudoVoice.js";
 
 export const PSEUDO_IMAGE_DESC_LIMIT = 80;
 
@@ -37,7 +37,7 @@ export function messagePlainText(message, imageFallback = "[圖片]") {
   const base = String(message?.content || "").trim();
   const photo = message?.pseudoImage?.desc ? `[照片：${message.pseudoImage.desc}]` : "";
   const voice = message?.pseudoVoice?.transcript
-    ? `[語音 ${message.pseudoVoice.duration || estimatePseudoVoiceDuration(message.pseudoVoice.transcript)} 秒：${message.pseudoVoice.transcript}]`
+    ? `[語音 ${resolvePseudoVoiceDuration(message.pseudoVoice)} 秒：${message.pseudoVoice.transcript}]`
     : "";
   return [voice ? "" : base, photo, voice].filter(Boolean).join(" ") || (message?.image ? imageFallback : "");
 }

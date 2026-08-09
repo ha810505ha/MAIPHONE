@@ -11,8 +11,11 @@ export async function exportYunyinSave() {
 
 export async function importYunyinSaveFile(file) {
   const payload = JSON.parse(await file.text());
-  if (payload?.type !== YUNYIN_BACKUP_TYPE || !payload.save || typeof payload.save !== "object") throw new Error("不是有效的雲隱山莊備份檔");
+  if (payload?.type !== YUNYIN_BACKUP_TYPE || !payload.save || typeof payload.save !== "object") {
+    const error = new Error("不是有效的雲隱山莊備份檔");
+    error.code = "INVALID_YUNYIN_BACKUP";
+    throw error;
+  }
   await replaceSave(payload.save);
   return true;
 }
-
