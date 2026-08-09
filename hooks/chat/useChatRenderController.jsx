@@ -389,7 +389,7 @@ export default function useChatRenderController({
         scrollKey: `${currentChatChar.id}::${currentRoomId || "default"}`,
         onScroll: (element) => handleDirectChatScroll(element, { characterId: currentChatChar.id, hasEarlier, nextVisibleCount }),
         hasEarlier, onLoadEarlier: () => loadEarlierMessages(currentChatChar.id, nextVisibleCount), isTyping: isTyping || currentRoomPending, showScrollToBottom,
-        scrollButtonBottom: chatActionPanelOpen ? 142 : ((chatImage || chatPseudoImage || chatPseudoVoiceMode) ? 148 : 68),
+        scrollButtonBottom: chatActionPanelOpen ? 142 : ((chatImage || chatPseudoImage || chatPseudoVoiceMode) ? 148 : 30),
         onScrollToBottom: scrollCurrentChatToBottom,
       }}
       directMessageRenderer={{ ...directMessageRendererProps, messages: visibleMsgs, screenshotSelection: screenshotSelectionProps }}

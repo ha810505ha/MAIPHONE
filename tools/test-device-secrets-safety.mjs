@@ -91,6 +91,7 @@ const {
 
 const secrets = {
   main: "main-device-only-key",
+  openRouterManagement: "openrouter-management-device-only-key",
   preset1: "preset-one-device-only-key",
   preset2: "preset-two-device-only-key",
   elevenlabs: "elevenlabs-device-only-key",
@@ -108,7 +109,7 @@ const defaultState = {
     { id: "preset-1", name: "Preset 1", apiKey: "" },
     { id: "preset-2", name: "Preset 2", apiKey: "" },
   ],
-  apiConfig: { provider: "openai", apiKey: "" },
+  apiConfig: { provider: "openai", apiKey: "", openRouterManagementKey: "" },
   ttsConfig: {
     provider: "elevenlabs",
     elevenlabs: { apiKey: "" },
@@ -122,7 +123,11 @@ const legacyState = {
     { ...defaultState.apiPresets[0], apiKey: secrets.preset1 },
     { ...defaultState.apiPresets[1], apiKey: secrets.preset2 },
   ],
-  apiConfig: { ...defaultState.apiConfig, apiKey: secrets.main },
+  apiConfig: {
+    ...defaultState.apiConfig,
+    apiKey: secrets.main,
+    openRouterManagementKey: secrets.openRouterManagement,
+  },
   ttsConfig: {
     ...defaultState.ttsConfig,
     elevenlabs: { apiKey: secrets.elevenlabs },
@@ -133,6 +138,7 @@ const legacyState = {
 const extracted = extractDeviceSecrets(legacyState);
 const stripped = stripDeviceSecrets(legacyState);
 assert.equal(stripped.apiConfig.apiKey, "");
+assert.equal(stripped.apiConfig.openRouterManagementKey, "");
 assert.deepEqual(stripped.apiPresets.map((preset) => preset.apiKey), ["", ""]);
 assert.equal(stripped.ttsConfig.elevenlabs.apiKey, "");
 assert.deepEqual(hydrateDeviceSecrets(stripped, extracted), legacyState);
@@ -140,6 +146,7 @@ assert.deepEqual(hydrateDeviceSecrets(stripped, extracted), legacyState);
 const emptyPlaceholderSecrets = {
   version: 1,
   apiKey: "",
+  openRouterManagementKey: "",
   apiPresetKeys: { "preset-1": "", "preset-2": "" },
   ttsApiKeys: { elevenlabs: "", minimax: "" },
 };
@@ -194,6 +201,7 @@ assert.equal(records.get("ent_core").data.apiPresets[0].apiKey, "");
 assert.equal(records.get("ent_apiConfig").data.apiKey, "");
 assert.equal(records.get("ent_ttsConfig").data.elevenlabs.apiKey, "");
 assert.equal(records.get("device_secrets_v1").apiKey, secrets.main);
+assert.equal(records.get("device_secrets_v1").openRouterManagementKey, secrets.openRouterManagement);
 
 const rotatedMainKey = "rotated-main-device-only-key";
 await saveAppState({
@@ -202,6 +210,7 @@ await saveAppState({
   apiConfig: { ...loadedLegacy.apiConfig, apiKey: rotatedMainKey },
 });
 assert.equal(records.get("device_secrets_v1").apiKey, rotatedMainKey);
+assert.equal(records.get("device_secrets_v1").openRouterManagementKey, secrets.openRouterManagement);
 const syncedEntities = [
   await readEntity("ent_core"),
   await readEntity("ent_apiConfig"),
@@ -248,6 +257,7 @@ await clearDeviceSecrets();
 const afterClearAll = await loadAppState(defaultState);
 assert.equal(records.has("device_secrets_v1"), false);
 assert.equal(afterClearAll.apiConfig.apiKey, "");
+assert.equal(afterClearAll.apiConfig.openRouterManagementKey, "");
 assert.deepEqual(afterClearAll.apiPresets.map((preset) => preset.apiKey), ["", ""]);
 assert.equal(afterClearAll.ttsConfig.elevenlabs.apiKey, "");
 

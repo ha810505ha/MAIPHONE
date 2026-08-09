@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import MotionPresence from "../motion/MotionPresence.jsx";
+import { stripSocialPostCountMetadata } from "../../services/social/characterInteraction";
 
 const SOCIAL_PAGE_SIZE = 5;
 const SOCIAL_NOTIFICATION_GROUP_WINDOW_MS = 5 * 60 * 1000;
@@ -56,6 +57,7 @@ export default function SocialApp({
   postLimit = 100, downloadTextFile, exportToastMessage,
 }) {
   const [characterSearch, setCharacterSearch] = useState("");
+  const [socialSettingsTab, setSocialSettingsTab] = useState("settings");
   const [characterPostingOpen, setCharacterPostingOpen] = useState(true);
   const [characterPostRefreshing, setCharacterPostRefreshing] = useState(false);
   const [feedPage, setFeedPage] = useState(1);
@@ -76,6 +78,9 @@ export default function SocialApp({
     : 50;
   useEffect(() => setFeedPage((page) => Math.min(page, totalFeedPages)), [totalFeedPages]);
   useEffect(() => setFeedPage(1), [posts[0]?.id]);
+  useEffect(() => {
+    if (socialSettingsOpen) setSocialSettingsTab("settings");
+  }, [socialSettingsOpen]);
   useEffect(() => {
     if (
       !highlightedNotificationCommentId
@@ -321,7 +326,34 @@ export default function SocialApp({
           <div className="mp-back" onClick={() => setSocialSettingsOpen(false)}>←</div>
           <div className="mp-htitle">{t("settings")}</div>
         </div>
+        <div
+          role="tablist"
+          aria-label={tr("社群設定分頁", "Social settings sections", "ソーシャル設定のセクション", "소셜 설정 섹션")}
+          style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "8px 14px 2px" }}
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={socialSettingsTab === "settings"}
+            className="mp-ibtn"
+            onClick={() => setSocialSettingsTab("settings")}
+            style={socialSettingsTab === "settings" ? { background: "var(--mp-pink-dk)", color: "#fff", borderColor: "var(--mp-pink-dk)" } : undefined}
+          >
+            {t("settings")}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={socialSettingsTab === "saved"}
+            className="mp-ibtn"
+            onClick={() => setSocialSettingsTab("saved")}
+            style={socialSettingsTab === "saved" ? { background: "var(--mp-pink-dk)", color: "#fff", borderColor: "var(--mp-pink-dk)" } : undefined}
+          >
+            {tr("珍藏", "Saved", "保存", "저장")}
+          </button>
+        </div>
         <div className="mp-set">
+          {socialSettingsTab === "settings" && <>
           <div className="mp-sg">
             <div className="mp-sg-t">{tr("動態", "Feed", "フィード", "피드")}</div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
@@ -442,6 +474,8 @@ export default function SocialApp({
             </select>
             </>}
           </div>
+          </>}
+          {socialSettingsTab === "saved" && <>
           <div className="mp-sg">
             <div className="mp-sg-t">{tr("珍藏的貼文", "Saved posts", "保存した投稿", "저장한 게시물")}</div>
             {(posts || []).filter((p) => p.bookmarked).length === 0 ? (
@@ -482,6 +516,8 @@ export default function SocialApp({
               ))
             )}
           </div>
+          </>}
+          {socialSettingsTab === "settings" && <>
           <div className="mp-sg">
             <div className="mp-sg-t">{tr("社群資料", "Social data", "ソーシャルデータ", "소셜 데이터")}</div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
@@ -500,6 +536,7 @@ export default function SocialApp({
             </div>
             <div style={{ fontSize: 9.5, color: "var(--mp-txt-l)", marginTop: 8, lineHeight: 1.5 }}>{tr("將匯出成可直接閱讀的單一 HTML 紀錄檔，內含完整貼文資料。", "Exports one readable HTML archive containing the complete post data.", "完全な投稿データを含む、閲覧可能な単一HTMLとして書き出します。", "전체 게시물 데이터가 포함된 읽기 가능한 단일 HTML로 내보냅니다.")}</div>
           </div>
+          </>}
         </div>
       </div>
     ) : (
@@ -550,13 +587,14 @@ export default function SocialApp({
           const authorName = getPostAuthorName(p);
           const authorAvatar = sanitizeUserImageUrl(getPostAuthorAvatar(p));
           const isPlayerPost = getPostAuthorType(p) === "player";
+          const postContent = isPlayerPost ? p.content : stripSocialPostCountMetadata(p.content);
           const likeListText = isPlayerPost ? getLikedByListText(p) : "";
           const comments = getVisibleComments(p);
           const commentsOpen = activeCommentPostId === p.id;
           const replyTarget = socialReplyTarget?.postId === p.id ? socialReplyTarget : null;
           const likesOpen = activeLikePostId === p.id;
           const postExpanded = !!expandedSocialPosts[p.id];
-          const canExpandPost = shouldClampSocialPost(p.content);
+          const canExpandPost = shouldClampSocialPost(postContent);
           const scrollComments = shouldScrollComments(comments);
           return (
             <div key={p.id} data-post-id={p.id} className={`mp-post ${highlightedPostId === p.id ? "mp-thought-jump-highlight" : ""}`}>
@@ -604,7 +642,7 @@ export default function SocialApp({
                 )}
                 </MotionPresence>
               </div>
-              <div className={`mp-post-ct ${canExpandPost && !postExpanded ? "clamped" : ""}`}>{p.content}</div>
+              <div className={`mp-post-ct ${canExpandPost && !postExpanded ? "clamped" : ""}`}>{postContent}</div>
               {canExpandPost && (
                 <button
                   className="mp-post-more"

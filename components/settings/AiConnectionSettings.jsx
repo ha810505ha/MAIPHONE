@@ -1,5 +1,6 @@
 import React from "react";
 import { isLocalProvider, DEFAULT_LOCAL_BASE_URL } from "../../constants/appConstants";
+import OpenRouterCreditStatus from "./OpenRouterCreditStatus";
 
 // 模型選擇列：抓取按鈕 + 下拉/手動輸入。雲端與本地共用。
 function ModelRow({ t, tr, config, setConfig, modelOptions, fetchingModels, onFetchModels }) {
@@ -62,6 +63,17 @@ function CloudPanel({ t, tr, config, setConfig, cloudProviders, modelOptions, fe
       {config.provider === "custom" && <div className="mp-row"><div className="mp-lbl">Base URL</div><input className="mp-sinp" value={config.baseUrl} onChange={(event) => setConfig((current) => ({ ...current, baseUrl: event.target.value }))} placeholder="https://..." /></div>}
       {config.provider === "vertex" && <div className="mp-row"><div className="mp-lbl">{tr("區域", "Region", "リージョン", "리전")}</div><input className="mp-sinp" value={config.location || "global"} onChange={(event) => setConfig((current) => ({ ...current, location: event.target.value }))} placeholder="global" /></div>}
       <div className="mp-row"><div className="mp-lbl">{tr("API 金鑰", "API key", "API キー", "API 키")}</div><input className="mp-sinp" type="password" value={config.apiKey} onChange={(event) => setConfig((current) => ({ ...current, apiKey: event.target.value }))} placeholder={config.provider === "vertex" ? "AIza..." : config.provider === "nvidia" ? "nvapi-..." : "sk-..."} /></div>
+      {config.provider === "openrouter" && <>
+        <OpenRouterCreditStatus apiKey={config.apiKey} tr={tr} type="key" />
+        <div className="mp-row">
+          <div className="mp-lbl">{tr({ "zh-TW": "帳戶餘額管理金鑰", "zh-CN": "账户余额管理密钥", en: "Account balance management key", ja: "残高確認用の管理キー", ko: "계정 잔액 관리 키" })}</div>
+          <input className="mp-sinp" type="password" value={config.openRouterManagementKey || ""} onChange={(event) => setConfig((current) => ({ ...current, openRouterManagementKey: event.target.value }))} placeholder="sk-or-..." />
+          <div style={{ fontSize: 10, color: "var(--mp-txt-l)", marginTop: 4, lineHeight: 1.5 }}>
+            {tr({ "zh-TW": "聊天仍使用上方的一般 API 金鑰；此管理金鑰只用來讀取 OpenRouter 帳戶總餘額。", "zh-CN": "聊天仍使用上方的一般 API 密钥；此管理密钥只用于读取 OpenRouter 账户总余额。", en: "Chat continues to use the API key above. This management key is only used to read your OpenRouter account balance.", ja: "チャットには上の通常 API キーを使用します。この管理キーは OpenRouter アカウント残高の取得専用です。", ko: "채팅에는 위의 일반 API 키를 계속 사용합니다. 이 관리 키는 OpenRouter 계정 잔액 조회에만 사용됩니다。" })}
+          </div>
+        </div>
+        <OpenRouterCreditStatus apiKey={config.openRouterManagementKey} tr={tr} type="account" />
+      </>}
       <ModelRow t={t} tr={tr} config={config} setConfig={setConfig} modelOptions={modelOptions} fetchingModels={fetchingModels} onFetchModels={onFetchModels} />
       <TemperatureRow tr={tr} config={config} setConfig={setConfig} />
       <ContextRow tr={tr} config={config} setConfig={setConfig} />

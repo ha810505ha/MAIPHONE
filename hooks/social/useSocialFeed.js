@@ -14,6 +14,7 @@ import {
   rollCharacterInteractionDelay,
   selectCharacterInteractionParticipants,
   shouldStartCharacterInteraction,
+  stripSocialPostCountMetadata,
   withSocialOutputTokenLimit,
 } from "../../services/social/characterInteraction";
 
@@ -190,7 +191,10 @@ export default function useSocialFeed({
         role: "user",
         content: buildSocialPostPrompt(char),
       }], socialPostApiConfig, sysP, SOCIAL_POST_INPUT_TOKEN_LIMIT, "character_post_generate");
-        const content = sanitizeText(String(t || "").replace(/^["「]|["」]$/g, "").trim(), 120) || "今天也算是有好好過完了。";
+        const content = sanitizeText(
+          stripSocialPostCountMetadata(String(t || "").replace(/^["「]|["」]$/g, "").trim()),
+          120,
+        ) || "今天也算是有好好過完了。";
         const post = {
           id: gid(),
           authorType: "character",
@@ -444,7 +448,8 @@ export default function useSocialFeed({
       .filter((comment) => !comment?.deleted && (!comment?.time || comment.time <= Date.now()))
       .slice(-4)
       .map((c) => `${c.role === "assistant" ? (c.charName || post.charName) : "{{user}}"}：${c.content}`);
-    const rawBody = [`貼文：${post.content}`, ...(lines.length ? ["留言：", ...lines] : [])].join("\n");
+    const postContent = stripSocialPostCountMetadata(post.content);
+    const rawBody = [`貼文：${postContent}`, ...(lines.length ? ["留言：", ...lines] : [])].join("\n");
     const approxTokens = Math.ceil(rawBody.length / 3.5);
     const content = approxTokens <= SHARE_RAW_TOKEN_LIMIT
       ? [
@@ -461,7 +466,7 @@ export default function useSocialFeed({
           `mode=summary`,
           `actor=${post.charName}`,
           `token_estimate=${approxTokens}`,
-          `摘要：${sanitizeText(post.content, 220)}`,
+          `摘要：${sanitizeText(postContent, 220)}`,
           ...(lines.length ? [`互動重點：${sanitizeText(lines.join(" / "), 260)}`] : []),
         ].join("\n");
     const notice = { id: gid(), role: "system_notice", content, time: Date.now() };

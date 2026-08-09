@@ -1,6 +1,11 @@
 import { toSimplifiedChinese } from "../utils/i18n.js";
 
 const ZH_CHANGELOG = {
+  "1.2.11": [
+    "08/10 更新",
+    "新增｜OpenRouter 現在可查看目前 API Key 的剩餘額度、已使用額度，以及帳戶總餘額。",
+    "社群｜社群設定改為「設定」與「珍藏」分頁，查看與管理珍藏貼文更方便。\n\n修正部分模型產生角色貼文時，末尾可能出現「XX characters」的問題。",
+  ],
   "1.2.10": [
     "08/10 多語言與穩定性更新",
     "新增｜解答之書、寵物小屋與雲隱山莊支援繁體中文、簡體中文、英文、日文與韓文。\n\n寵物日記與雲隱山莊 AI 內容會跟隨目前語系。\n\n補齊自訂 CSS 選擇器與多語言說明。",
@@ -103,6 +108,23 @@ const ZH_CHANGELOG = {
 };
 
 const TRANSLATED_CHANGELOG = {
+  "1.2.11": {
+    en: [
+      "08/10 Update",
+      "New | OpenRouter now shows the current API key's remaining and used quota, along with the account's total balance.",
+      "Social | Social settings are now split into Settings and Saved tabs, making saved posts easier to browse and manage.\n\nFixed an issue where some models could append \"XX characters\" to character posts.",
+    ],
+    ja: [
+      "08/10 更新",
+      "追加｜OpenRouterで、現在のAPI Keyの残り利用枠・使用量と、アカウント全体の残高を確認できるようになりました。",
+      "SNS｜SNS設定を「設定」と「保存」のタブに分け、保存済み投稿の確認・管理をしやすくしました。\n\n一部モデルがキャラクター投稿の末尾に「XX characters」と出力することがある問題を修正しました。",
+    ],
+    ko: [
+      "08/10 업데이트",
+      "추가｜OpenRouter에서 현재 API Key의 남은 한도·사용량과 계정 전체 잔액을 확인할 수 있습니다.",
+      "소셜｜소셜 설정을 ‘설정’과 ‘저장’ 탭으로 나누어 저장한 게시물을 더 쉽게 확인하고 관리할 수 있습니다.\n\n일부 모델이 캐릭터 게시물 끝에 ‘XX characters’를 출력할 수 있는 문제를 수정했습니다.",
+    ],
+  },
   "1.2.10": {
     en: [
       "08/10 Language & Stability Update",

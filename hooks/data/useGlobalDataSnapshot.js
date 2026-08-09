@@ -216,7 +216,9 @@ export default function useGlobalDataSnapshot({
     const exportChatRooms = compactMedia
       ? compactActiveRoomMirrors(chatRooms, activeRoomIds)
       : chatRooms;
-    const exportApiConfig = includeSecrets ? apiConfig : { ...apiConfig, apiKey: "" };
+    const exportApiConfig = includeSecrets
+      ? apiConfig
+      : { ...apiConfig, apiKey: "", openRouterManagementKey: "" };
     const exportApiPresets = (Array.isArray(apiPresets) ? apiPresets : []).map((preset) => ({
       ...preset,
       apiKey: includeSecrets ? preset.apiKey : "",

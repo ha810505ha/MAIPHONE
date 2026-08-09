@@ -10,6 +10,15 @@ export const SOCIAL_COMMENT_INPUT_TOKEN_LIMIT = 3000;
 export const SOCIAL_POST_OUTPUT_TOKEN_LIMIT = 1000;
 export const SOCIAL_COMMENT_OUTPUT_TOKEN_LIMIT = 800;
 
+// Some models turn a requested length (for example, 20~50 characters) into a
+// parenthetical status note. This is metadata, not part of a social post.
+export function stripSocialPostCountMetadata(value) {
+  return String(value || "")
+    .replace(/\s*[（(]\s*\d{1,4}\s*(?:characters?|chars?|字元|字符|字數)\s*[）)]/giu, "")
+    .replace(/\s+\d{1,4}\s*(?:characters?|chars?|字元|字符|字數)\.?\s*$/iu, "")
+    .trim();
+}
+
 const SOCIAL_INPUT_SYSTEM_OVERHEAD_TOKENS = 8;
 const SOCIAL_INPUT_MESSAGE_OVERHEAD_TOKENS = 8;
 

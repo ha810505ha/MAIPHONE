@@ -10,6 +10,7 @@ const presetSecretKey = (preset, index) => {
 const EMPTY_DEVICE_SECRETS = Object.freeze({
   version: DEVICE_SECRETS_VERSION,
   apiKey: "",
+  openRouterManagementKey: "",
   apiPresetKeys: Object.freeze({}),
   ttsApiKeys: Object.freeze({
     elevenlabs: "",
@@ -27,6 +28,7 @@ function normalizeDeviceSecrets(value) {
   return {
     version: DEVICE_SECRETS_VERSION,
     apiKey: asSecretString(value?.apiKey),
+    openRouterManagementKey: asSecretString(value?.openRouterManagementKey),
     apiPresetKeys: presetKeys,
     ttsApiKeys: {
       elevenlabs: asSecretString(value?.ttsApiKeys?.elevenlabs),
@@ -43,6 +45,7 @@ function extractDeviceSecrets(state) {
   });
   return normalizeDeviceSecrets({
     apiKey: state?.apiConfig?.apiKey,
+    openRouterManagementKey: state?.apiConfig?.openRouterManagementKey,
     apiPresetKeys,
     ttsApiKeys: {
       elevenlabs: state?.ttsConfig?.elevenlabs?.apiKey,
@@ -55,7 +58,7 @@ function stripDeviceSecrets(state) {
   if (!state || typeof state !== "object") return state;
   const next = { ...state };
   if (state.apiConfig && typeof state.apiConfig === "object") {
-    next.apiConfig = { ...state.apiConfig, apiKey: "" };
+    next.apiConfig = { ...state.apiConfig, apiKey: "", openRouterManagementKey: "" };
   }
   if (Array.isArray(state.apiPresets)) {
     next.apiPresets = state.apiPresets.map((preset) => (
@@ -78,7 +81,11 @@ function hydrateDeviceSecrets(state, secrets) {
   if (!next || typeof next !== "object") return next;
   const normalized = normalizeDeviceSecrets(secrets);
   if (next.apiConfig && typeof next.apiConfig === "object") {
-    next.apiConfig = { ...next.apiConfig, apiKey: normalized.apiKey };
+    next.apiConfig = {
+      ...next.apiConfig,
+      apiKey: normalized.apiKey,
+      openRouterManagementKey: normalized.openRouterManagementKey,
+    };
   }
   if (Array.isArray(next.apiPresets)) {
     next.apiPresets = next.apiPresets.map((preset, index) => {
@@ -121,12 +128,16 @@ function mergeDeviceSecrets(stored, legacy) {
     if (storedValue || !apiPresetKeys[key]) apiPresetKeys[key] = storedValue;
   }
   const storedApiKey = asSecretString(stored.apiKey);
+  const storedOpenRouterManagementKey = asSecretString(stored.openRouterManagementKey);
   const storedElevenlabsKey = asSecretString(storedTtsKeys.elevenlabs);
   const storedMinimaxKey = asSecretString(storedTtsKeys.minimax);
   return normalizeDeviceSecrets({
     apiKey: hasOwn(stored, "apiKey") && (storedApiKey || !fallback.apiKey)
       ? storedApiKey
       : fallback.apiKey,
+    openRouterManagementKey: hasOwn(stored, "openRouterManagementKey") && (storedOpenRouterManagementKey || !fallback.openRouterManagementKey)
+      ? storedOpenRouterManagementKey
+      : fallback.openRouterManagementKey,
     apiPresetKeys,
     ttsApiKeys: {
       elevenlabs: hasOwn(storedTtsKeys, "elevenlabs") && (storedElevenlabsKey || !fallback.ttsApiKeys.elevenlabs)
@@ -153,6 +164,7 @@ function deviceSecretsEqual(left, right) {
   const aPresetKeys = Object.keys(a.apiPresetKeys).sort();
   const bPresetKeys = Object.keys(b.apiPresetKeys).sort();
   return a.apiKey === b.apiKey
+    && a.openRouterManagementKey === b.openRouterManagementKey
     && a.ttsApiKeys.elevenlabs === b.ttsApiKeys.elevenlabs
     && a.ttsApiKeys.minimax === b.ttsApiKeys.minimax
     && aPresetKeys.length === bPresetKeys.length

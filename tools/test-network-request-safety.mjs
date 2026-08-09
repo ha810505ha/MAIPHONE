@@ -9,6 +9,7 @@ import {
 } from "../utils/networkRequest.js";
 import { API_PROVIDERS } from "../constants/appConstants.js";
 import { callAI, fetchAvailableModels } from "../services/aiService.js";
+import { fetchOpenRouterCredits } from "../services/openRouterCredits.js";
 
 const originalFetch = globalThis.fetch;
 
@@ -103,6 +104,39 @@ try {
 const nvidiaProvider = API_PROVIDERS.find((provider) => provider.id === "nvidia");
 assert.equal(nvidiaProvider?.baseUrl, "https://integrate.api.nvidia.com/v1");
 assert.ok(nvidiaProvider.models.length > 0, "NVIDIA must offer fallback models");
+
+try {
+  const requestedUrls = [];
+  globalThis.fetch = async (input, init) => {
+    requestedUrls.push(String(input));
+    assert.equal(init.headers.Authorization, "Bearer sk-or-test", "credit lookup must use the configured key");
+    if (String(input).endsWith("/key")) return Response.json({ data: { is_management_key: true } });
+    return Response.json({ data: { total_credits: 12.5, total_usage: 2.25 } });
+  };
+  const credits = await fetchOpenRouterCredits("sk-or-test");
+  assert.deepEqual(
+    { scope: credits.scope, total: credits.total, used: credits.used, remaining: credits.remaining },
+    { scope: "account", total: 12.5, used: 2.25, remaining: 10.25 },
+    "management keys must show live account credits",
+  );
+  assert.deepEqual(requestedUrls, ["https://openrouter.ai/api/v1/key", "https://openrouter.ai/api/v1/credits"]);
+
+  globalThis.fetch = async () => Response.json({ data: {
+    is_management_key: false,
+    limit: 10,
+    limit_remaining: 7.5,
+    usage: 2.5,
+    limit_reset: "monthly",
+  } });
+  const limitedKey = await fetchOpenRouterCredits("sk-or-test");
+  assert.deepEqual(
+    { scope: limitedKey.scope, limit: limitedKey.limit, remaining: limitedKey.remaining, used: limitedKey.used, reset: limitedKey.reset },
+    { scope: "key", limit: 10, remaining: 7.5, used: 2.5, reset: "monthly" },
+    "ordinary keys must expose their own configured limit remaining",
+  );
+} finally {
+  globalThis.fetch = originalFetch;
+}
 
 try {
   let requestUrl = "";

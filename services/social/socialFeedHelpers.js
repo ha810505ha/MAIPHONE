@@ -1,4 +1,5 @@
 import { messagePlainText } from "../../utils/pseudoImage";
+import { stripSocialPostCountMetadata } from "./characterInteraction";
 
 export function createSocialFeedHelpers({
   chatHistory,
@@ -66,7 +67,7 @@ export function createSocialFeedHelpers({
     const recentPosts = (posts || [])
       .filter((p) => p.charId === char.id)
       .slice(0, 3)
-      .map((p, i) => `${i + 1}. ${sanitizeText(p.content || "", 80)}`)
+      .map((p, i) => `${i + 1}. ${sanitizeText(stripSocialPostCountMetadata(p.content), 80)}`)
       .filter(Boolean)
       .join("\n");
     return `請替角色「${char.name}」寫一則可發在社群上的近況貼文。
@@ -79,6 +80,7 @@ export function createSocialFeedHelpers({
 - 不要公開私密、曖昧、敏感、只屬於兩人之間的細節；若要引用，只能轉成模糊的心情或日常感想。
 - 不要使用第二人稱「你」指向玩家。
 - 內容 20~50 字，自然像真人隨手發文，不要標題、不要引號、不要解釋。
+- 最終回覆只能有貼文本體；不得輸出字數、characters、括號統計、星號、註解或任何正文以外文字。
 
 近期私聊脈絡（只能參考主題/情緒，不可外洩原文）：
 ${recentChat || "（近期沒有可參考的聊天）"}

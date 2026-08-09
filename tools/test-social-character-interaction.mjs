@@ -24,6 +24,7 @@ import {
   rollCharacterInteractionCount,
   rollCharacterInteractionDelay,
   selectCharacterInteractionParticipants,
+  stripSocialPostCountMetadata,
   shouldStartCharacterInteraction,
   withSocialOutputTokenLimit,
 } from "../services/social/characterInteraction.js";
@@ -40,6 +41,20 @@ assert.equal(SOCIAL_POST_INPUT_TOKEN_LIMIT, 4000);
 assert.equal(SOCIAL_COMMENT_INPUT_TOKEN_LIMIT, 3000);
 assert.equal(SOCIAL_POST_OUTPUT_TOKEN_LIMIT, 1000);
 assert.equal(SOCIAL_COMMENT_OUTPUT_TOKEN_LIMIT, 800);
+assert.equal(
+  stripSocialPostCountMetadata("今天也想慢慢過。（44 characters)"),
+  "今天也想慢慢過。",
+  "model character-count metadata must not become post content",
+);
+assert.equal(
+  stripSocialPostCountMetadata("今天也想慢慢過。 44 characters"),
+  "今天也想慢慢過。",
+);
+assert.equal(
+  stripSocialPostCountMetadata("今天走了 44 步，感覺不錯。"),
+  "今天走了 44 步，感覺不錯。",
+  "normal post numbers must remain intact",
+);
 assert.equal(
   withSocialOutputTokenLimit({ maxTokens: 4000 }, SOCIAL_POST_OUTPUT_TOKEN_LIMIT).maxTokens,
   1000,
@@ -295,6 +310,9 @@ assert.match(hookSource, /mode: "回覆玩家留言",\s+includePlayerRelationshi
 assert.match(socialHelperSource, /const buildSocialSystemPrompt/);
 assert.match(socialHelperSource, /\.slice\(-8\)/);
 assert.match(socialHelperSource, /messagePlainText\(m, "\[圖片\]"\), 120/);
+assert.match(socialHelperSource, /不得輸出字數、characters、括號統計、星號、註解/);
+assert.match(hookSource, /stripSocialPostCountMetadata\(String\(t \|\| ""\)/);
+assert.match(socialAppSource, /const postContent = isPlayerPost \? p\.content : stripSocialPostCountMetadata\(p\.content\)/);
 assert.equal((socialHelperSource.match(/getOutputLanguageDirective\(/g) || []).length, 1);
 assert.match(socialHelperSource, /getOutputLanguageDirective\(\{ includePlayerContext: includePlayerRelationship \}\)/);
 const socialSystemPromptSource = socialHelperSource.slice(
