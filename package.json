@@ -41,15 +41,12 @@
     "test:auth-config": "node tools/test-supabase-auth-config.mjs",
     "test:auth-service": "node tools/test-supabase-auth-service.mjs",
     "test:auth-deep-link": "node tools/test-native-auth-redirect.mjs",
-    "test:cloudflare-data": "node tools/test-cloudflare-data-worker.mjs",
     "test:cloud-data-service": "node tools/test-cloud-data-service.mjs",
     "test:github-backup": "node tools/test-github-backup-service.mjs",
     "test:google-drive-backup": "node tools/test-google-drive-backup-service.mjs",
-    "test:mali-test-credits": "node tools/test-mali-test-credits.mjs",
-    "report:mali-usage": "node tools/mali-usage-report.mjs",
     "test:ai-source": "node tools/test-ai-source-routing.mjs",
     "test:story-status": "node tools/test-story-status-visibility.mjs",
-    "test:regression": "npm run test:import-transaction && npm run test:global-backup-import && npm run test:contacts-surface && npm run test:indexeddb-commit && npm run test:device-secrets && npm run test:music-provider && npm run test:dating-reply && npm run test:feature-lifecycle && npm run test:persona && npm run test:notes-persistence && npm run test:message-state && npm run test:memory-recall && npm run test:memory-compression && npm run test:character-status && npm run test:crystal-ledger && npm run test:settings-mailbox-badge && npm run test:network && npm run test:home-gesture && npm run test:performance && npm run test:social-interaction && npm run test:social-tokenizer && npm run test:calendar-chat && npm run test:chat-room-routing && npm run test:app-runtime && npm run test:i18n && npm run test:theme-safety && npm run test:yunyin-farm && npm run test:yunyin-shop && npm run test:auth-config && npm run test:auth-service && npm run test:auth-deep-link && npm run test:cloudflare-data && npm run test:cloud-data-service && npm run test:github-backup && npm run test:google-drive-backup && npm run test:mali-test-credits && npm run test:ai-source && npm run test:story-status"
+    "test:regression": "npm run test:import-transaction && npm run test:global-backup-import && npm run test:contacts-surface && npm run test:indexeddb-commit && npm run test:device-secrets && npm run test:music-provider && npm run test:dating-reply && npm run test:feature-lifecycle && npm run test:persona && npm run test:notes-persistence && npm run test:message-state && npm run test:memory-recall && npm run test:memory-compression && npm run test:character-status && npm run test:crystal-ledger && npm run test:settings-mailbox-badge && npm run test:network && npm run test:home-gesture && npm run test:performance && npm run test:social-interaction && npm run test:social-tokenizer && npm run test:calendar-chat && npm run test:chat-room-routing && npm run test:app-runtime && npm run test:i18n && npm run test:theme-safety && npm run test:yunyin-farm && npm run test:yunyin-shop && npm run test:auth-config && npm run test:auth-service && npm run test:auth-deep-link && npm run test:cloud-data-service && npm run test:github-backup && npm run test:google-drive-backup && npm run test:ai-source && npm run test:story-status"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.1",

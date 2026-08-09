@@ -46,11 +46,9 @@ secrets/
 *.sqlite
 *.sqlite3
 
-# Actual Cloudflare deployment binding IDs stay local; commit only the example.
-cloudflare-worker-proxy/wrangler.toml
-# Private snapshots of production-only D1 account migrations. These can contain
-# account identifiers and must never be committed to the public repository.
-cloudflare-worker-proxy/private/
+# Cloudflare Worker is deployed and backed up locally; keep its source and
+# environment bindings outside this public application repository.
+cloudflare-worker-proxy/
 
 # Local Codex/editor workspace state
 .local/
