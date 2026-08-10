@@ -337,7 +337,7 @@ export default function SocialApp({
             aria-selected={socialSettingsTab === "settings"}
             className="mp-ibtn"
             onClick={() => setSocialSettingsTab("settings")}
-            style={socialSettingsTab === "settings" ? { background: "var(--mp-pink-dk)", color: "#fff", borderColor: "var(--mp-pink-dk)" } : undefined}
+            style={socialSettingsTab === "settings" ? { background: "var(--mp-pink-dk)", color: "var(--mp-page-on-accent)", borderColor: "var(--mp-pink-dk)" } : undefined}
           >
             {t("settings")}
           </button>
@@ -347,7 +347,7 @@ export default function SocialApp({
             aria-selected={socialSettingsTab === "saved"}
             className="mp-ibtn"
             onClick={() => setSocialSettingsTab("saved")}
-            style={socialSettingsTab === "saved" ? { background: "var(--mp-pink-dk)", color: "#fff", borderColor: "var(--mp-pink-dk)" } : undefined}
+            style={socialSettingsTab === "saved" ? { background: "var(--mp-pink-dk)", color: "var(--mp-page-on-accent)", borderColor: "var(--mp-pink-dk)" } : undefined}
           >
             {tr("珍藏", "Saved", "保存", "저장")}
           </button>
