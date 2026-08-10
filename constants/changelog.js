@@ -1,6 +1,10 @@
 import { toSimplifiedChinese } from "../utils/i18n.js";
 
 const ZH_CHANGELOG = {
+  "1.2.13": [
+    "08/10 緊急修正",
+    "聊天室截圖｜修正夜色以外的主題儲存聊天 PNG 時，可能因色彩格式不相容而失敗的問題。\n\n現在所有主題都可正常建立聊天截圖。",
+  ],
   "1.2.12": [
     "08/10 緊急修正",
     "修正 | 修正雲隱山莊在部分情況下無法開啟、導致畫面中斷的問題。\n\n現在可正常進入山莊與使用家園佈置功能。",
@@ -112,6 +116,20 @@ const ZH_CHANGELOG = {
 };
 
 const TRANSLATED_CHANGELOG = {
+  "1.2.13": {
+    en: [
+      "08/10 Hotfix",
+      "Chat screenshots | Fixed chat PNG exports failing in themes other than Night because of an incompatible color format.\n\nChat screenshots now work in every theme.",
+    ],
+    ja: [
+      "08/10 緊急修正",
+      "チャットのスクリーンショット｜夜色以外のテーマで、色形式の互換性によりチャット PNG の保存に失敗することがある問題を修正しました。\n\nすべてのテーマでチャットのスクリーンショットを作成できます。",
+    ],
+    ko: [
+      "08/10 긴급 수정",
+      "채팅 스크린샷 | 야간 테마 이외의 테마에서 호환되지 않는 색상 형식으로 인해 채팅 PNG 저장이 실패할 수 있는 문제를 수정했습니다.\n\n이제 모든 테마에서 채팅 스크린샷을 만들 수 있습니다.",
+    ],
+  },
   "1.2.12": {
     en: [
       "08/10 Hotfix",

@@ -1,5 +1,5 @@
 const MALIPHONE_AI_PROXY = "https://maliphone-ai-proxy.d778105.workers.dev";
-const CURRENT_VERSION = "1.2.12";
+const CURRENT_VERSION = "1.2.13";
 
 // 本地模型預設接頭：多數本機推論伺服器（Ollama、LM Studio、llama.cpp server…）
 // 都會在這個埠開一個 OpenAI 相容的 /v1 端點。

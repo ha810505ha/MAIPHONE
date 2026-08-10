@@ -17,6 +17,8 @@ const normalizeModernColors = (value) => String(value || "").replace(/color\(srg
   return `rgba(${values[0]},${values[1]},${values[2]},${Number.isFinite(alpha) ? alpha : 1})`;
 });
 
+const hasUnsupportedCaptureColor = (value) => /\b(?:oklab|oklch|color-mix)\(|\bvar\(/i.test(value);
+
 const screenshotFallback = (property) => ({
   color: "#4b3741",
   "background-color": "transparent",
@@ -42,7 +44,7 @@ const sanitizeScreenshotCloneColors = (clonedDocument) => {
       const value = computed.getPropertyValue(property);
       if (!value) return;
       const normalized = normalizeModernColors(value);
-      const safeValue = /color-mix\(|\bvar\(/i.test(normalized)
+      const safeValue = hasUnsupportedCaptureColor(normalized)
         ? screenshotFallback(property)
         : normalized;
       if (safeValue !== value) node.style.setProperty(property, safeValue, "important");

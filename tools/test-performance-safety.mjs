@@ -91,6 +91,7 @@ const appHydration = await source("hooks/data/useAppHydrationController.js");
 const chatImage = await source("hooks/chat/useChatImageController.js");
 const characterBlock = await source("hooks/chat/useCharacterBlockController.js");
 const characterBlockReaction = await source("hooks/chat/useCharacterBlockReaction.js");
+const chatScreenshotModal = await source("components/chat/ChatScreenshotModal.jsx");
 
 for (const component of ["PetHome", "GameCenter", "CoupleApp", "YunyinGame"]) {
   assert(
@@ -440,5 +441,10 @@ for (const [name, modalSource] of [
     `${name} must render against the phone viewport instead of the bottom chat composer`,
   );
 }
+
+assert(
+  chatScreenshotModal.includes("(?:oklab|oklch|color-mix)"),
+  "chat screenshots must replace OKLab/OKLCH colors that html2canvas cannot parse",
+);
 
 console.log("ok: gallery, animation, route chunking, smart preloading, and Yunyin HUD/settings guards hold");
