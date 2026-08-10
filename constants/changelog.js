@@ -1,6 +1,10 @@
 import { toSimplifiedChinese } from "../utils/i18n.js";
 
 const ZH_CHANGELOG = {
+  "1.2.12": [
+    "08/10 緊急修正",
+    "修正 | 修正雲隱山莊在部分情況下無法開啟、導致畫面中斷的問題。\n\n現在可正常進入山莊與使用家園佈置功能。",
+  ],
   "1.2.11": [
     "08/10 更新",
     "新增｜OpenRouter 現在可查看目前 API Key 的剩餘額度、已使用額度，以及帳戶總餘額。",
@@ -108,6 +112,20 @@ const ZH_CHANGELOG = {
 };
 
 const TRANSLATED_CHANGELOG = {
+  "1.2.12": {
+    en: [
+      "08/10 Hotfix",
+      "Fixes | Fixed an issue that could prevent Yunyin Villa from opening and interrupt the screen in certain situations.\n\nYou can now enter the villa and use Home Editor normally.",
+    ],
+    ja: [
+      "08/10 緊急修正",
+      "修正 | 一部の状況で雲隠山荘を開けず、画面が停止する問題を修正しました。\n\n山荘への入場と家園レイアウト機能を正常に利用できます。",
+    ],
+    ko: [
+      "08/10 긴급 수정",
+      "수정 | 일부 상황에서 운은산장에 들어갈 수 없고 화면이 중단되는 문제를 수정했습니다.\n\n이제 산장 입장과 집 꾸미기 기능을 정상적으로 이용할 수 있습니다.",
+    ],
+  },
   "1.2.11": {
     en: [
       "08/10 Update",

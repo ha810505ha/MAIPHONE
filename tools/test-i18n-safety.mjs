@@ -141,6 +141,7 @@ const yunyinAiBridgeSource = fs.readFileSync(path.join(repoRoot, "services", "yu
 const yunyinLocaleSource = fs.readFileSync(path.join(repoRoot, "yunyin", "i18n", "YunyinLocale.jsx"), "utf8");
 const yunyinShopPanelSource = fs.readFileSync(path.join(repoRoot, "yunyin", "ui", "ShopPanel.jsx"), "utf8");
 const yunyinSettingsPanelSource = fs.readFileSync(path.join(repoRoot, "yunyin", "ui", "GameSettingsPanel.jsx"), "utf8");
+const yunyinOverlaysSource = fs.readFileSync(path.join(repoRoot, "yunyin", "ui", "YunyinOverlays.jsx"), "utf8");
 const interfaceSettingsSource = fs.readFileSync(path.join(repoRoot, "components", "settings", "InterfaceSettings.jsx"), "utf8");
 const notesSource = fs.readFileSync(path.join(appDirectory, "NotesApp.jsx"), "utf8");
 const answerBookSource = fs.readFileSync(path.join(appDirectory, "AnswerBookApp.jsx"), "utf8");
@@ -169,6 +170,7 @@ for (const key of ["shop.tierNormal", "shop.tierAdvanced", "shop.tierRare"]) {
 assert.match(yunyinSettingsPanelSource, /INVALID_YUNYIN_BACKUP[^\n]+settings\.invalidBackup/, "Yunyin invalid backups must show localized copy");
 assert.doesNotMatch(yunyinSettingsPanelSource, /setBackupMessage\(error\?\.message/, "Yunyin backup UI must not expose raw runtime errors");
 assert.match(yunyinSettingsPanelSource, /\{yv\(def\.name\)\}/, "Yunyin resident binding list must localize built-in NPC names");
+assert.match(yunyinOverlaysSource, /function HomeEditorOverlay[\s\S]*?const \{ yt, yv \} = useYunyinLocale\(\)/, "Yunyin home editor must provide its data-value localizer before rendering catalog items");
 assert.match(interfaceSettingsSource, /Automatically locks after/, "screen-lock status must define English copy");
 assert.match(interfaceSettingsSource, /分後に自動ロック/, "screen-lock status must define Japanese copy");
 assert.match(interfaceSettingsSource, /분 후 자동 잠금/, "screen-lock status must define Korean copy");

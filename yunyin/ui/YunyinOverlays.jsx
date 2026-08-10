@@ -64,7 +64,7 @@ export function CameraZoomControl({ value, onChange, top = 178 }) {
 }
 
 export function HomeEditorOverlay({ editor, catalog, previewControlsRef, onSelect, onConfirmPreview, onCancelPreview, onClose, onExpand, onResidents }) {
-  const { yt } = useYunyinLocale();
+  const { yt, yv } = useYunyinLocale();
   if (!editor.active) return null;
   return <><div ref={previewControlsRef} aria-label={yt("home.previewActions")} style={{ position: "absolute", zIndex: 6, display: "none", gap: 7, transform: "translate(-50%, -100%)", padding: 6, borderRadius: 16, background: "rgba(44,34,39,.88)", boxShadow: "0 5px 16px rgba(0,0,0,.35)" }}>
     <button type="button" aria-label={yt("home.confirmPosition")} title={yt("home.confirm")} disabled={!editor.preview?.valid} onClick={onConfirmPreview} style={{ width: 38, height: 38, border: 0, borderRadius: 12, background: editor.preview?.valid ? "#78c88a" : "#777", color: "#fff", fontSize: 21, fontWeight: 900, opacity: editor.preview?.valid ? 1 : 0.5 }}>✓</button>
