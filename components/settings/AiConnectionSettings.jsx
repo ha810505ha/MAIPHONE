@@ -3,9 +3,13 @@ import { isLocalProvider, DEFAULT_LOCAL_BASE_URL } from "../../constants/appCons
 import OpenRouterCreditStatus from "./OpenRouterCreditStatus";
 
 // 模型選擇列：抓取按鈕 + 下拉/手動輸入。雲端與本地共用。
-function ModelRow({ t, tr, config, setConfig, modelOptions, fetchingModels, onFetchModels }) {
+function ModelRow({ t, tr, config, setConfig, modelOptions, fetchingModels, onFetchModels, onModelCommit }) {
   const hasModelOptions = modelOptions?.length > 0;
   const isCustomModel = hasModelOptions && (config.model === "__custom" || !modelOptions.includes(config.model));
+  const updateModel = (model, commit = false) => {
+    setConfig((current) => ({ ...current, model }));
+    if (commit && model && model !== "__custom") onModelCommit?.(model);
+  };
   return (
     <>
       <div className="mp-row">
@@ -14,10 +18,10 @@ function ModelRow({ t, tr, config, setConfig, modelOptions, fetchingModels, onFe
           <button type="button" className="mp-ibtn" disabled={fetchingModels} onClick={onFetchModels}>{fetchingModels ? t("loading") : tr("取得最新模型", "Fetch latest models", "最新モデルを取得", "최신 모델 가져오기")}</button>
         </div>
         {hasModelOptions
-          ? <select className="mp-ssel" value={isCustomModel ? "__custom" : config.model} onChange={(event) => setConfig((current) => ({ ...current, model: event.target.value }))}>{modelOptions.map((model) => <option key={model} value={model}>{model}</option>)}<option value="__custom">{tr("自訂...", "Custom...", "カスタム...", "사용자 지정...")}</option></select>
-          : <input className="mp-sinp" value={config.model} onChange={(event) => setConfig((current) => ({ ...current, model: event.target.value }))} placeholder="model-name" />}
+          ? <select className="mp-ssel" value={isCustomModel ? "__custom" : config.model} onChange={(event) => updateModel(event.target.value, true)}>{modelOptions.map((model) => <option key={model} value={model}>{model}</option>)}<option value="__custom">{tr("自訂...", "Custom...", "カスタム...", "사용자 지정...")}</option></select>
+          : <input className="mp-sinp" value={config.model} onChange={(event) => updateModel(event.target.value)} onBlur={(event) => onModelCommit?.(event.target.value.trim())} placeholder="model-name" />}
       </div>
-      {isCustomModel && <div className="mp-row"><div className="mp-lbl">{tr("自訂模型名稱", "Custom model name", "カスタムモデル名", "사용자 지정 모델 이름")}</div><input className="mp-sinp" value={config.model === "__custom" ? "" : config.model} onChange={(event) => setConfig((current) => ({ ...current, model: event.target.value }))} placeholder="model-name" /></div>}
+      {isCustomModel && <div className="mp-row"><div className="mp-lbl">{tr("自訂模型名稱", "Custom model name", "カスタムモデル名", "사용자 지정 모델 이름")}</div><input className="mp-sinp" value={config.model === "__custom" ? "" : config.model} onChange={(event) => updateModel(event.target.value)} onBlur={(event) => onModelCommit?.(event.target.value.trim())} placeholder="model-name" /></div>}
     </>
   );
 }
@@ -56,7 +60,7 @@ function ActionRow({ tr, testingConnection, onTest, onSave, onSavePreset }) {
 }
 
 // 雲端設定面板：官方供應商 + API Key，Base URL 只有 custom 可編輯。
-function CloudPanel({ t, tr, config, setConfig, cloudProviders, modelOptions, fetchingModels, onFetchModels, testingConnection, onTest, onSave, onSavePreset, onProviderChange }) {
+function CloudPanel({ t, tr, config, setConfig, cloudProviders, modelOptions, fetchingModels, onFetchModels, testingConnection, onTest, onSave, onSavePreset, onProviderChange, onModelCommit }) {
   return (
     <>
       <div className="mp-row"><div className="mp-lbl">{tr("API 供應商", "API provider", "API プロバイダー", "API 제공업체")}</div><select className="mp-ssel" value={config.provider} onChange={(event) => onProviderChange(event.target.value)}>{cloudProviders.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}</select></div>
@@ -74,7 +78,7 @@ function CloudPanel({ t, tr, config, setConfig, cloudProviders, modelOptions, fe
         </div>
         <OpenRouterCreditStatus apiKey={config.openRouterManagementKey} tr={tr} type="account" />
       </>}
-      <ModelRow t={t} tr={tr} config={config} setConfig={setConfig} modelOptions={modelOptions} fetchingModels={fetchingModels} onFetchModels={onFetchModels} />
+      <ModelRow t={t} tr={tr} config={config} setConfig={setConfig} modelOptions={modelOptions} fetchingModels={fetchingModels} onFetchModels={onFetchModels} onModelCommit={onModelCommit} />
       <TemperatureRow tr={tr} config={config} setConfig={setConfig} />
       <ContextRow tr={tr} config={config} setConfig={setConfig} />
       <ActionRow tr={tr} testingConnection={testingConnection} onTest={onTest} onSave={onSave} onSavePreset={onSavePreset} />
@@ -83,7 +87,7 @@ function CloudPanel({ t, tr, config, setConfig, cloudProviders, modelOptions, fe
 }
 
 // 本地設定面板：Base URL 可編輯、免 API Key（受保護端點可選填），並附上架設提示。
-function LocalPanel({ t, tr, config, setConfig, localProviders, modelOptions, fetchingModels, onFetchModels, testingConnection, onTest, onSave, onProviderChange }) {
+function LocalPanel({ t, tr, config, setConfig, localProviders, modelOptions, fetchingModels, onFetchModels, testingConnection, onTest, onSave, onProviderChange, onModelCommit }) {
   return (
     <>
       <div style={{ fontSize: 11, lineHeight: 1.6, color: "var(--mp-txt-l)", background: "rgba(128,203,196,.12)", border: "1px solid rgba(38,166,154,.25)", borderRadius: 10, padding: "8px 10px", marginBottom: 10 }}>
@@ -105,7 +109,7 @@ function LocalPanel({ t, tr, config, setConfig, localProviders, modelOptions, fe
       {localProviders.length > 1 && <div className="mp-row"><div className="mp-lbl">{tr("接頭", "Adapter", "アダプター", "어댑터")}</div><select className="mp-ssel" value={config.provider} onChange={(event) => onProviderChange(event.target.value)}>{localProviders.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}</select></div>}
       <div className="mp-row"><div className="mp-lbl">Base URL</div><input className="mp-sinp" value={config.baseUrl} onChange={(event) => setConfig((current) => ({ ...current, baseUrl: event.target.value }))} placeholder={DEFAULT_LOCAL_BASE_URL} /></div>
       <div className="mp-row"><div className="mp-lbl" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><span>{tr("API 金鑰", "API key", "API キー", "API 키")}</span><span style={{ fontSize: 10, fontWeight: 700, color: "var(--mp-txt-l)" }}>{tr("選填", "Optional", "任意", "선택")}</span></div><input className="mp-sinp" type="password" value={config.apiKey} onChange={(event) => setConfig((current) => ({ ...current, apiKey: event.target.value }))} placeholder={tr("多數本地伺服器免填", "Usually blank for local servers", "ローカルは通常不要", "로컬은 보통 비워둡니다")} /></div>
-      <ModelRow t={t} tr={tr} config={config} setConfig={setConfig} modelOptions={modelOptions} fetchingModels={fetchingModels} onFetchModels={onFetchModels} />
+      <ModelRow t={t} tr={tr} config={config} setConfig={setConfig} modelOptions={modelOptions} fetchingModels={fetchingModels} onFetchModels={onFetchModels} onModelCommit={onModelCommit} />
       <TemperatureRow tr={tr} config={config} setConfig={setConfig} />
       <ContextRow tr={tr} config={config} setConfig={setConfig} />
       <ActionRow tr={tr} testingConnection={testingConnection} onTest={onTest} onSave={onSave} onSavePreset={null} />
@@ -115,7 +119,7 @@ function LocalPanel({ t, tr, config, setConfig, localProviders, modelOptions, fe
 
 export default function AiConnectionSettings({
   t, tr, open, setOpen, config, setConfig, providers, modelOptions,
-  fetchingModels, onFetchModels, testingConnection, onTest, onSave, onSavePreset, onProviderChange, onModeChange,
+  fetchingModels, onFetchModels, testingConnection, onTest, onSave, onSavePreset, onProviderChange, onModeChange, onModelCommit,
   disabled = false,
 }) {
   const mode = isLocalProvider(config.provider) ? "local" : "cloud";
@@ -150,8 +154,8 @@ export default function AiConnectionSettings({
         <button type="button" role="tab" aria-selected={mode === "cloud"} style={modeButtonStyle(mode === "cloud")} onClick={() => onModeChange?.("cloud")}>{tr("雲端", "Cloud", "クラウド", "클라우드")}</button>
       </div>
       {mode === "local"
-        ? <LocalPanel t={t} tr={tr} config={config} setConfig={setConfig} localProviders={localProviders} modelOptions={modelOptions} fetchingModels={fetchingModels} onFetchModels={onFetchModels} testingConnection={testingConnection} onTest={onTest} onSave={onSave} onProviderChange={onProviderChange} />
-        : <CloudPanel t={t} tr={tr} config={config} setConfig={setConfig} cloudProviders={cloudProviders} modelOptions={modelOptions} fetchingModels={fetchingModels} onFetchModels={onFetchModels} testingConnection={testingConnection} onTest={onTest} onSave={onSave} onSavePreset={onSavePreset} onProviderChange={onProviderChange} />}
+        ? <LocalPanel t={t} tr={tr} config={config} setConfig={setConfig} localProviders={localProviders} modelOptions={modelOptions} fetchingModels={fetchingModels} onFetchModels={onFetchModels} testingConnection={testingConnection} onTest={onTest} onSave={onSave} onProviderChange={onProviderChange} onModelCommit={onModelCommit} />
+        : <CloudPanel t={t} tr={tr} config={config} setConfig={setConfig} cloudProviders={cloudProviders} modelOptions={modelOptions} fetchingModels={fetchingModels} onFetchModels={onFetchModels} testingConnection={testingConnection} onTest={onTest} onSave={onSave} onSavePreset={onSavePreset} onProviderChange={onProviderChange} onModelCommit={onModelCommit} />}
     </div>}
   </div>;
 }

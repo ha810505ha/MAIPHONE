@@ -53,6 +53,7 @@ export default function useDirectChatGenerationController({
   applyCharacterBlockDirective,
   isInnerThoughtAutoEnabled,
   generateInnerThought,
+  getRealityMaxTokens,
   createId = gid,
 }) {
   const generateAssistantForHistory = async (args) => {
@@ -100,6 +101,7 @@ export default function useDirectChatGenerationController({
         applyCharacterBlockDirective,
         isInnerThoughtAutoEnabled,
         generateInnerThought,
+        getRealityMaxTokens,
       },
     );
   };

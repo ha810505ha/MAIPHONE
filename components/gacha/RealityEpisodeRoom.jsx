@@ -4,11 +4,11 @@ import useGachaEpisodeAI from "../../hooks/gacha/useGachaEpisodeAI";
 import SpecialMemorySection from "./SpecialMemoryCard";
 import { confirmLocalized } from "../../utils/i18n";
 
-export default function RealityEpisodeRoom({ episode, character, playerProfile, apiConfig, recentMessages, onBack }) {
+export default function RealityEpisodeRoom({ episode, character, playerProfile, apiConfig, recentMessages, onBack, tr = (zh) => zh }) {
   const { sendEpisodeMessage, appendEpisodeAssistantMessage, setEpisodeOpening, endEpisode } = useGacha();
   const [input, setInput] = useState("");
   const openingStarted = useRef(false);
-  const { send: sendWithAI, finishEarly, prepareOpening, isGenerating, streamingText, error, clearError } = useGachaEpisodeAI({ episode, character, playerProfile, apiConfig, recentMessages, sendUserMessage: sendEpisodeMessage, appendAssistantMessage: appendEpisodeAssistantMessage, setEpisodeOpening });
+  const { send: sendWithAI, finishEarly, prepareOpening, isGenerating, streamingText, error, clearError } = useGachaEpisodeAI({ episode, character, playerProfile, apiConfig, recentMessages, sendUserMessage: sendEpisodeMessage, appendAssistantMessage: appendEpisodeAssistantMessage, setEpisodeOpening, tr });
   useEffect(() => { if (episode.openingStatus === "pending" && !openingStarted.current) { openingStarted.current = true; void prepareOpening(); } }, [episode.openingStatus, prepareOpening]);
   const send = async () => { const text = input.trim(); if (!text) return; setInput(""); await sendWithAI(text); };
   const endEarly = async () => {

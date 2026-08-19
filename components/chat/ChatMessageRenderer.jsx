@@ -79,6 +79,7 @@ export default function ChatMessageRenderer({
       return wrapSelectable(message, <SystemNoticeMessage key={message.id} message={message} share={share} connectionError={isConnectionErrorNotice(message.content)}
         active={activeMessageId === message.id} isTyping={isTyping}
         onLongPressStart={() => startNoticeLongPress(message.id)} onLongPressEnd={cancelNoticeLongPress}
+        onToggle={() => setActiveMessageId((previous) => previous === message.id ? null : message.id)}
         onRetry={() => retryChatFromNotice(message.id)} onDelete={() => deleteChatMessage(character.id, message.id)}
         applyUserPlaceholder={applyUserPlaceholder} tr={tr} />);
     }

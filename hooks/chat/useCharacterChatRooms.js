@@ -3,6 +3,7 @@ import { normalizePersistedPseudoVoiceMessages } from "../../utils/pseudoVoice";
 import { isRequestRoomActive, updateMessagesInRoomList } from "../../services/chat/chatRoomRouting.js";
 import { replaceAssistantSwipeGroup } from "../../utils/assistantSwipeGroups.js";
 import { STORY_VISIBILITY_DEFAULTS, normalizeStoryVisibility } from "../../constants/storyStatus.js";
+import { normalizeRealityOutputTokens } from "../../utils/realityOutputSettings.js";
 
 export default function useCharacterChatRooms({
   characters,
@@ -64,6 +65,7 @@ export default function useCharacterChatRooms({
       legacySceneMigrated: true,
       storyNote: typeof room.storyNote === "string" ? room.storyNote : "",
       storyNoteEnabled: room.storyNoteEnabled !== false,
+      realityMaxTokens: normalizeRealityOutputTokens(room.realityMaxTokens),
       storyStatus,
       quickActionsEnabled: room.quickActionsEnabled !== false,
       quickActions: Array.isArray(room.quickActions) && room.quickActions.length ? room.quickActions.slice(0, 8) : createDefaultQuickActions(),
@@ -302,6 +304,7 @@ export default function useCharacterChatRooms({
       statusUpdatedAt: parent.statusUpdatedAt || 0,
       storyNote: parent.storyNote || "",
       storyNoteEnabled: parent.storyNoteEnabled !== false,
+      realityMaxTokens: normalizeRealityOutputTokens(parent.realityMaxTokens),
       storyStatus: normalizeStoryStatus(parent.storyStatus),
       quickActionsEnabled: parent.quickActionsEnabled !== false,
       quickActions: Array.isArray(parent.quickActions) ? parent.quickActions.map((action) => ({ ...action })) : createDefaultQuickActions(),
@@ -454,10 +457,11 @@ export default function useCharacterChatRooms({
     setTimeout(() => { switchingRef.current = false; }, 0);
   };
 
-  const addCharacterRoom = (character) => {
+  const addCharacterRoom = (character, options = {}) => {
     const roomId = `room_${character.id}_first`;
-    const openingMessage = createOpeningMessage(character, "online");
-    const messages = openingMessage ? [openingMessage] : [];
+    const suppliedMessages = Array.isArray(options.messages) ? options.messages : null;
+    const openingMessage = suppliedMessages ? null : createOpeningMessage(character, "online");
+    const messages = suppliedMessages || (openingMessage ? [openingMessage] : []);
     const room = normalizeRoomStoryData({ id: roomId, roomType: "root", parentRoomId: null, forkMessageId: null, sortOrder: 0, archivedAt: null, title: tr("第一個聊天室", "First chat", "最初のチャット", "첫 번째 채팅"), messages, memories: [], scene: emptyScene(), statusText: character.statusText || "", statusUpdatedAt: character.statusUpdatedAt || 0, createdAt: Date.now(), updatedAt: Date.now() });
     setChatRooms((previous) => ({ ...previous, [character.id]: [room] }));
     setActiveRoomIds((previous) => ({ ...previous, [character.id]: roomId }));

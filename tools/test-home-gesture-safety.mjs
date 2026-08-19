@@ -97,6 +97,11 @@ if (!desktopRule.includes("touch-action:none")) {
 if (!hook.includes("touchSwipeRef") || !hook.includes("lastPointerGestureAtRef")) {
   throw new Error("home gestures must keep an independent Touch Event fallback without duplicate pointer actions");
 }
+if (!hook.includes("Once it clearly moves, hand the exact same gesture to the desktop")
+  || !hook.includes("time: pendingPress.time")
+  || !hook.includes("width: pendingPress.width")) {
+  throw new Error("a swipe starting on an app icon must take over smoothly instead of waiting for pointer release");
+}
 if (!maliPhone.includes("onTouchStart: onHomeTouchStart")
   || !maliPhone.includes("onTouchEnd: onHomeTouchEnd")
   || !maliPhone.includes("onTouchCancel: onHomeTouchCancel")) {

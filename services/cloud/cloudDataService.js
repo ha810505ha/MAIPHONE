@@ -19,7 +19,7 @@ async function getResponsePayload(response) {
   return contentType.includes("application/json") ? response.json() : response.text();
 }
 
-async function requestCloudData(path, { session, method = "GET", body, environment } = {}) {
+export async function requestCloudData(path, { session, method = "GET", body, environment } = {}) {
   const { url, configured } = getCloudDataConfig(environment);
   if (!configured) throw new CloudDataUnavailableError();
   if (!session?.access_token) throw new CloudDataUnavailableError("Please sign in before testing cloud data");
@@ -38,6 +38,19 @@ async function requestCloudData(path, { session, method = "GET", body, environme
     throw new Error(detail || `Cloud database request failed (${response.status})`);
   }
   return payload;
+}
+
+export function getCloudDocument(session, key, environment) {
+  return requestCloudData(`/v1/documents/${encodeURIComponent(key)}`, { session, environment });
+}
+
+export function putCloudDocument(session, key, data, environment) {
+  return requestCloudData(`/v1/documents/${encodeURIComponent(key)}`, {
+    session,
+    environment,
+    method: "PUT",
+    body: data,
+  });
 }
 
 export async function runCloudDatabaseConnectionTest(session, environment) {

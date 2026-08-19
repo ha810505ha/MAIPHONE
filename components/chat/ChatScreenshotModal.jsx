@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import ChatMessageRenderer from "./ChatMessageRenderer";
 import { downloadImageFile } from "../../utils/exportFile";
+import {
+  containsScreenshotRedactionKeyword,
+  normalizeScreenshotRedactionKeywords,
+  redactScreenshotText,
+} from "../../utils/screenshotRedaction";
 import MotionPresence from "../motion/MotionPresence.jsx";
 
 const LIMITS = { messages: 15, images: 4, outputHeight: 8000, width: 430, scale: 2 };
@@ -33,9 +38,21 @@ const screenshotFallback = (property) => ({
   "text-decoration-color": "#4b3741",
 }[property] || "transparent");
 
-const sanitizeScreenshotCloneColors = (clonedDocument) => {
+const sanitizeScreenshotClone = (clonedDocument, redactionKeywords = []) => {
   const root = clonedDocument.querySelector("[data-chat-screenshot-capture]");
   if (!root) return;
+  if (redactionKeywords.length) {
+    const nodeFilter = clonedDocument.defaultView?.NodeFilter;
+    if (nodeFilter) {
+      const walker = clonedDocument.createTreeWalker(root, nodeFilter.SHOW_TEXT);
+      const textNodes = [];
+      while (walker.nextNode()) textNodes.push(walker.currentNode);
+      textNodes.forEach((node) => {
+        if (["STYLE", "SCRIPT", "NOSCRIPT"].includes(node.parentElement?.tagName)) return;
+        node.nodeValue = redactScreenshotText(node.nodeValue, redactionKeywords);
+      });
+    }
+  }
   const properties = ["color", "background-color", "background-image", "border-top-color", "border-right-color", "border-bottom-color", "border-left-color", "outline-color", "box-shadow", "text-shadow", "text-decoration-color"];
   [root, ...root.querySelectorAll("*")].forEach((node) => {
     const computed = clonedDocument.defaultView?.getComputedStyle(node);
@@ -68,12 +85,14 @@ const getCaptureSafeCss = (isNightTheme) => {
   `;
 };
 
-export default function ChatScreenshotModal({ open, onClose, onReselect, messages, initialSelectedIds = [], character, modelShort, sceneBar, mode, rendererProps, backgroundUrl, isNightTheme = false, tr }) {
+export default function ChatScreenshotModal({ open, onClose, onReselect, messages, initialSelectedIds = [], character, playerName = "", modelShort, sceneBar, mode, rendererProps, backgroundUrl, isNightTheme = false, tr }) {
   const captureRef = useRef(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [redactionInput, setRedactionInput] = useState("");
   const [renderedOutputHeight, setRenderedOutputHeight] = useState(0);
+  const redactionKeywords = useMemo(() => normalizeScreenshotRedactionKeywords(redactionInput), [redactionInput]);
   const candidates = useMemo(() => (messages || []).filter((message) => message?.id), [messages]);
   const selected = useMemo(() => {
     const ids = new Set(initialSelectedIds);
@@ -119,6 +138,12 @@ export default function ChatScreenshotModal({ open, onClose, onReselect, message
   };
   const issue = validate();
 
+  const addRedactionKeyword = (value) => {
+    const keyword = String(value || "").trim();
+    if (!keyword || containsScreenshotRedactionKeyword(keyword, redactionKeywords)) return;
+    setRedactionInput((current) => current.trim() ? `${current.trim()}\n${keyword}` : keyword);
+  };
+
   const capture = async () => {
     if (issue) { setError(issue); return; }
     setBusy(true); setError(""); setNotice("");
@@ -131,9 +156,10 @@ export default function ChatScreenshotModal({ open, onClose, onReselect, message
       const pageBackground = window.getComputedStyle(element.closest(".mp-page") || element).background;
       if (pageBackground && pageBackground !== "none") element.style.background = pageBackground;
       const { default: html2canvas } = await import("html2canvas");
-      const canvas = await html2canvas(element, { backgroundColor: isNightTheme ? "#181420" : "#fffafc", scale: LIMITS.scale, useCORS: true, logging: false, width: LIMITS.width, windowWidth: LIMITS.width, onclone: sanitizeScreenshotCloneColors });
+      const canvas = await html2canvas(element, { backgroundColor: isNightTheme ? "#181420" : "#fffafc", scale: LIMITS.scale, useCORS: true, logging: false, width: LIMITS.width, windowWidth: LIMITS.width, onclone: (clonedDocument) => sanitizeScreenshotClone(clonedDocument, redactionKeywords) });
       const blob = await canvasToPngBlob(canvas);
-      const safeName = String(character?.name || "chat").replace(/[\\/:*?"<>|]+/g, "_");
+      const characterName = String(character?.name || "");
+      const safeName = (containsScreenshotRedactionKeyword(characterName, redactionKeywords) ? "redacted-chat" : (characterName || "chat")).replace(/[\\/:*?"<>|]+/g, "_");
       const result = await downloadImageFile(blob, `${safeName}-chat-${new Date().toISOString().slice(0, 10)}.png`, { preferBrowserDownload: true });
       if (result?.method === "native-filesystem") setNotice(`已儲存到 Documents/${result.path}`);
       else if (result?.method !== "cancelled") setNotice(tr("PNG 已下載", "PNG downloaded", "PNGを保存しました", "PNG를 저장했습니다"));
@@ -154,6 +180,23 @@ export default function ChatScreenshotModal({ open, onClose, onReselect, message
       <div style={{ marginTop: 12, padding: "11px 12px", borderRadius: 13, background: "color-mix(in srgb,var(--mp-pink) 8%,var(--mp-surface))", color: "var(--mp-txt)", fontSize: 12, lineHeight: 1.7 }}>
         已選取 <b>{selected.length}</b> 則 · <b>{stats.chars}</b> 字 · <b>{stats.images}</b> 張圖片
         {renderedOutputHeight > 0 && <> · 輸出高度 <b>{renderedOutputHeight.toLocaleString()}</b> / {LIMITS.outputHeight.toLocaleString()} px</>}
+      </div>
+      <div style={{ marginTop: 10, padding: "10px 11px", borderRadius: 13, border: "1px solid var(--mp-line)", background: "var(--mp-surface)" }}>
+        <div className="mp-lbl">{tr("遮蔽關鍵字（只影響這張截圖）", "Hide keywords (this screenshot only)", "非表示キーワード（この画像のみ）", "가림 키워드(이 캡처에만 적용)")}</div>
+        <textarea
+          className="mp-sinp"
+          rows={3}
+          value={redactionInput}
+          disabled={busy}
+          onChange={(event) => setRedactionInput(event.target.value)}
+          placeholder={tr("每行一個，也可用逗號分隔", "One per line, or separate with commas", "1行に1つ、またはカンマで区切る", "한 줄에 하나씩 또는 쉼표로 구분")}
+          style={{ width: "100%", minHeight: 64, resize: "vertical", marginTop: 7, boxSizing: "border-box" }}
+        />
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 7 }}>
+          {character?.name && <button type="button" className="mp-ibtn" disabled={busy || containsScreenshotRedactionKeyword(character.name, redactionKeywords)} onClick={() => addRedactionKeyword(character.name)}>＋ {tr("角色名稱", "Character name", "キャラクター名", "캐릭터 이름")}</button>}
+          {playerName && <button type="button" className="mp-ibtn" disabled={busy || containsScreenshotRedactionKeyword(playerName, redactionKeywords)} onClick={() => addRedactionKeyword(playerName)}>＋ {tr("玩家名稱", "Player name", "プレイヤー名", "플레이어 이름")}</button>}
+        </div>
+        {redactionKeywords.length > 0 && <div style={{ marginTop: 7, color: "var(--mp-txt-l)", fontSize: 10 }}>{tr("將遮蔽", "Will hide", "非表示", "가림 예정")} {redactionKeywords.length} {tr("個關鍵字；原始聊天不會變更。", "keywords; the original chat will not change.", "件。元のチャットは変更されません。", "개 키워드이며 원본 채팅은 변경되지 않습니다.")}</div>}
       </div>
       {(issue || error) && <div style={{ marginTop: 9, color: "#d94b68", fontSize: 11, lineHeight: 1.5 }}>{error || issue}</div>}
       {notice && <div style={{ marginTop: 9, color: "#4a9b68", fontSize: 11, lineHeight: 1.5 }}>{notice}</div>}
@@ -180,7 +223,7 @@ export default function ChatScreenshotModal({ open, onClose, onReselect, message
         <div className="mp-inp-bar" style={{ minHeight: 68, boxSizing: "border-box" }}>
           <div className="mp-btn mp-btn-img" style={{ display: "grid", placeItems: "center" }}>＋</div>
           <div className="mp-inp" style={{ flex: 1, color: "var(--mp-txt-l)", display: "flex", alignItems: "center" }}>{tr("輸入訊息...", "Type a message...", "メッセージを入力...", "메시지를 입력...")}</div>
-          <div className="mp-btn mp-btn-send" style={{ display: "grid", placeItems: "center" }}>➤</div>
+          <div className="mp-btn mp-btn-send" style={{ display: "grid", placeItems: "center" }}><span className="mp-btn-send-glyph">➤</span></div>
         </div>
       </div>
     </div>

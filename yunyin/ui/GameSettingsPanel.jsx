@@ -168,7 +168,7 @@ export default function GameSettingsPanel({ save, characters, onDirty, onEditApp
                     const lines = pack.versions[Math.min(pack.active, pack.versions.length - 1)].lines;
                     return (
                       <div style={{ background: "#f7f2ea", borderRadius: 10, padding: "8px 10px", maxHeight: 180, overflowY: "auto" }}>
-                        {Object.entries(lines).map(([pool, arr]) => (
+                        {Object.entries(lines).filter(([pool]) => pool !== "home").map(([pool, arr]) => (
                           <div key={pool} style={{ marginBottom: 6 }}>
                             <div style={{ fontSize: 10, fontWeight: 800, color: "#7d5a6e", marginBottom: 2 }}>{POOL_LABEL_KEYS[pool] ? yt(POOL_LABEL_KEYS[pool]) : pool}</div>
                             {arr.map((line, li) => (

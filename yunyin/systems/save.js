@@ -75,6 +75,19 @@ const normalizeSave = (raw) => {
       linePacks: { ...(raw.linePacks || {}) },
       home: normalizeHomeState(raw.home),
   };
+  // 舊版把 home 池混在一般角色句庫中；首次讀取時複製到獨立入住句庫，避免玩家重生台詞。
+  for (const [characterId, pack] of Object.entries(normalized.linePacks)) {
+    if (normalized.home.residentLinePacks[characterId]?.versions?.length) continue;
+    const versions = (Array.isArray(pack?.versions) ? pack.versions : [])
+      .filter((version) => Array.isArray(version?.lines?.home) && version.lines.home.length)
+      .map((version) => ({ createdAt: version.createdAt, lines: { home: [...version.lines.home] } }));
+    if (versions.length) {
+      normalized.home.residentLinePacks[characterId] = {
+        versions,
+        active: Math.min(Number(pack.active) || 0, versions.length - 1),
+      };
+    }
+  }
   normalized.ver = SAVE_VERSION;
   normalized.farm.plots.forEach((plot) => {
     const plantedAt = Number(plot.plantedAt);

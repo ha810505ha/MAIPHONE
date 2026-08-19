@@ -25,7 +25,7 @@ function ActiveCharacterCard({ character, peachTheme, onOpen, onOpenFromTouch, t
 // 紅點只表示「有沒有」，數量留給 App 內部的列表顯示——桌面圖示這個尺寸放數字會太擠。
 const Badge = ({ show }) => (show ? <span className="mp-icon-badge" /> : null);
 
-function AppGrid({ pages, page, pageSize, appById, badges, dragging, pointerDrag, pageGesture, renderAppIcon, onDropGrid, onDropSlot, onOpenApp, onOpenFromTouch, onPointerDragStart, onPreloadApp }) {
+function AppGrid({ pages, page, pageSize, appById, badges, dragging, pointerDrag, pageGesture, pageTrackRef, renderAppIcon, onDropGrid, onDropSlot, onOpenApp, onOpenFromTouch, onPointerDragStart, onPreloadApp }) {
   const itemElementsRef = useRef(new Map());
   const previousRectsRef = useRef(new Map());
   const motionAnimationsRef = useRef(new Map());
@@ -66,6 +66,7 @@ function AppGrid({ pages, page, pageSize, appById, badges, dragging, pointerDrag
     <div className="mp-home-mid">
       <div className="mp-pages">
         <div
+          ref={pageTrackRef}
           className="mp-pages-track"
           style={{
             transform: `translate3d(calc(-${page * 100}% + ${pageGesture?.offsetX || 0}px),0,0)`,
@@ -148,7 +149,7 @@ function Dock({ apps, badges, dragging, renderAppIcon, onDropContainer, onDropAp
   );
 }
 
-export default function HomeScreen({ ft, fd, activeCharacter, peachTheme, tr, currentApp, pages, page, pageSize, appById, dockApps, badges, dragging, pointerDrag, pageGesture, renderAppIcon, gestureHandlers, onOpenStatus, onOpenStatusFromTouch, onDropGrid, onDropSlot, onDropDockContainer, onDropDockApp, onOpenApp, onOpenFolder, onOpenAllApps, onOpenFromTouch, onPointerDragStart, onPreloadApp }) {
+export default function HomeScreen({ ft, fd, activeCharacter, peachTheme, tr, currentApp, pages, page, pageSize, appById, dockApps, badges, dragging, pointerDrag, pageGesture, pageTrackRef, renderAppIcon, gestureHandlers, onOpenStatus, onOpenStatusFromTouch, onDropGrid, onDropSlot, onDropDockContainer, onDropDockApp, onOpenApp, onOpenFolder, onOpenAllApps, onOpenFromTouch, onPointerDragStart, onPreloadApp }) {
   const verticalOffset = pageGesture?.axis === "y" ? pageGesture.offsetY || 0 : 0;
   const verticalProgress = Math.min(1, Math.abs(verticalOffset) / 150);
   const stopHomeGesture = (event) => event.stopPropagation();
@@ -170,7 +171,7 @@ export default function HomeScreen({ ft, fd, activeCharacter, peachTheme, tr, cu
         <div className="mp-desk-scroll">
           <DeskClock ft={ft} fd={fd} />
           <ActiveCharacterCard character={activeCharacter} peachTheme={peachTheme} onOpen={onOpenStatus} onOpenFromTouch={onOpenStatusFromTouch} tr={tr} />
-          <AppGrid pages={pages} page={page} pageSize={pageSize} appById={appById} badges={badges} dragging={dragging} pointerDrag={pointerDrag} pageGesture={pageGesture} renderAppIcon={renderAppIcon} onDropGrid={onDropGrid} onDropSlot={onDropSlot} onOpenApp={(target) => typeof target === "string" ? onOpenApp(target) : onOpenFolder(target)} onOpenFromTouch={onOpenFromTouch} onPointerDragStart={onPointerDragStart} onPreloadApp={onPreloadApp} />
+          <AppGrid pages={pages} page={page} pageSize={pageSize} appById={appById} badges={badges} dragging={dragging} pointerDrag={pointerDrag} pageGesture={pageGesture} pageTrackRef={pageTrackRef} renderAppIcon={renderAppIcon} onDropGrid={onDropGrid} onDropSlot={onDropSlot} onOpenApp={(target) => typeof target === "string" ? onOpenApp(target) : onOpenFolder(target)} onOpenFromTouch={onOpenFromTouch} onPointerDragStart={onPointerDragStart} onPreloadApp={onPreloadApp} />
         </div>
         {!currentApp && (
           <button

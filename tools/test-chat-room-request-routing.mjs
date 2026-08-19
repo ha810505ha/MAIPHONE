@@ -37,6 +37,10 @@ const unanswered = { id: "unanswered", role: "user", content: "還在嗎？" };
 assert.equal(getRetryableTailUserMessage([roomA.messages[0], unanswered]), unanswered);
 assert.equal(getRetryableTailUserMessage([unanswered, assistantReply]), null);
 assert.equal(getRetryableTailUserMessage([{ ...unanswered, interceptedByCharacterBlock: true }]), null);
+assert.equal(
+  getRetryableTailUserMessage([{ ...unanswered, interceptedByCharacterBlock: true }], { allowInterceptedByCharacterBlock: true })?.id,
+  unanswered.id,
+);
 assert.equal(getRetryableTailUserMessage([]), null);
 assert.equal(isPendingRequestForRoom({ characterId: "char", roomId: "room-a" }, "char", "room-a"), true);
 assert.equal(isPendingRequestForRoom({ characterId: "char", roomId: "room-a" }, "char", "room-b"), false);
@@ -52,6 +56,10 @@ const appSource = fs.readFileSync(new URL("../MaliPhone.jsx", import.meta.url), 
 const renderControllerSource = fs.readFileSync(new URL("../hooks/chat/useChatRenderController.jsx", import.meta.url), "utf8");
 const roomManagerSource = fs.readFileSync(new URL("../components/chat/ChatRoomManager.jsx", import.meta.url), "utf8");
 const groupControllerSource = fs.readFileSync(new URL("../hooks/chat/useGroupChatController.js", import.meta.url), "utf8");
+const proactiveControllerSource = fs.readFileSync(new URL("../hooks/chat/useProactiveChatController.js", import.meta.url), "utf8");
+const episodeRoomSource = fs.readFileSync(new URL("../components/gacha/EpisodeRoom.jsx", import.meta.url), "utf8");
+const directMessageTypesSource = fs.readFileSync(new URL("../components/chat/DirectMessageTypes.jsx", import.meta.url), "utf8");
+const messageRendererSource = fs.readFileSync(new URL("../components/chat/ChatMessageRenderer.jsx", import.meta.url), "utf8");
 
 assert.match(directHookSource, /roomId = getActiveRoomId/);
 assert.match(directHookSource, /generateAssistant\(\{ cid: characterId, roomId,/);
@@ -64,8 +72,12 @@ assert.match(directHookSource, /retryLastUnansweredMessage/);
 assert.match(directHookSource, /setPendingRequest\(\{ characterId, roomId, messageId:/);
 assert.match(messageListSource, /useLayoutEffect/);
 assert.match(messageListSource, /scrollKey/);
-assert.match(composerSource, /retryAvailable \? onRetryLast : onSend/);
+assert.match(composerSource, /retryAvailable \? onRetryLast : batchMode \? onAddBubble : onSend/);
+assert.match(composerSource, /onClick=\{onGenerateBatch\}/);
 assert.match(renderControllerSource, /retryLastReplyAvailable/);
+assert.match(directMessageTypesSource, /if \(heldFor < 400\) onToggle\?\.\(\)/);
+assert.match(messageRendererSource, /previous === message\.id \? null : message\.id/);
+assert.match(renderControllerSource, /onGenerateBatch: \(\) => retryLastUnansweredMessage\(\{ allowInterceptedByCharacterBlock: true \}\)/);
 assert.match(roomsHookSource, /requestRoot\?\.archivedAt/);
 assert.match(roomsHookSource, /root\?\.archivedAt/);
 assert.match(roomsHookSource, /archiveRoom/);
@@ -76,5 +88,15 @@ assert.doesNotMatch(roomManagerSource, /callAI|generateAssistant|updateRoomMessa
 assert.match(appSource, /useGroupChatController\(\{\s*characters, currentChatGroup,/);
 assert.match(groupControllerSource, /const characterList = Array\.isArray\(characters\) \? characters : \[\]/);
 assert.match(groupControllerSource, /return characterList\.filter/);
+assert.match(proactiveControllerSource, /getLastCommittedChatMode\(character\.id\) !== "online"/);
+assert.match(proactiveControllerSource, /const selectedMode = getLastCommittedChatMode\(characterId\);\s*\/\/[^\n]+\s*if \(selectedMode !== "online"\) return;/);
+assert.doesNotMatch(proactiveControllerSource, /主動互動觸發/);
+assert.match(episodeRoomSource, /className="sg-episode-settings-trigger"/);
+assert.match(episodeRoomSource, /className="sg-episode-settings-dialog"/);
+assert.match(episodeRoomSource, /dialog\.showModal\(\)/);
+assert.doesNotMatch(episodeRoomSource, /sg-episode-manual-setting/);
+assert.match(episodeRoomSource, /className="sg-episode-generate-row"/);
+assert.match(episodeRoomSource, /className="sg-episode-send"/);
+assert.doesNotMatch(episodeRoomSource, />➤<\/button>/);
 
 console.log("chat room request routing: ok");

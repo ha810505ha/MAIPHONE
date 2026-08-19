@@ -2,10 +2,10 @@ import {
   CONTACT_PACE_THRESHOLDS, MATCH_BASE_RATE, MATCH_DISLIKE_WEIGHT, MATCH_LIKE_WEIGHT,
   MATCH_RATE_MAX, MATCH_RATE_MIN, PASS_COOLDOWN_MS, RESPONSE_DELAY_RANGES,
   SUPER_LIKE_INITIAL, SUPER_LIKE_RATE_FLOOR,
-} from "../../constants/dating";
-import { dayKey, isEffectiveMessage } from "./datingChat";
-import { DATING_PROFILES } from "../../data/dating/profiles";
-import { isValidTag } from "../../data/dating/interestTags";
+} from "../../constants/dating.js";
+import { dayKey, isEffectiveMessage } from "./datingChat.js";
+import { DATING_PROFILES } from "../../data/dating/profiles.js";
+import { isValidTag } from "../../data/dating/interestTags.js";
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const intersect = (a = [], b = []) => a.filter((item) => b.includes(item));
@@ -16,10 +16,10 @@ export const createDatingState = () => ({
   pending: [],       // 已右滑且註定會配對的，等時間到
   matches: [],       // 已配對：{ profileId, at, superLike, shared, seen }
   /**
-   * 對話活在這裡，不進 chatHistory，配對成功也不建角色。
-   * characters 有三十幾個消費端（聯絡人、社群、群組、錢包⋯），
-   * 靠旗標到處過濾是打地鼠；根本不建立才不會穿幫。
-   * profileId → { messages, unread, contactCharId, promotedAt }
+   * 信風保存公開階段的聊天與解鎖狀態；完整角色卡由 DATING_PROFILES registry 持有。
+   * characterId 是角色永久身份，contactCharId 為 null 時代表尚未顯示在聯絡人；
+   * 解鎖後兩者相同（舊存檔可能保留舊版隨機 contactCharId）。
+   * profileId → { messages, unread, characterId, contactState, contactCharId, promotedAt }
    */
   relations: {},
   blocked: {},       // profileId → at；封鎖只作用在交友軟體，已加入聯絡人的聊天室不受影響
@@ -42,7 +42,24 @@ export function normalizeDatingState(src) {
     swiped: source.swiped && typeof source.swiped === "object" ? source.swiped : {},
     pending: Array.isArray(source.pending) ? source.pending : [],
     matches: Array.isArray(source.matches) ? source.matches : [],
-    relations: source.relations && typeof source.relations === "object" ? source.relations : {},
+    relations: source.relations && typeof source.relations === "object"
+      ? Object.fromEntries(Object.entries(source.relations).map(([profileId, rawRelation]) => {
+        const relation = rawRelation && typeof rawRelation === "object" ? rawRelation : {};
+        const canonicalCharacterId = DATING_PROFILES.find((entry) => entry.id === profileId)?.character?.id
+          || relation.characterId
+          || null;
+        const contactCharId = relation.contactCharId || null;
+        return [profileId, {
+          ...relation,
+          messages: Array.isArray(relation.messages) ? relation.messages : [],
+          unread: Math.max(0, Number(relation.unread) || 0),
+          characterId: canonicalCharacterId,
+          contactState: contactCharId ? "unlocked" : "locked",
+          contactCharId,
+          promotedAt: Math.max(0, Number(relation.promotedAt) || 0),
+        }];
+      }))
+      : {},
     blocked: source.blocked && typeof source.blocked === "object" ? source.blocked : {},
     reports: Array.isArray(source.reports) ? source.reports : [],
     superLikes: Number.isFinite(Number(source.superLikes)) ? Math.max(0, Number(source.superLikes)) : base.superLikes,
@@ -51,6 +68,27 @@ export function normalizeDatingState(src) {
 }
 
 export const findProfile = (profileId) => DATING_PROFILES.find((item) => item.id === profileId) || null;
+
+/**
+ * 舊版可能因連點留下多張相同 datingProfileId 的角色。對帳時不自動刪資料，
+ * 但必須優先保留 relation 正在使用的聊天室，其次才是新版永久 id。
+ */
+export function chooseDatingContactId(candidates, profileId, relation) {
+  const byId = new Map((Array.isArray(candidates) ? candidates : [])
+    .map((character) => [String(character?.id || "").trim(), character])
+    .filter(([characterId]) => characterId));
+  const linkedId = String(relation?.contactCharId || "").trim();
+  if (linkedId && byId.has(linkedId)) return linkedId;
+
+  const canonicalId = String(findProfile(profileId)?.character?.id || "").trim();
+  if (canonicalId && byId.has(canonicalId)) return canonicalId;
+
+  return [...byId.entries()]
+    .sort(([leftId, left], [rightId, right]) => {
+      const createdDiff = (Number(left?.createdAt) || 0) - (Number(right?.createdAt) || 0);
+      return createdDiff || leftId.localeCompare(rightId);
+    })[0]?.[0] || null;
+}
 
 /** 公開的興趣標籤命中就加分，隱藏的雷點命中就扣分（扣得比加的重）。 */
 export function calculateMatchRate(entry, playerTags = [], superLike = false) {

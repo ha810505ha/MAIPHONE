@@ -18,14 +18,27 @@ import {
   summarizeFeatureBackup,
 } from "../../services/featureBackupService";
 import { saveAppState } from "../../utils/indexedDbStorage";
-import { serializePersonas } from "../../services/persona/personaModel";
+import { capturePersonaData, serializePersonas } from "../../services/persona/personaModel";
+import {
+  compactActivePersona,
+  compactLegacyLocalData,
+  packBackupMedia,
+  restoreActivePersona,
+  unpackBackupMedia,
+} from "../../utils/backupMediaAssets";
+import {
+  createTextSyncDocument,
+  preserveLocalMedia,
+  validateTextSyncDocument,
+} from "../../utils/textSyncDocument";
+import { mergeWalletSyncData } from "../../utils/walletSync";
+import { mergeGameProgressSyncData } from "../../utils/gameProgressSync";
 
 export const LOCAL_APP_DATA_KEYS = [
   "maliphone-pet-home",
   "maliphone-pet-settings",
   "maliphone-pet-cooldown-until",
   "mali_yunyin_save_v1",
-  "mali_yunyin_crystals_v1",
 ];
 
 /**
@@ -48,6 +61,7 @@ export default function useGlobalDataSnapshot({
     chatRooms,
     activeRoomIds,
     chatModes,
+    chatReplyTimings,
     chatBackgrounds,
     groupChats,
     chatScenes,
@@ -88,6 +102,7 @@ export default function useGlobalDataSnapshot({
 
   const {
     setChatModes,
+    setChatReplyTimings,
     setChatBackgrounds,
     setGroupChats,
     setGroupScenes,
@@ -164,6 +179,7 @@ export default function useGlobalDataSnapshot({
     chatRooms,
     activeRoomIds,
     chatModes,
+    chatReplyTimings,
     chatBackgrounds,
     groupChats,
     chatScenes,
@@ -229,64 +245,78 @@ export default function useGlobalDataSnapshot({
       minimax: { ...(ttsConfig?.minimax || {}), apiKey: "" },
     };
 
-    return {
-      version: VERSION,
-      exportedAt: new Date().toISOString(),
-      format: "maliphone-app-state",
-      formatVersion: 1,
-      state: {
-        characters: exportCharacters,
-        activeCharId,
-        chatHistory,
-        chatRooms: exportChatRooms,
-        activeRoomIds,
-        chatModes,
-        chatBackgrounds,
-        groupChats: exportGroupChats,
-        chatScenes,
-        groupScenes,
-        chatTimeSettings,
-        innerThoughtSettings,
-        proactiveSettings,
-        proactiveUnread,
-        posts: exportPosts,
-        socialSettings,
-        memories,
-        lorebooks,
-        chatLorebookBindings,
-        phoneInboxCache,
-        phoneAppCache,
-        wallet,
-        characterWallets,
-        transfers,
-        characterBlockStates,
-        screenLockTimeout,
-        apiPresets: exportApiPresets,
-        playerProfile,
-        apiConfig: exportApiConfig,
-        ttsConfig: exportTtsConfig,
-        ...notificationCenter.persisted,
-        themeName,
-        fontName,
-        fontSizeScale,
-        uiLanguage,
-        customFontName,
-        customCss,
-        customCssEnabled,
-        homeSlots,
-        dockOrder,
-        personas: serializePersonas(
+    const featureData = await loadFeatureBackup(exportCharacters, {
+      compactImages: compactMedia,
+      personaIds: Object.keys(personaController.personas || {}),
+    });
+    const localAppData = compactLegacyLocalData(
+      getLocalAppDataSnapshot({ includeMissing: includeMissingLocalData }),
+      featureData,
+    );
+    const backupState = {
+      characters: exportCharacters,
+      activeCharId,
+      chatHistory,
+      chatRooms: exportChatRooms,
+      activeRoomIds,
+      chatModes,
+      chatReplyTimings,
+      chatBackgrounds,
+      groupChats: exportGroupChats,
+      chatScenes,
+      groupScenes,
+      chatTimeSettings,
+      innerThoughtSettings,
+      proactiveSettings,
+      proactiveUnread,
+      posts: exportPosts,
+      socialSettings,
+      memories,
+      lorebooks,
+      chatLorebookBindings,
+      phoneInboxCache,
+      phoneAppCache,
+      wallet,
+      characterWallets,
+      transfers,
+      characterBlockStates,
+      screenLockTimeout,
+      apiPresets: exportApiPresets,
+      playerProfile,
+      apiConfig: exportApiConfig,
+      ttsConfig: exportTtsConfig,
+      ...notificationCenter.persisted,
+      themeName,
+      fontName,
+      fontSizeScale,
+      uiLanguage,
+      customFontName,
+      customCss,
+      customCssEnabled,
+      homeSlots,
+      dockOrder,
+      personas: compactActivePersona(
+        serializePersonas(
           personaController.personas,
           personaController.activePersonaId,
           captureCurrentPersona(),
         ),
-        activePersonaId: personaController.activePersonaId,
-        localAppData: getLocalAppDataSnapshot({ includeMissing: includeMissingLocalData }),
-        featureData: await loadFeatureBackup(exportCharacters, {
-          compactImages: compactMedia,
-          personaIds: Object.keys(personaController.personas || {}),
-        }),
-      },
+        personaController.activePersonaId,
+      ),
+      activePersonaId: personaController.activePersonaId,
+      localAppData,
+      // The gallery has its own IndexedDB database and is deliberately local-only
+      // until its product rules and media sync model are finalized.
+      featureData,
+    };
+    const packed = await packBackupMedia(backupState);
+    return {
+      version: VERSION,
+      exportedAt: new Date().toISOString(),
+      format: "maliphone-app-state",
+      formatVersion: 2,
+      assets: packed.assets,
+      state: packed.state,
     };
   };
 
@@ -296,6 +326,12 @@ export default function useGlobalDataSnapshot({
     compactMedia: false,
     includeMissingLocalData: true,
   });
+
+  const getTextSyncDocument = async () => {
+    const backup = await getAppStateSnapshot();
+    const appState = unpackBackupMedia(backup.state, backup.assets);
+    return createTextSyncDocument(appState, { version: VERSION });
+  };
 
   const validateImportedAppState = (incoming) => {
     const fail = () => {
@@ -311,11 +347,14 @@ export default function useGlobalDataSnapshot({
     if (incoming.format && incoming.format !== "maliphone-app-state") fail();
     if (
       incoming.formatVersion != null
-      && (!Number.isInteger(Number(incoming.formatVersion)) || Number(incoming.formatVersion) > 1)
+      && (!Number.isInteger(Number(incoming.formatVersion)) || Number(incoming.formatVersion) > 2)
     ) fail();
-    const src = incoming?.state && incoming?.format === "maliphone-app-state"
+    const packedSrc = incoming?.state && incoming?.format === "maliphone-app-state"
       ? incoming.state
       : incoming;
+    const src = Number(incoming?.formatVersion) >= 2
+      ? unpackBackupMedia(packedSrc, incoming?.assets)
+      : packedSrc;
     if (!isRecord(src)) fail();
     const knownFields = [
       "characters",
@@ -347,6 +386,7 @@ export default function useGlobalDataSnapshot({
       "chatRooms",
       "activeRoomIds",
       "chatModes",
+      "chatReplyTimings",
       "chatBackgrounds",
       "chatScenes",
       "groupScenes",
@@ -410,9 +450,12 @@ export default function useGlobalDataSnapshot({
   };
 
   const applyImportedAppState = async (incoming, { rollback = false } = {}) => {
-    const src = incoming?.state && incoming?.format === "maliphone-app-state"
+    const packedSrc = incoming?.state && incoming?.format === "maliphone-app-state"
       ? incoming.state
       : incoming;
+    const src = Number(incoming?.formatVersion) >= 2
+      ? unpackBackupMedia(packedSrc, incoming?.assets)
+      : packedSrc;
     if (!src || typeof src !== "object") {
       throw new Error(tr(
         "檔案內容不正確",
@@ -430,6 +473,7 @@ export default function useGlobalDataSnapshot({
       chatRooms: src.chatRooms && typeof src.chatRooms === "object" ? src.chatRooms : {},
       activeRoomIds: src.activeRoomIds && typeof src.activeRoomIds === "object" ? src.activeRoomIds : {},
       chatModes: src.chatModes && typeof src.chatModes === "object" ? src.chatModes : {},
+      chatReplyTimings: src.chatReplyTimings && typeof src.chatReplyTimings === "object" ? src.chatReplyTimings : {},
       chatBackgrounds: src.chatBackgrounds && typeof src.chatBackgrounds === "object" ? src.chatBackgrounds : {},
       groupChats: Array.isArray(src.groupChats) ? src.groupChats : [],
       chatScenes: src.chatScenes && typeof src.chatScenes === "object" ? src.chatScenes : {},
@@ -492,6 +536,11 @@ export default function useGlobalDataSnapshot({
       activePersonaId: src.activePersonaId || null,
       localAppData: src.localAppData && typeof src.localAppData === "object" ? src.localAppData : {},
     };
+    nextState.personas = restoreActivePersona(
+      nextState.personas,
+      nextState.activePersonaId,
+      capturePersonaData(nextState, defaultAppState),
+    );
 
     nextState = preserveMissingDeviceSecrets(nextState, {
       apiConfig,
@@ -554,14 +603,52 @@ export default function useGlobalDataSnapshot({
     await saveAppState(nextState);
   };
 
+  const applyTextSyncDocument = async (incoming) => {
+    const document = validateTextSyncDocument(incoming);
+    // Keep media, feature stores, local-only data, and device secrets on this
+    // device. The remote document only becomes authoritative for text state.
+    const localBackup = await getRollbackAppState();
+    const localState = unpackBackupMedia(localBackup.state, localBackup.assets);
+    const mergedState = preserveLocalMedia(document.state, localState);
+    // Merge shared progress explicitly. Media-related and unsupported feature
+    // stores remain local to this device.
+    const gameProgress = mergeGameProgressSyncData(localState.featureData || {}, document.state.featureData || {});
+    mergedState.featureData = {
+      ...(localState.featureData || {}),
+      ...(document.state.featureData || {}),
+      ...gameProgress,
+    };
+    const walletData = mergeWalletSyncData({
+      wallet: localState.wallet,
+      characterWallets: localState.characterWallets,
+      transfers: localState.transfers,
+    }, document.state.walletData);
+    mergedState.wallet = walletData.wallet;
+    mergedState.characterWallets = walletData.characterWallets;
+    mergedState.transfers = walletData.transfers;
+    mergedState.localAppData = localState.localAppData;
+    mergedState.customCss = localState.customCss;
+    mergedState.customCssEnabled = localState.customCssEnabled;
+    mergedState.customFontName = localState.customFontName;
+    const appState = {
+      format: "maliphone-app-state",
+      formatVersion: 1,
+      state: mergedState,
+    };
+    validateImportedAppState(appState);
+    await applyImportedAppState(appState);
+  };
+
   return {
     persistenceSnapshot,
     getLocalAppDataSnapshot,
     applyLocalAppDataSnapshot,
     getExportableAppState,
     getRollbackAppState,
+    getTextSyncDocument,
     validateImportedAppState,
     summarizeImportedData,
     applyImportedAppState,
+    applyTextSyncDocument,
   };
 }

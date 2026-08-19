@@ -204,7 +204,7 @@ export function GachaProvider({ children }) {
       const owned = inventory.find((item) => item.uid === itemUid);
       if (!owned) return null;
       const id = `episode-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-      const episode = { id, item: owned, characterId, characterName, personaId: activePersonaId, mode, status: "active", openingStatus: "pending", playerMessageCount: 0, createdAt: Date.now(), updatedAt: Date.now(), messages: [] };
+      const episode = { id, item: owned, characterId, characterName, personaId: activePersonaId, mode, replyTiming: "instant", status: "active", openingStatus: "pending", playerMessageCount: 0, createdAt: Date.now(), updatedAt: Date.now(), messages: [] };
       setInventory((items) => items.filter((item) => item.uid !== itemUid));
       setEpisodes((items) => [episode, ...items]);
       setSelectedEpisodeId(id);
@@ -214,6 +214,29 @@ export function GachaProvider({ children }) {
       const text = String(content || "").trim();
       if (!text) return;
       setEpisodes((items) => items.map((episode) => episode.id !== episodeId || episode.playerMessageCount >= 20 ? episode : { ...episode, playerMessageCount: episode.playerMessageCount + 1, updatedAt: Date.now(), messages: [...episode.messages, { id: `${episodeId}-${Date.now()}`, role: "user", content: text, time: Date.now() }] }));
+    },
+    queueEpisodeMessage(episodeId, content) {
+      const text = String(content || "").trim();
+      if (!text) return;
+      const now = Date.now();
+      setEpisodes((items) => items.map((episode) => episode.id !== episodeId || episode.playerMessageCount >= 20 ? episode : {
+        ...episode,
+        updatedAt: now,
+        messages: [...episode.messages, { id: `${episodeId}-queued-${now}-${Math.random().toString(36).slice(2, 7)}`, role: "user", content: text, batchPending: true, time: now }],
+      }));
+    },
+    commitEpisodeTurn(episodeId) {
+      const now = Date.now();
+      setEpisodes((items) => items.map((episode) => episode.id !== episodeId || episode.playerMessageCount >= 20 ? episode : {
+        ...episode,
+        playerMessageCount: episode.playerMessageCount + 1,
+        updatedAt: now,
+        messages: episode.messages.map((message) => message.batchPending ? { ...message, batchPending: false } : message),
+      }));
+    },
+    setEpisodeReplyTiming(episodeId, timing) {
+      if (!["instant", "batch"].includes(timing)) return;
+      setEpisodes((items) => items.map((episode) => episode.id !== episodeId ? episode : { ...episode, replyTiming: timing, updatedAt: Date.now() }));
     },
     appendEpisodeAssistantMessage(episodeId, content) {
       const text = String(content || "").trim();

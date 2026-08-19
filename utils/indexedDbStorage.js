@@ -13,6 +13,8 @@ import {
   resolvePersonaFeatureKey,
 } from "../services/persona/personaStorageScope.js";
 import { DEFAULT_PERSONA_ID } from "../services/persona/personaModel.js";
+import { compactActivePersona } from "./backupMediaAssets.js";
+import { compactActiveRoomMirrors } from "./persistedMediaCleanup.js";
 
 const DB_NAME = "maliphone_db";
 const DB_VERSION = 1;
@@ -215,7 +217,11 @@ function splitStateToEntities(state) {
     ...rest
   } = safeState;
   const entities = new Map();
-  const core = { ...rest };
+  const core = {
+    ...rest,
+    chatRooms: compactActiveRoomMirrors(rest.chatRooms, rest.activeRoomIds),
+    personas: compactActivePersona(rest.personas, rest.activePersonaId),
+  };
   for (const field of Object.keys(SINGLETON_ENTITIES)) {
     entities.set(SINGLETON_ENTITIES[field], core[field]);
     delete core[field];

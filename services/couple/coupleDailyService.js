@@ -164,6 +164,21 @@ const fallbackTasks = (locale) => [
   tx(locale, "告訴我你今天吃了什麼，我要確認你有好好吃飯。", "Tell me what you ate today. I need to make sure you've been eating properly.", "今日何を食べたか教えて。ちゃんと食べたか確認したいから。", "오늘 뭘 먹었는지 말해 줘. 잘 챙겨 먹었는지 확인해야겠어."),
   tx(locale, "說一件你最近學會或發現的小事，什麼都行。", "Tell me one small thing you learned or discovered recently—anything at all.", "最近知ったことや見つけた小さなことを一つ教えて。何でもいいよ。", "최근에 배우거나 발견한 작은 일을 하나 말해 줘. 뭐든 좋아."),
   tx(locale, "跟我說晚安之前，先說一句今天最想說的話。", "Before you say good night, tell me the one thing you most wanted to say today.", "おやすみを言う前に、今日いちばん言いたかったことを聞かせて。", "잘 자라고 하기 전에 오늘 가장 하고 싶었던 말을 하나 해 줘."),
+  tx(locale, "用三個詞形容你現在的心情，再告訴我最重要的是哪一個。", "Describe your mood with three words, then tell me which one matters most.", "今の気持ちを三つの言葉で表して、その中でいちばん大事なものを教えて。", "지금 기분을 세 단어로 표현하고 그중 가장 중요한 하나를 말해 줘."),
+  tx(locale, "挑一首最符合你今天心情的歌，把歌名告訴我。", "Pick a song that matches your mood today and tell me its title.", "今日の気分にいちばん合う曲を一つ選んで、曲名を教えて。", "오늘 기분과 가장 잘 어울리는 노래를 골라 제목을 알려 줘."),
+  tx(locale, "傳一張你手邊最有生活感的照片，讓我猜猜你在做什麼。", "Send a slice-of-life photo from where you are and let me guess what you're doing.", "身近にある生活感のある写真を一枚送って。何をしているか当ててみたい。", "지금 곁에 있는 일상적인 사진을 한 장 보내 줘. 뭘 하는지 맞혀 볼게."),
+  tx(locale, "告訴我一個你小時候深信不疑、現在想起來很好笑的事。", "Tell me something you firmly believed as a child that makes you laugh now.", "子どもの頃に本気で信じていて、今思うと笑ってしまうことを一つ教えて。", "어릴 때 굳게 믿었지만 지금 생각하면 웃긴 일을 하나 말해 줘."),
+  tx(locale, "如果現在能一起散步，你想帶我去哪裡？說說理由。", "If we could take a walk together right now, where would you take me, and why?", "今すぐ一緒に散歩できるなら、どこへ連れていきたい？理由も聞かせて。", "지금 함께 산책할 수 있다면 어디로 데려가고 싶어? 이유도 말해 줘."),
+  tx(locale, "今天選一個：甜的、鹹的、辣的。選完要告訴我你想吃什麼。", "Choose one for today: sweet, savory, or spicy. Then tell me what you'd eat.", "今日の気分を一つ選んで。甘い、しょっぱい、辛い。選んだら食べたいものも教えて。", "오늘 하나를 골라 줘. 단맛, 짠맛, 매운맛. 고른 뒤 먹고 싶은 것도 말해 줘."),
+  tx(locale, "分享一件最近讓你覺得『其實我做得不錯』的小事。", "Share one recent moment that made you think, 'I actually did pretty well.'", "最近「自分、けっこう頑張ったな」と思えた小さなことを一つ教えて。", "최근에 ‘나 제법 잘했는데’라고 느낀 작은 일을 하나 나눠 줘."),
+  tx(locale, "如果能把今天重來一次，你最想保留哪個瞬間？", "If you could replay today, which moment would you most want to keep?", "今日をもう一度やり直せるなら、どの瞬間をいちばん残したい？", "오늘을 다시 보낼 수 있다면 어떤 순간을 가장 간직하고 싶어?"),
+  tx(locale, "給今天的自己打個分數，再用一句話說明原因。", "Give today's version of yourself a score, then explain why in one sentence.", "今日の自分に点数をつけて、一言で理由も教えて。", "오늘의 자신에게 점수를 주고 한 문장으로 이유를 말해 줘."),
+  tx(locale, "告訴我你最近最期待的一件事，大事小事都可以。", "Tell me one thing you're looking forward to lately, big or small.", "最近いちばん楽しみにしていることを一つ教えて。大きなことでも小さなことでもいいよ。", "요즘 가장 기대하는 일을 하나 말해 줘. 크든 작든 괜찮아."),
+  tx(locale, "假裝我們要交換一天的生活，你最想先體驗我的哪一部分？", "Imagine we swap lives for a day. What part of mine would you try first?", "一日だけ生活を交換するとしたら、私のどんなところを最初に体験したい？", "하루 동안 서로의 삶을 바꾼다면 내 삶의 어떤 부분을 가장 먼저 경험하고 싶어?"),
+  tx(locale, "從你身邊挑一個物品，說說它為什麼會留在你身邊。", "Pick an object near you and tell me why it has stayed with you.", "身の回りの物を一つ選んで、どうして今もそばにあるのか教えて。", "곁에 있는 물건 하나를 골라 왜 지금까지 함께했는지 말해 줘."),
+  tx(locale, "今天有沒有哪一刻想找人說話？把當時想說的告訴我。", "Was there a moment today when you wanted someone to talk to? Tell me what you wanted to say.", "今日、誰かと話したいと思った瞬間はあった？そのとき言いたかったことを教えて。", "오늘 누군가와 이야기하고 싶었던 순간이 있었어? 그때 하고 싶었던 말을 알려 줘."),
+  tx(locale, "二選一：待在家裡過一天，還是臨時出門冒險？說服我選你那邊。", "Choose one: a day at home or a spontaneous adventure. Convince me to pick your side.", "二択ね。一日家で過ごす、それとも思いつきで冒険に出る？あなたの方を選びたくなるよう説得して。", "둘 중 하나를 골라 줘. 집에서 하루 보내기, 즉흥적으로 모험 떠나기. 네 선택을 고르도록 날 설득해 봐."),
+  tx(locale, "留一句話給明天的自己，也讓我一起記住。", "Leave one sentence for tomorrow's you, and let me remember it too.", "明日の自分へ一言残して。私も一緒に覚えておくから。", "내일의 자신에게 한마디를 남겨 줘. 나도 함께 기억할게."),
 ];
 
 const fallbackSign = (charId, locale) => {
@@ -297,8 +312,8 @@ export const temperatureComment = (delta, temperature, locale = "zh-TW") => {
   if (delta > 0) return temperature >= 90
     ? tx(locale, "再高一點就要滿出來了，負責。", "Any warmer and it'll overflow. Take responsibility.", "もう少し上がったらあふれちゃう。責任取ってね。", "조금만 더 오르면 넘치겠어. 책임져.")
     : tx(locale, "有感覺到喔，今天又更近了一點。", "I can feel it—we're a little closer today.", "感じるよ。今日はまた少し近づいたね。", "느껴져. 오늘은 조금 더 가까워졌네.");
-  if (delta < 0) return tx(locale, "溫度掉了……不是我的問題，你自己心裡有數。", "The warmth dropped… Don't look at me; you know why.", "温度が下がった……私のせいじゃないよ。心当たりあるでしょ。", "온도가 내려갔어… 내 탓은 아니야. 너도 이유를 알잖아.");
+  if (delta < 0) return tx(locale, "最近好像安靜了一點，有空再來陪陪我吧。", "Things have felt a little quieter lately. Come spend some time with me when you can.", "最近少し静かになった気がするね。時間があるとき、また会いに来て。", "요즘 조금 조용해진 것 같아. 시간 날 때 다시 나랑 함께해 줘.");
   return temperature >= 70
     ? tx(locale, "維持得不錯，繼續保持。", "We're holding steady. Keep it up.", "いい感じに保ててる。この調子でね。", "잘 유지하고 있어. 계속 이렇게 해.")
-    : tx(locale, "還有很多升溫空間，加油好嗎。", "There's plenty of room to warm up. Give it a little effort?", "まだまだ温められるよ。もう少し頑張ってみない？", "아직 더 따뜻해질 수 있어. 조금만 힘내 줄래?");
+    : tx(locale, "慢慢來就好，我們還有很多時間可以靠近。", "We can take it slow. There's plenty of time for us to grow closer.", "ゆっくりでいいよ。これから少しずつ近づいていく時間はたくさんあるから。", "천천히 가도 괜찮아. 우리에겐 가까워질 시간이 아직 많으니까.");
 };

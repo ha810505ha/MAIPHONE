@@ -21,6 +21,7 @@ import { createDefaultVoiceSettings, normalizeCharacterVoiceSettings } from "./u
 import { sanitizeCustomCss } from "./utils/customCss";
 import { sanitizeFontName } from "./utils/fontName";
 import { PSEUDO_VOICE_TEXT_LIMIT } from "./utils/pseudoVoice";
+import { normalizeRealityOutputTokens } from "./utils/realityOutputSettings";
 import { compactActiveRoomMirrors, compactCharacterImages, compactGroupMessageImages, compactSocialPostImages } from "./utils/persistedMediaCleanup";
 import "./styles/maliPhone.css";
 import useAppearanceSettings from "./hooks/settings/useAppearanceSettings";
@@ -268,6 +269,8 @@ export default function MaliPhone() {
   const walletAutoRefreshBusyRef = useRef(false);
   const proactiveSweepingRef = useRef(false);
   const currentChatCharIdRef = useRef(null);
+  // React state 尚未完成下一次 render 前，攔住同一張信風卡的連續解鎖。
+  const pendingDatingCharactersRef = useRef(new Map());
   const SOCIAL_GLOBAL_COOLDOWN_MS = 60 * 1000;
   const SOCIAL_CHAR_COOLDOWN_MS = 3 * 60 * 1000;
   const messagesEndRef = useRef(null);
@@ -275,6 +278,7 @@ export default function MaliPhone() {
   const noticeLongPressTimerRef = useRef(null);
   const swipeStartXRef = useRef(null);
   const swipeStartYRef = useRef(null);
+  const homePageTrackRef = useRef(null);
   const autoLockTimerRef = useRef(null);
   const edgeTurnTimerRef = useRef(null);
   const edgeTurnDirRef = useRef(null);
@@ -403,6 +407,7 @@ export default function MaliPhone() {
   });
   const {
     chatModes, setChatModes,
+    chatReplyTimings, setChatReplyTimings,
     chatBackgrounds, setChatBackgrounds,
     chatBgEditor, setChatBgEditor,
     chatTimeSettings, setChatTimeSettings,
@@ -425,6 +430,7 @@ export default function MaliPhone() {
     getModeLabel,
     getLastCommittedChatMode,
     getSelectedChatMode,
+    getChatReplyTiming,
     setSelectedChatMode,
     isInnerThoughtAutoEnabled,
     setInnerThoughtAutoEnabled,
@@ -457,8 +463,8 @@ export default function MaliPhone() {
     onChatBackgroundFile,
   } = chatSettings.background;
   const { importRef: chatroomImportRef, preview: chatroomImportPreview, importing: chatroomImporting, deleteChatroom: deleteChatroomForCharacter, exportChatroom: exportChatroomForCharacter, openImport: openChatroomImport, importFile: importChatroomFile, confirmImport: confirmChatroomImportPreview, cancelImport: cancelChatroomImport } = useChatroomImportExport({
-    currentCharacter: currentChatChar, characters, chatHistory, chatModes, chatBackgrounds, chatLorebookBindings, innerThoughtSettings, chatTimeSettings,
-    setChatHistory, setChatModes, setChatBackgrounds, setChatLorebookBindings, setInnerThoughtSettings, setChatTimeSettings,
+    currentCharacter: currentChatChar, characters, chatHistory, chatModes, chatReplyTimings, chatBackgrounds, chatLorebookBindings, innerThoughtSettings, chatTimeSettings,
+    setChatHistory, setChatModes, setChatReplyTimings, setChatBackgrounds, setChatLorebookBindings, setInnerThoughtSettings, setChatTimeSettings,
     setCharacters, setMemories, setChatScenes, setProactiveUnread, removeCharacterRooms,
     onChatroomDeleted: () => { setChatSettingsOpen(false); setCurrentChatChar(null); },
     resetOpenChat: () => { setChatActionPanelOpen(false); setMessageEditor(null); setActiveMessageId(null); setIsTyping(false); setChatInput(""); },
@@ -546,7 +552,8 @@ export default function MaliPhone() {
   const dating = useDatingApp({ apiConfig, playerName: playerProfile?.name, onError: (message) => showToast(message) });
   const notificationCenter = useNotificationCenter({
     characters, chatHistory, proactiveUnread, locked, currentApp,
-    datingState: dating.state, datingProfiles: DATING_PROFILES,
+    datingState: DATING_ENABLED ? dating.state : null,
+    datingProfiles: DATING_ENABLED ? DATING_PROFILES : [],
     posts, socialNow: socialTick, mailboxMails,
   });
   const { applyLoadedAppState } = useAppHydrationController({
@@ -560,6 +567,7 @@ export default function MaliPhone() {
       setActiveCharId,
       setChatHistory,
       setChatModes,
+      setChatReplyTimings,
       setChatBackgrounds,
       setGroupChats,
       setChatScenes,
@@ -602,7 +610,7 @@ export default function MaliPhone() {
   const dataController = useGlobalDataSnapshot({
     defaultAppState,
     state: {
-      characters, activeCharId, chatHistory, chatRooms, activeRoomIds, chatModes,
+      characters, activeCharId, chatHistory, chatRooms, activeRoomIds, chatModes, chatReplyTimings,
       chatBackgrounds, groupChats, chatScenes, groupScenes, chatTimeSettings,
       innerThoughtSettings, proactiveSettings, proactiveUnread, posts, socialSettings,
       memories, lorebooks, chatLorebookBindings, phoneInboxCache, phoneAppCache, wallet,
@@ -612,7 +620,7 @@ export default function MaliPhone() {
       notificationCenter, personaController, captureCurrentPersona,
     },
     setters: {
-      setChatModes, setChatBackgrounds, setGroupChats, setGroupScenes,
+      setChatModes, setChatReplyTimings, setChatBackgrounds, setGroupChats, setGroupScenes,
       setChatTimeSettings, setInnerThoughtSettings, setProactiveSettings,
       setProactiveUnread, setPosts, setSocialSettings, setLorebooks,
       setChatLorebookBindings, setPhoneInboxCache, setPhoneAppCache, setWallet,
@@ -637,6 +645,12 @@ export default function MaliPhone() {
     schedulePush,
     onLoad: applyLoadedAppState,
   });
+  // 主資料與信風各自從不同儲存實體 hydration；兩邊都完成後才校正聯絡人，
+  // 避免啟動途中把其實仍存在的舊版角色誤判成已刪除。
+  useEffect(() => {
+    if (!hydrated || !dating.hydrated) return;
+    dating.reconcileContacts(characters);
+  }, [hydrated, dating.hydrated, dating.reconcileContacts, dating.state.relations, characters]);
   const {
     updateScrollToBottomVisibility,
     scrollCurrentChatToBottom,
@@ -1054,6 +1068,10 @@ export default function MaliPhone() {
     applyCharacterBlockDirective: (cid, action) => setCharacterBlocksPlayer(cid, action === "block"),
     isInnerThoughtAutoEnabled,
     generateInnerThought,
+    getRealityMaxTokens: (characterId, roomId) => {
+      const room = (chatRooms?.[characterId] || []).find((item) => item.id === roomId);
+      return normalizeRealityOutputTokens(room?.realityMaxTokens);
+    },
     createId: gid,
   });
   useCharacterBlockReaction({
@@ -1073,6 +1091,7 @@ export default function MaliPhone() {
 
   const {
     sendMessage,
+    addMessageToBatch,
     retryMessage: retryChatFromNotice,
     retryLastUnansweredMessage,
     selectAssistantSwipe,
@@ -1157,9 +1176,25 @@ export default function MaliPhone() {
   // silent：背景建立的角色（例如交友配對熟成）不跳 toast，
   // 否則玩家在山莊裡會被一則「已加入」打斷，違反沉浸 App 不打擾的規則。
   const addCharacter = (c, options = {}) => {
+    // 信風角色使用內建卡的永久 id。舊版曾建立隨機 id，因此也用 datingProfileId
+    // 尋找既有聯絡人；找到就直接解鎖同一位，絕不再建立分身或覆蓋玩家修改。
+    const isDatingCharacter = options.source === "dating";
+    const datingProfileId = isDatingCharacter ? sanitizeText(c.datingProfileId, 120).trim() : "";
+    const requestedId = isDatingCharacter ? sanitizeText(options.id, 160).trim() : "";
+    const pendingKey = datingProfileId || requestedId;
+    const pendingDatingCharacter = pendingKey ? pendingDatingCharactersRef.current.get(pendingKey) : null;
+    if (pendingDatingCharacter) return pendingDatingCharacter;
+    const existingDatingCharacter = isDatingCharacter
+      ? characters.find((character) => (
+        (datingProfileId && character.datingProfileId === datingProfileId)
+        || (requestedId && String(character.id) === requestedId)
+      ))
+      : null;
+    if (existingDatingCharacter) return existingDatingCharacter;
+
     const nc = {
       ...c,
-      id: gid(),
+      id: requestedId || gid(),
       createdAt: Date.now(),
       name: sanitizeText(c.name, 80),
       description: sanitizeText(c.description, 8000),
@@ -1181,9 +1216,32 @@ export default function MaliPhone() {
       statusUpdatedAt: c.statusUpdatedAt || 0,
       pinned: !!c.pinned,
       voiceSettings: normalizeCharacterVoiceSettings(c.voiceSettings),
+      ...(isDatingCharacter ? { datingProfileId } : {}),
     };
-    setCharacters(p => [...p, nc]);
-    addCharacterRoom(nc);
+    if (isDatingCharacter && pendingKey) {
+      pendingDatingCharactersRef.current.set(pendingKey, nc);
+      setTimeout(() => {
+        if (pendingDatingCharactersRef.current.get(pendingKey) === nc) {
+          pendingDatingCharactersRef.current.delete(pendingKey);
+        }
+      }, 0);
+    }
+    setCharacters((previous) => {
+      if (!isDatingCharacter) return [...previous, nc];
+      const duplicate = previous.some((character) => (
+        (datingProfileId && character.datingProfileId === datingProfileId)
+        || String(character.id) === String(nc.id)
+      ));
+      return duplicate ? previous : [...previous, nc];
+    });
+    // 信風歷史就是這段關係的開場；即使未來某張卡填了 firstMessage，
+    // 解鎖時也不應再插入第二個線上開場。
+    addCharacterRoom(
+      isDatingCharacter ? { ...nc, firstMessage: "", initialOnlineMessage: "" } : nc,
+      isDatingCharacter && Array.isArray(options.initialMessages)
+        ? { messages: options.initialMessages }
+        : undefined,
+    );
     if (!activeCharId) setActiveCharId(nc.id);
     if (!options.silent) {
       setModal(null);
@@ -1236,9 +1294,11 @@ export default function MaliPhone() {
     applyLocalAppDataSnapshot,
     getExportableAppState,
     getRollbackAppState,
+    getTextSyncDocument,
     validateImportedAppState,
     summarizeImportedData,
     applyImportedAppState,
+    applyTextSyncDocument,
   } = dataController;
   const { importRef: dataImportRef, importing: dataImporting, preview: dataImportPreview, exportAllData, importAllData, confirmImport: confirmImportPreview, cancelImport: cancelDataImport } = useDataImportExport({
     getExportableState: getExportableAppState,
@@ -1265,7 +1325,7 @@ export default function MaliPhone() {
     showToast,
     setters: {
       setCharacters, setActiveCharId, setCurrentChatChar, setCurrentChatGroup,
-      setChatHistory, setChatModes, setChatBackgrounds, setGroupChats,
+      setChatHistory, setChatModes, setChatReplyTimings, setChatBackgrounds, setGroupChats,
       setInnerThoughtSettings, setProactiveSettings, setProactiveUnread,
       setExpandedInnerThoughts, setInnerThoughtLoading, setChatScenes, setGroupScenes,
       setChatLorebookBindings, setPosts, setMemories, setLorebooks, setActiveLorebookId,
@@ -1292,12 +1352,16 @@ export default function MaliPhone() {
   });
   const deleteCharacter = (id) => {
     const c = characters.find(x => x.id === id);
+    // 若這是由信風解鎖的同一張角色卡，刪除聯絡人也要解除信風唯讀鎖，
+    // 否則舊 relation 會永久指向不存在的聊天室。
+    dating.releaseContact(id, c?.datingProfileId);
     setCharacters(p => p.filter(x => x.id !== id));
     if (activeCharId === id) setActiveCharId(characters.find(x => x.id !== id)?.id || null);
     setChatHistory(h => { const n = { ...h }; delete n[id]; return n; });
     setCharacterBlockStates((states) => { const next = { ...states }; delete next[id]; return next; });
     removeCharacterRooms(id);
     setChatModes(h => { const n = { ...h }; delete n[id]; return n; });
+    setChatReplyTimings(h => { const n = { ...h }; delete n[id]; return n; });
     setChatBackgrounds(h => { const n = { ...h }; delete n[id]; return n; });
     setChatScenes(h => { const n = { ...h }; delete n[id]; return n; });
     setChatLorebookBindings(h => { const n = { ...h }; delete n[id]; return n; });
@@ -1470,7 +1534,7 @@ export default function MaliPhone() {
       setProactiveUnread((prev) => { const next = { ...prev }; delete next[charId]; return next; });
       setCurrentChatChar(characters.find((item) => item.id === charId) || null);
     }
-    if (notif.payload?.profileId) dating.openChat(notif.payload.profileId);
+    if (DATING_ENABLED && notif.payload?.profileId) dating.openChat(notif.payload.profileId);
     if (locked) handleUnlock();
   };
 
@@ -1535,6 +1599,7 @@ export default function MaliPhone() {
     allAppIds, safeDock, cleanedSlots, dockApps, homePages, homePage, setHomePage,
     setHomeSlots, setDockOrder, isDraggingApp, setIsDraggingApp, pointerDrag, setPointerDrag,
     swipeStartXRef, swipeStartYRef, edgeTurnTimerRef, edgeTurnDirRef, suppressAppClickUntilRef,
+    homePageTrackRef,
     pageSize: HOME_PAGE_SIZE, openApp, openAllApps: home.openLibrary,
   });
 
@@ -1645,6 +1710,7 @@ export default function MaliPhone() {
     getCharacterVoiceBubblePlayback,
     getChatBackgroundBlurFilter,
     getChatBackgroundLayerStyle,
+    getChatReplyTiming,
     getDirectSettings,
     getGroupMembers,
     getLastCommittedChatMode,
@@ -1685,6 +1751,7 @@ export default function MaliPhone() {
     retryChatFromNotice,
     retryGroupFromNotice,
     retryLastUnansweredMessage,
+    addMessageToBatch,
     selectAssistantSwipe,
     generateAssistantSwipe,
     deleteAssistantSwipe,
@@ -1857,6 +1924,10 @@ export default function MaliPhone() {
           applyImportedState: applyImportedAppState,
           showToast,
         },
+        textSyncProps: {
+          getTextSyncDocument,
+          applyTextSyncDocument,
+        },
       }}
       release={{
         changelogTitle: currentChangelogTitle,
@@ -1873,7 +1944,7 @@ export default function MaliPhone() {
     />
   );
   const renderDating = () => <MaliPhoneDatingSurface
-    core={{ closeApp, showToast }} dating={dating} playerProfile={playerProfile}
+    core={{ closeApp, showToast, tr }} dating={dating} playerProfile={playerProfile}
     actions={{
       onPromoteToContact: (entry, messages) => promoteDatingContact({ entry, messages, addCharacter, setChatHistory, createId: gid }),
       onOpenContact: (charId) => { openApp("chat"); openCharacterChat(characters.find((item) => item.id === charId) || null); },
@@ -1988,6 +2059,7 @@ export default function MaliPhone() {
         dragging: isDraggingApp,
         pointerDrag,
         pageGesture: homeGesture,
+        pageTrackRef: homePageTrackRef,
         renderAppIcon,
         gestureHandlers: {
         onTouchStart: onHomeTouchStart,

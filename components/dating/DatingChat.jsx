@@ -6,7 +6,7 @@ import useAutoResizeTextarea from "../../hooks/chat/useAutoResizeTextarea";
 
 const clock = (time) => new Date(time).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" });
 
-export default function DatingChat({ entry, relation, typing, blocked, onBack, onSend, onPromote, onOpenContact, onOpenProfile }) {
+export default function DatingChat({ entry, relation, typing, blocked, onBack, onSend, onPromote, onOpenContact, onOpenProfile, tr }) {
   const [draft, setDraft] = useState("");
   const endRef = useRef(null);
   const inputRef = useAutoResizeTextarea(draft, 96); // 96 對齊 .dt-chat-input 的 max-height
@@ -16,12 +16,13 @@ export default function DatingChat({ entry, relation, typing, blocked, onBack, o
   const lastReply = [...messages].reverse().find((item) => item.role === "assistant");
   const presence = presenceLabel(entry, Date.now(), lastReply?.time);
   const waiting = !presence.online && pendingUserMessages(messages).length > 0;
+  const text = (zhTW, en, ja, ko) => (typeof tr === "function" ? tr(zhTW, en, ja, ko) : zhTW);
 
   useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }); }, [messages.length, typing]);
 
   const send = () => {
     const text = draft.trim();
-    if (!text || typing) return;
+    if (!text || typing || promoted) return;
     setDraft("");
     onSend(text);
   };
@@ -44,16 +45,23 @@ export default function DatingChat({ entry, relation, typing, blocked, onBack, o
       </div>
 
       <div className="dt-chat-scroll">
-        <div className="dt-chat-note">你們在信風上配對成功。這裡的對話跟聊天 App 是分開的。</div>
+        <div className="dt-chat-note">{promoted
+          ? text(
+            "你們已交換聯絡方式，這段信風對話已封存。",
+            "You've exchanged contact details. This Tradewind conversation is now archived.",
+            "連絡先を交換したため、この信風の会話はアーカイブされました。",
+            "연락처를 교환해 이 신풍 대화는 보관되었습니다.",
+          )
+          : "你們在信風上配對成功。這裡的對話跟聊天 App 是分開的。"}</div>
         {messages.map((message) => (
           <div key={message.id} className={`dt-msg ${message.role === "user" ? "me" : "them"}`}>
             <div className="dt-msg-bubble">{message.content}</div>
             <div className="dt-msg-time">{clock(message.time)}</div>
           </div>
         ))}
-        {typing && <div className="dt-msg them"><div className="dt-msg-bubble typing"><i /><i /><i /></div></div>}
+        {!promoted && typing && <div className="dt-msg them"><div className="dt-msg-bubble typing"><i /><i /><i /></div></div>}
         {/* 只講「不在線上」，不預告幾點回來——作息要玩家自己觀察出來 */}
-        {waiting && !typing && <div className="dt-chat-note">訊息已送出。{entry.profile.name}目前不在線上。</div>}
+        {!promoted && waiting && !typing && <div className="dt-chat-note">訊息已送出。{entry.profile.name}目前不在線上。</div>}
         <div ref={endRef} />
       </div>
 
@@ -65,8 +73,19 @@ export default function DatingChat({ entry, relation, typing, blocked, onBack, o
         </div>
       )}
 
-      {/* 封鎖只凍結交友軟體這條線；已加入聯絡人的聊天室不受影響 */}
-      {blocked ? (
+      {/* 交換聯絡方式後，信風歷史保留但不再接受任何新訊息。 */}
+      {promoted ? (
+        <div className="dt-chat-promote">
+          <div className="dt-chat-promote-t">{text("已交換聯絡方式", "Contact details exchanged", "連絡先を交換しました", "연락처를 교환했어요")}</div>
+          <div className="dt-chat-note">{text(
+            "後續訊息請到聊天 App 繼續，這裡會保留原本的配對紀錄。",
+            "Continue in Chat. Your original match history will remain here.",
+            "続きはチャットアプリで。このマッチの履歴はここに残ります。",
+            "이어서 할 대화는 채팅 앱에서 나눠주세요. 기존 매칭 기록은 여기에 남습니다.",
+          )}</div>
+          <button type="button" className="dt-chat-promote-btn" onClick={onOpenContact}>{text("前往聊天", "Open Chat", "チャットを開く", "채팅 열기")}</button>
+        </div>
+      ) : blocked ? (
         <div className="dt-chat-blocked">
           你已封鎖這個人，雙方無法再傳訊息。
           <button type="button" onClick={onOpenProfile}>解除封鎖</button>

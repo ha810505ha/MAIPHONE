@@ -1,8 +1,8 @@
-export function getRetryableTailUserMessage(messages) {
+export function getRetryableTailUserMessage(messages, { allowInterceptedByCharacterBlock = false } = {}) {
   const list = Array.isArray(messages) ? messages : [];
   const lastMessage = list.at(-1);
   if (!lastMessage || lastMessage.role !== "user") return null;
-  if (lastMessage.interceptedByCharacterBlock === true) return null;
+  if (!allowInterceptedByCharacterBlock && lastMessage.interceptedByCharacterBlock === true) return null;
   return lastMessage;
 }
 

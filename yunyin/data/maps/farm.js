@@ -47,6 +47,19 @@ export default {
   tiles: grid.map((row) => row.join("")),
   spawn: [17, 2],
   buildings: [],
+  // 玩家靈田（x3~13, y19~25）四周的散景。全部踩在草地上，不佔田格也不壓路：
+  // 西側走 x=2 那一列、東側走 x=14~15、北緣走 y=18。
+  // 這些是地面小物，一律 blocking: false——擋住會影響 NPC 遊走與走去田裡的路徑。
+  decorations: [
+    { id: "farm_edge_rock_1", img: "farmRockA", x: 2, y: 19, w: 1, h: 1, renderScale: 1 },
+    { id: "farm_edge_mushroom_1", img: "farmMushroomA", x: 2, y: 22, w: 1, h: 1, renderScale: 0.938 },
+    { id: "farm_edge_rock_2", img: "farmRockB", x: 2, y: 25, w: 1, h: 1, renderScale: 0.875 },
+    { id: "farm_edge_woodpile", img: "farmWoodpile", x: 14, y: 20, w: 1, h: 1, renderScale: 1 },
+    { id: "farm_edge_rock_3", img: "farmRockA", x: 15, y: 23, w: 1, h: 1, renderScale: 1 },
+    { id: "farm_edge_mushroom_2", img: "farmMushroomB", x: 14, y: 25, w: 1, h: 1, renderScale: 0.938 },
+    { id: "farm_edge_lantern", img: "farmLantern", x: 8, y: 18, w: 1, h: 1, renderScale: 0.688 },
+    { id: "farm_edge_rock_4", img: "farmRockB", x: 4, y: 18, w: 1, h: 1, renderScale: 0.875 },
+  ],
   portals: [
     { x: 17, y: 1, to: "gate", spawn: [33, 20], label: "前往主城", icon: "⛩️" },
     { x: 17, y: 26, to: "residence", spawn: [17, 25], label: "前往玩家小屋", icon: "🏡" },

@@ -1,6 +1,23 @@
 import { toSimplifiedChinese } from "../utils/i18n.js";
 
 const ZH_CHANGELOG = {
+  "1.2.16": [
+    "08/19 大型更新",
+    "帳號與雲端同步｜整合 Email 註冊、Google 登入與手動文字資料同步。跨裝置同步時會保留本機圖片、相簿、語音快取與 API Key，並強化錢包及遊戲進度的合併處理，降低舊資料被覆蓋的風險。",
+    "聊天操作｜新增手動生成回應，可先連續送出多個訊息氣泡，再讓角色一次回覆；現實聊天新增輸出長度設定，並改善 Gemini 2.5 Pro 的回覆穩定性與空白回覆提示。",
+    "聊天截圖｜新增關鍵字遮蔽，可快速隱藏角色名稱、玩家名稱或自訂文字；遮蔽只會套用於輸出的圖片，不會修改原始對話內容。",
+    "雲隱山莊｜入住角色可生成、查看及切換多個版本的生活對話句庫；新增戶外造景素材，並改善家園、地圖與 NPC 互動。",
+    "備份與還原｜改善完整備份中的圖片與媒體資產保存，並調整 GitHub 備份清單排序，讓較新的備份優先顯示。",
+    "介面與修正｜改善 Android 桌面滑動、App 圖示拖曳、API 來源切換，以及聊天輸入列與送出按鈕的對齊；修正被角色封鎖時無法手動生成回應、任務訊息長按操作無法收回等問題。",
+  ],
+  "1.2.15": [
+    "08/18 更新",
+    "帳號與雲端同步｜新增 Google 登入，可在不同裝置登入同一帳號後手動上傳或下載文字資料；若原本已使用相同 Gmail 的 Email 帳號註冊，Google 登入會連結至原本帳號，不會建立另一份雲端資料。為避免資料遭覆蓋，登入後不會自動上傳、下載或刪除資料，請先建立完整備份；圖片、相簿、語音快取與 API Key 仍只保留在本機。",
+  ],
+  "1.2.14": [
+    "08/13 更新",
+    "帳號與雲端同步｜新增信箱帳號註冊與登入功能。玩家可使用 Email 建立帳號，並在不同裝置登入同一帳號後，手動上傳或下載文字資料。\n\n為避免誤覆蓋資料，首次註冊、登入與登出時都會提醒先建立完整備份；資料不會在登入後自動上傳、下載或刪除。\n\n目前可同步角色與聊天文字、筆記、日曆、手機 App 文字內容、錢包、靈魂結晶、每日登入、雲隱山莊與系統信箱狀態。圖片、相簿、語音快取與 API Key 仍只保留在本機。",
+  ],
   "1.2.13": [
     "08/10 緊急修正",
     "聊天室截圖｜修正夜色以外的主題儲存聊天 PNG 時，可能因色彩格式不相容而失敗的問題。\n\n現在所有主題都可正常建立聊天截圖。",
@@ -116,6 +133,63 @@ const ZH_CHANGELOG = {
 };
 
 const TRANSLATED_CHANGELOG = {
+  "1.2.16": {
+    en: [
+      "08/19 Major Update",
+      "Accounts & cloud sync | Integrated email registration, Google sign-in, and manual text-data sync. Cross-device sync keeps local images, Gallery content, voice cache, and API keys on the device, while safer wallet and game-progress merging reduces the risk of overwriting older data.",
+      "Chat controls | Added manual reply generation: send several message bubbles first, then let the character respond once. Reality chat now has an output-length setting, with improved Gemini 2.5 Pro reliability and clearer empty-response messages.",
+      "Chat screenshots | Added keyword redaction for quickly hiding character names, player names, or custom text. Redaction only affects the exported image and never changes the original conversation.",
+      "Yunyin Villa | Residents can generate, review, and switch between multiple versions of their daily dialogue library. New outdoor decorations were added, alongside improvements to homes, maps, and NPC interactions.",
+      "Backup & restore | Improved preservation of images and other media in full backups, and changed GitHub backup ordering so newer backups appear first.",
+      "Interface & fixes | Improved Android home-screen swiping, app-icon dragging, API-source switching, and chat input/send-button alignment. Fixed manual generation while blocked by a character, task-message long-press controls that could not be dismissed, and other issues.",
+    ],
+    ja: [
+      "08/19 大型アップデート",
+      "アカウントとクラウド同期｜メール登録、Google ログイン、テキストデータの手動同期を統合しました。端末間同期でも画像、ギャラリー、音声キャッシュ、API Key は端末に保持され、ウォレットとゲーム進行の統合処理を強化して、古いデータを上書きする危険を減らしました。",
+      "チャット操作｜複数のメッセージを続けて送信してから、キャラクターの返信を一度だけ生成できる手動返信機能を追加しました。現実チャットには出力長設定を追加し、Gemini 2.5 Pro の応答安定性と空応答時の案内も改善しました。",
+      "チャット画像｜キャラクター名、プレイヤー名、任意の文字をすばやく隠せるキーワード非表示機能を追加しました。非表示処理は出力画像だけに適用され、元の会話は変更されません。",
+      "雲隠山荘｜居住キャラクターの日常会話集を生成・確認し、複数バージョンから切り替えられるようになりました。屋外装飾を追加し、家、マップ、NPC とのやり取りも改善しました。",
+      "バックアップと復元｜完全バックアップで画像などのメディアをより確実に保存できるよう改善し、GitHub バックアップ一覧は新しいものから表示するよう変更しました。",
+      "画面と不具合修正｜Android ホーム画面のスワイプ、アプリアイコンのドラッグ、API 接続元の切り替え、チャット入力欄と送信ボタンの配置を改善しました。キャラクターにブロックされた状態で手動返信を生成できない問題、タスクメッセージの長押し操作を解除できない問題などを修正しました。",
+    ],
+    ko: [
+      "08/19 대규모 업데이트",
+      "계정 및 클라우드 동기화 | 이메일 가입, Google 로그인, 텍스트 데이터 수동 동기화를 통합했습니다. 기기 간 동기화 시 이미지, 갤러리, 음성 캐시, API 키는 기기에 유지되며, 지갑과 게임 진행 데이터 병합을 강화해 기존 데이터가 덮어써질 위험을 줄였습니다.",
+      "채팅 조작 | 여러 메시지 말풍선을 연속으로 보낸 뒤 캐릭터 답장을 한 번만 생성할 수 있는 수동 답장 기능을 추가했습니다. 현실 채팅에 출력 길이 설정을 추가하고 Gemini 2.5 Pro 응답 안정성과 빈 응답 안내를 개선했습니다.",
+      "채팅 캡처 | 캐릭터 이름, 플레이어 이름 또는 사용자 지정 문구를 빠르게 숨길 수 있는 키워드 가림 기능을 추가했습니다. 가림 처리는 내보낸 이미지에만 적용되며 원본 대화는 변경하지 않습니다.",
+      "운은산장 | 입주 캐릭터의 생활 대사 모음을 생성하고 확인하며 여러 버전 중에서 선택할 수 있습니다. 야외 장식 요소를 추가하고 집, 지도 및 NPC 상호작용을 개선했습니다.",
+      "백업 및 복원 | 전체 백업에서 이미지와 기타 미디어를 더 안정적으로 보존하도록 개선했으며, GitHub 백업 목록에서 최신 백업이 먼저 표시되도록 정렬을 변경했습니다.",
+      "인터페이스 및 수정 | Android 홈 화면 스와이프, 앱 아이콘 드래그, API 소스 전환, 채팅 입력창과 전송 버튼 정렬을 개선했습니다. 캐릭터에게 차단된 상태에서 수동 답장을 생성할 수 없는 문제와 작업 메시지 길게 누르기 메뉴를 닫을 수 없는 문제 등을 수정했습니다.",
+    ],
+  },
+  "1.2.15": {
+    en: [
+      "08/18 Update",
+      "Account & cloud sync | Added Google sign-in. You can manually upload or download text data after signing in to the same account on another device; if you previously registered with the same Gmail address, Google sign-in links to your existing account instead of creating a second cloud profile. To avoid overwriting data, sign-in never automatically uploads, downloads, or deletes data, so make a full backup first. Images, Gallery, voice cache, and API keys remain on the device.",
+    ],
+    ja: [
+      "08/18 更新",
+      "アカウントとクラウド同期｜Google ログインを追加しました。同じアカウントで別の端末にログインした後、テキストデータを手動でアップロードまたはダウンロードできます。すでに同じ Gmail アドレスでメール登録している場合は、Google ログインで既存アカウントに連携され、別のクラウドデータは作成されません。データ上書きを防ぐため、ログイン後に自動でアップロード、ダウンロード、削除は行われません。先に完全バックアップを作成してください。画像、アルバム、音声キャッシュ、API キーは端末に残ります。",
+    ],
+    ko: [
+      "08/18 업데이트",
+      "계정 및 클라우드 동기화 | Google 로그인을 추가했습니다. 같은 계정으로 다른 기기에 로그인한 후 텍스트 데이터를 수동으로 업로드하거나 다운로드할 수 있습니다. 기존에 동일한 Gmail 주소로 이메일 가입했다면 Google 로그인은 기존 계정에 연결되며 별도의 클라우드 데이터가 생성되지 않습니다. 데이터 덮어쓰기를 방지하기 위해 로그인 후 자동 업로드, 다운로드 또는 삭제를 하지 않으므로 먼저 전체 백업을 만들어 주세요. 이미지, 갤러리, 음성 캐시 및 API 키는 기기에 남아 있습니다.",
+    ],
+  },
+  "1.2.14": {
+    en: [
+      "08/13 Update",
+      "Account & cloud sync | Added email account registration and sign-in. Players can create an account with email, then manually upload or download text data after signing in to the same account on another device.\n\nTo prevent accidental overwrites, registration, sign-in, and sign-out now remind players to make a full backup first. Data is never automatically uploaded, downloaded, or deleted after sign-in.\n\nSync currently includes character and chat text, notes, calendar, character phone app text, wallets, Soul Crystals, daily login progress, Yunyin Villa, and system mailbox status. Images, Gallery, voice cache, and API keys remain on the device.",
+    ],
+    ja: [
+      "08/13 アップデート",
+      "アカウントとクラウド同期｜メールアドレスでのアカウント登録・ログインを追加しました。同じアカウントで別の端末にログイン後、テキストデータを手動でアップロードまたはダウンロードできます。\n\n意図しない上書きを防ぐため、初回登録・ログイン・ログアウト時には完全バックアップを促します。ログイン後にデータが自動でアップロード、ダウンロード、削除されることはありません。\n\n現在同期できるのは、キャラクターとチャットのテキスト、メモ、カレンダー、キャラクター端末アプリのテキスト、ウォレット、ソウルクリスタル、毎日ログイン、雲隠山荘、システムメールの状態です。画像、ギャラリー、音声キャッシュ、API Keyは端末にのみ保存されます。",
+    ],
+    ko: [
+      "08/13 업데이트",
+      "계정 및 클라우드 동기화 | 이메일 계정 가입과 로그인을 추가했습니다. 같은 계정으로 다른 기기에 로그인한 뒤 텍스트 데이터를 직접 업로드하거나 다운로드할 수 있습니다.\n\n실수로 데이터를 덮어쓰지 않도록 첫 가입, 로그인, 로그아웃 시 전체 백업을 안내합니다. 로그인 후 데이터가 자동으로 업로드, 다운로드 또는 삭제되지는 않습니다.\n\n현재 동기화되는 항목은 캐릭터 및 채팅 텍스트, 메모, 캘린더, 캐릭터 휴대폰 앱 텍스트, 지갑, 영혼 크리스털, 일일 로그인, 운은산장, 시스템 우편 상태입니다. 이미지, 갤러리, 음성 캐시, API Key는 기기에만 남습니다.",
+    ],
+  },
   "1.2.13": {
     en: [
       "08/10 Hotfix",

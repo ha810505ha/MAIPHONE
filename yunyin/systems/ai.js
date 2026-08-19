@@ -25,8 +25,8 @@ export const PACK_POOLS = {
   dungeon: 4, dungeonBoss: 4,
   harvest: 4, rareHarvest: 4,
   chat: 6,
-  home: 6, // 住客日常（好感 close 以上會自己冒泡；不分階段共用同一池）
 };
+export const RESIDENT_PACK_POOLS = { home: 6 };
 export const MAX_PACK_VERSIONS = 3;
 
 // ---- 句庫存取（key 永遠是角色 id，跟 NPC 綁定無關）----
@@ -60,6 +60,40 @@ export function addPackVersion(save, charId, lines, now = Date.now()) {
 
 export function setActivePackVersion(save, charId, index) {
   const pack = packOf(save, charId);
+  if (pack && index >= 0 && index < pack.versions.length) pack.active = index;
+}
+
+// 入住句庫獨立存放在家園資料中；只有實際入住角色會生成與使用。
+export const residentPackOf = (save, charId) => save.home?.residentLinePacks?.[charId] || null;
+
+export function activeResidentPackLines(save, charId) {
+  const pack = residentPackOf(save, charId);
+  if (!pack || !pack.versions.length) return null;
+  return pack.versions[Math.min(pack.active, pack.versions.length - 1)]?.lines || null;
+}
+
+export function addResidentPackVersion(save, charId, lines, now = Date.now()) {
+  if (!save.home.residentLinePacks) save.home.residentLinePacks = {};
+  const pack = save.home.residentLinePacks[charId]
+    || (save.home.residentLinePacks[charId] = { versions: [], active: 0 });
+  const version = { createdAt: now, lines };
+  if (pack.versions.length < MAX_PACK_VERSIONS) {
+    pack.versions.push(version);
+    pack.active = pack.versions.length - 1;
+  } else {
+    let oldest = -1;
+    for (let i = 0; i < pack.versions.length; i++) {
+      if (i === pack.active) continue;
+      if (oldest === -1 || pack.versions[i].createdAt < pack.versions[oldest].createdAt) oldest = i;
+    }
+    pack.versions[oldest] = version;
+    pack.active = oldest;
+  }
+  return pack;
+}
+
+export function setActiveResidentPackVersion(save, charId, index) {
+  const pack = residentPackOf(save, charId);
   if (pack && index >= 0 && index < pack.versions.length) pack.active = index;
 }
 

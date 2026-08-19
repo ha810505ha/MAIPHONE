@@ -1,9 +1,20 @@
-import React from "react";
+import React, { useRef } from "react";
 import PseudoImageBubble from "./PseudoImageBubble";
 import PseudoVoiceBubble from "./PseudoVoiceBubble";
 
-export function SystemNoticeMessage({ message, share, connectionError, active, isTyping, onLongPressStart, onLongPressEnd, onRetry, onDelete, applyUserPlaceholder, tr }) {
-  return <div className="mp-msg-note-wrap"><div className="mp-msg-note" onPointerDown={onLongPressStart} onPointerUp={onLongPressEnd} onPointerLeave={onLongPressEnd}>{share ? <div style={{ textAlign: "left" }}><div style={{ fontWeight: 700, marginBottom: 4 }}>{tr("社群分享", "Social share", "SNS共有", "소셜 공유")}</div><div style={{ fontSize: 11, color: "var(--mp-txt-l)", marginBottom: 6 }}>{tr("來源：", "Source: ", "出典: ", "출처: ")}{share.meta.source || "-"}</div><div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5, maxHeight: 180, overflowY: "auto", paddingRight: 2 }}>{applyUserPlaceholder(share.body)}</div></div> : <div><div>{message.content}</div>{connectionError && <button className="mp-retry-btn" disabled={isTyping} onClick={(event) => { event.stopPropagation(); onRetry(); }}>重新生成</button>}</div>}</div>{active && <button className="mp-msg-editbtn" onClick={onDelete}>🗑</button>}</div>;
+export function SystemNoticeMessage({ message, share, connectionError, active, isTyping, onLongPressStart, onLongPressEnd, onToggle, onRetry, onDelete, applyUserPlaceholder, tr }) {
+  const pointerDownAtRef = useRef(0);
+  return <div className="mp-msg-note-wrap"><div className="mp-msg-note"
+    onPointerDown={() => { pointerDownAtRef.current = Date.now(); onLongPressStart(); }}
+    onPointerUp={onLongPressEnd}
+    onPointerCancel={onLongPressEnd}
+    onPointerLeave={onLongPressEnd}
+    onClick={() => {
+      const heldFor = Date.now() - pointerDownAtRef.current;
+      pointerDownAtRef.current = 0;
+      if (heldFor < 400) onToggle?.();
+    }}
+  >{share ? <div style={{ textAlign: "left" }}><div style={{ fontWeight: 700, marginBottom: 4 }}>{tr("社群分享", "Social share", "SNS共有", "소셜 공유")}</div><div style={{ fontSize: 11, color: "var(--mp-txt-l)", marginBottom: 6 }}>{tr("來源：", "Source: ", "出典: ", "출처: ")}{share.meta.source || "-"}</div><div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5, maxHeight: 180, overflowY: "auto", paddingRight: 2 }}>{applyUserPlaceholder(share.body)}</div></div> : <div><div>{message.content}</div>{connectionError && <button className="mp-retry-btn" disabled={isTyping} onClick={(event) => { event.stopPropagation(); onRetry(); }}>重新生成</button>}</div>}</div>{active && <button className="mp-msg-editbtn" onClick={onDelete}>🗑</button>}</div>;
 }
 
 export function TransferMessage({ message, transfer, active, onToggle, onDelete, onAccept, onReturn, formatMoney, tr }) {

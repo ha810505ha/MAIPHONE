@@ -13,11 +13,12 @@ const readFeatureFlag = (name, fallback) => {
 // Keep the current production defaults while allowing builds and tests to opt in explicitly.
 export const GACHA_ENABLED = readFeatureFlag("VITE_GACHA_ENABLED", false);
 
-// Dating remains configurable per build while staying available during active development.
+// 信風仍在開發中。預設完全關閉；只有刻意設定
+// VITE_DATING_ENABLED=true 的測試／預覽建置才會顯示。
 export const DATING_ENABLED = readFeatureFlag("VITE_DATING_ENABLED", false);
 
-// 雲端帳號／同步仍在開發中；false 時只使用本機 IndexedDB 與手動全域備份。
-export const SYNC_ENABLED = readFeatureFlag("VITE_SYNC_ENABLED", false);
+// 雲端帳號／同步已開放；特殊建置仍可明確設為 false 關閉。
+export const SYNC_ENABLED = readFeatureFlag("VITE_SYNC_ENABLED", true);
 
 // 相簿算圖仍在開發中；false 時隱藏設定頁的圖像 API 區塊與相簿的生成入口。
-export const IMAGE_GEN_ENABLED = readFeatureFlag("VITE_IMAGE_GEN_ENABLED", true);
+export const IMAGE_GEN_ENABLED = readFeatureFlag("VITE_IMAGE_GEN_ENABLED", false);

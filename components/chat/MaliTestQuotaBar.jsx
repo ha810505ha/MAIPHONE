@@ -50,10 +50,10 @@ export default function MaliTestQuotaBar({ enabled, tr }) {
       </button>
       {expanded && <div className="mp-test-quota-detail">
         {tr(
-          "線上聊天每次 2 點；心聲與其他功能每次 1 點。用量每日重置，測試點數由伺服器管理。",
-          "Online chat costs 2 points; inner thoughts and other features cost 1 point. Daily usage resets, while test points are server-managed.",
-          "オンラインチャットは 2 ポイント、心の声などは 1 ポイントです。利用回数は毎日リセットされ、テストポイントはサーバーで管理されます。",
-          "온라인 채팅은 2점, 속마음과 기타 기능은 1점입니다. 일일 사용량은 매일 초기화되고 테스트 포인트는 서버에서 관리됩니다."
+          "線上聊天、心聲與其他功能每次 1 點；現實聊天每次 3 點。用量每日重置，測試點數由伺服器管理。",
+          "Online chat, inner thoughts, and other features cost 1 point; reality chat costs 3 points. Daily usage resets, while test points are server-managed.",
+          "オンラインチャット、心の声などは 1 ポイント、リアルチャットは 3 ポイントです。利用回数は毎日リセットされ、テストポイントはサーバーで管理されます。",
+          "온라인 채팅, 속마음과 기타 기능은 1점, 현실 채팅은 3점입니다. 일일 사용량은 매일 초기화되고 테스트 포인트는 서버에서 관리됩니다."
         )}
       </div>}
     </div>

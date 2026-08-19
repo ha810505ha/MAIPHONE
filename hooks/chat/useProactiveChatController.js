@@ -1,5 +1,5 @@
-import { REALITY_CHAT_TEXT_LIMIT, normalizeAssistantReply, normalizeRealityReply, splitAssistantBubbles } from "../../utils/chatMessageUtils";
-import { gid, sanitizeText as defaultSanitizeText } from "../../utils/coreUtils";
+import { normalizeAssistantReply, splitAssistantBubbles } from "../../utils/chatMessageUtils";
+import { gid } from "../../utils/coreUtils";
 import { extractPhotoDirectives } from "../../utils/pseudoImage";
 import { extractPseudoVoiceDirectives, VOICE_MESSAGE_RULE_CONTEXT } from "../../utils/pseudoVoice";
 import { buildCharacterBlockPromptContext } from "../../services/chat/characterBlockState";
@@ -62,7 +62,6 @@ export default function useProactiveChatController({
   pickLorebookEntriesForPrompt,
   getLastCommittedChatMode,
   applyUserPlaceholder,
-  sanitizeText = defaultSanitizeText,
   callAI,
   canUseCurrentProvider,
   setChatHistory,
@@ -90,6 +89,8 @@ export default function useProactiveChatController({
       if (proactiveUnread?.[character.id]) return false;
       const messages = chatHistory[character.id] || [];
       if (!messages.length) return false;
+      // 自動回覆是手機訊息功能；現實模式需要由玩家送出內容後才延續面對面場景。
+      if (getLastCommittedChatMode(character.id) !== "online") return false;
       const lastMessage = messages[messages.length - 1];
       // 上次選擇沉默也算「剛互動過」，否則下一輪掃描會立刻重問同一個角色。
       const since = Math.max(Number(lastMessage?.time) || 0, Number(settings.lastSilentAt) || 0);
@@ -101,6 +102,9 @@ export default function useProactiveChatController({
   const triggerProactiveMessage = async (character) => {
     const characterId = character.id;
     try {
+      const selectedMode = getLastCommittedChatMode(characterId);
+      // 再守一次，避免掃描後切換模式或其他呼叫路徑把自動短訊插入現實模式。
+      if (selectedMode !== "online") return;
       const recent = formatMessagesForPrompt((chatHistory[characterId] || []).slice(-16));
       const memoryContext = pickMemoriesForPrompt(characterId, recent)
         .map((memory, index) => `- ${index + 1}. ${memory.text}`)
@@ -113,12 +117,9 @@ export default function useProactiveChatController({
         memoryContext,
         pinnedLoreContext ? `[強制條目]\n${pinnedLoreContext}` : "",
       ].filter(Boolean).join("\n\n");
-      const selectedMode = getLastCommittedChatMode(characterId);
       // 沉默出口寫在規則最後，避免被前面「請主動傳訊息」的指令蓋過。
       const silenceRule = `\n\n[可以選擇不開口]\n如果依照 {{char}} 的個性、當下處境或你們最近的關係，此刻主動開口並不自然（例如剛吵完架、角色正在忙、上一段對話已經好好收尾、或就是沒有想說的事），那就不要勉強找話題。這種情況下只輸出 ${SILENT_MARKER} 這個字，不要有任何其他內容、標點或解釋。沉默是正常且允許的選擇，不會被視為失敗。`;
-      const proactiveRule = selectedMode === "reality"
-        ? `[主動互動觸發 - 系統規則]\n距離上次互動已經過了一段時間。現在請你以 {{char}} 的身份，在現實場景中主動與 {{user}} 互動，用一段連貫的段落呈現（可包含敘述、動作、對話），自然地開啟話題或延續先前情境，符合角色個性與最近脈絡。不要提到「系統」「AI」「觸發」等字眼，也不要解釋自己為什麼開口，也不要輸出轉帳指令。`
-        : `[主動訊息觸發 - 系統規則]\n距離上次互動已經過了一段時間沒有新訊息。現在請你以 {{char}} 的身份，主動傳一則（或幾則）訊息給 {{user}}，自然地開啟話題或延續先前對話，語氣與內容要符合角色個性與最近對話脈絡。不要提到「系統」「AI」「觸發」等字眼，也不要解釋自己為什麼傳訊息，也不要輸出轉帳指令。`;
+      const proactiveRule = `[主動訊息觸發 - 系統規則]\n距離上次互動已經過了一段時間沒有新訊息。現在請你以 {{char}} 的身份，主動傳一則（或幾則）訊息給 {{user}}，自然地開啟話題或延續先前對話，語氣與內容要符合角色個性與最近對話脈絡。不要提到「系統」「AI」「觸發」等字眼，也不要解釋自己為什麼傳訊息，也不要輸出轉帳指令。`;
       const proactiveBlockContext = buildCharacterBlockPromptContext({
         state: characterBlockStates?.[characterId],
         mode: selectedMode,
@@ -127,7 +128,7 @@ export default function useProactiveChatController({
       const proactiveContext = [
         mergedMemoryContext,
         proactiveBlockContext,
-        selectedMode === "online" ? VOICE_MESSAGE_RULE_CONTEXT : "",
+        VOICE_MESSAGE_RULE_CONTEXT,
       ].filter(Boolean).join("\n\n");
       const systemPrompt = applyUserPlaceholder(
         `${buildChatSystemPrompt(character, proactiveContext, apiConfig.model, selectedMode)}\n\n${proactiveRule}${silenceRule}`,
@@ -143,7 +144,7 @@ export default function useProactiveChatController({
       ];
       const reply = await callAI(finalHistory, apiConfig, systemPrompt, {
         feature: "chat",
-        mode: selectedMode === "reality" ? "reality" : "online",
+        mode: "online",
         app: "chat",
         action: "proactive_reply",
       });
@@ -152,12 +153,8 @@ export default function useProactiveChatController({
         [characterId]: { ...(settings?.[characterId] || {}), lastSilentAt: Date.now() },
       }));
       if (isSilentReply(reply)) return markSilent();
-      const cleanReplyRaw = selectedMode === "reality"
-        ? sanitizeText(normalizeRealityReply(reply), REALITY_CHAT_TEXT_LIMIT)
-        : normalizeAssistantReply(reply);
-      const voiceExtracted = selectedMode === "online"
-        ? extractPseudoVoiceDirectives(cleanReplyRaw)
-        : { text: cleanReplyRaw, voices: [] };
+      const cleanReplyRaw = normalizeAssistantReply(reply);
+      const voiceExtracted = extractPseudoVoiceDirectives(cleanReplyRaw);
       const photoExtracted = extractPhotoDirectives(voiceExtracted.text);
       const cleanReply = stripModeLabel(stripInternalBlocks(photoExtracted.text));
       // 再檢一次：模型可能把 SILENT 包在模式標籤或內部區塊裡，清乾淨後才看得出來。
@@ -166,8 +163,7 @@ export default function useProactiveChatController({
         && !voiceExtracted.voices.length;
       if (onlySilent) return markSilent();
       if (!cleanReply.trim() && !photoExtracted.photos.length && !voiceExtracted.voices.length) return markSilent();
-      const bubbles = (selectedMode === "reality" ? [cleanReply] : splitAssistantBubbles(cleanReply))
-        .filter((bubble) => bubble.trim());
+      const bubbles = splitAssistantBubbles(cleanReply).filter((bubble) => bubble.trim());
       const replyGroupId = createId();
       let firedAny = false;
       for (let index = 0; index < bubbles.length; index += 1) {
@@ -179,9 +175,9 @@ export default function useProactiveChatController({
           replyGroupSize: bubbles.length,
           role: "assistant",
           content: bubbles[index],
-          mode: selectedMode,
+          mode: "online",
           proactive: true,
-          interceptedByBlock: selectedMode === "online" && characterBlockStates?.[characterId]?.blocked === true,
+          interceptedByBlock: characterBlockStates?.[characterId]?.blocked === true,
           time: Date.now(),
         };
         firedAny = true;
@@ -214,9 +210,9 @@ export default function useProactiveChatController({
             role: "assistant",
             content: "",
             pseudoImage: photo,
-            mode: selectedMode,
+            mode: "online",
             proactive: true,
-            interceptedByBlock: selectedMode === "online" && characterBlockStates?.[characterId]?.blocked === true,
+            interceptedByBlock: characterBlockStates?.[characterId]?.blocked === true,
             time: Date.now(),
           }],
         }));

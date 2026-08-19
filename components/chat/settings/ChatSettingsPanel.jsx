@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import ChatModeSettings from "./ChatModeSettings";
+import ChatReplyTimingSettings from "./ChatReplyTimingSettings";
 import InnerThoughtSettings from "./InnerThoughtSettings";
 import ThinkingChainSettings from "./ThinkingChainSettings";
 import ChatMemorySettings from "./ChatMemorySettings";
@@ -9,8 +10,9 @@ import ChatBackgroundSettings from "./ChatBackgroundSettings";
 import ChatLorebookSettings from "./ChatLorebookSettings";
 import ChatroomManagement from "./ChatroomManagement";
 import ChatStorySettings from "./ChatStorySettings";
+import RealityOutputTokenSettings from "./RealityOutputTokenSettings";
 
-export default function ChatSettingsPanel({ tr, mode, innerThought, thinking, memory, proactive, realTime, story, background, lorebook, management, contact }) {
+export default function ChatSettingsPanel({ tr, mode, replyTiming, realityOutput, innerThought, thinking, memory, proactive, realTime, story, background, lorebook, management, contact }) {
   const [activeTab, setActiveTab] = useState("interaction");
   const characterName = management?.character?.name || tr("角色", "Character", "キャラクター", "캐릭터");
   const tabs = [
@@ -36,6 +38,8 @@ export default function ChatSettingsPanel({ tr, mode, innerThought, thinking, me
       <div key={activeTab} className="mp-chat-settings-tab-content">
         {activeTab === "interaction" && <>
           <ChatModeSettings {...mode} tr={tr} />
+          {mode?.selectedMode === "reality" && <RealityOutputTokenSettings {...realityOutput} tr={tr} />}
+          {replyTiming?.visible !== false && <ChatReplyTimingSettings {...replyTiming} tr={tr} />}
           <InnerThoughtSettings {...innerThought} tr={tr} />
           {thinking && <ThinkingChainSettings {...thinking} tr={tr} />}
           <ChatMemorySettings {...memory} tr={tr} />

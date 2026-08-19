@@ -54,6 +54,27 @@ export default function useDirectChatAI({ currentCharacter, isTyping, chatHistor
     }
   }, [currentCharacter, isTyping, chatHistory, chatInput, chatImage, chatPseudoImage, chatPseudoVoiceMode, getActiveRoomId, getCommittedMode, getSelectedMode, getTextLimit, isPlayerBlockedByCharacter, sanitizeText, createId, setChatHistory, setChatInput, setChatImage, setChatPseudoImage, setChatPseudoVoiceMode, setActionPanelOpen, setIsTyping, generateAssistant, addErrorNotice]);
 
+  const addMessageToBatch = useCallback(() => {
+    if (!currentCharacter || isTyping) return false;
+    const characterId = currentCharacter.id;
+    const selectedMode = getSelectedMode(characterId);
+    if (selectedMode !== "online") return false;
+    const pseudoVoiceActive = chatPseudoVoiceMode;
+    const text = sanitizeText(chatInput.trim(), pseudoVoiceActive ? PSEUDO_VOICE_TEXT_LIMIT : getTextLimit(selectedMode));
+    const image = pseudoVoiceActive ? null : (chatImage?.data || null);
+    const pseudoImage = pseudoVoiceActive ? null : (chatPseudoImage || null);
+    const pseudoVoice = pseudoVoiceActive ? createPseudoVoice(text) : null;
+    if (!text && !image && !pseudoImage && !pseudoVoice) return false;
+    const previous = chatHistory[characterId] || [];
+    const committedMode = getCommittedMode(characterId);
+    const now = Date.now();
+    const transition = committedMode !== selectedMode ? { id: createId(), role: "mode_transition", fromMode: committedMode, toMode: selectedMode, time: now } : null;
+    const userMessage = { id: createId(), role: "user", content: text, image, pseudoImage, pseudoVoice, imageSummary: "", mode: selectedMode, interceptedByCharacterBlock: isPlayerBlockedByCharacter?.(characterId) === true, time: now };
+    setChatHistory((history) => ({ ...history, [characterId]: transition ? [...previous, transition, userMessage] : [...previous, userMessage] }));
+    setChatInput(""); setChatImage(null); setChatPseudoImage(null); setChatPseudoVoiceMode(false); setActionPanelOpen(false);
+    return true;
+  }, [currentCharacter, isTyping, chatHistory, chatInput, chatImage, chatPseudoImage, chatPseudoVoiceMode, getCommittedMode, getSelectedMode, getTextLimit, isPlayerBlockedByCharacter, sanitizeText, createId, setChatHistory, setChatInput, setChatImage, setChatPseudoImage, setChatPseudoVoiceMode, setActionPanelOpen]);
+
   const retryMessage = useCallback(async (noticeId) => {
     if (!currentCharacter || isTyping) return;
     const characterId = currentCharacter.id;
@@ -81,13 +102,13 @@ export default function useDirectChatAI({ currentCharacter, isTyping, chatHistor
     }
   }, [currentCharacter, isTyping, chatHistory, getActiveRoomId, getMessageMode, setChatHistory, setIsTyping, generateAssistant, addErrorNotice]);
 
-  const retryLastUnansweredMessage = useCallback(async () => {
+  const retryLastUnansweredMessage = useCallback(async ({ allowInterceptedByCharacterBlock = false } = {}) => {
     if (!currentCharacter || isTyping) return false;
     const characterId = currentCharacter.id;
     const roomId = getActiveRoomId?.(characterId) || null;
     if (isPendingRequestForRoom(pendingRequest, characterId, roomId)) return false;
     const nextHistory = chatHistory[characterId] || [];
-    const userMessage = getRetryableTailUserMessage(nextHistory);
+    const userMessage = getRetryableTailUserMessage(nextHistory, { allowInterceptedByCharacterBlock });
     if (!userMessage) return false;
     setIsTyping(true);
     const controller = new AbortController();
@@ -222,5 +243,5 @@ export default function useDirectChatAI({ currentCharacter, isTyping, chatHistor
     }
   }, [currentCharacter, isTyping, chatHistory, getActiveRoomId, getSelectedMode, createId, setChatHistory, setIsTyping, generateAssistant, addErrorNotice]);
 
-  return { sendMessage, retryMessage, retryLastUnansweredMessage, selectAssistantSwipe, generateAssistantSwipe, deleteAssistantSwipe, pendingRequest, startCalendarStory };
+  return { sendMessage, addMessageToBatch, retryMessage, retryLastUnansweredMessage, selectAssistantSwipe, generateAssistantSwipe, deleteAssistantSwipe, pendingRequest, startCalendarStory };
 }

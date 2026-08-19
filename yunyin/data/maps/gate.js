@@ -41,6 +41,13 @@ export default {
     { id: "danfang", label: "丹房坊市", x: 25, y: 4, w: 4, h: 4, door: [27, 8], to: "danfang_interior", spawn: [6, 7], color: "#8a6a4f", roof: "#684d38", img: "danfang", renderScale: 1.2 },
   ],
   decorations: [
+    // 山門入口：兩根石柱夾住上方進場大道（大道在 x15~18，石柱各留一格空隙），
+    // 外側再各放一根斷柱當仙門遺跡。renderScale 讓圖以素材原始像素大小繪製
+    // （drawWorldDecoration 會把圖拉成 w 格寬，所以 renderScale = 圖寬 /(w*32)）。
+    { id: "gate_pillar_left", img: "gatePillar", x: 13, y: 4, w: 1, h: 1, renderScale: 1, blocking: true },
+    { id: "gate_pillar_right", img: "gatePillar", x: 20, y: 4, w: 1, h: 1, renderScale: 1, blocking: true },
+    { id: "gate_ruin_left", img: "gatePillarBroken", x: 4, y: 4, w: 1, h: 1, renderScale: 1.375, blocking: true },
+    { id: "gate_ruin_right", img: "gatePillarBroken", x: 31, y: 4, w: 1, h: 1, renderScale: 1.375, blocking: true },
     { id: "plaza_fountain", img: "plazaFountain", x: 17, y: 12, w: 3, h: 2, renderScale: 1.1, blocking: true },
     // 長椅素材是正面視角 → sit_front（正面端坐，不套只有側面的 sit 動畫；見 actorActions）
     { id: "plaza_bench_left", img: "plazaBench", x: 13, y: 16, w: 2, h: 1, blocking: true, interactions: [{ id: "sit", action: "sit_front", label: "坐下", minDurationMs: 4000, maxDurationMs: 9000, slots: [

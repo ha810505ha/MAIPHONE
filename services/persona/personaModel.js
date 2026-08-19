@@ -7,6 +7,7 @@ export const PERSONA_SCOPED_FIELDS = Object.freeze([
   "chatRooms",
   "activeRoomIds",
   "chatModes",
+  "chatReplyTimings",
   "chatBackgrounds",
   "groupChats",
   "chatScenes",
@@ -85,17 +86,20 @@ export function normalizePersonaCollection(state = {}, defaults = {}) {
   const personas = {};
   for (const id of ids) {
     const item = raw[id] || {};
-    const profileName = String(item.data?.playerProfile?.name || "").trim();
+    const itemData = item.activeDataInTopLevel && id === activePersonaId
+      ? capturePersonaData(state, defaults)
+      : item.data;
+    const profileName = String(itemData?.playerProfile?.name || "").trim();
     personas[id] = {
       id,
       label: profileName || String(item.label || "玩家人格").trim() || "玩家人格",
       createdAt: Number(item.createdAt) || Date.now(),
       data: {
         ...createEmptyPersonaData(defaults),
-        ...(item.data || {}),
+        ...(itemData || {}),
         playerProfile: {
           ...(defaults.playerProfile || {}),
-          ...(item.data?.playerProfile || {}),
+          ...(itemData?.playerProfile || {}),
         },
       },
     };

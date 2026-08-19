@@ -41,6 +41,29 @@ import { useYunyinLocale, YunyinLocaleProvider } from "./i18n/YunyinLocale.jsx";
 const SCALE = 2;            // 邏輯 32px tile、顯示 64px
 const STEP_MS = 150;        // 玩家在大型地圖上的逐格移動速度；NPC 維持各自原有設定
 const CAMERA_SCALES = [0.5, 1, 1.5, 2];
+const LOCAL_RESIDENT_TEST_BED_UID = "local-resident-test-guest-bed";
+
+const prepareLocalResidentTestSave = (save) => {
+  if (!import.meta.env.DEV) return save;
+  const home = save?.home?.homes?.player_home;
+  if (!home) return save;
+
+  if (!Array.isArray(home.unlockedRooms)) home.unlockedRooms = [];
+  if (!home.unlockedRooms.includes("guest")) home.unlockedRooms.push("guest");
+
+  if (!Array.isArray(home.furniture)) home.furniture = [];
+  if (!home.furniture.some((item) => item?.furnitureId === "guest_bed")) {
+    home.furniture.push(createFurnitureInstance({
+      uid: LOCAL_RESIDENT_TEST_BED_UID,
+      furnitureId: "guest_bed",
+      x: 20,
+      y: 10,
+      source: "local-resident-test",
+    }));
+  }
+
+  return save;
+};
 
 const fmtDuration = (mins, yt) => {
   const h = Math.floor(mins / 60), m = Math.round(mins % 60);
@@ -808,7 +831,11 @@ function YunyinGameContent(props) {
   const [loadError, setLoadError] = useState("");
   useEffect(() => {
     let mounted = true;
-    loadSave().then((save) => { if (mounted) setInitialSave(save); }).catch((error) => {
+    loadSave().then((save) => {
+      const preparedSave = prepareLocalResidentTestSave(save);
+      if (import.meta.env.DEV) void persistSave(preparedSave);
+      if (mounted) setInitialSave(preparedSave);
+    }).catch((error) => {
       if (!mounted) return;
       setLoadError(error?.message || yt("save.loadFailed"));
     });

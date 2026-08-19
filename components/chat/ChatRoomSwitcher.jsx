@@ -6,7 +6,7 @@ export default function ChatRoomSwitcher({ open, onClose, rooms, activeRoomId, r
   const hasRooms = Array.isArray(rooms) && rooms.length > 0;
   const roots = useMemo(() => (rooms || []).filter((room) => !room.parentRoomId && !room.archivedAt).sort((a, b) => (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0)), [rooms]);
   const activeRoom = (rooms || []).find((room) => room.id === activeRoomId);
-  const [expandedRootIds, setExpandedRootIds] = useState(() => new Set());
+  const [collapsedRootIds, setCollapsedRootIds] = useState(() => new Set());
   const [managerOpen, setManagerOpen] = useState(false);
   const [managerTab, setManagerTab] = useState("active");
   const canDelete = Boolean(activeRoom?.parentRoomId) || roots.length > 1;
@@ -39,23 +39,15 @@ export default function ChatRoomSwitcher({ open, onClose, rooms, activeRoomId, r
   useEffect(() => {
     if (!open) return;
     const activeRootId = rootFor(activeRoomId);
-    setExpandedRootIds((previous) => {
+    if (!activeRootId) return;
+    setCollapsedRootIds((previous) => {
+      if (!previous.has(activeRootId)) return previous;
       const next = new Set(previous);
-      let changed = false;
-      roots.forEach((room) => {
-        if (childrenOf(room.id).length && !next.has(room.id)) {
-          next.add(room.id);
-          changed = true;
-        }
-      });
-      if (activeRootId && !next.has(activeRootId)) {
-        next.add(activeRootId);
-        changed = true;
-      }
-      return changed ? next : previous;
+      next.delete(activeRootId);
+      return next;
     });
-  }, [open, activeRoomId, roots, childrenByParent]);
-  const toggleRoot = (roomId) => setExpandedRootIds((previous) => {
+  }, [open, activeRoomId, rooms]);
+  const toggleRoot = (roomId) => setCollapsedRootIds((previous) => {
     const next = new Set(previous);
     if (next.has(roomId)) next.delete(roomId);
     else next.add(roomId);
@@ -66,7 +58,7 @@ export default function ChatRoomSwitcher({ open, onClose, rooms, activeRoomId, r
     const updatedAt = formatUpdatedAt(room.updatedAt);
     const children = childrenOf(room.id);
     const isRoot = depth === 0;
-    const isExpanded = expandedRootIds.has(room.id);
+    const isCollapsed = isRoot && collapsedRootIds.has(room.id);
     const autoBranchTitle = /^(?:分支|branch|分岐|분기)(?:\s*\d+)?(?:\s*·|$)/i.test(String(room.title || ""));
     const branchLabel = tr(`${branchIndex + 1} 分支`, `Branch ${branchIndex + 1}`, `分岐 ${branchIndex + 1}`, `분기 ${branchIndex + 1}`);
     const roomTitle = isRoot
@@ -75,17 +67,17 @@ export default function ChatRoomSwitcher({ open, onClose, rooms, activeRoomId, r
     const branchName = !isRoot && room.title && !autoBranchTitle ? room.title : "";
     return (
       <React.Fragment key={room.id}>
-        <div style={{ display: "flex", alignItems: "stretch", gap: 5 }}>
-          {isRoot && children.length > 0 && <button type="button" onClick={(event) => { event.stopPropagation(); toggleRoot(room.id); }} aria-label={isExpanded ? tr("收合分支", "Collapse branches", "分岐を閉じる", "분기 접기") : tr("展開分支", "Expand branches", "分岐を開く", "분기 펼치기")} title={isExpanded ? tr("收合分支", "Collapse branches", "分岐を閉じる", "분기 접기") : tr("展開分支", "Expand branches", "分岐を開く", "분기 펼치기")} style={{ flex: "0 0 28px", border: 0, borderRadius: 10, background: "color-mix(in srgb,var(--mp-txt-l) 10%,transparent)", color: "var(--mp-txt-l)", fontSize: 13, fontWeight: 900, cursor: "pointer" }}>{isExpanded ? "⌄" : "›"}</button>}
-          <button type="button" onClick={() => { onSwitchRoom?.(room.id); onClose?.(); }} style={{ display: "flex", alignItems: "center", gap: 9, flex: 1, width: "100%", border: active ? "1px solid var(--mp-pink)" : "1px solid color-mix(in srgb,var(--mp-txt-l) 18%,transparent)", borderRadius: 14, padding: `10px 12px 10px ${12 + depth * 16}px`, background: active ? "color-mix(in srgb,var(--mp-pink) 10%,var(--mp-surface))" : "color-mix(in srgb,var(--mp-surface) 92%,var(--mp-txt) 8%)", color: "var(--mp-txt)", textAlign: "left" }}>
-          <span style={{ width: 16, color: active ? "var(--mp-pink-dk)" : "var(--mp-txt-l)", fontWeight: 900 }}>{active ? "✓" : depth ? "↳" : "●"}</span>
+        <div className={`mp-room-tree-row ${isRoot ? "is-root" : "is-branch"}`} style={{ "--mp-room-depth": depth }}>
+          <button type="button" className={`mp-room-tree-button ${active ? "is-active" : ""}`} onClick={() => { onSwitchRoom?.(room.id); onClose?.(); }}>
+          <span className="mp-room-tree-status">{active ? "✓" : isRoot ? "●" : "└"}</span>
           <span style={{ flex: 1, minWidth: 0 }}>
             <b style={{ display: "block", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{roomTitle}</b>
             <small style={{ display: "block", marginTop: 3, color: "var(--mp-txt-l)", fontSize: 9 }}>{branchName ? `${branchName} · ` : ""}{room.parentRoomId ? tr("分支", "Branch", "分岐", "분기") : tr("完整對話", "Full chat", "会話", "전체 대화")} · {(room.messages || []).length} {tr("則訊息", "messages", "件のメッセージ", "개의 메시지")}{updatedAt ? ` · ${updatedAt}` : ""}</small>
           </span>
           </button>
+          {isRoot && children.length > 0 && <button type="button" className="mp-room-tree-toggle" onClick={() => toggleRoot(room.id)} aria-expanded={!isCollapsed} aria-label={isCollapsed ? tr("展開分支", "Expand branches", "分岐を開く", "분기 펼치기") : tr("收合分支", "Collapse branches", "分岐を閉じる", "분기 접기")}><span>{children.length}</span><b>{isCollapsed ? "⌄" : "⌃"}</b></button>}
         </div>
-        {(!isRoot || isExpanded) && children.map((child, index) => renderRoom(child, depth + 1, index))}
+        {children.length > 0 && !isCollapsed && <div className="mp-room-tree-children">{children.map((child, index) => renderRoom(child, depth + 1, index))}</div>}
       </React.Fragment>
     );
   };
@@ -100,7 +92,7 @@ export default function ChatRoomSwitcher({ open, onClose, rooms, activeRoomId, r
               <div style={{ fontSize: 15, fontWeight: 900, color: "var(--mp-txt)" }}>{tr("切換對話與分支", "Chats & branches", "会話と分岐", "채팅과 분기")}</div>
               <button type="button" className="mp-ibtn" onClick={onClose}>×</button>
             </div>
-            <div style={{ display: "grid", gap: 7 }}>{roots.map((room) => renderRoom(room))}</div>
+            <div className="mp-room-tree">{roots.map((room) => renderRoom(room))}</div>
             <button type="button" className="mp-save" style={{ marginTop: 12 }} onClick={() => { onCreateRoom?.(); onClose?.(); }}>＋ {tr("完全新對話", "New standalone chat", "新しい独立チャット", "새 독립 채팅")}</button>
             <button type="button" className="mp-ibtn" style={{ width: "100%", marginTop: 8 }} onClick={() => { onCreateBranch?.(); onClose?.(); }}>⌁ {tr("從目前進度開分支", "Branch from here", "ここから分岐", "여기서 분기")}</button>
             <div style={{ display: "flex", gap: 7, marginTop: 8 }}>

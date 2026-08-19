@@ -21,6 +21,7 @@ export default function useHomeDragAndDrop({
   edgeTurnTimerRef,
   edgeTurnDirRef,
   suppressAppClickUntilRef,
+  homePageTrackRef,
   pageSize,
   openApp,
   openAllApps,
@@ -85,20 +86,26 @@ export default function useHomeDragAndDrop({
       ? { x: touch.clientX, y: touch.clientY, time: e.timeStamp }
       : null;
   };
-  const settleHomeGesture = (fast = false) => {
+  const settleHomeGesture = (fast = false, targetPage = homePage) => {
+    const settleMs = fast ? HOME_GESTURE.flickSettleMs : HOME_GESTURE.settleMs;
+    const track = homePageTrackRef?.current;
+    if (track) {
+      track.style.transitionDuration = `${settleMs}ms`;
+      track.style.transform = `translate3d(calc(-${targetPage * 100}% + 0px),0,0)`;
+    }
     setHomeGesture((current) => ({
       ...current,
       active: false,
       offsetX: 0,
       offsetY: 0,
       settling: true,
-      settleMs: fast ? HOME_GESTURE.flickSettleMs : HOME_GESTURE.settleMs,
+      settleMs,
     }));
     window.setTimeout(() => {
       setHomeGesture((current) => current.settling
         ? { ...current, axis: null, settling: false }
         : current);
-    }, fast ? HOME_GESTURE.flickSettleMs : HOME_GESTURE.settleMs);
+    }, settleMs);
   };
   const switchHomePageBySwipe = (sx, sy, ex, ey, durationMs, viewportWidth) => {
     // React state 在 pointerup 當幀可能仍保留 pointerdown 時的舊值。
@@ -117,8 +124,13 @@ export default function useHomeDragAndDrop({
       ? Math.max(Math.abs(ex - sx), Math.abs(ey - sy)) / durationMs
       : 0;
     const fast = velocity >= HOME_GESTURE.velocityThreshold;
-    settleHomeGesture(fast);
     const action = gesture;
+    const targetPage = action === "next-page"
+      ? Math.min(homePage + 1, homePages.length - 1)
+      : action === "previous-page"
+        ? Math.max(homePage - 1, 0)
+        : homePage;
+    settleHomeGesture(fast, targetPage);
     if (action === "open-library") {
       openAllApps?.();
       return;
@@ -287,6 +299,24 @@ export default function useHomeDragAndDrop({
       const dy = Math.abs((e.clientY || 0) - pendingPress.startY);
       if (!pendingPress.cancelled && dx + dy > 8) {
         clearTimeout(pendingPress.timer);
+        // An App icon initially reserves the pointer for long-press reordering.
+        // Once it clearly moves, hand the exact same gesture to the desktop
+        // pager so the page follows the finger instead of jumping on release.
+        homeGestureRef.current = {
+          x: pendingPress.startX,
+          y: pendingPress.startY,
+          time: pendingPress.time,
+          width: pendingPress.width,
+          axis: null,
+        };
+        setHomeGesture({
+          active: true,
+          axis: null,
+          offsetX: 0,
+          offsetY: 0,
+          settling: false,
+          settleMs: HOME_GESTURE.settleMs,
+        });
         dragPressRef.current = { ...pendingPress, timer: null, cancelled: true };
       }
       if (!dragPressRef.current?.cancelled) return;
@@ -308,14 +338,17 @@ export default function useHomeDragAndDrop({
         const offsetX = atStart || atEnd
           ? rubberBand(dx, gesture.width)
           : dx;
-        setHomeGesture((current) => ({
-          ...current,
-          active: true,
-          axis: "x",
-          offsetX,
-          offsetY: 0,
-          settling: false,
-        }));
+        // Do not put every touch sample through the root React tree. On high
+        // refresh Android displays this can be 120 updates per second; the
+        // page track only needs a compositor-friendly transform update.
+        const track = homePageTrackRef?.current;
+        if (track) {
+          track.style.transitionDuration = "0ms";
+          track.style.transform = `translate3d(calc(-${homePage * 100}% + ${offsetX}px),0,0)`;
+        }
+        setHomeGesture((current) => current.axis === "x" && current.active && !current.settling
+          ? current
+          : { ...current, active: true, axis: "x", offsetX: 0, offsetY: 0, settling: false });
       } else {
         setHomeGesture((current) => ({
           ...current,
@@ -425,7 +458,17 @@ export default function useHomeDragAndDrop({
     const startY = e.clientY || 0;
     swipeStartXRef.current = startX;
     swipeStartYRef.current = startY;
-    const press = { appId, fromArea, startX, startY, cancelled: false, timer: null };
+    const desk = e.currentTarget.closest?.(".mp-desk");
+    const press = {
+      appId,
+      fromArea,
+      startX,
+      startY,
+      time: e.timeStamp,
+      width: desk?.clientWidth || 390,
+      cancelled: false,
+      timer: null,
+    };
     press.timer = setTimeout(() => {
       if (dragPressRef.current !== press || press.cancelled) return;
       dragPressRef.current = null;

@@ -37,6 +37,15 @@ import shopShelfTallImg from "../assets/decor/shop_shelf_tall.png";
 import decorBonsaiAImg from "../assets/decor/decor_bonsai_a.png";
 import decorBonsaiBImg from "../assets/decor/decor_bonsai_b.png";
 import decorMatImg from "../assets/decor/decor_mat.png";
+// 戶外造景（Modern Exteriors：Garden / Camping 主題）
+import gatePillarImg from "../assets/decor/gate_pillar.png";
+import gatePillarBrokenImg from "../assets/decor/gate_pillar_broken.png";
+import farmRockAImg from "../assets/decor/farm_rock_a.png";
+import farmRockBImg from "../assets/decor/farm_rock_b.png";
+import farmMushroomAImg from "../assets/decor/farm_mushroom_a.png";
+import farmMushroomBImg from "../assets/decor/farm_mushroom_b.png";
+import farmWoodpileImg from "../assets/decor/farm_woodpile.png";
+import farmLanternImg from "../assets/decor/farm_lantern.png";
 import hallPillarImg from "../assets/decor/hall_pillar.png";
 import hallIncenseImg from "../assets/decor/hall_incense.png";
 import roomWallsSheet from "../assets/tiles/room_walls.png";
@@ -161,6 +170,14 @@ export const WORLD_DECOR_IMAGES = {
   decorMat: decorMatImg,
   hallPillar: hallPillarImg,
   hallIncense: hallIncenseImg,
+  gatePillar: gatePillarImg,
+  gatePillarBroken: gatePillarBrokenImg,
+  farmRockA: farmRockAImg,
+  farmRockB: farmRockBImg,
+  farmMushroomA: farmMushroomAImg,
+  farmMushroomB: farmMushroomBImg,
+  farmWoodpile: farmWoodpileImg,
+  farmLantern: farmLanternImg,
 };
 
 // 家具圖片：key 對應 furnitureCatalog 的 furniture id（沒登記的家具走色塊 fallback）。

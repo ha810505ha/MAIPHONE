@@ -40,6 +40,7 @@ export default function useChatSettingsController({
   showToast,
 }) {
   const [chatModes, setChatModes] = useState(defaultAppState.chatModes);
+  const [chatReplyTimings, setChatReplyTimings] = useState(defaultAppState.chatReplyTimings);
   const [chatBackgrounds, setChatBackgrounds] = useState(defaultAppState.chatBackgrounds);
   const [chatBgEditor, setChatBgEditor] = useState(null);
   const [chatTimeSettings, setChatTimeSettings] = useState(defaultAppState.chatTimeSettings);
@@ -115,6 +116,11 @@ export default function useChatSettingsController({
   };
   const getLastCommittedChatMode = (charId) => selectLastCommittedChatMode(chatHistory, charId);
   const getSelectedChatMode = (charId) => selectSelectedChatMode(chatModes, chatHistory, charId);
+  const getChatReplyTiming = (charId) => chatReplyTimings?.[charId] === "batch" ? "batch" : "instant";
+  const setChatReplyTiming = (charId, timing) => {
+    if (!charId || !["instant", "batch"].includes(timing)) return;
+    setChatReplyTimings((previous) => ({ ...(previous || {}), [charId]: timing }));
+  };
   const setSelectedChatMode = (charId, mode) => {
     if (!charId || !isChatMode(mode)) return;
     // Changing the mode changes message styling/layout. Preserve the user's
@@ -194,6 +200,7 @@ export default function useChatSettingsController({
     management = {},
     contact = {},
     thinking = {},
+    realityOutput = {},
   } = {}) => {
     const characterId = character?.id;
     return {
@@ -201,6 +208,11 @@ export default function useChatSettingsController({
         selectedMode,
         pending,
         onChange: (mode) => setSelectedChatMode(characterId, mode),
+      },
+      replyTiming: {
+        value: getChatReplyTiming(characterId),
+        visible: selectedMode === "online",
+        onChange: (timing) => setChatReplyTiming(characterId, timing),
       },
       innerThought: {
         autoEnabled: isInnerThoughtAutoEnabled(characterId),
@@ -217,6 +229,7 @@ export default function useChatSettingsController({
         sanitizeText,
       },
       thinking,
+      realityOutput,
       memory: {
         // 聊天設定面板只列活躍記憶；塵封書庫的入口在角色檔案（StatusApp）。
         memories: (memories[characterId] || []).filter((m) => !isArchivedMemory(m)),
@@ -279,6 +292,8 @@ export default function useChatSettingsController({
   return {
     chatModes,
     setChatModes,
+    chatReplyTimings,
+    setChatReplyTimings,
     chatBackgrounds,
     setChatBackgrounds,
     chatBgEditor,
@@ -319,6 +334,8 @@ export default function useChatSettingsController({
     setChatroomManageOpen,
     getModeLabel,
     getLastCommittedChatMode,
+    getChatReplyTiming,
+    setChatReplyTiming,
     getSelectedChatMode,
     setSelectedChatMode,
     isInnerThoughtAutoEnabled,

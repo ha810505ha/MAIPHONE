@@ -3,8 +3,11 @@ import { recordRuntimeDiagnostic } from "./diagnostics/runtimeDiagnostics.js";
 import { getMaliTestRuntime } from "./cloud/maliTestRuntime.js";
 import { runMaliTextGeneration } from "./cloud/maliTestService.js";
 import { isLocalProvider } from "../constants/appConstants.js";
+import { getRealityThinkingBudget } from "../utils/realityOutputSettings.js";
 
 const NVIDIA_PROXY_BASE_URL = "https://maliphone-ai-proxy.d778105.workers.dev/nvidia";
+
+const isGemini25ProModel = (model) => /(^|\/)gemini-2\.5-pro(?:$|[-:])/i.test(String(model || ""));
 
 // Ollama 也可能被玩家指向本機（localhost / 127.0.0.1），此時同樣免 API Key。
 const LOCALHOST_URL_RE = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i;
@@ -81,7 +84,15 @@ async function callAIRequest(messages, apiConfig, sysPrompt, options = {}) {
   if (providerNeedsApiKey && !apiKey) throw new Error("請先設定 API Key");
 
   const sys = sysPrompt || "你是一位自然、友善、穩定的 AI 角色助理。";
-  const maxTokens = Number(apiConfig.maxTokens) > 0 ? Number(apiConfig.maxTokens) : 4000;
+  const configuredMaxTokens = Number(apiConfig.maxTokens) > 0 ? Number(apiConfig.maxTokens) : 4000;
+  const tuneRealityGemini25Pro = (
+    (provider === "vertex" || provider === "gemini")
+    && options.mode === "reality"
+    && options.action === "direct_reply"
+    && isGemini25ProModel(model)
+  );
+  const maxTokens = configuredMaxTokens;
+  const realityThinkingBudget = tuneRealityGemini25Pro ? getRealityThinkingBudget(maxTokens) : null;
   const hasImageInput = messages.some((m) => !!m.image);
   const temperature = apiConfig.temperatureEnabled && Number.isFinite(Number(apiConfig.temperature))
     ? Math.max(0, Math.min(2, Number(apiConfig.temperature))) : null;
@@ -141,7 +152,13 @@ async function callAIRequest(messages, apiConfig, sysPrompt, options = {}) {
     return {
       systemInstruction: { parts: [{ text: sys }] },
       contents,
-      generationConfig: { maxOutputTokens: maxTokens, ...(temperature == null ? {} : { temperature }) },
+      generationConfig: {
+        maxOutputTokens: maxTokens,
+        ...(temperature == null ? {} : { temperature }),
+        ...(tuneRealityGemini25Pro ? {
+          thinkingConfig: { thinkingBudget: realityThinkingBudget },
+        } : {}),
+      },
     };
   };
 
@@ -183,11 +200,13 @@ async function callAIRequest(messages, apiConfig, sysPrompt, options = {}) {
       "";
 
     let out = "";
+    let responsePayloads = [];
     // Vertex streamGenerateContent commonly returns one complete JSON array.
     // Parse that first; line-by-line parsing of pretty-printed arrays can
     // accidentally accept only one chunk and leave the reply truncated.
     try {
       const parsed = JSON.parse(text);
+      responsePayloads = Array.isArray(parsed) ? parsed : [parsed];
       out = Array.isArray(parsed)
         ? parsed.map(tryExtractText).join("")
         : tryExtractText(parsed);
@@ -198,13 +217,35 @@ async function callAIRequest(messages, apiConfig, sysPrompt, options = {}) {
         if (!payload || payload === "[DONE]") continue;
         try {
           const chunk = JSON.parse(payload);
+          responsePayloads.push(chunk);
           out += tryExtractText(chunk);
         } catch (_) {}
       }
     }
 
     const finalText = out.trim();
-    if (!finalText) throw new Error("Vertex 已連線但回覆空白，請先換成 `gemini-2.5-flash` 或 `gemini-2.5-pro` 測試");
+    if (!finalText) {
+      const finishReasons = [...new Set(responsePayloads
+        .map((payload) => payload?.candidates?.[0]?.finishReason)
+        .filter(Boolean))];
+      const usageMetadata = [...responsePayloads].reverse()
+        .find((payload) => payload?.usageMetadata)?.usageMetadata;
+      const promptFeedback = responsePayloads
+        .find((payload) => payload?.promptFeedback)?.promptFeedback;
+      const error = new Error("Vertex 已連線但回覆空白，請先換成 `gemini-2.5-flash` 或 `gemini-2.5-pro` 測試");
+      error.details = {
+        provider: "vertex",
+        model: String(model || ""),
+        mode: String(options.mode || ""),
+        maxOutputTokens: maxTokens,
+        thinkingBudget: realityThinkingBudget,
+        finishReasons,
+        promptFeedback: promptFeedback || null,
+        usageMetadata: usageMetadata || null,
+        responseChunks: responsePayloads.length,
+      };
+      throw error;
+    }
     return finalText;
   }
 
@@ -269,6 +310,7 @@ async function callAI(messages, apiConfig, sysPrompt, options = {}) {
       kind: "ai-error",
       error,
       source: `aiService:${isHostedTestMode(apiConfig) ? "hosted_test" : String(apiConfig?.provider || "unknown")}`,
+      details: error?.details,
     });
     throw error;
   }

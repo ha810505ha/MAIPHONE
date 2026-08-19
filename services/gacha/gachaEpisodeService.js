@@ -166,7 +166,11 @@ ${clean(playerProfile?.name ? `姓名：${playerProfile.name}\n${playerProfile.d
 4. 劇情總長固定以玩家最多 20 則訊息為上限。必須依照上方「目前進度」與「劇情階段」控制節奏，不可假裝不知道回合數。
 5. 回覆使用繁體中文。內容應有足夠的情緒、反應與互動細節，通常約 250 至 600 個中文字、2 至 5 個自然段落；不要只用一兩句話草率帶過。`;
   const history = (episode.messages || []).filter((message) => message.role !== "system").slice(-30).map((message) => ({ role: message.role === "user" ? "user" : "assistant", content: clean(message.content, 4000) }));
-  history.push({ role: "user", content: forceEnding ? "（請依照目前劇情自然完成這段特別篇，這是角色的最後一則回覆。）" : clean(nextUserMessage, 4000) });
+  if (forceEnding) history.push({ role: "user", content: "（請依照目前劇情自然完成這段特別篇，這是角色的最後一則回覆。）" });
+  else {
+    const nextText = clean(nextUserMessage, 4000).trim();
+    if (nextText) history.push({ role: "user", content: nextText });
+  }
   const streamed = await streamCompatibleChat(history, apiConfig, systemPrompt, onChunk, signal);
   const raw = streamed ?? await callAI(history, { ...apiConfig, maxTokens: Math.min(1800, Number(apiConfig.maxTokens) || 1800) }, systemPrompt, {
     signal,

@@ -8,9 +8,6 @@ const fd = (d) => {
   const mos = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
   return { day: days[d.getDay()], month: mos[d.getMonth()], date: d.getDate() };
 };
-const ld = (k, fb) => { try { const v = localStorage.getItem(`mali_${k}`); return v ? JSON.parse(v) : fb; } catch { return fb; } };
-const sv = (k, v) => { try { localStorage.setItem(`mali_${k}`, JSON.stringify(v)); } catch {} };
-
 const sanitizeText = (value, maxLen = 2000) => {
   if (value === null || value === undefined) return "";
   const s = String(value).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");
@@ -30,5 +27,4 @@ const sanitizeUserImageUrl = (url) => {
   return null;
 };
 
-export { gid, ft, fd, ld, sv, sanitizeText, sanitizeUserImageUrl };
-
+export { gid, ft, fd, sanitizeText, sanitizeUserImageUrl };

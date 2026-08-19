@@ -145,7 +145,14 @@ export async function listGitHubBackups(accessToken, repository, { fetcher = fet
   const response = await fetcher(`${GITHUB_API_URL}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/contents/backups`, { headers: apiHeaders(accessToken) });
   if (response.status === 404) return [];
   const files = await readApiResponse(response);
-  return Array.isArray(files) ? files.filter((file) => file?.type === "file" && /\.json$/i.test(file.name || "")).map((file) => ({ path: file.path, name: file.name, sha: file.sha })) : [];
+  return Array.isArray(files)
+    ? files
+      .filter((file) => file?.type === "file" && /\.json$/i.test(file.name || ""))
+      .map((file) => ({ path: file.path, name: file.name, sha: file.sha }))
+      // The Contents API does not guarantee chronological ordering. Backup
+      // paths contain an ISO-like timestamp, so newest-first is deterministic.
+      .sort((left, right) => String(right.name).localeCompare(String(left.name)))
+    : [];
 }
 
 export async function getGitHubBackupFile(accessToken, repository, { path, fetcher = fetch } = {}) {

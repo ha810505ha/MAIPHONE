@@ -1,4 +1,5 @@
 import React from "react";
+import { normalizeRealityOutputTokens } from "../../utils/realityOutputSettings.js";
 import MaliPhoneChatSurface from "../../components/chat/MaliPhoneChatSurface";
 import { RealityMessageText } from "../../components/chat/ChatMessageParts";
 import { getRetryableTailUserMessage, isPendingRequestForRoom } from "../../services/chat/chatRetryState";
@@ -74,6 +75,7 @@ export default function useChatRenderController({
   getCharacterVoiceBubblePlayback,
   getChatBackgroundBlurFilter,
   getChatBackgroundLayerStyle,
+  getChatReplyTiming,
   getDirectSettings,
   getGroupMembers,
   getLastCommittedChatMode,
@@ -114,6 +116,7 @@ export default function useChatRenderController({
   retryChatFromNotice,
   retryGroupFromNotice,
   retryLastUnansweredMessage,
+  addMessageToBatch,
   selectAssistantSwipe,
   generateAssistantSwipe,
   deleteAssistantSwipe,
@@ -246,6 +249,7 @@ export default function useChatRenderController({
       canRender: canRenderInnerThought,
     } = selectDirectChatThoughts(msgs, thoughtHistoryPage, isTyping);
     const selectedMode = getSelectedChatMode(currentChatChar.id);
+    const replyTiming = getChatReplyTiming(currentChatChar.id);
     const committedMode = getLastCommittedChatMode(currentChatChar.id);
     const hasPendingMode = selectedMode !== committedMode;
     const dueCalendarEvent = selectDueCalendarEvent(calendarEvents, currentChatChar.id, new Date(calendarTick));
@@ -258,10 +262,21 @@ export default function useChatRenderController({
     }));
     const currentRoomPending = isPendingRequestForRoom(directPendingRequest, currentChatChar.id, currentRoomId);
     const hasComposerDraft = !!(chatInput.trim() || chatImage || chatPseudoImage || chatPseudoVoiceMode);
-    const retryLastReplyAvailable = !isTyping
+    const retryLastReplyAvailable = replyTiming !== "batch"
+      && !isTyping
       && !currentRoomPending
       && !hasComposerDraft
       && !!getRetryableTailUserMessage(msgs);
+    const batchCount = replyTiming === "batch" && selectedMode === "online" ? (() => {
+      let count = 0;
+      for (let index = msgs.length - 1; index >= 0; index -= 1) {
+        const role = msgs[index]?.role;
+        if (role === "user") { count += 1; continue; }
+        if (role === "mode_transition" && count) continue;
+        break;
+      }
+      return count;
+    })() : 0;
     const characterBlockState = characterBlockStates?.[currentChatChar.id] || null;
     const isCharacterBlocked = characterBlockState?.playerBlocksCharacter === true || characterBlockState?.blocked === true;
     const isPlayerBlockedByCharacter = characterBlockState?.characterBlocksPlayer === true;
@@ -354,6 +369,12 @@ export default function useChatRenderController({
         thoughtPageCount,
         onJumpToThought: (messageId) => jumpToThoughtMessage(messageId, currentChatChar.id, msgs.length),
         thinking: { enabled: showThinking, onToggle: toggleShowThinking },
+        realityOutput: {
+          value: normalizeRealityOutputTokens(currentRoom?.realityMaxTokens),
+          onChange: (realityMaxTokens) => updateCharacterRoomMetadata(currentChatChar.id, () => ({
+            realityMaxTokens: normalizeRealityOutputTokens(realityMaxTokens),
+          })),
+        },
         locale: uiLanguage,
         applyUserPlaceholder,
         onEditMemory: (memory) => setMemoryEditor({ charId: currentChatChar.id, memoryId: memory.id, text: memory.text || "" }),
@@ -405,6 +426,7 @@ export default function useChatRenderController({
         onSaveScreenshot: () => { setChatScreenshotSelection((current) => ({ ...current, active: false })); setChatScreenshotOpen(true); },
         character: currentChatChar, onGiftEpisodeStarted: () => { setCurrentChatChar(null); setChatListTab("episodes"); },
         value: chatInput, setValue: setChatInput, textLimit: inputTextLimit, onSend: sendMessage,
+        replyTiming, batchCount, onAddBubble: addMessageToBatch, onGenerateBatch: () => retryLastUnansweredMessage({ allowInterceptedByCharacterBlock: true }),
         retryAvailable: retryLastReplyAvailable, onRetryLast: retryLastUnansweredMessage, busy: isTyping || currentRoomPending,
         mode: selectedMode, playerProfile, persona: chatPersonaSwitcher,
         quickActions: currentRoom?.quickActions || [], quickActionsEnabled: currentRoom?.quickActionsEnabled !== false,
@@ -415,7 +437,7 @@ export default function useChatRenderController({
           else setChatInput(prompt);
         },
       }}
-      screenshot={{ open: chatScreenshotOpen, onClose: () => setChatScreenshotOpen(false), onReselect: () => { setChatScreenshotOpen(false); setChatScreenshotSelection({ active: true, startId: null, endId: null, selectedIds: [] }); }, messages: msgs, initialSelectedIds: chatScreenshotSelection.selectedIds, character: currentChatChar, sceneBar: null, mode: selectedMode, rendererProps: directMessageRendererProps, backgroundUrl: chatBgUrl, isNightTheme }}
+      screenshot={{ open: chatScreenshotOpen, onClose: () => setChatScreenshotOpen(false), onReselect: () => { setChatScreenshotOpen(false); setChatScreenshotSelection({ active: true, startId: null, endId: null, selectedIds: [] }); }, messages: msgs, initialSelectedIds: chatScreenshotSelection.selectedIds, character: currentChatChar, playerName: String(playerProfile?.name || "").trim(), sceneBar: null, mode: selectedMode, rendererProps: directMessageRendererProps, backgroundUrl: chatBgUrl, isNightTheme }}
       memoryToast={{ card: memoryCard, onClose: () => setMemoryCard(null), applyUserPlaceholder }}
     />;
   };

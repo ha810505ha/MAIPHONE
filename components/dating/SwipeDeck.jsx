@@ -4,7 +4,7 @@ import { CARD_MAX_ROTATION, SWIPE_THRESHOLD, SWIPE_UP_THRESHOLD } from "../../co
 
 const FLY_DISTANCE = 520;
 
-export default function SwipeDeck({ deck, superLikes, canRewind, onSwipe, onRewind, onOpenDetail }) {
+export default function SwipeDeck({ deck, superLikes, canRewind, onSwipe, onRewind, onOpenDetail, tr }) {
   const [drag, setDrag] = useState({ x: 0, y: 0, active: false });
   const [flying, setFlying] = useState(null);
   const startRef = useRef(null);
@@ -62,14 +62,14 @@ export default function SwipeDeck({ deck, superLikes, canRewind, onSwipe, onRewi
   return (
     <>
       <div className="dt-deck">
-        {next && <div className="dt-card behind" key={`behind-${next.id}`}><ProfileCard entry={next} paused dragX={0} dragY={0} /></div>}
+        {next && <div className="dt-card behind" key={`behind-${next.id}`}><ProfileCard entry={next} paused dragX={0} dragY={0} tr={tr} /></div>}
         <div
           key={top.id}
           className={`dt-card top ${drag.active ? "dragging" : ""}`}
           style={{ transform: `translate(${offset.x}px, ${offset.y}px) rotate(${rotation}deg)`, opacity: flying ? 0 : 1 }}
           onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
         >
-          <ProfileCard entry={top} paused={drag.active || !!flying} dragX={offset.x} dragY={offset.y} onOpenDetail={() => onOpenDetail(top)} />
+          <ProfileCard entry={top} paused={drag.active || !!flying} dragX={offset.x} dragY={offset.y} onOpenDetail={() => onOpenDetail(top)} tr={tr} />
         </div>
       </div>
       <div className="dt-actions">

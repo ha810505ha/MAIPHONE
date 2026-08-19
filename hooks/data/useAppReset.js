@@ -29,6 +29,7 @@ export default function useAppReset({
     setCurrentChatGroup,
     setChatHistory,
     setChatModes,
+    setChatReplyTimings,
     setChatBackgrounds,
     setGroupChats,
     setInnerThoughtSettings,
@@ -114,6 +115,7 @@ export default function useAppReset({
     setChatHistory({});
     clearRooms();
     setChatModes({});
+    setChatReplyTimings({});
     setChatBackgrounds({});
     setGroupChats([]);
     setInnerThoughtSettings({});

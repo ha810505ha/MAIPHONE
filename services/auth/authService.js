@@ -1,4 +1,6 @@
 import { getAuthRedirectUrl, getSupabaseClient } from "./supabaseClient.js";
+import { Capacitor } from "@capacitor/core";
+import { GoogleSignIn } from "@capawesome/capacitor-google-sign-in";
 
 export class AuthUnavailableError extends Error {
   constructor() {
@@ -33,10 +35,38 @@ const unwrap = async (request) => {
   return data;
 };
 
-export const signInWithGoogle = () => unwrap(requireClient().auth.signInWithOAuth({
-  provider: "google",
-  options: { redirectTo: getAuthRedirectUrl() },
-}));
+export function getGoogleSignInConfig(environment = import.meta.env || {}) {
+  // OAuth client IDs identify a public app; unlike client secrets, they are safe
+  // to bundle in the APK. An env override keeps credential rotation simple.
+  const webClientId = String(
+    environment.VITE_GOOGLE_AUTH_WEB_CLIENT_ID
+      || "1046264054061-ed10m6gfnle9n8o9l09246hf3ksjl7ri.apps.googleusercontent.com",
+  ).trim();
+  return { webClientId, configured: Boolean(webClientId) };
+}
+
+let nativeGoogleClientId = "";
+
+async function signInWithNativeGoogle() {
+  const client = requireClient();
+  const { webClientId, configured } = getGoogleSignInConfig();
+  if (!configured) throw new Error("Google sign-in is not configured");
+  if (nativeGoogleClientId !== webClientId) {
+    await GoogleSignIn.initialize({ clientId: webClientId });
+    nativeGoogleClientId = webClientId;
+  }
+  const result = await GoogleSignIn.signIn();
+  if (!result?.idToken) throw new Error("Google did not return an ID token");
+  return unwrap(client.auth.signInWithIdToken({ provider: "google", token: result.idToken }));
+}
+
+export const signInWithGoogle = () => {
+  if (Capacitor.isNativePlatform()) return signInWithNativeGoogle();
+  return unwrap(requireClient().auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo: getAuthRedirectUrl() },
+  }));
+};
 
 export const signUpWithPassword = (email, password) => unwrap(requireClient().auth.signUp({
   email: String(email || "").trim(),

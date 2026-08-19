@@ -27,7 +27,7 @@ function EmptyDeck({ refreshAt }) {
   );
 }
 
-function MatchList({ matches, relations, blocked, onOpenChat, onOpenProfile }) {
+function MatchList({ matches, relations, blocked, onOpenChat, onOpenProfile, tr }) {
   if (!matches.length) {
     return <div className="dt-empty"><div className="dt-empty-i">💬</div><div className="dt-empty-t">還沒有配對</div><div className="dt-empty-s">右滑喜歡的人，等對方回應</div></div>;
   }
@@ -52,7 +52,7 @@ function MatchList({ matches, relations, blocked, onOpenChat, onOpenProfile }) {
                 {blocked[match.profileId] && <span className="dt-list-tagged blocked">已封鎖</span>}
               </div>
               <div className="dt-list-sub">
-                {last?.content || (match.shared?.length ? `都喜歡 ${match.shared.slice(0, 2).map(tagLabel).join("、")}` : "開始聊聊吧")}
+                {last?.content || (match.shared?.length ? `都喜歡 ${match.shared.slice(0, 2).map((tag) => tagLabel(tag, tr)).join("、")}` : "開始聊聊吧")}
               </div>
             </div>
             {relation?.unread > 0 && <span className="dt-list-dot" />}
@@ -63,7 +63,7 @@ function MatchList({ matches, relations, blocked, onOpenChat, onOpenProfile }) {
   );
 }
 
-export default function DatingApp({ closeApp, dating, playerProfile, onPromoteToContact, onOpenContact, showToast }) {
+export default function DatingApp({ closeApp, dating, playerProfile, onPromoteToContact, onOpenContact, showToast, tr }) {
   const [tab, setTab] = useState("deck");
   const [detail, setDetail] = useState(null);
   const [celebration, setCelebration] = useState(null);
@@ -113,6 +113,7 @@ export default function DatingApp({ closeApp, dating, playerProfile, onPromoteTo
         <DatingChat
           entry={openEntry} relation={state.relations[openChatId]} typing={typingProfiles.has(openChatId)}
           blocked={!!state.blocked[openChatId]}
+          tr={tr}
           onBack={() => closeChat(openChatId)}
           onSend={(text) => sendMessage(openChatId, text)}
           onOpenProfile={() => setDetail(openEntry)}
@@ -123,7 +124,7 @@ export default function DatingApp({ closeApp, dating, playerProfile, onPromoteTo
           }}
         />
         {/* 已配對的檔案是純瀏覽：不給動作列，完整角色卡要等加入聯絡人 */}
-        {detail && <ProfileDetail entry={detail} onClose={() => setDetail(null)} {...safetyProps(detail.id)} />}
+        {detail && <ProfileDetail entry={detail} onClose={() => setDetail(null)} {...safetyProps(detail.id)} tr={tr} />}
       </div>
     );
   }
@@ -145,20 +146,20 @@ export default function DatingApp({ closeApp, dating, playerProfile, onPromoteTo
       </div>
       <div className="dt-body">
         {tab === "deck" && (deck.length
-          ? <SwipeDeck deck={deck} superLikes={state.superLikes} canRewind={!!lastSwiped} onSwipe={doSwipe}
+          ? <SwipeDeck deck={deck} superLikes={state.superLikes} canRewind={!!lastSwiped} onSwipe={doSwipe} tr={tr}
               onRewind={() => rewind(lastSwiped[0])} onOpenDetail={setDetail} />
           : <EmptyDeck refreshAt={refreshAt} />)}
         {tab === "matches" && <MatchList matches={state.matches} relations={state.relations} blocked={state.blocked}
-          onOpenChat={enterChat} onOpenProfile={setDetail} />}
-        {tab === "me" && <DatingProfileEditor profile={state.profile} updateProfile={updateProfile} playerName={playerProfile?.name} showToast={showToast} />}
+          onOpenChat={enterChat} onOpenProfile={setDetail} tr={tr} />}
+        {tab === "me" && <DatingProfileEditor profile={state.profile} updateProfile={updateProfile} playerName={playerProfile?.name} showToast={showToast} tr={tr} />}
         {tab === "system" && <DatingSystemPanel state={state} onClaim={claimReportReward}
           onUnblock={(profileId) => { setBlocked(profileId, false); showToast?.("已解除封鎖"); }} />}
       </div>
       {/* 已配對的人只能瀏覽，不再給滑動按鈕 */}
-      {detail && <ProfileDetail entry={detail} superLikes={state.superLikes} onClose={() => setDetail(null)} {...safetyProps(detail.id)}
+      {detail && <ProfileDetail entry={detail} superLikes={state.superLikes} onClose={() => setDetail(null)} {...safetyProps(detail.id)} tr={tr}
         onSwipe={state.matches.some((item) => item.profileId === detail.id) ? null : (action) => doSwipe(detail.id, action)} />}
       {pendingCelebration && celebrationEntry && (
-        <MatchCelebration match={pendingCelebration} entry={celebrationEntry}
+        <MatchCelebration match={pendingCelebration} entry={celebrationEntry} tr={tr}
           playerPhoto={state.profile.photos?.[0] || playerProfile?.avatar} playerName={playerProfile?.name}
           onOpenChat={() => enterChat(pendingCelebration.profileId)}
           onKeepSwiping={() => { markMatchSeen(pendingCelebration.profileId); setCelebration(null); }} />

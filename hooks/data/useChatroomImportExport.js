@@ -5,7 +5,7 @@ function removeKey(setter, key) { setter((previous) => { const next = { ...previ
 
 import { normalizePersistedPseudoVoiceMessages } from "../../utils/pseudoVoice";
 
-export default function useChatroomImportExport({ currentCharacter, characters, chatHistory, chatModes, chatBackgrounds, chatLorebookBindings, innerThoughtSettings, chatTimeSettings, setChatHistory, setChatModes, setChatBackgrounds, setChatLorebookBindings, setInnerThoughtSettings, setChatTimeSettings, setCharacters, setMemories, setChatScenes, setProactiveUnread, removeCharacterRooms, onChatroomDeleted, resetOpenChat, normalizeBackground, downloadJsonFile, showToast, sanitizeText, tr }) {
+export default function useChatroomImportExport({ currentCharacter, characters, chatHistory, chatModes, chatReplyTimings, chatBackgrounds, chatLorebookBindings, innerThoughtSettings, chatTimeSettings, setChatHistory, setChatModes, setChatReplyTimings, setChatBackgrounds, setChatLorebookBindings, setInnerThoughtSettings, setChatTimeSettings, setCharacters, setMemories, setChatScenes, setProactiveUnread, removeCharacterRooms, onChatroomDeleted, resetOpenChat, normalizeBackground, downloadJsonFile, showToast, sanitizeText, tr }) {
   const importRef = useRef(null);
   const pendingTargetRef = useRef(null);
   const [preview, setPreview] = useState(null);
@@ -18,7 +18,7 @@ export default function useChatroomImportExport({ currentCharacter, characters, 
       `「${characterName}」のチャットルームをすべて削除しますか？\n\n分岐会話、メッセージ、記憶、関連設定は削除されますが、連絡先は残ります。`,
       `“${characterName}”의 모든 채팅방을 삭제할까요?\n\n분기 대화, 메시지, 기억, 관련 설정은 삭제되지만 연락처는 유지됩니다.`,
     )) || !window.confirm(tr("請再次確認：刪除後無法復原。之後若要重新聊天，請到聯絡人點「開始聊天」建立新聊天室。確定繼續嗎？", "Please confirm again: deletion cannot be undone. To chat again, start a new chat from Contacts. Continue?", "再確認してください。削除後は元に戻せません。再び話す場合は、連絡先から新しいチャットを開始してください。続けますか？", "다시 확인해주세요. 삭제 후에는 복구할 수 없습니다. 다시 대화하려면 연락처에서 새 채팅을 시작하세요. 계속할까요?"))) return;
-    [setChatHistory, setChatModes, setChatLorebookBindings, setChatBackgrounds, setInnerThoughtSettings, setChatTimeSettings, setMemories, setChatScenes, setProactiveUnread].forEach((setter) => setter && removeKey(setter, characterId));
+    [setChatHistory, setChatModes, setChatReplyTimings, setChatLorebookBindings, setChatBackgrounds, setInnerThoughtSettings, setChatTimeSettings, setMemories, setChatScenes, setProactiveUnread].forEach((setter) => setter && removeKey(setter, characterId));
     removeCharacterRooms?.(characterId);
     setCharacters?.((previous) => previous.map((character) => String(character.id) === String(characterId)
       ? { ...character, chatroomDeleted: true, chatroomDeletedAt: Date.now(), pinned: false, chatPinned: false }
@@ -28,11 +28,11 @@ export default function useChatroomImportExport({ currentCharacter, characters, 
       onChatroomDeleted?.();
     }
     showToast(tr("聊天室已刪除", "Chatroom deleted", "チャットルームを削除しました", "채팅방을 삭제했습니다"));
-  }, [currentCharacter, resetOpenChat, onChatroomDeleted, removeCharacterRooms, showToast, tr, setCharacters, setChatHistory, setChatModes, setChatLorebookBindings, setChatBackgrounds, setInnerThoughtSettings, setChatTimeSettings, setMemories, setChatScenes, setProactiveUnread]);
+  }, [currentCharacter, resetOpenChat, onChatroomDeleted, removeCharacterRooms, showToast, tr, setCharacters, setChatHistory, setChatModes, setChatReplyTimings, setChatLorebookBindings, setChatBackgrounds, setInnerThoughtSettings, setChatTimeSettings, setMemories, setChatScenes, setProactiveUnread]);
 
   const exportChatroom = useCallback(async (characterId, characterName = "這個角色") => {
     if (!characterId) return;
-    const payload = { format: "maliphone-chatroom", formatVersion: 1, exportedAt: new Date().toISOString(), characterId, characterName, chatHistory: chatHistory?.[characterId] || [], chatMode: chatModes?.[characterId] || "online", chatBackground: chatBackgrounds?.[characterId] || "", chatLorebookBinding: chatLorebookBindings?.[characterId] || null, innerThoughtSetting: innerThoughtSettings?.[characterId] || null, chatTimeSetting: chatTimeSettings?.[characterId] || null };
+    const payload = { format: "maliphone-chatroom", formatVersion: 1, exportedAt: new Date().toISOString(), characterId, characterName, chatHistory: chatHistory?.[characterId] || [], chatMode: chatModes?.[characterId] || "online", chatReplyTiming: chatReplyTimings?.[characterId] || "instant", chatBackground: chatBackgrounds?.[characterId] || "", chatLorebookBinding: chatLorebookBindings?.[characterId] || null, innerThoughtSetting: innerThoughtSettings?.[characterId] || null, chatTimeSetting: chatTimeSettings?.[characterId] || null };
     const safeName = sanitizeText(characterName || "chatroom", 40).replace(/[\\/:*?"<>|]+/g, "_").trim() || "chatroom";
     try {
       const result = await downloadJsonFile(payload, `chat_${safeName}_${new Date().toISOString().slice(0, 10).replace(/-/g, "")}.json`);
@@ -41,7 +41,7 @@ export default function useChatroomImportExport({ currentCharacter, characters, 
     } catch (error) {
       showToast(`${tr("匯出失敗", "Export failed", "書き出しに失敗しました", "내보내기 실패")}：${sanitizeText(error?.message || "Unknown error", 80)}`);
     }
-  }, [chatHistory, chatModes, chatBackgrounds, chatLorebookBindings, innerThoughtSettings, chatTimeSettings, sanitizeText, downloadJsonFile, showToast, tr]);
+  }, [chatHistory, chatModes, chatReplyTimings, chatBackgrounds, chatLorebookBindings, innerThoughtSettings, chatTimeSettings, sanitizeText, downloadJsonFile, showToast, tr]);
 
   const openImport = useCallback((characterId) => {
     const character = characters.find((item) => String(item.id) === String(characterId));
@@ -64,6 +64,7 @@ export default function useChatroomImportExport({ currentCharacter, characters, 
     );
     setChatHistory((previous) => ({ ...previous, [targetId]: messages }));
     if (raw.chatMode) setChatModes((previous) => ({ ...previous, [targetId]: raw.chatMode }));
+    if (["instant", "batch"].includes(raw.chatReplyTiming)) setChatReplyTimings((previous) => ({ ...previous, [targetId]: raw.chatReplyTiming }));
     if (Object.prototype.hasOwnProperty.call(raw || {}, "chatBackground")) setChatBackgrounds((previous) => ({ ...previous, [targetId]: normalizeBackground(raw.chatBackground) }));
     if (raw.chatLorebookBinding) setChatLorebookBindings((previous) => ({ ...previous, [targetId]: raw.chatLorebookBinding }));
     if (raw.innerThoughtSetting) setInnerThoughtSettings((previous) => ({ ...previous, [targetId]: raw.innerThoughtSetting }));
@@ -72,7 +73,7 @@ export default function useChatroomImportExport({ currentCharacter, characters, 
     const name = preview.targetCharacterName || (characters.find((character) => String(character.id) === String(targetId))?.name || tr("這個角色", "this character", "このキャラ", "이 캐릭터"));
     showToast(tr("聊天室已匯入", "Chatroom imported", "チャットルームを取り込みました", "채팅방을 가져왔습니다").replace("聊天室", name));
     setPreview(null); pendingTargetRef.current = null; setImporting(false);
-  }, [preview, tr, setChatHistory, setChatModes, setChatBackgrounds, normalizeBackground, setChatLorebookBindings, setInnerThoughtSettings, setChatTimeSettings, currentCharacter, resetOpenChat, characters, showToast]);
+  }, [preview, tr, setChatHistory, setChatModes, setChatReplyTimings, setChatBackgrounds, normalizeBackground, setChatLorebookBindings, setInnerThoughtSettings, setChatTimeSettings, currentCharacter, resetOpenChat, characters, showToast]);
 
   const cancelImport = useCallback(() => { setPreview(null); pendingTargetRef.current = null; setImporting(false); }, []);
   return { importRef, preview, importing, deleteChatroom, exportChatroom, openImport, importFile, confirmImport, cancelImport };

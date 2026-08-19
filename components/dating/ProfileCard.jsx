@@ -24,7 +24,7 @@ function usePhotoRotation(count, paused) {
   };
 }
 
-export default function ProfileCard({ entry, paused, dragX, dragY, onOpenDetail }) {
+export default function ProfileCard({ entry, paused, dragX, dragY, onOpenDetail, tr }) {
   const photos = (entry.profile.photos || []).map(sanitizeUserImageUrl).filter(Boolean);
   const { index, auto, step } = usePhotoRotation(photos.length, paused);
   const likeOpacity = Math.min(1, Math.max(0, dragX / 70));
@@ -54,7 +54,7 @@ export default function ProfileCard({ entry, paused, dragX, dragY, onOpenDetail 
         <div className="dt-card-name">{entry.profile.name}<span>{entry.profile.age}</span></div>
         <div className="dt-card-meta">{entry.profile.job}・{entry.profile.distance} 公里內</div>
         <div className="dt-card-tags">
-          {(entry.profile.tags || []).slice(0, 4).map((tag) => <span key={tag} className="dt-tag">{tagLabel(tag)}</span>)}
+          {(entry.profile.tags || []).slice(0, 4).map((tag) => <span key={tag} className="dt-tag">{tagLabel(tag, tr)}</span>)}
           {(entry.profile.tags || []).length > 4 && <span className="dt-tag ghost">+{entry.profile.tags.length - 4}</span>}
         </div>
         <div className="dt-card-more">↑ 上滑看完整資料</div>

@@ -53,6 +53,7 @@ export default function NotificationSettings({ tr, settings, updateSettings, sys
       </Row>
     </div>
 
+    {settings.enabled && <>
     <div className="mp-sg">
       <div className="mp-sg-t">{tr("通知方式", "Where to show", "表示場所", "표시 위치")}</div>
       {surfaceLabels.map(([key, label, hint]) => (
@@ -97,5 +98,6 @@ export default function NotificationSettings({ tr, settings, updateSettings, sys
         <Switch checked={settings.pauseProactive} onChange={(value) => updateSettings({ pauseProactive: value })} />
       </Row>
     </div>
+    </>}
   </>;
 }

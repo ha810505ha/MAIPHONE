@@ -4,7 +4,7 @@ import { astar, nearestWalkable } from "../engine/pathfind";
 import { randomAppearance, sanitizeAppearance } from "../engine/sprite";
 import { roll, rngOf } from "../engine/rng";
 import { NPC_NAMES, pickLine, COMPANION_LINES } from "../data/lines";
-import { activePackLines } from "./ai";
+import { activeResidentPackLines } from "./ai";
 import { TILE } from "../engine/tilemap";
 import { actorReservedSlot, beginActorAction, stopActorAction } from "../engine/actorActions";
 import { findInteractionPlan } from "../world/worldInteractions";
@@ -91,7 +91,7 @@ export function spawnNpcs(save, map, characters = []) {
         waitUntil: performance.now() + 1500 + rand() * 3500,
         bubble: null, rand,
         chatty: affinity >= 60,                       // 主動說話開關
-        homeLines: activePackLines(save, charId)?.home || null, // 角色個人句庫的 home 池（沒有就用通用）
+        homeLines: activeResidentPackLines(save, charId)?.home || null, // 獨立入住句庫（沒有就用通用）
         nextIdleTalkAt: performance.now() + 20000 + rand() * 40000,
       };
     });

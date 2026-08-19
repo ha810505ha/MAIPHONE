@@ -117,6 +117,32 @@ export default function MaliTestModelSettings({ auth, tr, showToast, apiConfig, 
       {tr("僅限核准帳號使用；圖片與 TTS 不包含在測試內。點數由伺服器管理。", "Text-model tests are available only to approved accounts; images and TTS are excluded. Test points are server-managed.", "テキストモデルのテストは承認済みアカウントのみ利用できます。画像と TTS は対象外で、ポイントはサーバーで管理されます。", "텍스트 모델 테스트는 승인된 계정만 이용할 수 있으며 이미지와 TTS는 제외됩니다. 포인트는 서버에서 관리됩니다.")}
     </div>
     <div style={{ marginTop: 9, padding: "9px 10px", borderRadius: 12, background: "var(--mp-card-bg)", border: "1px solid var(--mp-card-border)" }}>
+      <div className="mp-lbl" style={{ marginBottom: 7 }}>{tr("AI 使用來源", "AI source", "AI の使用元", "AI 사용 소스")}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }} role="group" aria-label={tr("AI 使用來源", "AI source", "AI の使用元", "AI 사용 소스")}>
+        <button
+          type="button"
+          className="mp-ibtn"
+          aria-pressed={source === "personal"}
+          style={{ opacity: source === "personal" ? 1 : .58, borderColor: source === "personal" ? "var(--mp-pink)" : undefined }}
+          onClick={() => onSourceChange?.("personal")}
+        >{tr("我的 API", "Personal API", "自分の API", "내 API")}</button>
+        <button
+          type="button"
+          className="mp-save"
+          aria-pressed={source === "hosted_test"}
+          disabled={!quota?.enabled || !selectedModel}
+          style={{ opacity: source === "hosted_test" ? 1 : .58 }}
+          onClick={() => onSourceChange?.("hosted_test", selectedProvider, selectedModel)}
+        >{source === "hosted_test" ? tr("測試 LLM（使用中）", "Test LLM (active)", "テスト LLM（使用中）", "테스트 LLM(사용 중)") : tr("啟用測試 LLM", "Use test LLM", "テスト LLM を使う", "테스트 LLM 사용")}</button>
+      </div>
+      <div style={{ fontSize: 10, lineHeight: 1.5, color: "var(--mp-txt-l)", marginTop: 6 }}>
+        {source === "hosted_test"
+          ? tr("測試模型使用中；個人 API 設定已暫時收合並停用。", "The test model is active. Personal API settings are temporarily collapsed and disabled.", "テストモデルを使用中です。個人 API 設定は一時的に折りたたまれ、無効になっています。", "테스트 모델을 사용 중입니다. 개인 API 설정은 일시적으로 접히고 비활성화됩니다.")
+          : tr("目前使用個人 API；測試模型選擇已收合。", "Your personal API is active. Test-model selection is collapsed.", "現在は個人 API を使用中です。テストモデルの選択は折りたたまれています。", "현재 개인 API를 사용 중이며 테스트 모델 선택은 접혀 있습니다.")}
+      </div>
+    </div>
+    {source === "hosted_test" && <>
+    <div style={{ marginTop: 9, padding: "9px 10px", borderRadius: 12, background: "var(--mp-card-bg)", border: "1px solid var(--mp-card-border)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11 }}>
         <span>{tr("狀態", "Status", "状態", "상태")}</span>
         <b style={{ color: quota?.enabled ? "var(--mp-success)" : "var(--mp-page-text-muted,var(--mp-txt-l))" }}>{loading ? tr("載入中…", "Loading…", "読み込み中…", "로드 중…") : status}</b>
@@ -160,34 +186,10 @@ export default function MaliTestModelSettings({ auth, tr, showToast, apiConfig, 
         </div>}
       </>}
     </div>
-    <div style={{ marginTop: 9, padding: "9px 10px", borderRadius: 12, background: "var(--mp-card-bg)", border: "1px solid var(--mp-card-border)" }}>
-      <div className="mp-lbl" style={{ marginBottom: 7 }}>{tr("AI 使用來源", "AI source", "AI 使用來源", "AI 使用來源")}</div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }} role="group" aria-label={tr("AI 使用來源", "AI source", "AI 使用來源", "AI 使用來源")}>
-        <button
-          type="button"
-          className="mp-ibtn"
-          aria-pressed={source === "personal"}
-          style={{ opacity: source === "personal" ? 1 : .58, borderColor: source === "personal" ? "var(--mp-pink)" : undefined }}
-          onClick={() => onSourceChange?.("personal")}
-        >{tr("我的 API", "Personal API", "我的 API", "我的 API")}</button>
-        <button
-          type="button"
-          className="mp-save"
-          aria-pressed={source === "hosted_test"}
-          disabled={!quota?.enabled || !selectedModel}
-          style={{ opacity: source === "hosted_test" ? 1 : .58 }}
-          onClick={() => onSourceChange?.("hosted_test", selectedProvider, selectedModel)}
-        >{source === "hosted_test" ? tr("測試 LLM（使用中）", "Test LLM (active)", "測試 LLM（使用中）", "測試 LLM（使用中）") : tr("啟用測試 LLM", "Use test LLM", "啟用測試 LLM", "啟用測試 LLM")}</button>
-      </div>
-      <div style={{ fontSize: 10, lineHeight: 1.5, color: "var(--mp-txt-l)", marginTop: 6 }}>
-        {source === "hosted_test"
-          ? tr("目前所有文字 AI 請求都會走測試 Worker；個人 API 只保留設定，不會送出。", "All text AI requests use the hosted test Worker. Your personal API is kept but not sent.", "目前所有文字 AI 請求都會走測試 Worker；個人 API 只保留設定，不會送出。", "目前所有文字 AI 請求都會走測試 Worker；個人 API 只保留設定，不會送出。")
-          : tr("目前使用上方個人 API。測試模型只會在你按下啟用後使用。", "Your personal API is active. The test model is used only after you enable it.", "目前使用上方個人 API。測試模型只會在你按下啟用後使用。", "目前使用上方個人 API。測試模型只會在你按下啟用後使用。")}
-      </div>
-    </div>
     <div style={{ display: "flex", gap: 8, marginTop: 9 }}>
       <button type="button" className="mp-ibtn" style={{ flex: 1 }} disabled={loading || !session?.access_token} onClick={() => void refresh()}>{tr("重新整理", "Refresh", "更新", "새로고침")}</button>
       <button type="button" className="mp-save" style={{ flex: 1, opacity: quota?.enabled ? 1 : .55 }} disabled={testing || !quota?.enabled || !selectedModel} onClick={() => void testConnection()}>{testing ? tr("測試中…", "Testing…", "テスト中…", "테스트 중…") : tr("測試模型連線（會套用限制）", "Test model connection (limits apply)", "テストモデル接続（制限が適用されます）", "테스트 모델 연결(제한 적용)")}</button>
     </div>
+    </>}
   </div>;
 }

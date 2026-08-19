@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   AuthUnavailableError,
+  getGoogleSignInConfig,
   getFriendlyAuthError,
   isInvalidAuthSessionError,
   signInWithPassword,
@@ -9,6 +10,10 @@ import {
 assert.equal(getFriendlyAuthError(new Error("invalid login credentials"), { login: true }), "無法登入，請確認 Email 與密碼是否正確。");
 assert.equal(getFriendlyAuthError(new Error("Password should be at least 8 characters")), "密碼至少需要 8 個字元。");
 assert.equal(getFriendlyAuthError(new AuthUnavailableError()), "雲端帳號尚未設定。");
+assert.deepEqual(
+  getGoogleSignInConfig({ VITE_GOOGLE_AUTH_WEB_CLIENT_ID: "google-client.apps.googleusercontent.com" }),
+  { webClientId: "google-client.apps.googleusercontent.com", configured: true },
+);
 assert.equal(isInvalidAuthSessionError({ error_code: "invalid_refresh_token" }), true);
 assert.equal(isInvalidAuthSessionError(new Error("Invalid Refresh Token: Refresh Token Not Found")), true);
 assert.equal(isInvalidAuthSessionError(new Error("invalid login credentials")), false);

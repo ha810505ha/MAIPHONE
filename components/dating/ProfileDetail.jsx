@@ -1,5 +1,5 @@
 import React from "react";
-import { groupTags, tagLabel } from "../../data/dating/interestTags";
+import { categoryLabel, groupTags, tagLabel } from "../../data/dating/interestTags";
 import { sanitizeUserImageUrl } from "../../utils/coreUtils";
 
 /**
@@ -7,7 +7,7 @@ import { sanitizeUserImageUrl } from "../../utils/coreUtils";
  * 配對之後也是同一份——完整的角色卡要等加入聯絡人才有。
  * 沒有 onSwipe 就是純瀏覽（從聊天室進來看已配對的人），不顯示動作列。
  */
-export default function ProfileDetail({ entry, onClose, onSwipe, superLikes, blocked, canReport, onToggleBlock, onReport }) {
+export default function ProfileDetail({ entry, onClose, onSwipe, superLikes, blocked, canReport, onToggleBlock, onReport, tr }) {
   if (!entry) return null;
   const photos = (entry.profile.photos || []).map(sanitizeUserImageUrl).filter(Boolean);
   const groups = groupTags(entry.profile.tags);
@@ -24,8 +24,8 @@ export default function ProfileDetail({ entry, onClose, onSwipe, superLikes, blo
           <div className="dt-detail-bio">{entry.profile.bio}</div>
           {groups.map((group) => (
             <div key={group.id} className="dt-detail-group">
-              <div className="dt-detail-group-t">{group.label}</div>
-              <div className="dt-card-tags">{group.tags.map((tag) => <span key={tag} className="dt-tag">{tagLabel(tag)}</span>)}</div>
+              <div className="dt-detail-group-t">{categoryLabel(group.id, tr)}</div>
+              <div className="dt-card-tags">{group.tags.map((tag) => <span key={tag} className="dt-tag">{tagLabel(tag, tr)}</span>)}</div>
             </div>
           ))}
           {photos.length > 1 && (

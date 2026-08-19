@@ -224,13 +224,16 @@ export const FURNITURE_CATALOG = Object.freeze({
     fallback: { color: "#c8823c", accent: "#8a8a9a" },
   }),
 
-  // ---- 椅凳擴充（H 系列椅背在左＝坐著朝右）----
+  // ---- 椅凳擴充 ----
+  // ⚠️ 這批四色椅不是同一個朝向：鵝黃/草綠/丹紅的素材椅背在「右」＝坐著朝左，
+  // 只有湖藍椅背在左＝朝右。以前整批照「椅背在左」寫成 facing:"right"，
+  // 結果那三張的角色會背對椅背坐。改素材前請先看圖確認椅背在哪一側。
   chair_yellow: Object.freeze({
     id: "chair_yellow", name: "鵝黃靠背椅", icon: "🪑", category: "chair",
     placement: FURNITURE_PLACEMENT.FLOOR, footprint: { w: 1, h: 1 }, collision: [[0, 0]],
     price: { coins: 110 }, maxCount: 6,
     interactions: [{ id: "sit", action: "sit", label: "坐下", minDurationMs: 4000, maxDurationMs: 9000, slots: [
-      { id: "seat", approach: [0, 1], facing: "right", renderOffset: [0, -1] },
+      { id: "seat", approach: [0, 1], facing: "left", renderOffset: [0, -1] },
     ] }],
     fallback: { color: "#e8c848", accent: "#f4e090" },
   }),
@@ -239,7 +242,7 @@ export const FURNITURE_CATALOG = Object.freeze({
     placement: FURNITURE_PLACEMENT.FLOOR, footprint: { w: 1, h: 1 }, collision: [[0, 0]],
     price: { coins: 110 }, maxCount: 6,
     interactions: [{ id: "sit", action: "sit", label: "坐下", minDurationMs: 4000, maxDurationMs: 9000, slots: [
-      { id: "seat", approach: [0, 1], facing: "right", renderOffset: [0, -1] },
+      { id: "seat", approach: [0, 1], facing: "left", renderOffset: [0, -1] },
     ] }],
     fallback: { color: "#78b858", accent: "#b8e098" },
   }),
@@ -257,7 +260,7 @@ export const FURNITURE_CATALOG = Object.freeze({
     placement: FURNITURE_PLACEMENT.FLOOR, footprint: { w: 1, h: 1 }, collision: [[0, 0]],
     price: { coins: 110 }, maxCount: 6,
     interactions: [{ id: "sit", action: "sit", label: "坐下", minDurationMs: 4000, maxDurationMs: 9000, slots: [
-      { id: "seat", approach: [0, 1], facing: "right", renderOffset: [0, -1] },
+      { id: "seat", approach: [0, 1], facing: "left", renderOffset: [0, -1] },
     ] }],
     fallback: { color: "#d05858", accent: "#eea8a8" },
   }),

@@ -1,7 +1,7 @@
 import { relationshipStageOf } from "./homeRelationships";
 import { STARTER_FURNITURE_IDS } from "./furnitureCatalog";
 
-export const HOME_STATE_VERSION = 2;
+export const HOME_STATE_VERSION = 3;
 export const PLAYER_HOME_ID = "player_home";
 
 const objectOf = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -99,6 +99,7 @@ export function normalizeHomeState(raw) {
     homes,
     residents,
     residentProfiles: { ...objectOf(source.residentProfiles) },
+    residentLinePacks: { ...objectOf(source.residentLinePacks) },
     relationships,
     characterHomeInventories: Object.fromEntries(Object.entries(objectOf(source.characterHomeInventories)).map(([characterId, inventory]) => [characterId, { furniture: normalizeFurniture(inventory?.furniture) }])),
     giftHistory: { ...objectOf(source.giftHistory) },

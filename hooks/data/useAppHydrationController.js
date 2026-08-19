@@ -25,6 +25,7 @@ export default function useAppHydrationController({
     setActiveCharId,
     setChatHistory,
     setChatModes,
+    setChatReplyTimings,
     setChatBackgrounds,
     setGroupChats,
     setChatScenes,
@@ -84,6 +85,7 @@ export default function useAppHydrationController({
     setActiveCharId(data.activeCharId ?? null);
     setChatHistory(roomState.chatHistory);
     setChatModes(data.chatModes || {});
+    setChatReplyTimings(data.chatReplyTimings && typeof data.chatReplyTimings === "object" ? data.chatReplyTimings : {});
     setChatBackgrounds(
       data.chatBackgrounds && typeof data.chatBackgrounds === "object"
         ? data.chatBackgrounds

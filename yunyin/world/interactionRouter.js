@@ -1,5 +1,6 @@
 import { TILE } from "../engine/tilemap";
-import { activePackLines } from "../systems/ai";
+import { activePackLines, activeResidentPackLines } from "../systems/ai";
+import { COMPANION_LINES } from "../data/lines";
 import { npcAtTile, talkToNpc } from "../systems/npc";
 import { npcAtWorldPoint } from "./npcHitTest";
 import { plotUnlocked } from "../systems/farm";
@@ -22,10 +23,14 @@ export function routeWorldTap({ screenX, screenY, camera, scale, map, player, np
   if (npc) {
     if (npc.helper) openPanel({ type: "farmAssist", titleKey: "panel.farmAssist", titleVariables: { name: localizeValue(npc.name) }, npc });
     else {
-      // 住客（npc.charId）在自己家裡：優先用 home 池，比通用 chat 池貼近語境
+      // 住客（npc.charId）只用獨立入住句庫；未生成時使用通用居家台詞，不混入一般 chat 池。
       const characterId = npc.charId || save.settings.bindings[npc.seed];
       const pack = characterId ? activePackLines(save, characterId) : null;
-      talkToNpc(npc, performance.now(), (npc.charId ? pack?.home || npc.homeLines : null) || pack?.chat || null);
+      const residentPack = npc.charId ? activeResidentPackLines(save, npc.charId) : null;
+      const lines = npc.charId
+        ? residentPack?.home || npc.homeLines || COMPANION_LINES.home
+        : pack?.chat || null;
+      talkToNpc(npc, performance.now(), lines);
     }
     return { worldX, worldY };
   }

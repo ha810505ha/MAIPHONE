@@ -80,7 +80,7 @@ export default function MaliPhoneSettingsSurface({
     };
     setTempConfig((current) => ({ ...current, ...patch }));
     api.setConfig((current) => ({ ...current, ...patch }));
-    if (source === "hosted_test") setAiConnectionOpen(false);
+    setAiConnectionOpen(source !== "hosted_test");
   };
 
   const getProviderBaseUrl = (providerId, fallback = "") => {
@@ -402,6 +402,11 @@ export default function MaliPhoneSettingsSurface({
           model: nextProvider.models[0] || "",
         }));
       },
+      onModelCommit: (model) => {
+        const nextModel = String(model || "").trim();
+        if (!nextModel || nextModel === "__custom") return;
+        api.setConfig((current) => ({ ...current, model: nextModel }));
+      },
       disabled: config.aiSource === "hosted_test",
       onSave: () => {
         api.setConfig(config);
@@ -451,7 +456,7 @@ export default function MaliPhoneSettingsSurface({
       api={settingsApi}
       data={{
         locale: appearance.interface.uiLanguage,
-        accountProps: { auth, tr, notify },
+        accountProps: { auth, tr, notify, textSyncProps: data.textSyncProps },
         backupProps: {
           tr,
           dataImporting: data.importing,

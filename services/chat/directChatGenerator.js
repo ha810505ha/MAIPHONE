@@ -6,7 +6,7 @@ import { appendAssistantSwipeGroup } from "../../utils/assistantSwipeGroups.js";
 import { extractThinking } from "../../utils/chatMessageUtils";
 
 export async function generateDirectAssistant({ cid, roomId, char, nextForDisplay, selectedMode, um, text, includeRealTime = true, swipeTargetId = null, signal }, context) {
-  const { formatMessagesForPrompt, pickMemoriesForPrompt, pickLorebookEntriesForPrompt, characterWallets, formatMoney, tr, getPlayerContextBlock, getCalendarContext, getCalendarReminderContext, isCalendarProposalDuplicate, estimateTokens, totalContextTokenLimit, apiConfig, applyUserPlaceholder, buildChatSystemPrompt, callAI, sanitizeText, normalizeRealityReply, realityChatTextLimit, normalizeAssistantReply, extractTransferDirective, extractTransferResponseDirective, stripModeLabel, stripInternalBlocks, splitAssistantBubbles, createId, wait, updateChatMessages, applyCharacterTransferToPlayer, transfers, handleCharacterTransferDecision, characterBlockStates, buildCharacterBlockPromptContext, buildCharacterBlockCapabilityContext, extractCharacterBlockDirective, applyCharacterBlockDirective, isInnerThoughtAutoEnabled, generateInnerThought } = context;
+  const { formatMessagesForPrompt, pickMemoriesForPrompt, pickLorebookEntriesForPrompt, characterWallets, formatMoney, tr, getPlayerContextBlock, getCalendarContext, getCalendarReminderContext, isCalendarProposalDuplicate, estimateTokens, totalContextTokenLimit, apiConfig, applyUserPlaceholder, buildChatSystemPrompt, callAI, sanitizeText, normalizeRealityReply, realityChatTextLimit, normalizeAssistantReply, extractTransferDirective, extractTransferResponseDirective, stripModeLabel, stripInternalBlocks, splitAssistantBubbles, createId, wait, updateChatMessages, applyCharacterTransferToPlayer, transfers, handleCharacterTransferDecision, characterBlockStates, buildCharacterBlockPromptContext, buildCharacterBlockCapabilityContext, extractCharacterBlockDirective, applyCharacterBlockDirective, isInnerThoughtAutoEnabled, generateInnerThought, getRealityMaxTokens } = context;
       const requestCancelled = () => signal?.aborted === true;
       const now = new Date();
       const nowDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -91,13 +91,18 @@ export async function generateDirectAssistant({ cid, roomId, char, nextForDispla
         { text: autoLoreContext ? `[世界書]\n${autoLoreContext}` : "", keep: 50 },
       ].filter((b) => b.text);
       const renderContext = (blocks) => blocks.map((b) => b.text).join("\n\n");
-      // 全域 token 保險上限：先裁歷史，再整塊丟棄最不重要的 context 區塊。
+      const realityMaxTokens = selectedMode === "reality" ? getRealityMaxTokens?.(cid, roomId) : null;
+      const buildCompleteSystemPrompt = (contextText) => applyUserPlaceholder(
+        buildChatSystemPrompt(char, contextText, apiConfig.model, selectedMode, realityMaxTokens)
+      );
+      // 全域 token 硬上限涵蓋完整 system prompt、角色資料、固定規則、額外 context 與歷史。
+      // 先裁歷史，再整塊丟棄最不重要的 context 區塊。
       // 不能直接切字串尾巴——那會把排在最後的世界書截成半截殘句送進模型。
       let boundedHist = [...safeHist];
       let keptBlocks = [...contextBlocks];
-      const countAllTokens = () => (
-        estimateTokens(renderContext(keptBlocks)) +
-        boundedHist.reduce((sum, m) => sum + estimateTokens(m?.content || ""), 0)
+      const countAllTokens = (contextText = renderContext(keptBlocks)) => (
+        estimateTokens(buildCompleteSystemPrompt(contextText)) +
+        boundedHist.reduce((sum, m) => sum + estimateTokens(applyUserPlaceholder(m?.content || "")), 0)
       );
       const contextTokenLimit = Math.min(
         totalContextTokenLimit,
@@ -111,18 +116,39 @@ export async function generateDirectAssistant({ cid, roomId, char, nextForDispla
         keptBlocks.forEach((b, i) => { if (b.keep < keptBlocks[worstIdx].keep) worstIdx = i; });
         keptBlocks = keptBlocks.filter((_, i) => i !== worstIdx);
       }
+      while (boundedHist.length > 1 && countAllTokens() > contextTokenLimit) {
+        boundedHist.shift();
+      }
       let boundedContext = renderContext(keptBlocks);
-      // 最後保險：只剩最高優先的單一區塊仍超標時才截字元。
+      // 最後保險：保留最新訊息，對剩餘 context 做二分裁切，確保最終組裝結果不超標。
       if (countAllTokens() > contextTokenLimit) {
-        const overflow = countAllTokens() - contextTokenLimit;
-        const trimChars = Math.max(0, Math.ceil(overflow * 3.5));
-        if (trimChars > 0 && boundedContext.length > trimChars) {
-          boundedContext = boundedContext.slice(0, boundedContext.length - trimChars);
+        let low = 0;
+        let high = boundedContext.length;
+        let best = "";
+        while (low <= high) {
+          const mid = Math.floor((low + high) / 2);
+          const candidate = boundedContext.slice(0, mid);
+          if (countAllTokens(candidate) <= contextTokenLimit) {
+            best = candidate;
+            low = mid + 1;
+          } else {
+            high = mid - 1;
+          }
         }
+        boundedContext = best;
+      }
+      if (countAllTokens(boundedContext) > contextTokenLimit) {
+        throw new Error(tr(
+          "角色設定與固定提示本身已超過上下文上限，請縮短角色設定後再試。",
+          "The character definition and fixed prompts exceed the context limit. Shorten the character definition and try again.",
+          "キャラクター設定と固定プロンプトだけでコンテキスト上限を超えています。設定を短くして再試行してください。",
+          "캐릭터 설정과 고정 프롬프트만으로 컨텍스트 한도를 초과했어요. 캐릭터 설정을 줄인 뒤 다시 시도해 주세요."
+        ));
       }
       const finalHist = boundedHist.map((m) => ({ ...m, content: applyUserPlaceholder(m.content) }));
-      const sysP = applyUserPlaceholder(buildChatSystemPrompt(char, boundedContext, apiConfig.model, selectedMode));
-      const reply = await callAI(finalHist, apiConfig, sysP, {
+      const requestApiConfig = realityMaxTokens ? { ...apiConfig, maxTokens: realityMaxTokens } : apiConfig;
+      const sysP = buildCompleteSystemPrompt(boundedContext);
+      const reply = await callAI(finalHist, requestApiConfig, sysP, {
         signal,
         feature: "chat",
         mode: selectedMode === "reality" ? "reality" : "online",

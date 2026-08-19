@@ -17,6 +17,11 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           const normalized = id.replaceAll("\\", "/");
+          // 完整信風角色卡是長篇靜態內容；按資料群拆開，避免 25 張卡擠爆主入口
+          // 或形成單一超過行動網路快取預算的大 chunk。
+          if (normalized.includes("/data/dating/profileGroups/localOne.")) return "dating-local-one";
+          if (normalized.includes("/data/dating/profileGroups/localTwo.")) return "dating-local-two";
+          if (normalized.includes("/data/dating/profileGroups/international.")) return "dating-international";
           if (normalized.includes("/node_modules/react/") || normalized.includes("/node_modules/react-dom/") || normalized.includes("/node_modules/scheduler/")) {
             return "react-vendor";
           }

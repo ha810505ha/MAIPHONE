@@ -2,7 +2,7 @@ import { DEFAULT_NOTIFICATION_SETTINGS } from "./notifications";
 
 export const DEFAULT_APP_STATE = {
   personas: {}, activePersonaId: null,
-  characters: [], activeCharId: null, chatHistory: {}, chatRooms: {}, activeRoomIds: {}, chatModes: {}, chatBackgrounds: {}, groupChats: [], chatScenes: {}, groupScenes: {}, chatTimeSettings: {},
+  characters: [], activeCharId: null, chatHistory: {}, chatRooms: {}, activeRoomIds: {}, chatModes: {}, chatReplyTimings: {}, chatBackgrounds: {}, groupChats: [], chatScenes: {}, groupScenes: {}, chatTimeSettings: {},
   innerThoughtSettings: {}, proactiveSettings: {}, proactiveUnread: {}, posts: [], socialSettings: { autoPost: false, enabledCharacterIds: null, frequency: "normal", frequencyByCharacter: {}, characterInteractionsEnabled: false, characterInteractionChance: 50 }, memories: {}, lorebooks: [],
   chatLorebookBindings: {}, phoneInboxCache: {}, phoneAppCache: {}, wallet: { balance: 500, transactions: [], assets: [], life: { balance: 0, transactions: [], budget: 0 } }, characterWallets: {}, transfers: [], characterBlockStates: {}, characterChatMeta: {},
   apiPresets: [

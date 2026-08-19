@@ -75,6 +75,8 @@ yunyin/assets/
 tools/gacha-card-editor/
 tools/dating-profile-editor/
 tools/dating-profile-editor.zip
+# Unreleased dating character profiles are private and stay on this machine.
+data/dating/profileGroups/
 # Local-only assets destined for separate private asset repositories.
 # Normal product UI assets such as public/app-icons/ remain tracked by MAIP.
 private-assets/
@@ -88,6 +90,7 @@ private-assets/
 
 # Local developer config / internal planning docs
 .claude/
+.hallmark/
 backend/docs/plan.md
 /docs/
 /tmp/

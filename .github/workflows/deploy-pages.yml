@@ -35,6 +35,16 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
+      # Unreleased dating character profiles are intentionally not stored in
+      # this public repository. Empty modules keep the disabled feature buildable.
+      - name: Prepare disabled dating data
+        shell: bash
+        run: |
+          mkdir -p data/dating/profileGroups
+          test -f data/dating/profileGroups/localOne.js || printf 'export const LOCAL_ONE_PROFILES = Object.freeze([]);\n' > data/dating/profileGroups/localOne.js
+          test -f data/dating/profileGroups/localTwo.js || printf 'export const LOCAL_TWO_PROFILES = Object.freeze([]);\n' > data/dating/profileGroups/localTwo.js
+          test -f data/dating/profileGroups/international.js || printf 'export const INTERNATIONAL_PROFILES = Object.freeze([]);\n' > data/dating/profileGroups/international.js
+
       # Gate the deploy on the regression suite. Runs before the private-asset fetch
       # because no test reads yunyin/assets, dist/, or any secret - so a failure here
       # is fast and works even when the asset secrets are absent.

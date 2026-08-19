@@ -1,7 +1,7 @@
 import React from "react";
 import { CROPS } from "../data/crops";
 import { cropById, growMs, plantCrop } from "../systems/farm";
-import { addPackVersion, PACK_POOLS } from "../systems/ai";
+import { addPackVersion, addResidentPackVersion, PACK_POOLS, RESIDENT_PACK_POOLS } from "../systems/ai";
 import { randomAppearance } from "../engine/sprite";
 import CultivationPanel from "./CultivationPanel";
 import ShopPanel from "./ShopPanel";
@@ -76,7 +76,19 @@ export default function YunyinPanelHost({ panel, setPanel, gameSave, markDirty, 
             ) : panel.type === "inventory" ? (
               <InventoryPanel save={gameSave} onClose={() => setPanel(null)} />
             ) : panel.type === "homeResidents" ? (
-              <ResidentPanel save={gameSave} characters={characters} onDirty={markDirty} onToast={showToast} onCrystals={addCrystals} onClose={() => setPanel(null)} onHomeRefresh={onHomeRefresh} />
+              <ResidentPanel
+                save={gameSave} characters={characters} onDirty={markDirty} onToast={showToast} onCrystals={addCrystals}
+                onClose={() => setPanel(null)} onHomeRefresh={onHomeRefresh}
+                onGenerateLines={onAiGenerate ? async (charId) => {
+                  const home = gameSave.home?.homes?.player_home;
+                  if (!home?.residents?.includes(charId)) return yt("resident.onlyResidents");
+                  const lines = await onAiGenerate(charId, RESIDENT_PACK_POOLS);
+                  if (!lines) return yt("panel.generateFailedApi");
+                  addResidentPackVersion(gameSave, charId, lines);
+                  markDirty();
+                  return null;
+                } : null}
+              />
             ) : panel.type === "dungeon" ? (
               <DungeonPanel save={gameSave} onDirty={markDirty} onToast={showToast} onCompanion={onCompanion} onCrystals={addCrystals} onClose={() => setPanel(null)} />
             ) : panel.type === "farmAssist" ? (

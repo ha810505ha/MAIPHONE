@@ -1,5 +1,5 @@
 import React, { useRef } from "react";
-import { INTEREST_CATEGORIES, tagsByCategory } from "../../data/dating/interestTags";
+import { categoryLabel, INTEREST_CATEGORIES, tagLabel, tagsByCategory } from "../../data/dating/interestTags";
 import { sanitizeUserImageUrl } from "../../utils/coreUtils";
 
 const MAX_PHOTOS = 6;
@@ -28,7 +28,7 @@ function downscale(file) {
   });
 }
 
-export default function DatingProfileEditor({ profile, updateProfile, playerName, showToast }) {
+export default function DatingProfileEditor({ profile, updateProfile, playerName, showToast, tr }) {
   const fileRef = useRef(null);
   const tags = profile.tags || [];
   const photos = profile.photos || [];
@@ -87,10 +87,10 @@ export default function DatingProfileEditor({ profile, updateProfile, playerName
         <div className="dt-me-hint" style={{ marginBottom: 10 }}>選到的標籤會影響配對成功率。有些人喜歡，也有些人不喜歡。</div>
         {INTEREST_CATEGORIES.map((category) => (
           <div key={category.id} className="dt-me-cat">
-            <div className="dt-me-cat-t">{category.label}</div>
+            <div className="dt-me-cat-t">{categoryLabel(category.id, tr)}</div>
             <div className="dt-card-tags">
               {tagsByCategory(category.id).map((tag) => (
-                <button key={tag.id} type="button" className={`dt-tag pick ${tags.includes(tag.id) ? "on" : ""}`} onClick={() => toggleTag(tag.id)}>{tag.label}</button>
+                <button key={tag.id} type="button" className={`dt-tag pick ${tags.includes(tag.id) ? "on" : ""}`} onClick={() => toggleTag(tag.id)}>{tagLabel(tag.id, tr)}</button>
               ))}
             </div>
           </div>
