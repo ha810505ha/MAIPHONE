@@ -8,6 +8,7 @@ const ZH_CHANGELOG = {
     "聊天截圖｜新增關鍵字遮蔽，可快速隱藏角色名稱、玩家名稱或自訂文字；遮蔽只會套用於輸出的圖片，不會修改原始對話內容。",
     "雲隱山莊｜入住角色可生成、查看及切換多個版本的生活對話句庫；新增戶外造景素材，並改善家園、地圖與 NPC 互動。",
     "備份與還原｜改善完整備份中的圖片與媒體資產保存，並調整 GitHub 備份清單排序，讓較新的備份優先顯示。",
+    "雲端同步｜停用已淘汰的自架後端背景同步，避免純網頁版本發出無效請求；Supabase 登入與手動文字同步維持不變。",
     "介面與修正｜改善 Android 桌面滑動、App 圖示拖曳、API 來源切換，以及聊天輸入列與送出按鈕的對齊；修正被角色封鎖時無法手動生成回應、任務訊息長按操作無法收回等問題。",
   ],
   "1.2.15": [
@@ -141,6 +142,7 @@ const TRANSLATED_CHANGELOG = {
       "Chat screenshots | Added keyword redaction for quickly hiding character names, player names, or custom text. Redaction only affects the exported image and never changes the original conversation.",
       "Yunyin Villa | Residents can generate, review, and switch between multiple versions of their daily dialogue library. New outdoor decorations were added, alongside improvements to homes, maps, and NPC interactions.",
       "Backup & restore | Improved preservation of images and other media in full backups, and changed GitHub backup ordering so newer backups appear first.",
+      "Cloud sync | Disabled the retired self-hosted background sync to prevent invalid requests on the web build. Supabase sign-in and manual text sync remain available.",
       "Interface & fixes | Improved Android home-screen swiping, app-icon dragging, API-source switching, and chat input/send-button alignment. Fixed manual generation while blocked by a character, task-message long-press controls that could not be dismissed, and other issues.",
     ],
     ja: [
@@ -150,6 +152,7 @@ const TRANSLATED_CHANGELOG = {
       "チャット画像｜キャラクター名、プレイヤー名、任意の文字をすばやく隠せるキーワード非表示機能を追加しました。非表示処理は出力画像だけに適用され、元の会話は変更されません。",
       "雲隠山荘｜居住キャラクターの日常会話集を生成・確認し、複数バージョンから切り替えられるようになりました。屋外装飾を追加し、家、マップ、NPC とのやり取りも改善しました。",
       "バックアップと復元｜完全バックアップで画像などのメディアをより確実に保存できるよう改善し、GitHub バックアップ一覧は新しいものから表示するよう変更しました。",
+      "クラウド同期｜廃止済みの自前バックエンド向けバックグラウンド同期を停止し、Web 版で無効なリクエストが発生しないようにしました。Supabase ログインと手動テキスト同期は引き続き利用できます。",
       "画面と不具合修正｜Android ホーム画面のスワイプ、アプリアイコンのドラッグ、API 接続元の切り替え、チャット入力欄と送信ボタンの配置を改善しました。キャラクターにブロックされた状態で手動返信を生成できない問題、タスクメッセージの長押し操作を解除できない問題などを修正しました。",
     ],
     ko: [
@@ -159,6 +162,7 @@ const TRANSLATED_CHANGELOG = {
       "채팅 캡처 | 캐릭터 이름, 플레이어 이름 또는 사용자 지정 문구를 빠르게 숨길 수 있는 키워드 가림 기능을 추가했습니다. 가림 처리는 내보낸 이미지에만 적용되며 원본 대화는 변경하지 않습니다.",
       "운은산장 | 입주 캐릭터의 생활 대사 모음을 생성하고 확인하며 여러 버전 중에서 선택할 수 있습니다. 야외 장식 요소를 추가하고 집, 지도 및 NPC 상호작용을 개선했습니다.",
       "백업 및 복원 | 전체 백업에서 이미지와 기타 미디어를 더 안정적으로 보존하도록 개선했으며, GitHub 백업 목록에서 최신 백업이 먼저 표시되도록 정렬을 변경했습니다.",
+      "클라우드 동기화 | 사용이 종료된 자체 호스팅 백엔드용 백그라운드 동기화를 비활성화해 웹 버전에서 잘못된 요청이 발생하지 않도록 했습니다. Supabase 로그인과 수동 텍스트 동기화는 그대로 사용할 수 있습니다.",
       "인터페이스 및 수정 | Android 홈 화면 스와이프, 앱 아이콘 드래그, API 소스 전환, 채팅 입력창과 전송 버튼 정렬을 개선했습니다. 캐릭터에게 차단된 상태에서 수동 답장을 생성할 수 없는 문제와 작업 메시지 길게 누르기 메뉴를 닫을 수 없는 문제 등을 수정했습니다.",
     ],
   },

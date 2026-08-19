@@ -227,4 +227,17 @@ assert.deepEqual(
   `raw fetch bypasses timeout/cancellation wrapper:\n${offenders.join("\n")}`,
 );
 
+const featureFlagsSource = await readFile(path.join(root, "config", "featureFlags.js"), "utf8");
+const legacySyncSource = await readFile(path.join(root, "services", "syncService.js"), "utf8");
+assert.match(
+  featureFlagsSource,
+  /LEGACY_AUTO_SYNC_ENABLED\s*=\s*readFeatureFlag\("VITE_LEGACY_AUTO_SYNC_ENABLED", false\)/,
+  "legacy /api sync must stay disabled by default",
+);
+assert.match(
+  legacySyncSource,
+  /import\s*\{\s*LEGACY_AUTO_SYNC_ENABLED\s*\}/,
+  "legacy sync service must use its dedicated opt-in flag",
+);
+
 console.log("ok: network requests enforce deadlines, preserve cancellation, and reject raw app fetch");
