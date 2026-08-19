@@ -53,11 +53,14 @@ jobs:
 
       # Fetch private Yunyin assets at build time. Keep yunyin/assets out of Git.
       - name: Fetch private game assets
-        if: ${{ env.ASSETS_PAT != '' && env.ASSETS_REPO != '' }}
         env:
           ASSETS_PAT: ${{ secrets.ASSETS_PAT }}
           ASSETS_REPO: ${{ secrets.ASSETS_REPO }}
         run: |
+          if [ -z "$ASSETS_PAT" ] || [ -z "$ASSETS_REPO" ]; then
+            echo "::error::ASSETS_PAT and ASSETS_REPO repository secrets are required for the Pages build."
+            exit 1
+          fi
           git clone --depth 1 "https://x-access-token:${ASSETS_PAT}@github.com/${ASSETS_REPO}.git" tmp-assets
           rm -rf tmp-assets/.git
           mkdir -p yunyin/assets

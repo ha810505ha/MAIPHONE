@@ -1,8 +1,18 @@
 import assert from "node:assert/strict";
-import {
+import { access } from "node:fs/promises";
+
+const workerUrl = new URL("../cloudflare-worker-proxy/worker.js", import.meta.url);
+try {
+  await access(workerUrl);
+} catch {
+  console.log("Mali input token validation skipped: Worker source is stored outside the public app repository");
+  process.exit(0);
+}
+
+const {
   assertMaliInputTokenLimit,
   estimateMaliTextTokens,
-} from "../cloudflare-worker-proxy/worker.js";
+} = await import(workerUrl.href);
 
 assert.equal(estimateMaliTextTokens("abcd"), 1);
 assert.equal(estimateMaliTextTokens("測試"), 3);

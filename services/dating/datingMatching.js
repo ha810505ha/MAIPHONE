@@ -29,10 +29,11 @@ export const createDatingState = () => ({
   superLikeLog: [],  // 稀缺資源要有帳可查：{ profileId, at, status }
 });
 
-export function normalizeDatingState(src) {
+export function normalizeDatingState(src, profiles = DATING_PROFILES) {
   const base = createDatingState();
   const source = src && typeof src === "object" ? src : {};
   const profile = source.profile && typeof source.profile === "object" ? source.profile : {};
+  const profileRegistry = Array.isArray(profiles) ? profiles : DATING_PROFILES;
   return {
     profile: {
       bio: typeof profile.bio === "string" ? profile.bio.slice(0, 500) : "",
@@ -45,7 +46,7 @@ export function normalizeDatingState(src) {
     relations: source.relations && typeof source.relations === "object"
       ? Object.fromEntries(Object.entries(source.relations).map(([profileId, rawRelation]) => {
         const relation = rawRelation && typeof rawRelation === "object" ? rawRelation : {};
-        const canonicalCharacterId = DATING_PROFILES.find((entry) => entry.id === profileId)?.character?.id
+        const canonicalCharacterId = profileRegistry.find((entry) => entry.id === profileId)?.character?.id
           || relation.characterId
           || null;
         const contactCharId = relation.contactCharId || null;
@@ -73,14 +74,15 @@ export const findProfile = (profileId) => DATING_PROFILES.find((item) => item.id
  * 舊版可能因連點留下多張相同 datingProfileId 的角色。對帳時不自動刪資料，
  * 但必須優先保留 relation 正在使用的聊天室，其次才是新版永久 id。
  */
-export function chooseDatingContactId(candidates, profileId, relation) {
+export function chooseDatingContactId(candidates, profileId, relation, profiles = DATING_PROFILES) {
   const byId = new Map((Array.isArray(candidates) ? candidates : [])
     .map((character) => [String(character?.id || "").trim(), character])
     .filter(([characterId]) => characterId));
   const linkedId = String(relation?.contactCharId || "").trim();
   if (linkedId && byId.has(linkedId)) return linkedId;
 
-  const canonicalId = String(findProfile(profileId)?.character?.id || "").trim();
+  const profileRegistry = Array.isArray(profiles) ? profiles : DATING_PROFILES;
+  const canonicalId = String(profileRegistry.find((entry) => entry.id === profileId)?.character?.id || "").trim();
   if (canonicalId && byId.has(canonicalId)) return canonicalId;
 
   return [...byId.entries()]

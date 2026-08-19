@@ -119,18 +119,18 @@ assert.strictEqual(
 );
 assert.equal(firstRoomMessages.some((message) => message.openingMessage), false, "信風解鎖不得額外插入角色卡 opening");
 
-const legacyProfileId = "lin-yuchen";
+const legacyProfileId = profileId;
 const stableLegacyCharacterId = `dating-${legacyProfileId}`;
 const normalizedLockedState = normalizeDatingState({
   relations: { [legacyProfileId]: { messages: [], unread: 0 } },
-});
+}, [entry]);
 assert.equal(normalizedLockedState.relations[legacyProfileId].characterId, stableLegacyCharacterId);
 assert.equal(normalizedLockedState.relations[legacyProfileId].contactState, "locked");
 assert.equal(normalizedLockedState.relations[legacyProfileId].contactCharId, null);
 
 const normalizedLegacyUnlockedState = normalizeDatingState({
   relations: { [legacyProfileId]: { messages: [], contactCharId: "legacy-b", promotedAt: 10 } },
-});
+}, [entry]);
 assert.equal(normalizedLegacyUnlockedState.relations[legacyProfileId].characterId, stableLegacyCharacterId);
 assert.equal(normalizedLegacyUnlockedState.relations[legacyProfileId].contactState, "unlocked");
 assert.equal(normalizedLegacyUnlockedState.relations[legacyProfileId].contactCharId, "legacy-b");
@@ -141,17 +141,17 @@ const duplicateLegacyContacts = [
   { id: stableLegacyCharacterId, datingProfileId: legacyProfileId, createdAt: 300 },
 ];
 assert.equal(
-  chooseDatingContactId(duplicateLegacyContacts, legacyProfileId, { contactCharId: "legacy-b" }),
+  chooseDatingContactId(duplicateLegacyContacts, legacyProfileId, { contactCharId: "legacy-b" }, [entry]),
   "legacy-b",
   "舊 relation 正在使用的角色必須優先，不能把後續聊天室藏到另一張重複卡後面",
 );
 assert.equal(
-  chooseDatingContactId(duplicateLegacyContacts, legacyProfileId, {}),
+  chooseDatingContactId(duplicateLegacyContacts, legacyProfileId, {}, [entry]),
   stableLegacyCharacterId,
   "relation 沒有有效指向時應優先採用新版永久角色 ID",
 );
 assert.equal(
-  chooseDatingContactId(duplicateLegacyContacts.slice(0, 2), legacyProfileId, {}),
+  chooseDatingContactId(duplicateLegacyContacts.slice(0, 2), legacyProfileId, {}, [entry]),
   "legacy-a",
   "沒有永久 ID 時應以最早建立的舊角色作穩定 fallback",
 );
