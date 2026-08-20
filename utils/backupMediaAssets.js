@@ -1,3 +1,5 @@
+import { normalizeImagePayload } from "./imagePayload.js";
+
 const DATA_IMAGE_RE = /^data:(image\/(?:png|jpe?g|gif|webp));base64,([a-z0-9+/=\s]+)$/i;
 const RAW_IMAGE_KEYS = new Set(["image"]);
 const RAW_BASE64_RE = /^[a-z0-9+/=\s]{128,}$/i;
@@ -15,11 +17,10 @@ async function assetIdFor(value) {
 function parseImageValue(value, key) {
   if (typeof value !== "string") return null;
   const dataImage = value.match(DATA_IMAGE_RE);
-  if (dataImage) return { encoding: "data-url", mimeType: dataImage[1].toLowerCase(), data: value };
+  if (dataImage) return { encoding: "data-url", mimeType: normalizeImagePayload(value, dataImage[1]).mimeType, data: value };
   if (RAW_IMAGE_KEYS.has(key) && RAW_BASE64_RE.test(value)) {
-    // Existing message records do not retain the original MIME type. Preserve
-    // their legacy display behavior until message media moves to object storage.
-    return { encoding: "raw-base64", mimeType: "image/png", data: value };
+    const image = normalizeImagePayload(value);
+    return { encoding: "raw-base64", mimeType: image.mimeType, data: image.data };
   }
   return null;
 }

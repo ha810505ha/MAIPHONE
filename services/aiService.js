@@ -4,6 +4,7 @@ import { getMaliTestRuntime } from "./cloud/maliTestRuntime.js";
 import { runMaliTextGeneration } from "./cloud/maliTestService.js";
 import { isLocalProvider } from "../constants/appConstants.js";
 import { getRealityThinkingBudget } from "../utils/realityOutputSettings.js";
+import { normalizeImagePayload } from "../utils/imagePayload.js";
 
 const NVIDIA_PROXY_BASE_URL = "https://maliphone-ai-proxy.d778105.workers.dev/nvidia";
 
@@ -116,15 +117,18 @@ async function callAIRequest(messages, apiConfig, sysPrompt, options = {}) {
         system: sys,
         messages: messages
           .filter((m) => m.role !== "system")
-          .map((m) => ({
-            role: m.role,
-            content: m.image
-              ? [
-                  { type: "image", source: { type: "base64", media_type: "image/png", data: m.image } },
-                  { type: "text", text: m.content || "請描述這張圖" },
-                ]
-              : m.content,
-          })),
+          .map((m) => {
+            const image = m.image ? normalizeImagePayload(m.image, m.imageMime) : null;
+            return {
+              role: m.role,
+              content: image
+                ? [
+                    { type: "image", source: { type: "base64", media_type: image.mimeType, data: image.data } },
+                    { type: "text", text: m.content || "請描述這張圖" },
+                  ]
+                : m.content,
+            };
+          }),
       }),
     });
     const data = await res.json();
@@ -139,7 +143,10 @@ async function callAIRequest(messages, apiConfig, sysPrompt, options = {}) {
       if (m.role !== "user" && m.role !== "assistant" && m.role !== "system") continue;
       const role = m.role === "assistant" ? "model" : "user";
       const parts = [];
-      if (m.image) parts.push({ inlineData: { mimeType: "image/png", data: m.image } });
+      if (m.image) {
+        const image = normalizeImagePayload(m.image, m.imageMime);
+        parts.push({ inlineData: { mimeType: image.mimeType, data: image.data } });
+      }
       parts.push({ text: m.content || (m.image ? "請描述這張圖" : "") });
       // Gemini 要求 user/model 交錯，連續同角色訊息合併成同一輪的多個 parts
       const last = contents[contents.length - 1];
@@ -256,17 +263,18 @@ async function callAIRequest(messages, apiConfig, sysPrompt, options = {}) {
 
   const apiMsgs = [
     { role: "system", content: sys },
-    ...messages.map((m) =>
-      m.image
+    ...messages.map((m) => {
+      const image = m.image ? normalizeImagePayload(m.image, m.imageMime) : null;
+      return image
         ? {
             role: m.role,
             content: [
-              { type: "image_url", image_url: { url: `data:image/png;base64,${m.image}` } },
+              { type: "image_url", image_url: { url: `data:${image.mimeType};base64,${image.data}` } },
               { type: "text", text: m.content || "請描述這張圖" },
             ],
           }
-        : { role: m.role, content: m.content || "" }
-    ),
+        : { role: m.role, content: m.content || "" };
+    }),
   ];
   const usesMaxCompletionTokens =
     provider === "openai" ||

@@ -9,6 +9,16 @@ import {
 } from "../utils/backupMediaAssets.js";
 import { compactActiveRoomMirrors } from "../utils/persistedMediaCleanup.js";
 import { normalizePersonaCollection } from "../services/persona/personaModel.js";
+import { detectImageMimeType, normalizeImagePayload, toImageDataUrl } from "../utils/imagePayload.js";
+
+const jpegBase64 = "/9j/4AAQSkZJRgABAQAAAQABAAD/2w==";
+const pngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB";
+const webpBase64 = "UklGRhIAAABXRUJQVlA4TAUAAAAvAAAA";
+assert.equal(detectImageMimeType(jpegBase64), "image/jpeg");
+assert.equal(detectImageMimeType(pngBase64), "image/png");
+assert.equal(detectImageMimeType(webpBase64), "image/webp");
+assert.deepEqual(normalizeImagePayload(jpegBase64, "image/png"), { data: jpegBase64, mimeType: "image/jpeg" }, "file signature wins over stale MIME metadata");
+assert.equal(toImageDataUrl(jpegBase64, "image/png"), `data:image/jpeg;base64,${jpegBase64}`);
 
 const rawImage = "a".repeat(128);
 const image = `data:image/jpeg;base64,${rawImage}`;

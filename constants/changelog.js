@@ -1,6 +1,10 @@
 import { toSimplifiedChinese } from "../utils/i18n.js";
 
 const ZH_CHANGELOG = {
+  "1.2.17": [
+    "08/21 修正更新",
+    "聊天圖片｜修正圖片壓縮成 JPEG 後仍被標記為 PNG，導致 Claude 等部分 AI 模型無法讀取圖片的問題。現在會自動辨識 JPEG、PNG、WebP 與 GIF 的實際格式，並相容既有聊天圖片。",
+  ],
   "1.2.16": [
     "08/19 大型更新",
     "帳號與雲端同步｜整合 Email 註冊、Google 登入與手動文字資料同步。跨裝置同步時會保留本機圖片、相簿、語音快取與 API Key，並強化錢包及遊戲進度的合併處理，降低舊資料被覆蓋的風險。",
@@ -134,6 +138,20 @@ const ZH_CHANGELOG = {
 };
 
 const TRANSLATED_CHANGELOG = {
+  "1.2.17": {
+    en: [
+      "08/21 Fix Update",
+      "Chat images | Fixed an issue where images compressed as JPEG were still labeled as PNG, preventing Claude and some other AI models from reading them. JPEG, PNG, WebP, and GIF formats are now detected automatically, including existing chat images.",
+    ],
+    ja: [
+      "08/21 修正アップデート",
+      "チャット画像｜JPEG に圧縮された画像が PNG として送信され、Claude など一部の AI モデルで読み込めない問題を修正しました。JPEG、PNG、WebP、GIF の実際の形式を自動判定し、既存のチャット画像にも対応します。",
+    ],
+    ko: [
+      "08/21 수정 업데이트",
+      "채팅 이미지 | JPEG로 압축된 이미지가 PNG로 표시되어 Claude 등 일부 AI 모델에서 읽지 못하던 문제를 수정했습니다. 이제 JPEG, PNG, WebP, GIF의 실제 형식을 자동으로 감지하며 기존 채팅 이미지도 지원합니다.",
+    ],
+  },
   "1.2.16": {
     en: [
       "08/19 Major Update",

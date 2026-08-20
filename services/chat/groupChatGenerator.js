@@ -11,7 +11,7 @@ export async function generateGroupReplies({ group, members, messages, currentIm
     const summary = message.imageSummary ? `\n[圖片摘要]\n${message.imageSummary}` : "";
     // 示意圖片只送描述文字，永遠不帶 image。
     const pseudo = pseudoImagePromptLine(message.pseudoImage, message.role === "user" ? "玩家" : (message.speakerName || "對方"));
-    return { role: message.role, content: `${message.content || ""}${pseudo}${summary}`.trim(), image: message.image || null, speakerName: message.speakerName };
+    return { role: message.role, content: `${message.content || ""}${pseudo}${summary}`.trim(), image: message.image || null, imageMime: message.imageMime || null, speakerName: message.speakerName };
   });
   const safeHistory = history.map((message, index) => currentImage && index === history.length - 1 ? message : { ...message, image: null });
   const recent = safeHistory.map((message) => `${message.role === "user" ? "玩家" : (message.speakerName || "群組")}: ${message.content || "[圖片]"}`).join("\n");

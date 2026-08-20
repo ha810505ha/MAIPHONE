@@ -405,7 +405,7 @@ export default function useChatPromptController({
         const pseudoLine = pseudoImagePromptLine(m.pseudoImage, m.role === "user" ? "{{user}}" : "你");
         const voiceLine = pseudoVoicePromptLine(m.pseudoVoice, m.role === "user" ? "{{user}}" : "你");
         const messageText = m.pseudoVoice ? "" : (m.content || "");
-        return { role: m.role, content: `${messageText}${pseudoLine}${voiceLine}${summaryLine}`.trim(), image: m.image || null };
+        return { role: m.role, content: `${messageText}${pseudoLine}${voiceLine}${summaryLine}`.trim(), image: m.image || null, imageMime: m.imageMime || null };
       }
       return null;
     })

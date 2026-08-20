@@ -35,7 +35,7 @@ export default function useDirectChatAI({ currentCharacter, isTyping, chatHistor
     if (!text && !image && !pseudoImage && !pseudoVoice) return;
     const now = Date.now();
     const transition = committedMode !== selectedMode ? { id: createId(), role: "mode_transition", fromMode: committedMode, toMode: selectedMode, time: now } : null;
-    const userMessage = { id: createId(), role: "user", content: text, image, pseudoImage, pseudoVoice, imageSummary: "", mode: selectedMode, interceptedByCharacterBlock: selectedMode === "online" && isPlayerBlockedByCharacter?.(characterId) === true, time: now };
+    const userMessage = { id: createId(), role: "user", content: text, image, imageMime: image ? chatImage?.mime : null, pseudoImage, pseudoVoice, imageSummary: "", mode: selectedMode, interceptedByCharacterBlock: selectedMode === "online" && isPlayerBlockedByCharacter?.(characterId) === true, time: now };
     const nextHistory = transition ? [...previous, transition, userMessage] : [...previous, userMessage];
     setChatHistory((history) => ({ ...history, [characterId]: nextHistory }));
     setChatInput(""); setChatImage(null); setChatPseudoImage(null); setChatPseudoVoiceMode(false); setActionPanelOpen(false); setIsTyping(true);
@@ -69,7 +69,7 @@ export default function useDirectChatAI({ currentCharacter, isTyping, chatHistor
     const committedMode = getCommittedMode(characterId);
     const now = Date.now();
     const transition = committedMode !== selectedMode ? { id: createId(), role: "mode_transition", fromMode: committedMode, toMode: selectedMode, time: now } : null;
-    const userMessage = { id: createId(), role: "user", content: text, image, pseudoImage, pseudoVoice, imageSummary: "", mode: selectedMode, interceptedByCharacterBlock: isPlayerBlockedByCharacter?.(characterId) === true, time: now };
+    const userMessage = { id: createId(), role: "user", content: text, image, imageMime: image ? chatImage?.mime : null, pseudoImage, pseudoVoice, imageSummary: "", mode: selectedMode, interceptedByCharacterBlock: isPlayerBlockedByCharacter?.(characterId) === true, time: now };
     setChatHistory((history) => ({ ...history, [characterId]: transition ? [...previous, transition, userMessage] : [...previous, userMessage] }));
     setChatInput(""); setChatImage(null); setChatPseudoImage(null); setChatPseudoVoiceMode(false); setActionPanelOpen(false);
     return true;

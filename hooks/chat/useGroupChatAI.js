@@ -43,7 +43,7 @@ export default function useGroupChatAI({ currentGroup, isTyping, input, image, p
     const text = sanitizeText(input.trim(), 4000); const currentImage = image?.data || null;
     const currentPseudoImage = pseudoImage || null;
     if (!text && !currentImage && !currentPseudoImage) return;
-    const userMessage = { id: createId(), role: "user", content: text, image: currentImage, pseudoImage: currentPseudoImage, imageSummary: "", time: Date.now(), speakerName: getPlayerName() };
+    const userMessage = { id: createId(), role: "user", content: text, image: currentImage, imageMime: currentImage ? image?.mime : null, pseudoImage: currentPseudoImage, imageSummary: "", time: Date.now(), speakerName: getPlayerName() };
     const baseMessages = [...(currentGroup.messages || []), userMessage];
     setGroups((groups) => appendGroupMessages(groups, currentGroup.id, [userMessage]));
     setInput(""); setImage(null); setPseudoImage(null); setActionPanelOpen(false); setIsTyping(true);
