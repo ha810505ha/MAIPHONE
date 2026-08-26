@@ -162,6 +162,22 @@ try {
   assert.equal(requestInit.headers.Authorization, "Bearer nvapi-test");
   assert.equal(JSON.parse(requestInit.body).max_tokens, 500);
 
+  await callAI(
+    [{ role: "user", content: "hello" }],
+    {
+      provider: "ollama",
+      baseUrl: "https://orange-butterfly-8390.d778105.workers.dev/ollama",
+      apiKey: "ollama-test",
+      model: "llama3.1",
+    },
+    "system",
+  );
+  assert.equal(
+    requestUrl,
+    "https://maliphone-ai-proxy.d778105.workers.dev/ollama/chat/completions",
+    "the retired official Ollama Worker URL must migrate without overwriting custom endpoints",
+  );
+
   globalThis.fetch = async () => Response.json(
     { error: { message: "models unavailable" } },
     { status: 404 },

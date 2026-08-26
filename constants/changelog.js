@@ -1,6 +1,11 @@
 import { toSimplifiedChinese } from "../utils/i18n.js";
 
 const ZH_CHANGELOG = {
+  "1.2.18": [
+    "08/27 緊急修正",
+    "一起聽歌｜修正 iPhone 上 YouTube 播放器資源被安全規則阻擋，導致歌曲無法載入的問題。",
+    "AI 連線｜舊版保存的官方 Ollama 雲端代理網址會自動遷移至目前端點，修正聊天與社群可能顯示 Load failed 的問題；玩家自訂端點不受影響。",
+  ],
   "1.2.17": [
     "08/21 修正更新",
     "聊天圖片｜修正圖片壓縮成 JPEG 後仍被標記為 PNG，導致 Claude 等部分 AI 模型無法讀取圖片的問題。現在會自動辨識 JPEG、PNG、WebP 與 GIF 的實際格式，並相容既有聊天圖片。",
@@ -138,6 +143,23 @@ const ZH_CHANGELOG = {
 };
 
 const TRANSLATED_CHANGELOG = {
+  "1.2.18": {
+    en: [
+      "08/27 Emergency Fix",
+      "Listen Together | Fixed YouTube player resources being blocked by security rules on iPhone, which prevented songs from loading.",
+      "AI connection | Saved official Ollama cloud proxy URLs from older versions now migrate automatically to the current endpoint, fixing Load failed errors in Chat and Social. Custom endpoints are unchanged.",
+    ],
+    ja: [
+      "08/27 緊急修正",
+      "一緒に音楽｜iPhone でセキュリティ規則により YouTube プレーヤーのリソースがブロックされ、曲を読み込めない問題を修正しました。",
+      "AI 接続｜旧バージョンで保存された公式 Ollama クラウドプロキシ URL を現在のエンドポイントへ自動移行し、チャットとソーシャルで Load failed が表示される問題を修正しました。カスタムエンドポイントには影響しません。",
+    ],
+    ko: [
+      "08/27 긴급 수정",
+      "함께 듣기 | iPhone에서 보안 규칙이 YouTube 플레이어 리소스를 차단해 곡을 불러오지 못하던 문제를 수정했습니다.",
+      "AI 연결 | 이전 버전에 저장된 공식 Ollama 클라우드 프록시 URL을 현재 엔드포인트로 자동 이전해 채팅과 소셜에서 Load failed가 표시되던 문제를 수정했습니다. 사용자 지정 엔드포인트에는 영향을 주지 않습니다.",
+    ],
+  },
   "1.2.17": {
     en: [
       "08/21 Fix Update",

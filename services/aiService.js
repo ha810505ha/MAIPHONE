@@ -7,6 +7,8 @@ import { getRealityThinkingBudget } from "../utils/realityOutputSettings.js";
 import { normalizeImagePayload } from "../utils/imagePayload.js";
 
 const NVIDIA_PROXY_BASE_URL = "https://maliphone-ai-proxy.d778105.workers.dev/nvidia";
+const OLLAMA_PROXY_BASE_URL = "https://maliphone-ai-proxy.d778105.workers.dev/ollama";
+const LEGACY_OLLAMA_PROXY_RE = /^https:\/\/orange-butterfly-8390\.d778105\.workers\.dev\/ollama(?:\/+)?$/i;
 
 const isGemini25ProModel = (model) => /(^|\/)gemini-2\.5-pro(?:$|[-:])/i.test(String(model || ""));
 
@@ -16,9 +18,16 @@ const isLocalConnection = (provider, baseUrl) => (
   isLocalProvider(provider) || (provider === "ollama" && LOCALHOST_URL_RE.test(baseUrl || ""))
 );
 
-const resolveRequestBaseUrl = (provider, configuredBaseUrl) => (
-  provider === "nvidia" ? NVIDIA_PROXY_BASE_URL : configuredBaseUrl
-);
+const resolveRequestBaseUrl = (provider, configuredBaseUrl) => {
+  if (provider === "nvidia") return NVIDIA_PROXY_BASE_URL;
+  // 1.2.17 以前儲存的 Ollama 預設網址會跟著玩家備份保留下來；舊 Worker
+  // 下線後 Safari 只會回報不具體的 `Load failed`。僅遷移官方舊網址，保留
+  // 玩家自行設定的 Ollama / OpenAI 相容端點。
+  if (provider === "ollama" && LEGACY_OLLAMA_PROXY_RE.test(String(configuredBaseUrl || ""))) {
+    return OLLAMA_PROXY_BASE_URL;
+  }
+  return configuredBaseUrl;
+};
 
 export const isHostedTestMode = (apiConfig) => apiConfig?.aiSource === "hosted_test";
 

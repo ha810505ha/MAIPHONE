@@ -92,4 +92,10 @@ assert.match(contextSource, /setIsPlaying\(false\);\s*const guardedCallbacks/);
 assert.doesNotMatch(contextSource, /setIsPlaying\(true\);\s*await provider\.load/);
 assert.match(contextSource, /resume\(\) \{ providerRef\.current\?\.resume\(\); \}/);
 
+const indexSource = await import("node:fs/promises")
+  .then(({ readFile }) => readFile(new URL("../index.html", import.meta.url), "utf8"));
+assert.match(indexSource, /script-src[^;]*https:\/\/www\.youtube\.com/);
+assert.match(indexSource, /script-src[^;]*https:\/\/s\.ytimg\.com/);
+assert.match(indexSource, /frame-src[^;]*https:\/\/www\.youtube\.com/);
+
 console.log("music provider safety: ok");
