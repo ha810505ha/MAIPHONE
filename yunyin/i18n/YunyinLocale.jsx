@@ -28,6 +28,7 @@ const TEXT = {
   "panel.resident": ["居民", "Resident", "住民", "주민"],
   "hud.title": ["雲隱山莊 · {map}", "Cloudveil Villa · {map}", "雲隠山荘 · {map}", "운은산장 · {map}"],
   "hud.coins": ["金錢", "Coins", "所持金", "금화"],
+  "hud.balances": ["資源餘額", "Resource Balances", "資源残高", "자원 잔액"],
   "hud.crystals": ["結晶", "Crystals", "結晶", "결정"],
   "hud.settings": ["山莊設定", "Villa Settings", "山荘設定", "산장 설정"],
   "hud.inventory": ["背包", "Inventory", "バッグ", "가방"],

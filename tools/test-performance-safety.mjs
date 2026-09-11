@@ -443,7 +443,7 @@ for (const [name, modalSource] of [
 }
 
 assert(
-  chatScreenshotModal.includes("(?:oklab|oklch|color-mix)"),
+  chatScreenshotModal.includes("normalizeScreenshotTree(root)"),
   "chat screenshots must replace OKLab/OKLCH colors that html2canvas cannot parse",
 );
 

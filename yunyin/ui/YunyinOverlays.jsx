@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { FURNITURE_IMAGES } from "../data/assetUrls";
 import { useYunyinLocale } from "../i18n/YunyinLocale.jsx";
+import { formatResourceNumber } from "./resourceNumber.js";
 
 export const YUNYIN_HUD_ACTION_TOP = 82;
 export const yunyinCameraControlTop = (canDecorate) => (
@@ -17,6 +18,14 @@ function FurnitureThumb({ item, size = 32 }) {
 
 export function YunyinHud({ onBack, mapTitle, coins, crystals, onOpenSettings, onOpenInventory, canDecorate = false, decorating = false, onToggleDecorating }) {
   const { locale, yt } = useYunyinLocale();
+  const [showBalances, setShowBalances] = useState(false);
+  const balanceCloseRef = useRef(null);
+  useEffect(() => {
+    if (!showBalances) return undefined;
+    const previousFocus = document.activeElement;
+    balanceCloseRef.current?.focus();
+    return () => { if (previousFocus?.isConnected) previousFocus.focus(); };
+  }, [showBalances]);
   const resourceStyle = {
     display: "flex",
     alignItems: "center",
@@ -29,25 +38,36 @@ export function YunyinHud({ onBack, mapTitle, coins, crystals, onOpenSettings, o
     color: "#fff",
     fontSize: 11,
     fontVariantNumeric: "tabular-nums",
+    border: 0,
+    fontFamily: "inherit",
+    pointerEvents: "auto",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
   };
   const actionStyle = { width: 40, height: 40, borderRadius: 14, border: 0, padding: 0, background: "rgba(0,0,0,.45)", color: "#fff", fontSize: 18 };
   const resourceLabelStyle = { flexShrink: 0 };
-  const resourceValueStyle = { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" };
-  const formatResource = (value) => Math.max(0, Math.round(Number(value) || 0)).toLocaleString(locale);
+  const resourceValueStyle = { flexShrink: 0, whiteSpace: "nowrap", marginLeft: "auto" };
+  const formatResource = (value) => formatResourceNumber(value, locale, true);
   return <><div data-yunyin-hud="1" style={{ position: "absolute", zIndex: 3, inset: 0, pointerEvents: "none" }}>
-    <div data-yunyin-hud-title-row="1" style={{ position: "absolute", top: 10, left: 12, right: 154, display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+    <div data-yunyin-hud-title-row="1" style={{ position: "absolute", top: 10, left: 12, right: 180, display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
       <button onClick={onBack} style={{ pointerEvents: "auto", flexShrink: 0, border: 0, borderRadius: 12, padding: "6px 12px", background: "rgba(0,0,0,.45)", color: "#fff", fontSize: 15 }}>←</button>
       <div style={{ color: "#fff", fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{yt("hud.title", { map: mapTitle })}</div>
     </div>
-    <div data-yunyin-hud-resource-stack="1" style={{ position: "absolute", top: 10, right: 12, width: 134, display: "grid", gap: 5 }}>
-      <div aria-label={`${yt("hud.coins")} ${coins}`} style={resourceStyle}><span style={resourceLabelStyle}>🪙 {yt("hud.coins")}</span><b style={resourceValueStyle}>{formatResource(coins)}</b></div>
-      <div aria-label={`${yt("hud.crystals")} ${crystals}`} style={resourceStyle}><span style={resourceLabelStyle}>💎 {yt("hud.crystals")}</span><b style={resourceValueStyle}>{formatResource(crystals)}</b></div>
+    <div data-yunyin-hud-resource-stack="1" style={{ position: "absolute", top: 10, right: 12, width: 160, display: "grid", gap: 5 }}>
+      <button type="button" aria-label={`${yt("hud.coins")} ${coins}`} aria-haspopup="dialog" onClick={() => setShowBalances(true)} style={resourceStyle}><span style={resourceLabelStyle}>🪙 {yt("hud.coins")}</span><b style={resourceValueStyle}>{formatResource(coins)}</b></button>
+      <button type="button" aria-label={`${yt("hud.crystals")} ${crystals}`} aria-haspopup="dialog" onClick={() => setShowBalances(true)} style={resourceStyle}><span style={resourceLabelStyle}>💎 {yt("hud.crystals")}</span><b style={resourceValueStyle}>{formatResource(crystals)}</b></button>
     </div>
   </div><div data-yunyin-action-stack="1" style={{ position: "absolute", zIndex: 3, top: YUNYIN_HUD_ACTION_TOP, right: 12, display: "grid", gap: 8 }}>
     <button type="button" aria-label={yt("hud.settings")} title={yt("hud.settings")} onClick={onOpenSettings} style={actionStyle}>⚙️</button>
     <button type="button" aria-label={yt("hud.inventory")} title={yt("hud.inventory")} onClick={onOpenInventory} style={actionStyle}>🎒</button>
     {canDecorate && <button type="button" aria-label={yt("hud.decorate")} title={yt("hud.decorate")} onClick={onToggleDecorating} style={{ ...actionStyle, background: decorating ? "#f0c75e" : actionStyle.background, color: decorating ? "#4e3826" : "#fff" }}>🛋️</button>}
-  </div></>;
+  </div>{showBalances && <dialog open aria-modal="true" data-yunyin-panel="1" aria-label={yt("hud.balances")} onKeyDown={(event) => { event.stopPropagation(); if (event.key === "Escape") { event.preventDefault(); setShowBalances(false); } if (event.key === "Tab") { event.preventDefault(); balanceCloseRef.current?.focus(); } }} style={{ position: "absolute", inset: 0, margin: 0, width: "100%", height: "100%", maxWidth: "none", maxHeight: "none", boxSizing: "border-box", border: 0, padding: 24, zIndex: 8, background: "rgba(20,14,26,.6)", display: "grid", placeItems: "center" }} onClick={() => setShowBalances(false)}>
+    <div style={{ width: "min(100%, 300px)", boxSizing: "border-box", padding: 20, borderRadius: 18, background: "#fffaf3", color: "#4e3826" }} onClick={(event) => event.stopPropagation()}>
+      <b>{yt("hud.balances")}</b>
+      {[["hud.coins", coins, "🪙"], ["hud.crystals", crystals, "💎"]].map(([key, value, icon]) => <div key={key} style={{ marginTop: 16 }}><div style={{ fontSize: 12 }}>{icon} {yt(key)}</div><strong style={{ display: "block", marginTop: 4, fontSize: 20, fontVariantNumeric: "tabular-nums", overflowWrap: "anywhere" }}>{formatResourceNumber(value, locale)}</strong></div>)}
+      <button type="button" ref={balanceCloseRef} onClick={() => setShowBalances(false)} style={{ marginTop: 20, width: "100%", border: 0, borderRadius: 12, padding: 10, background: "#7d5a6e", color: "#fff" }}>{yt("common.close")}</button>
+    </div>
+  </dialog>}</>;
 }
 
 // 順序：右上資源 > 設定 > 背包 >（家園才顯示佈置）> 放大鏡。

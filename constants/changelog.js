@@ -1,6 +1,13 @@
 import { toSimplifiedChinese } from "../utils/i18n.js";
 
 const ZH_CHANGELOG = {
+  "1.2.19": [
+    "09/12 修正更新",
+    "聊天截圖｜修正同一天多次截圖可能產生重複檔名、覆蓋舊圖的問題。",
+    "聊天截圖｜修正選擇其他主題後，截圖仍變回預設莓果配色的問題。",
+    "聊天截圖｜修正部分色彩格式造成截圖失敗，以及截圖尺寸偶爾縮小的問題。",
+    "雲隱山莊｜金錢與結晶較多時，改用「萬、億」等縮寫顯示，避免數字被截斷。點擊金錢或結晶，即可查看完整餘額。",
+  ],
   "1.2.18": [
     "08/27 緊急修正",
     "一起聽歌｜修正 iPhone 上 YouTube 播放器資源被安全規則阻擋，導致歌曲無法載入的問題。",
@@ -143,6 +150,29 @@ const ZH_CHANGELOG = {
 };
 
 const TRANSLATED_CHANGELOG = {
+  "1.2.19": {
+    en: [
+      "09/12 Fix Update",
+      "Chat screenshots | Fixed repeated screenshots on the same day sharing a filename and potentially overwriting an earlier image.",
+      "Chat screenshots | Fixed screenshots reverting to the default Berry theme colors when another theme was selected.",
+      "Chat screenshots | Fixed export failures caused by some color formats and occasional shrinking of screenshot dimensions.",
+      "Cloudveil Villa | Large coin and crystal balances now use compact numbers such as K and M to prevent truncation. Tap coins or crystals to view the full balance.",
+    ],
+    ja: [
+      "09/12 修正アップデート",
+      "チャット画像｜同じ日に複数回保存するとファイル名が重複し、以前の画像を上書きする可能性がある問題を修正しました。",
+      "チャット画像｜別のテーマを選んでも、画像が標準のベリー配色に戻る問題を修正しました。",
+      "チャット画像｜一部の色形式による保存失敗と、画像サイズが時々小さくなる問題を修正しました。",
+      "雲隠山荘｜所持金と結晶が多い場合は「万・億」などで省略表示し、数字が途切れないようにしました。所持金や結晶をタップすると正確な残高を確認できます。",
+    ],
+    ko: [
+      "09/12 수정 업데이트",
+      "채팅 캡처 | 같은 날 여러 번 저장하면 파일명이 중복되어 이전 이미지를 덮어쓸 수 있던 문제를 수정했습니다.",
+      "채팅 캡처 | 다른 테마를 선택해도 캡처가 기본 베리 색상으로 돌아가던 문제를 수정했습니다.",
+      "채팅 캡처 | 일부 색상 형식으로 인한 저장 실패와 캡처 크기가 가끔 작아지던 문제를 수정했습니다.",
+      "운은산장 | 금화와 결정이 많으면 만·억 등의 축약 표기를 사용해 숫자가 잘리지 않도록 했습니다. 금화나 결정을 누르면 전체 잔액을 확인할 수 있습니다.",
+    ],
+  },
   "1.2.18": {
     en: [
       "08/27 Emergency Fix",

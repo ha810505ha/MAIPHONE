@@ -1,42 +1,20 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import ChatMessageRenderer from "./ChatMessageRenderer";
 import { downloadImageFile } from "../../utils/exportFile";
+import { createScreenshotFilename } from "../../utils/screenshotFilename.js";
 import {
   containsScreenshotRedactionKeyword,
   normalizeScreenshotRedactionKeywords,
   redactScreenshotText,
 } from "../../utils/screenshotRedaction";
+import { normalizeScreenshotTree } from "../../utils/screenshotColors.js";
 import MotionPresence from "../motion/MotionPresence.jsx";
 
 const LIMITS = { messages: 15, images: 4, outputHeight: 8000, width: 430, scale: 2 };
 
-const canvasToPngBlob = (canvas) => new Promise((resolve, reject) => {
-  canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("PNG 圖片產生失敗")), "image/png");
+const canvasToPngBlob = (canvas, errorMessage) => new Promise((resolve, reject) => {
+  canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error(errorMessage)), "image/png");
 });
-
-const normalizeModernColors = (value) => String(value || "").replace(/color\(srgb\s+([^)]*)\)/gi, (_, body) => {
-  const [channels, alphaPart] = body.split("/").map((part) => part.trim());
-  const values = channels.split(/\s+/).slice(0, 3).map((part) => Math.round(Math.max(0, Math.min(1, Number.parseFloat(part))) * 255));
-  if (values.length !== 3 || values.some((part) => !Number.isFinite(part))) return "rgba(0,0,0,0)";
-  const alpha = alphaPart == null ? 1 : Math.max(0, Math.min(1, Number.parseFloat(alphaPart)));
-  return `rgba(${values[0]},${values[1]},${values[2]},${Number.isFinite(alpha) ? alpha : 1})`;
-});
-
-const hasUnsupportedCaptureColor = (value) => /\b(?:oklab|oklch|color-mix)\(|\bvar\(/i.test(value);
-
-const screenshotFallback = (property) => ({
-  color: "#4b3741",
-  "background-color": "transparent",
-  "background-image": "none",
-  "border-top-color": "#ead8df",
-  "border-right-color": "#ead8df",
-  "border-bottom-color": "#ead8df",
-  "border-left-color": "#ead8df",
-  "outline-color": "#c85a7e",
-  "box-shadow": "none",
-  "text-shadow": "none",
-  "text-decoration-color": "#4b3741",
-}[property] || "transparent");
 
 const sanitizeScreenshotClone = (clonedDocument, redactionKeywords = []) => {
   const root = clonedDocument.querySelector("[data-chat-screenshot-capture]");
@@ -53,37 +31,10 @@ const sanitizeScreenshotClone = (clonedDocument, redactionKeywords = []) => {
       });
     }
   }
-  const properties = ["color", "background-color", "background-image", "border-top-color", "border-right-color", "border-bottom-color", "border-left-color", "outline-color", "box-shadow", "text-shadow", "text-decoration-color"];
-  [root, ...root.querySelectorAll("*")].forEach((node) => {
-    const computed = clonedDocument.defaultView?.getComputedStyle(node);
-    if (!computed) return;
-    properties.forEach((property) => {
-      const value = computed.getPropertyValue(property);
-      if (!value) return;
-      const normalized = normalizeModernColors(value);
-      const safeValue = hasUnsupportedCaptureColor(normalized)
-        ? screenshotFallback(property)
-        : normalized;
-      if (safeValue !== value) node.style.setProperty(property, safeValue, "important");
-    });
-  });
+  normalizeScreenshotTree(root);
 };
 
-const getCaptureSafeCss = (isNightTheme) => {
-  const palette = isNightTheme
-    ? { page: "#181420", surface: "#2f2440", text: "#f0e6f5", muted: "#b8a8c9", line: "#4a3a61", accent: "#f48fb1", accentSoft: "#4b3a62", user: "#d95e88" }
-    : { page: "#fffafc", surface: "#fff", text: "#4b3741", muted: "#927482", line: "#ead8df", accent: "#c85a7e", accentSoft: "#fde4ec", user: "#df7196" };
-  return `
-    .mp-chat-capture{--mp-txt:${palette.text}!important;--mp-txt-l:${palette.muted}!important;--mp-surface:${palette.surface}!important;--mp-line:${palette.line}!important;--mp-pink-dk:${palette.accent}!important;--mp-pink-lt:${palette.accentSoft}!important;--mp-glass:${palette.surface}!important;--mp-glass-b:${palette.line}!important;--mp-glass-s:none!important;background:${palette.page}!important;color:${palette.text}!important}
-    .mp-chat-capture,.mp-chat-capture *{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
-    .mp-chat-capture .mp-msg-ai{background:${palette.surface}!important;color:${palette.text}!important;border-color:${palette.line}!important;box-shadow:0 4px 12px rgba(76,47,62,.12)!important}
-    .mp-chat-capture .mp-msg-user{background:${palette.user}!important;color:#fff!important;box-shadow:0 4px 12px rgba(136,58,87,.18)!important}
-    .mp-chat-capture .mp-msg-note,.mp-chat-capture .mp-thought-content{background:${palette.surface}!important;color:${palette.text}!important;border-color:${palette.line}!important}
-    .mp-chat-capture .mp-hdr,.mp-chat-capture .mp-inp-bar{background:${palette.surface}!important;border-color:${palette.line}!important;color:${palette.text}!important}
-    .mp-chat-capture .mp-inp{background:${isNightTheme ? "#251c32" : "#fffafc"}!important;color:${palette.muted}!important;border-color:${palette.line}!important}
-    .mp-chat-capture *::before,.mp-chat-capture *::after{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
-  `;
-};
+const captureSafeCss = `.mp-chat-capture,.mp-chat-capture *,.mp-chat-capture *::before,.mp-chat-capture *::after{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}`;
 
 export default function ChatScreenshotModal({ open, onClose, onReselect, messages, initialSelectedIds = [], character, playerName = "", modelShort, sceneBar, mode, rendererProps, backgroundUrl, isNightTheme = false, tr }) {
   const captureRef = useRef(null);
@@ -156,12 +107,12 @@ export default function ChatScreenshotModal({ open, onClose, onReselect, message
       const pageBackground = window.getComputedStyle(element.closest(".mp-page") || element).background;
       if (pageBackground && pageBackground !== "none") element.style.background = pageBackground;
       const { default: html2canvas } = await import("html2canvas");
-      const canvas = await html2canvas(element, { backgroundColor: isNightTheme ? "#181420" : "#fffafc", scale: LIMITS.scale, useCORS: true, logging: false, width: LIMITS.width, windowWidth: LIMITS.width, onclone: (clonedDocument) => sanitizeScreenshotClone(clonedDocument, redactionKeywords) });
-      const blob = await canvasToPngBlob(canvas);
+      const canvas = await html2canvas(element, { backgroundColor: null, scale: LIMITS.scale, useCORS: true, logging: false, width: LIMITS.width, windowWidth: LIMITS.width, onclone: (clonedDocument) => sanitizeScreenshotClone(clonedDocument, redactionKeywords) });
+      const blob = await canvasToPngBlob(canvas, tr("PNG 圖片產生失敗", "Failed to create PNG", "PNGの作成に失敗しました", "PNG 생성에 실패했습니다"));
       const characterName = String(character?.name || "");
       const safeName = (containsScreenshotRedactionKeyword(characterName, redactionKeywords) ? "redacted-chat" : (characterName || "chat")).replace(/[\\/:*?"<>|]+/g, "_");
-      const result = await downloadImageFile(blob, `${safeName}-chat-${new Date().toISOString().slice(0, 10)}.png`, { preferBrowserDownload: true });
-      if (result?.method === "native-filesystem") setNotice(`已儲存到 Documents/${result.path}`);
+      const result = await downloadImageFile(blob, createScreenshotFilename(safeName), { preferBrowserDownload: true });
+      if (result?.method === "native-filesystem") setNotice(tr(`已儲存到 Documents/${result.path}`, `Saved to Documents/${result.path}`, `Documents/${result.path} に保存しました`, `Documents/${result.path}에 저장했습니다`));
       else if (result?.method !== "cancelled") setNotice(tr("PNG 已下載", "PNG downloaded", "PNGを保存しました", "PNG를 저장했습니다"));
     } catch (reason) {
       setError(reason?.message || tr("截圖產生或儲存失敗", "Failed to create or save screenshot", "画像の作成または保存に失敗しました", "캡처 생성 또는 저장에 실패했습니다"));
@@ -206,8 +157,8 @@ export default function ChatScreenshotModal({ open, onClose, onReselect, message
       </div>
     </div>
     <div aria-hidden="true" style={{ position: "fixed", left: -12000, top: 0, width: LIMITS.width, pointerEvents: "none" }}>
-      <div ref={captureRef} data-chat-screenshot-capture className={`mp-chat-capture mp-chat-mode-${mode}`} style={{ boxSizing: "border-box", width: LIMITS.width, minHeight: 860, display: "flex", flexDirection: "column", overflow: "hidden", background: isNightTheme ? "linear-gradient(180deg,#241b33,#181420)" : "linear-gradient(180deg,#fce4ec,#fffafc)", color: "var(--mp-txt)" }}>
-        <style>{`${getCaptureSafeCss(isNightTheme)}.mp-chat-capture .mp-mode-sep:before{background:linear-gradient(90deg,transparent,rgba(95,118,131,.4))}.mp-chat-capture .mp-mode-sep:after{background:linear-gradient(90deg,rgba(95,118,131,.4),transparent)}.mp-chat-capture .mp-mode-sep span{border-color:rgba(95,118,131,.22)}`}</style>
+      <div ref={captureRef} data-chat-screenshot-capture className={`mp-chat-capture mp-chat-mode-${mode}`} style={{ boxSizing: "border-box", width: LIMITS.width, minHeight: 860, display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--mp-page-bg)", color: "var(--mp-txt)" }}>
+        <style>{captureSafeCss}</style>
         <div className="mp-hdr" style={{ minHeight: 64, boxSizing: "border-box" }}>
           <div className="mp-back">←</div>
           <span style={{ color: "var(--mp-pink-dk)", fontSize: 17 }}>♥</span>
