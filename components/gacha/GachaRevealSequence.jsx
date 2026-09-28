@@ -367,7 +367,7 @@ const REVEAL_CSS = `
 .is-sealed .sgr-stage{animation:sgrFloat 3.2s ease-in-out infinite}
 .sgr-glow{position:absolute;inset:-4%;border-radius:28px;background:radial-gradient(closest-side,var(--sgr-glow),transparent);filter:blur(22px);opacity:0;transition:opacity .5s ease}
 .is-revealing .sgr-glow,.is-shown .sgr-glow{opacity:.55}.is-ssr-stage .sgr-glow{opacity:.85;inset:-9%}
-.sgr-env{position:absolute;left:4%;width:92%;top:calc(50% - var(--sgr-card-w)*.317);height:calc(var(--sgr-card-w)*.634);border-radius:10px}
+.sgr-env{position:absolute;left:4%;width:92%;top:calc(50% - var(--sgr-card-w)*.317);height:calc(var(--sgr-card-w)*.634);border-radius:3.1%/4.5%}
 .sgr-env-back{box-shadow:0 22px 40px #0007;overflow:hidden}
 .sgr-svg{position:absolute;inset:0;width:100%;height:100%;display:block;overflow:visible}.sgr-svg-defs{position:absolute;width:0;height:0;overflow:hidden}
 .sgr-env-slit{position:absolute;left:10%;right:10%;top:-30%;height:80%;border-radius:50%;background:radial-gradient(closest-side,color-mix(in srgb,var(--sgr-accent) 85%,#fff),transparent);opacity:0;filter:blur(6px)}

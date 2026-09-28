@@ -5,6 +5,7 @@ import React from "react";
 // 所有圖層共用 viewBox 0 0 290 200（長寬比 1.45）；蠟封為 0 0 100 100。
 
 const ENVELOPE_VIEWBOX = "0 0 290 200";
+const ENVELOPE_RADIUS = 9;
 
 // 以固定參數產生不規則的蠟滴輪廓，避免每次渲染形狀跳動。
 function waxBlobPath(cx, cy, radius, seed) {
@@ -71,6 +72,10 @@ export function EnvelopeDefs({ prefix }) {
         <feComposite in="tint" in2="SourceGraphic" operator="in" result="grain" />
         <feBlend in="grain" in2="SourceGraphic" mode="multiply" />
       </filter>
+      {/* 所有信封圖層共用同一個圓角外框，避免摺片尖角從圓角外露出 */}
+      <clipPath id={`${prefix}-env-clip`} clipPathUnits="userSpaceOnUse">
+        <rect width="290" height="200" rx={ENVELOPE_RADIUS} />
+      </clipPath>
       <filter id={`${prefix}-soft`} x="-10%" y="-10%" width="120%" height="130%">
         <feGaussianBlur stdDeviation="2.4" />
       </filter>
@@ -80,36 +85,44 @@ export function EnvelopeDefs({ prefix }) {
 
 export function EnvelopeBack({ prefix }) {
   return <svg className="sgr-svg" viewBox={ENVELOPE_VIEWBOX} preserveAspectRatio="none" aria-hidden="true" focusable="false">
-    <rect width="290" height="200" rx="9" fill={`url(#${prefix}-paper-back)`} filter={`url(#${prefix}-grain)`} />
-    {/* 信封內襯：信封蓋掀開後，從 V 形開口看得到的夜色花紋紙 */}
-    <rect x="7" y="6" width="276" height="150" rx="5" fill={`url(#${prefix}-lining)`} />
-    <rect x="7" y="6" width="276" height="150" rx="5" fill="none" stroke="#f4d9e3" strokeOpacity=".35" />
+    <g clipPath={`url(#${prefix}-env-clip)`}>
+      <rect width="290" height="200" rx={ENVELOPE_RADIUS} fill={`url(#${prefix}-paper-back)`} filter={`url(#${prefix}-grain)`} />
+      {/* 信封內襯：信封蓋掀開後，從 V 形開口看得到的夜色花紋紙 */}
+      <rect x="7" y="6" width="276" height="150" rx="5" fill={`url(#${prefix}-lining)`} />
+      <rect x="7" y="6" width="276" height="150" rx="5" fill="none" stroke="#f4d9e3" strokeOpacity=".35" />
+    </g>
   </svg>;
 }
 
 export function EnvelopeFront({ prefix }) {
   return <svg className="sgr-svg" viewBox={ENVELOPE_VIEWBOX} preserveAspectRatio="none" aria-hidden="true" focusable="false">
-    {/* 左右側摺片 */}
-    <path d="M0,2 L140,112 Q145,116 150,112 L290,2 V191 Q290,200 281,200 H9 Q0,200 0,191 Z" fill={`url(#${prefix}-paper-side)`} filter={`url(#${prefix}-grain)`} />
-    <path d="M0,2 L140,112 Q145,116 150,112 L290,2" fill="none" stroke="#fff" strokeOpacity=".75" strokeWidth="1.2" />
-    {/* 下摺片：邊緣帶一道柔和陰影，看起來疊在側摺片上 */}
-    <path d="M2,200 L128,104 Q145,91 162,104 L288,200 Z" fill="#7a5560" opacity=".22" filter={`url(#${prefix}-soft)`} transform="translate(0 -2)" />
-    <path d="M0,200 L128,106 Q145,93 162,106 L290,200 Z" fill={`url(#${prefix}-paper-bottom)`} filter={`url(#${prefix}-grain)`} />
-    <path d="M0,200 L128,106 Q145,93 162,106 L290,200" fill="none" stroke="#fff" strokeOpacity=".8" strokeWidth="1" />
+    <g clipPath={`url(#${prefix}-env-clip)`}>
+      {/* 左右側摺片 */}
+      <path d="M0,2 L140,112 Q145,116 150,112 L290,2 V191 Q290,200 281,200 H9 Q0,200 0,191 Z" fill={`url(#${prefix}-paper-side)`} filter={`url(#${prefix}-grain)`} />
+      <path d="M0,2 L140,112 Q145,116 150,112 L290,2" fill="none" stroke="#fff" strokeOpacity=".75" strokeWidth="1.2" />
+      {/* 下摺片：邊緣帶一道柔和陰影，看起來疊在側摺片上 */}
+      <path d="M2,200 L128,104 Q145,91 162,104 L288,200 Z" fill="#7a5560" opacity=".22" filter={`url(#${prefix}-soft)`} transform="translate(0 -2)" />
+      <path d="M0,200 L128,106 Q145,93 162,106 L290,200 Z" fill={`url(#${prefix}-paper-bottom)`} filter={`url(#${prefix}-grain)`} />
+      <path d="M0,200 L128,106 Q145,93 162,106 L290,200" fill="none" stroke="#fff" strokeOpacity=".8" strokeWidth="1" />
+    </g>
   </svg>;
 }
 
 export function EnvelopeFlap({ prefix }) {
   return <>
     <svg className="sgr-svg sgr-flap-face" viewBox={ENVELOPE_VIEWBOX} preserveAspectRatio="none" aria-hidden="true" focusable="false">
-      <path d="M2,8 L143,132 Q145,134 147,132 L288,8 Z" fill="#6d4b56" opacity=".28" filter={`url(#${prefix}-soft)`} />
-      <path d="M0,6 Q0,0 7,0 H283 Q290,0 290,6 L155,120 Q145,129 135,120 Z" fill={`url(#${prefix}-paper-flap)`} filter={`url(#${prefix}-grain)`} />
-      <path d="M0,6 L135,120 Q145,129 155,120 L290,6" fill="none" stroke="#fff" strokeOpacity=".7" strokeWidth="1" />
+      <g clipPath={`url(#${prefix}-env-clip)`}>
+        <path d="M2,8 L143,132 Q145,134 147,132 L288,8 Z" fill="#6d4b56" opacity=".28" filter={`url(#${prefix}-soft)`} />
+        <path d="M0,6 Q0,0 7,0 H283 Q290,0 290,6 L155,120 Q145,129 135,120 Z" fill={`url(#${prefix}-paper-flap)`} filter={`url(#${prefix}-grain)`} />
+        <path d="M0,6 L135,120 Q145,129 155,120 L290,6" fill="none" stroke="#fff" strokeOpacity=".7" strokeWidth="1" />
+      </g>
     </svg>
     {/* 信封蓋內側：翻開後朝向玩家的一面，底邊貼齊信封上緣、尖端朝上 */}
     <svg className="sgr-svg sgr-flap-inner" viewBox={ENVELOPE_VIEWBOX} preserveAspectRatio="none" aria-hidden="true" focusable="false">
-      <path d="M0,194 Q0,200 7,200 H283 Q290,200 290,194 L155,80 Q145,71 135,80 Z" fill={`url(#${prefix}-paper-back)`} filter={`url(#${prefix}-grain)`} />
-      <path d="M12,196 L145,84 L278,196 Z" fill={`url(#${prefix}-lining)`} opacity=".9" />
+      <g clipPath={`url(#${prefix}-env-clip)`}>
+        <path d="M0,194 Q0,200 7,200 H283 Q290,200 290,194 L155,80 Q145,71 135,80 Z" fill={`url(#${prefix}-paper-back)`} filter={`url(#${prefix}-grain)`} />
+        <path d="M12,196 L145,84 L278,196 Z" fill={`url(#${prefix}-lining)`} opacity=".9" />
+      </g>
     </svg>
   </>;
 }
