@@ -1,6 +1,10 @@
 import { toSimplifiedChinese } from "../utils/i18n.js";
 
 const ZH_CHANGELOG = {
+  "1.2.20": [
+    "開發中",
+    "櫻色誓約｜全新召喚揭曉演出：每張卡先以封蠟信封登場，蠟封顏色預告稀有度；拆封後卡片從信封抽出翻面，並以打字機效果顯示卡片台詞。SSR 會換上月光幕布、星塵環繞與花瓣飄落，十連中的 R 卡會自動快速拆封。結算頁新增「初次收藏」標記，並提供可選的合成音效（預設靜音）與減少動態效果支援。",
+  ],
   "1.2.19": [
     "09/12 修正更新",
     "聊天截圖｜修正同一天多次截圖可能產生重複檔名、覆蓋舊圖的問題。",
@@ -150,6 +154,20 @@ const ZH_CHANGELOG = {
 };
 
 const TRANSLATED_CHANGELOG = {
+  "1.2.20": {
+    en: [
+      "In development",
+      "Sakura Vow | New summon reveal: each card arrives as a wax-sealed letter whose seal color hints at its rarity. Opening it draws the card out, flips it over, and types out the card's line. SSR cards get a moonlit backdrop, orbiting stardust, and falling petals, while R cards open quickly during 10-pulls. The results screen marks first-time cards as New, with optional synthesized sound (muted by default) and reduced-motion support.",
+    ],
+    ja: [
+      "開発中",
+      "桜色の誓い｜召喚演出を一新しました。カードは封蝋付きの手紙として届き、封蝋の色でレア度を予告します。開封するとカードが手紙から引き出されて表を向き、カードのセリフがタイプライター風に表示されます。SSR は月光の背景、周回する星屑、舞い散る花びらで演出され、10連の R カードは自動で素早く開封されます。結果画面には「初入手」マークを追加し、任意の合成サウンド（初期設定はミュート）と視差効果を減らす設定にも対応しました。",
+    ],
+    ko: [
+      "개발 중",
+      "벚꽃빛 맹세 | 소환 공개 연출을 새롭게 바꿨습니다. 카드는 봉랍 편지로 도착하며 봉랍 색으로 희귀도를 예고합니다. 편지를 열면 카드가 꺼내져 앞면으로 뒤집히고 카드 대사가 타자기처럼 표시됩니다. SSR은 달빛 배경, 주위를 도는 별가루, 흩날리는 꽃잎으로 연출되며 10연차의 R 카드는 자동으로 빠르게 열립니다. 결과 화면에 '첫 소장' 표시를 추가했고, 선택형 합성 효과음(기본 음소거)과 동작 줄이기 설정을 지원합니다.",
+    ],
+  },
   "1.2.19": {
     en: [
       "09/12 Fix Update",
