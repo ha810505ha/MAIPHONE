@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import GachaCardVisual from "./GachaCardVisual";
+import { EnvelopeBack, EnvelopeDefs, EnvelopeFlap, EnvelopeFront, WaxSeal } from "./EnvelopeSvg";
 import { RevealAudio, RevealParticleField } from "./revealFx";
 import { normalizeUiLanguage, translate } from "../../utils/i18n";
 
@@ -66,6 +67,7 @@ export default function GachaRevealSequence({ items, knownIds, onClose }) {
   const locale = useMemo(() => normalizeUiLanguage(typeof document === "undefined" ? "" : document.documentElement.lang), []);
   const tr = useCallback((key) => translate(locale, TEXT[key]), [locale]);
   const reduced = useMemo(prefersReducedMotion, []);
+  const svgPrefix = `sgr${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   const [index, setIndex] = useState(0);
   const [phase, setPhaseState] = useState("sealed");
   const [cracked, setCracked] = useState(false);
@@ -293,6 +295,7 @@ export default function GachaRevealSequence({ items, knownIds, onClose }) {
     onClick={() => { if (!summary) handleTap(); }}
   >
     <style>{REVEAL_CSS}</style>
+    <EnvelopeDefs prefix={svgPrefix} />
     <div className="sgr-sky" aria-hidden="true" />
     <div className="sgr-curtain" aria-hidden="true"><span className="sgr-halo" /></div>
     <div className="sgr-rays" aria-hidden="true"><span /><span /></div>
@@ -300,14 +303,14 @@ export default function GachaRevealSequence({ items, knownIds, onClose }) {
     {!summary && current && <>
       <div key={current.uid} className="sgr-stage">
         <span className="sgr-glow" aria-hidden="true" />
-        <div className="sgr-env sgr-env-back" aria-hidden="true"><span className="sgr-env-slit" /></div>
+        <div className="sgr-env sgr-env-back" aria-hidden="true"><EnvelopeBack prefix={svgPrefix} /><span className="sgr-env-slit" /></div>
         <div className="sgr-card">
           <div className="sgr-face sgr-back" aria-hidden="true"><span className="sgr-back-mark">✿</span><span className="sgr-back-label">{BRAND_LABEL}</span></div>
           <CardFront item={current} />
         </div>
-        <div className="sgr-env sgr-env-front" aria-hidden="true"><span className="sgr-env-stamp">{CATEGORY_STAMPS[current.category] || "🌸"}</span></div>
-        <div className="sgr-env sgr-env-flap" aria-hidden="true" />
-        <div className="sgr-seal" aria-hidden="true"><span className="sgr-seal-half left" /><span className="sgr-seal-half right" /><span className="sgr-seal-mark">✿</span></div>
+        <div className="sgr-env sgr-env-front" aria-hidden="true"><EnvelopeFront prefix={svgPrefix} /><span className="sgr-env-stamp">{CATEGORY_STAMPS[current.category] || "🌸"}</span></div>
+        <div className="sgr-env sgr-env-flap" aria-hidden="true"><EnvelopeFlap prefix={svgPrefix} /></div>
+        <div className="sgr-seal" aria-hidden="true"><span className="sgr-seal-half left"><WaxSeal prefix={svgPrefix} /></span><span className="sgr-seal-half right"><WaxSeal prefix={svgPrefix} /></span></div>
       </div>
       <div className="sgr-flash" aria-hidden="true" />
       <div className="sgr-caption" aria-live="polite">
@@ -365,24 +368,22 @@ const REVEAL_CSS = `
 .sgr-glow{position:absolute;inset:-4%;border-radius:28px;background:radial-gradient(closest-side,var(--sgr-glow),transparent);filter:blur(22px);opacity:0;transition:opacity .5s ease}
 .is-revealing .sgr-glow,.is-shown .sgr-glow{opacity:.55}.is-ssr-stage .sgr-glow{opacity:.85;inset:-9%}
 .sgr-env{position:absolute;left:4%;width:92%;top:calc(50% - var(--sgr-card-w)*.317);height:calc(var(--sgr-card-w)*.634);border-radius:10px}
-.sgr-env-back{background:linear-gradient(160deg,#efe1dc,#d9c2c3);box-shadow:0 22px 40px #0007,inset 0 0 0 1px #fff6;overflow:hidden}
+.sgr-env-back{box-shadow:0 22px 40px #0007;overflow:hidden}
+.sgr-svg{position:absolute;inset:0;width:100%;height:100%;display:block;overflow:visible}.sgr-svg-defs{position:absolute;width:0;height:0;overflow:hidden}
 .sgr-env-slit{position:absolute;left:10%;right:10%;top:-30%;height:80%;border-radius:50%;background:radial-gradient(closest-side,color-mix(in srgb,var(--sgr-accent) 85%,#fff),transparent);opacity:0;filter:blur(6px)}
-.sgr-env-front{background:linear-gradient(175deg,#fbf3ef,#ead9d6 70%,#e1cccb);clip-path:polygon(0 0,50% 58%,100% 0,100% 100%,0 100%);box-shadow:inset 0 -1px 0 #fff8}
-.sgr-env-front:before{content:"";position:absolute;inset:0;background:linear-gradient(33deg,transparent 49.4%,#c9aeb055 50%,transparent 50.6%),linear-gradient(-33deg,transparent 49.4%,#c9aeb055 50%,transparent 50.6%)}
 .sgr-env-stamp{position:absolute;right:7%;bottom:9%;width:17%;aspect-ratio:1;display:grid;place-items:center;border:1.5px dashed #b8969b;border-radius:4px;font-size:calc(var(--sgr-card-w)*.075);background:#fff8;filter:saturate(.8)}
-.sgr-env-flap{background:linear-gradient(180deg,#f6ebe7,#e3cfcd);clip-path:polygon(0 0,100% 0,50% 64%);transform-origin:50% 0;z-index:4;backface-visibility:visible}
+.sgr-env-flap{transform-origin:50% 0;z-index:4;transform-style:preserve-3d}
+.sgr-flap-face,.sgr-flap-inner{backface-visibility:hidden;-webkit-backface-visibility:hidden}.sgr-flap-inner{transform:rotateX(180deg)}
 .sgr-env-front{z-index:3}.sgr-env-back{z-index:1}
-.sgr-seal{position:absolute;z-index:5;left:50%;top:calc(50% - var(--sgr-card-w)*.317 + var(--sgr-card-w)*.634*.6);width:calc(var(--sgr-card-w)*.2);aspect-ratio:1;translate:-50% -50%}
-.sgr-seal-half,.sgr-seal-mark{position:absolute;inset:0;border-radius:50%}
-.sgr-seal-half{background:radial-gradient(circle at 35% 30%,var(--sgr-seal2),var(--sgr-seal) 62%,color-mix(in srgb,var(--sgr-seal) 70%,#000));box-shadow:inset 0 0 0 3px color-mix(in srgb,var(--sgr-seal) 80%,#000 10%);transition:transform .45s cubic-bezier(.3,1.4,.5,1),opacity .45s ease,background .3s}
+.sgr-seal{position:absolute;z-index:5;left:50%;top:calc(50% - var(--sgr-card-w)*.317 + var(--sgr-card-w)*.634*.62);width:calc(var(--sgr-card-w)*.24);aspect-ratio:1;translate:-50% -50%}
+.sgr-seal-half{position:absolute;inset:0;transition:transform .45s cubic-bezier(.3,1.4,.5,1),opacity .45s ease}
 .sgr-seal-half.left{clip-path:polygon(0 0,52% 0,44% 40%,56% 62%,46% 100%,0 100%)}.sgr-seal-half.right{clip-path:polygon(52% 0,100% 0,100% 100%,46% 100%,56% 62%,44% 40%)}
-.sgr-seal-mark{display:grid;place-items:center;color:#fff;font-size:calc(var(--sgr-card-w)*.1);text-shadow:0 1px 2px #0006;transition:opacity .2s}
 [data-rarity="SSR"].is-sealed .sgr-seal{animation:sgrHeartbeat 1.4s ease-in-out infinite}
-.sgr-seal{filter:drop-shadow(0 3px 5px #0005)}[data-rarity="SSR"] .sgr-seal{filter:drop-shadow(0 0 8px #ffd86dbb) drop-shadow(0 3px 5px #0005)}[data-rarity="SSR"] .sgr-seal-half{box-shadow:inset 0 0 0 3px #a8791c}
+.sgr-seal{filter:drop-shadow(0 3px 5px #0005)}[data-rarity="SSR"] .sgr-seal{filter:drop-shadow(0 0 8px #ffd86dbb) drop-shadow(0 3px 5px #0005)}
 .is-opening .sgr-seal{animation:sgrTremble .12s linear infinite}
 .is-opening[data-rarity="SSR"] .sgr-seal{animation:sgrTremble .09s linear infinite}
 .is-cracked .sgr-seal{animation:none}
-.is-cracked .sgr-seal-half.left{transform:translate(-45%,30%) rotate(-38deg);opacity:0}.is-cracked .sgr-seal-half.right{transform:translate(45%,34%) rotate(34deg);opacity:0}.is-cracked .sgr-seal-mark{opacity:0}
+.is-cracked .sgr-seal-half.left{transform:translate(-45%,30%) rotate(-38deg);opacity:0}.is-cracked .sgr-seal-half.right{transform:translate(45%,34%) rotate(34deg);opacity:0}
 .is-cracked .sgr-env-flap{animation:sgrFlap calc(var(--sgr-open-ms)*.45) cubic-bezier(.3,.7,.3,1) forwards}
 .is-revealing .sgr-env-flap,.is-shown .sgr-env-flap{transform:rotateX(180deg);z-index:1}
 [data-rarity="SR"].is-opening .sgr-env-slit,[data-rarity="SSR"].is-opening .sgr-env-slit{animation:sgrSlit var(--sgr-open-ms) ease-in forwards}
