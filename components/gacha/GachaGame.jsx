@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { GACHA_POOL, useGacha } from "../../contexts/GachaContext";
 import GachaRevealSequence from "./GachaRevealSequence";
 import GachaCardVisual from "./GachaCardVisual";
+import { preloadEnvelopeImages } from "./envelopeAssets";
 import { confirmLocalized } from "../../utils/i18n";
 
 const colors = { SSR: ["#504160", "#f0bfd5"], SR: ["#a66f81", "#f5d2dc"], R: ["#74769c", "#dddff3"] };
@@ -38,6 +39,7 @@ export default function GachaGame({ characters = [], onBack, onOpenChat }) {
   const [gift, setGift] = useState(null);
   const [characterId, setCharacterId] = useState("");
   const [mode, setMode] = useState("reality");
+  useEffect(() => { preloadEnvelopeImages(); }, []);
   const groupedInventory = useMemo(() => {
     const groups = new Map();
     inventory.forEach((item) => {

@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import GachaCardVisual from "./GachaCardVisual";
-import { EnvelopeBack, EnvelopeDefs, EnvelopeFlap, EnvelopeFront, WaxSeal } from "./EnvelopeSvg";
+import { ENVELOPE_IMAGES, SEAL_IMAGES } from "./envelopeAssets";
 import { RevealAudio, RevealParticleField } from "./revealFx";
 import { normalizeUiLanguage, translate } from "../../utils/i18n";
 
@@ -11,12 +11,11 @@ const REVEAL_TUNING = { particleScale: 1, flashScale: 1, typeSpeedMs: 42, fakeOu
 
 // 各稀有度的色彩與節奏（毫秒）。openMs：拆封；revealMs：卡片抽出到定位；crackAt：蠟封裂開的時間點比例。
 const RARITY_FX = {
-  R: { accent: "#aeb9ea", glow: "#8999d4", seal: "#7f8bbf", seal2: "#a9b3de", petals: ["#dfe3f7", "#c3cbef"], burst: 10, inhale: 0, flash: 0.22, openMs: 700, revealMs: 850, quickOpenMs: 380, quickRevealMs: 620, crackAt: 0.2 },
-  SR: { accent: "#e9a1ca", glow: "#ef9ac2", seal: "#c9678f", seal2: "#f0a6c6", petals: ["#ffd6e7", "#f4a7cb", "#fff0f6"], burst: 26, inhale: 14, flash: 0.42, openMs: 1000, revealMs: 950, crackAt: 0.35 },
-  SSR: { accent: "#f4d574", glow: "#ffd86d", seal: "#c2922c", seal2: "#f6dc8a", petals: ["#ffe9b0", "#ffd6e7", "#fff6dc"], burst: 50, inhale: 42, flash: 0.6, openMs: 1800, revealMs: 1300, crackAt: 0.62 },
+  R: { accent: "#aeb9ea", glow: "#8999d4", petals: ["#dfe3f7", "#c3cbef"], burst: 10, inhale: 0, flash: 0.22, openMs: 700, revealMs: 850, quickOpenMs: 380, quickRevealMs: 620, crackAt: 0.2 },
+  SR: { accent: "#e9a1ca", glow: "#ef9ac2", petals: ["#ffd6e7", "#f4a7cb", "#fff0f6"], burst: 26, inhale: 14, flash: 0.42, openMs: 1000, revealMs: 950, crackAt: 0.35 },
+  SSR: { accent: "#f4d574", glow: "#ffd86d", petals: ["#ffe9b0", "#ffd6e7", "#fff6dc"], burst: 50, inhale: 42, flash: 0.6, openMs: 1800, revealMs: 1300, crackAt: 0.62 },
 };
 
-const CATEGORY_STAMPS = { item: "🎁", scene: "🌙", location: "📍", event: "✉️", character: "💞", memory: "📷", daily: "☕", dream: "⭐" };
 const BRAND_LABEL = "SAKURA VOW";
 const MUTE_STORAGE_KEY = "mp_gacha_reveal_muted";
 
@@ -67,7 +66,6 @@ export default function GachaRevealSequence({ items, knownIds, onClose }) {
   const locale = useMemo(() => normalizeUiLanguage(typeof document === "undefined" ? "" : document.documentElement.lang), []);
   const tr = useCallback((key) => translate(locale, TEXT[key]), [locale]);
   const reduced = useMemo(prefersReducedMotion, []);
-  const svgPrefix = `sgr${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   const [index, setIndex] = useState(0);
   const [phase, setPhaseState] = useState("sealed");
   const [cracked, setCracked] = useState(false);
@@ -275,8 +273,7 @@ export default function GachaRevealSequence({ items, knownIds, onClose }) {
   const style = {
     "--sgr-accent": (revealed ? fx : sealFx).accent,
     "--sgr-glow": (revealed ? fx : sealFx).glow,
-    "--sgr-seal": sealFx.seal,
-    "--sgr-seal2": sealFx.seal2,
+    "--sgr-seal-img": `url("${SEAL_IMAGES[shownRarity] || SEAL_IMAGES.SR}")`,
     "--sgr-open-ms": `${reduced ? 220 : quick ? fx.quickOpenMs : fx.openMs}ms`,
     "--sgr-reveal-ms": `${reduced ? 260 : quick ? fx.quickRevealMs : fx.revealMs}ms`,
     "--sgr-flash-peak": Math.min(0.8, fx.flash * REVEAL_TUNING.flashScale),
@@ -295,7 +292,6 @@ export default function GachaRevealSequence({ items, knownIds, onClose }) {
     onClick={() => { if (!summary) handleTap(); }}
   >
     <style>{REVEAL_CSS}</style>
-    <EnvelopeDefs prefix={svgPrefix} />
     <div className="sgr-sky" aria-hidden="true" />
     <div className="sgr-curtain" aria-hidden="true"><span className="sgr-halo" /></div>
     <div className="sgr-rays" aria-hidden="true"><span /><span /></div>
@@ -303,14 +299,14 @@ export default function GachaRevealSequence({ items, knownIds, onClose }) {
     {!summary && current && <>
       <div key={current.uid} className="sgr-stage">
         <span className="sgr-glow" aria-hidden="true" />
-        <div className="sgr-env sgr-env-back" aria-hidden="true"><EnvelopeBack prefix={svgPrefix} /><span className="sgr-env-slit" /></div>
+        <div className="sgr-env sgr-env-back" aria-hidden="true"><img src={ENVELOPE_IMAGES.lining} alt="" draggable="false" /><span className="sgr-env-slit" /></div>
         <div className="sgr-card">
           <div className="sgr-face sgr-back" aria-hidden="true"><span className="sgr-back-mark">✿</span><span className="sgr-back-label">{BRAND_LABEL}</span></div>
           <CardFront item={current} />
         </div>
-        <div className="sgr-env sgr-env-front" aria-hidden="true"><EnvelopeFront prefix={svgPrefix} /><span className="sgr-env-stamp">{CATEGORY_STAMPS[current.category] || "🌸"}</span></div>
-        <div className="sgr-env sgr-env-flap" aria-hidden="true"><EnvelopeFlap prefix={svgPrefix} /></div>
-        <div className="sgr-seal" aria-hidden="true"><span className="sgr-seal-half left"><WaxSeal prefix={svgPrefix} /></span><span className="sgr-seal-half right"><WaxSeal prefix={svgPrefix} /></span></div>
+        <div className="sgr-env sgr-env-front" aria-hidden="true"><img src={ENVELOPE_IMAGES.pocket} alt="" draggable="false" /></div>
+        <div className="sgr-env sgr-env-flap" aria-hidden="true"><img className="sgr-flap-outer" src={ENVELOPE_IMAGES.flapOuter} alt="" draggable="false" /><span className="sgr-flap-inner"><img src={ENVELOPE_IMAGES.flapInner} alt="" draggable="false" /></span></div>
+        <div className="sgr-seal" aria-hidden="true"><span className="sgr-seal-half left" /><span className="sgr-seal-half right" /></div>
       </div>
       <div className="sgr-flash" aria-hidden="true" />
       <div className="sgr-caption" aria-live="polite">
@@ -367,16 +363,19 @@ const REVEAL_CSS = `
 .is-sealed .sgr-stage{animation:sgrFloat 3.2s ease-in-out infinite}
 .sgr-glow{position:absolute;inset:-4%;border-radius:28px;background:radial-gradient(closest-side,var(--sgr-glow),transparent);filter:blur(22px);opacity:0;transition:opacity .5s ease}
 .is-revealing .sgr-glow,.is-shown .sgr-glow{opacity:.55}.is-ssr-stage .sgr-glow{opacity:.85;inset:-9%}
-.sgr-env{position:absolute;left:4%;width:92%;top:calc(50% - var(--sgr-card-w)*.317);height:calc(var(--sgr-card-w)*.634);border-radius:3.1%/4.5%}
-.sgr-env-back{box-shadow:0 22px 40px #0007;overflow:hidden}
-.sgr-svg{position:absolute;inset:0;width:100%;height:100%;display:block;overflow:visible}.sgr-svg-defs{position:absolute;width:0;height:0;overflow:hidden}
-.sgr-env-slit{position:absolute;left:10%;right:10%;top:-30%;height:80%;border-radius:50%;background:radial-gradient(closest-side,color-mix(in srgb,var(--sgr-accent) 85%,#fff),transparent);opacity:0;filter:blur(6px)}
-.sgr-env-stamp{position:absolute;right:7%;bottom:9%;width:17%;aspect-ratio:1;display:grid;place-items:center;border:1.5px dashed #b8969b;border-radius:4px;font-size:calc(var(--sgr-card-w)*.075);background:#fff8;filter:saturate(.8)}
-.sgr-env-flap{transform-origin:50% 0;z-index:4;transform-style:preserve-3d}
-.sgr-flap-face,.sgr-flap-inner{backface-visibility:hidden;-webkit-backface-visibility:hidden}.sgr-flap-inner{transform:rotateX(180deg)}
+/* 信封圖層共用同一個畫布（1252×1041 素材座標）：本體上緣＝鉸鏈 38.23%，本體中心對齊舞台中心 */
+.sgr-env{position:absolute;left:50%;width:calc(var(--sgr-card-w)*1.25);margin-left:calc(var(--sgr-card-w)*-.625);aspect-ratio:1252/1041;top:calc(50% - var(--sgr-card-w)*.698);pointer-events:none}
+.sgr-env img{position:absolute;left:0;top:0;width:100%;height:auto;display:block;user-select:none;-webkit-user-drag:none}
+.sgr-env-back{filter:drop-shadow(0 18px 22px #0008)}
+.sgr-env-front img{filter:drop-shadow(0 -1px 2px #5a2f3c33)}
+.sgr-env-slit{position:absolute;left:12%;right:12%;top:36%;height:30%;border-radius:50%;background:radial-gradient(closest-side,color-mix(in srgb,var(--sgr-accent) 85%,#fff),transparent);opacity:0;filter:blur(8px)}
+.sgr-env-flap{transform-origin:50% 38.23%;z-index:4;transform-style:preserve-3d}
+.sgr-env .sgr-flap-outer{top:38.23%;backface-visibility:hidden;-webkit-backface-visibility:hidden;filter:drop-shadow(0 3px 3px #5a2f3c40)}
+/* 內側先自身翻轉 180°，信封蓋繞鉸鏈翻開後正好朝向玩家、尖端朝上 */
+.sgr-flap-inner{position:absolute;left:0;top:38.23%;width:100%;height:37.08%;transform:rotateX(180deg);backface-visibility:hidden;-webkit-backface-visibility:hidden}.sgr-env .sgr-flap-inner img{height:100%}
 .sgr-env-front{z-index:3}.sgr-env-back{z-index:1}
-.sgr-seal{position:absolute;z-index:5;left:50%;top:calc(50% - var(--sgr-card-w)*.317 + var(--sgr-card-w)*.634*.62);width:calc(var(--sgr-card-w)*.24);aspect-ratio:1;translate:-50% -50%}
-.sgr-seal-half{position:absolute;inset:0;transition:transform .45s cubic-bezier(.3,1.4,.5,1),opacity .45s ease}
+.sgr-seal{position:absolute;z-index:5;left:calc(50% - var(--sgr-card-w)*.005);top:calc(50% + var(--sgr-card-w)*.121);width:calc(var(--sgr-card-w)*.233);aspect-ratio:1;translate:-50% -50%}
+.sgr-seal-half{position:absolute;inset:0;background:var(--sgr-seal-img) center/contain no-repeat;transition:transform .45s cubic-bezier(.3,1.4,.5,1),opacity .45s ease}
 .sgr-seal-half.left{clip-path:polygon(0 0,52% 0,44% 40%,56% 62%,46% 100%,0 100%)}.sgr-seal-half.right{clip-path:polygon(52% 0,100% 0,100% 100%,46% 100%,56% 62%,44% 40%)}
 [data-rarity="SSR"].is-sealed .sgr-seal{animation:sgrHeartbeat 1.4s ease-in-out infinite}
 .sgr-seal{filter:drop-shadow(0 3px 5px #0005)}[data-rarity="SSR"] .sgr-seal{filter:drop-shadow(0 0 8px #ffd86dbb) drop-shadow(0 3px 5px #0005)}
@@ -389,8 +388,8 @@ const REVEAL_CSS = `
 [data-rarity="SR"].is-opening .sgr-env-slit,[data-rarity="SSR"].is-opening .sgr-env-slit{animation:sgrSlit var(--sgr-open-ms) ease-in forwards}
 .is-revealing .sgr-env{animation:sgrEnvAway var(--sgr-reveal-ms) ease-in forwards}
 .is-shown .sgr-env,.is-shown .sgr-seal,.is-revealing .sgr-seal{opacity:0;visibility:hidden}
-.sgr-card{position:absolute;inset:0;z-index:2;transform-style:preserve-3d;transform:translateY(-1%) scale(.4) rotateY(180deg);transition:transform .35s ease}
-.is-cracked.is-opening .sgr-card{transform:translateY(-5%) scale(.4) rotateY(180deg)}
+.sgr-card{position:absolute;inset:0;z-index:2;transform-style:preserve-3d;transform:translateY(0) scale(.36) rotateY(180deg);transition:transform .35s ease}
+.is-cracked.is-opening .sgr-card{transform:translateY(-6%) scale(.36) rotateY(180deg)}
 .is-revealing .sgr-card{animation:sgrRise var(--sgr-reveal-ms) cubic-bezier(.25,.8,.3,1) forwards}
 .is-shown .sgr-card{transform:none;transition:none}
 .sgr-face{position:absolute;inset:0;border-radius:18px;overflow:hidden;backface-visibility:hidden;-webkit-backface-visibility:hidden;display:grid;place-items:center}
@@ -445,8 +444,8 @@ const REVEAL_CSS = `
 @keyframes sgrTremble{0%{transform:translate(0,0) rotate(0)}25%{transform:translate(-1.5px,1px) rotate(-3deg)}50%{transform:translate(1.5px,-1px) rotate(2deg)}75%{transform:translate(-1px,-1px) rotate(3deg)}100%{transform:translate(0,0) rotate(0)}}
 @keyframes sgrFlap{0%{transform:rotateX(0);z-index:4}49%{z-index:4}50%{z-index:1}100%{transform:rotateX(180deg);z-index:1}}
 @keyframes sgrSlit{0%{opacity:0}60%{opacity:.5}100%{opacity:1}}
-@keyframes sgrEnvAway{0%,32%{opacity:1;translate:0 0}68%,100%{opacity:0;translate:0 34%}}
-@keyframes sgrRise{0%{transform:translateY(-5%) scale(.4) rotateY(180deg)}36%{transform:translateY(-36%) scale(.44) rotateY(180deg)}72%{transform:translateY(-3%) scale(1.05) rotateY(-10deg)}86%{transform:translateY(0) scale(.985) rotateY(4deg)}100%{transform:none}}
+@keyframes sgrEnvAway{0%,26%{opacity:1;translate:0 0}56%,100%{opacity:0;translate:0 30%}}
+@keyframes sgrRise{0%{transform:translateY(-6%) scale(.36) rotateY(180deg)}36%{transform:translateY(-40%) scale(.42) rotateY(180deg)}72%{transform:translateY(-3%) scale(1.05) rotateY(-10deg)}86%{transform:translateY(0) scale(.985) rotateY(4deg)}100%{transform:none}}
 @keyframes sgrFlash{0%{opacity:0}18%{opacity:var(--sgr-flash-peak)}100%{opacity:0}}
 @keyframes sgrRiseIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes sgrSpin{to{rotate:360deg}}
