@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import BackButton from "../common/BackButton";
 import { HOME_GESTURE, resolveLibrarySwipe, rubberBand } from "../../utils/homeGesture.js";
 import MotionPresence from "../motion/MotionPresence.jsx";
 
@@ -246,7 +247,7 @@ export function AllAppsDrawer({ open, apps, placedIds, renderAppIcon, tr, onClos
       }}
     >
       <div className="mp-library-head">
-        <button className="mp-back mp-library-close" onClick={selectionMode ? cancelSelection : onClose} aria-label={tr("返回", "Back", "戻る", "뒤로")}>←</button>
+        <BackButton className="mp-library-close" onClick={selectionMode ? cancelSelection : onClose} label={tr("返回", "Back", "戻る", "뒤로")} />
         <strong>{selectionMode ? tr("選擇 App", "Select apps", "アプリを選択", "앱 선택") : tr("全部 App", "All apps", "すべてのアプリ", "모든 앱")}</strong>
         {!selectionMode && <button className="mp-library-settings" onClick={() => setSettingsOpen((value) => !value)} aria-label={tr("設定", "Settings", "設定", "설정")}>⚙</button>}
         {selectionMode && <button className="mp-library-select-all" onClick={toggleSelectAll}>

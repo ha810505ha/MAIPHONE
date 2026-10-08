@@ -8,6 +8,7 @@ import {
 } from "../../utils/indexedDbStorage";
 import { FEATURE_DATA_CHANGED_EVENT, featureDataEventIncludes } from "../../services/featureDataLifecycle";
 import { NOTES_ENTITY_KEY, upsertNoteDraft } from "../../utils/notesPersistence";
+import { AppHeader, LargeTitle, LargeTitleHeader, SUB_PAGE_CLASS, useLargeTitle } from "../shell/LargeTitle";
 
 const KEY = NOTES_ENTITY_KEY;
 const NOTE_UI_TEXT = {
@@ -88,6 +89,8 @@ const htmlOf = (value = "") =>
         .replace(/\n/g, "<br>");
 
 export default function NotesApp({ onBack, tr }) {
+  const largeTitle = useLargeTitle();
+  const notesTitle = tr("筆記", "Notes", "ノート", "노트");
   const [notes, setNotes] = useState(null),
     [query, setQuery] = useState(""),
     [filter, setFilter] = useState("all"),
@@ -288,10 +291,9 @@ export default function NotesApp({ onBack, tr }) {
           minHeight: 0,
         }}
       >
-        <div className="mp-hdr">
-          <div
-            className="mp-back"
-            onClick={() => {
+        <AppHeader
+          title={`${draft.privacy === "private" ? "🔒 " : ""}${draft.title || tr("新增筆記", "New note", "新しいノート", "새 노트")}`}
+          onBack={() => {
               clearTimeout(timerRef.current);
               timerRef.current = null;
               void persistCurrentDraft().catch((error) => console.error("[notes] 返回前儲存失敗", error));
@@ -299,14 +301,9 @@ export default function NotesApp({ onBack, tr }) {
               latestContentRef.current = null;
               setDraft(null);
             }}
-          >
-            ←
-          </div>
-          <div className="mp-htitle">{draft.privacy === "private" ? "🔒 " : ""}{draft.title || "新增筆記"}</div>
-          <div style={{ marginLeft: "auto", color: "#a78390", fontSize: 12 }}>
-            自動儲存
-          </div>
-        </div>
+          backLabel={tr("返回筆記列表", "Back to notes", "ノート一覧に戻る", "노트 목록으로")}
+          right={<span className="mp-hdr-note">{tr("自動儲存", "Auto-saved", "自動保存", "자동 저장")}</span>}
+        />
         <div
           style={{
             padding: "14px 18px max(18px, env(safe-area-inset-bottom))",
@@ -483,7 +480,8 @@ export default function NotesApp({ onBack, tr }) {
     );
   return (
     <div
-        className="mp-page"
+        className={largeTitle.pageClassName}
+      onScroll={largeTitle.onScroll}
         ref={rootRef}
       data-mp-surface="light"
       style={{
@@ -496,12 +494,8 @@ export default function NotesApp({ onBack, tr }) {
         boxSizing: "border-box",
       }}
     >
-      <div className="mp-hdr">
-        <div className="mp-back" onClick={onBack}>
-          ←
-        </div>
-        <div className="mp-htitle">筆記</div>
-      </div>
+      <LargeTitleHeader title={notesTitle} onBack={onBack} backLabel={tr("返回首頁", "Back to Home", "ホームに戻る", "홈으로 돌아가기")} />
+      <LargeTitle title={notesTitle} />
       <div style={{ padding: 14 }}>
         <input
           value={query}

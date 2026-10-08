@@ -25,7 +25,8 @@ body{position:fixed;inset:0;}
 @keyframes mpTail{0%,100%{transform:rotate(-5deg)}50%{transform:rotate(5deg)}}
 .mp-lock-time{font-family:var(--mp-fontd);font-size:68px;font-weight:300;letter-spacing:-2px;color:var(--mp-txt);text-shadow:0 2px 20px color-mix(in srgb,var(--mp-pink) 25%,transparent);}
 .mp-lock-date{font-size:15px;font-weight:500;color:var(--mp-txt-l);margin-top:2px;letter-spacing:2px;}
-.mp-lock-hint{position:absolute;bottom:60px;font-size:13px;color:var(--mp-txt-l);animation:mpFloat 2s ease-in-out infinite;}
+.mp-lock-hint{position:absolute;bottom:60px;font-size:13px;color:var(--mp-lock-hint,var(--mp-txt));animation:mpHintFloat 2.2s ease-in-out 1s 3;}
+@keyframes mpHintFloat{0%,100%{transform:translateY(0);opacity:1}50%{transform:translateY(-6px);opacity:.72}}
 /* flex:0 1 auto 讓通知區只佔內容高度，多了才捲動。
    若改成 flex:1，空白處會變成看不見的攔截層，把解鎖的上滑手勢吃掉。
    下方留白用 margin 而非 padding，同理：padding 會把可點區域一起撐大。 */
@@ -166,6 +167,273 @@ body{position:fixed;inset:0;}
   from{transform:scale(.97)}
   to{transform:scale(1)}
 }
+/* 首頁 ⇄ App：從圖示展開、縮回圖示（utils/appLaunchMotion.js 設定 data-app-motion 與 --mp-launch-*）。 */
+.mp-app-stage{display:contents;}
+.mp-app-ghost{display:none;}
+.mp-phone[data-app-motion="opening"] .mp-app-stage,
+.mp-phone[data-app-motion="closing"] .mp-app-ghost{display:block;position:absolute;inset:0;z-index:40;transform-origin:var(--mp-launch-origin,50% 50%);will-change:transform,clip-path,opacity;}
+.mp-phone[data-app-motion="opening"] .mp-app-stage{pointer-events:none;animation:mpAppLaunchIn 420ms cubic-bezier(.2,.86,.22,1) both;}
+.mp-phone[data-app-motion="closing"] .mp-app-ghost{pointer-events:none;animation:mpAppLaunchOut 360ms cubic-bezier(.4,0,.12,1) both;}
+.mp-app-stage[data-launched]>.mp-page,.mp-app-ghost>.mp-page{animation:none;}
+.mp-phone[data-app-motion] .mp-desk{transform-origin:var(--mp-launch-origin,50% 50%);}
+.mp-phone[data-app-motion="opening"] .mp-desk.is-obscured{visibility:visible;animation:mpDeskLaunchAway 420ms cubic-bezier(.2,.86,.22,1) both;}
+.mp-phone[data-app-motion="closing"] .mp-desk{animation:mpDeskLaunchBack 360ms cubic-bezier(.4,0,.12,1) both;}
+@keyframes mpAppLaunchIn{
+  0%{transform:scale(var(--mp-launch-scale,.6));clip-path:var(--mp-launch-clip,inset(0px round 0px));opacity:0}
+  28%{opacity:1}
+  100%{transform:scale(1);clip-path:var(--mp-launch-end-clip,inset(0px 0px 0px 0px round 0px));opacity:1}
+}
+@keyframes mpAppLaunchOut{
+  0%{transform:scale(1);clip-path:var(--mp-launch-end-clip,inset(0px 0px 0px 0px round 0px));opacity:1}
+  62%{opacity:1}
+  100%{transform:scale(var(--mp-launch-scale,.6));clip-path:var(--mp-launch-clip,inset(0px round 0px));opacity:0}
+}
+@keyframes mpDeskLaunchAway{
+  from{transform:scale(1);opacity:1}
+  to{transform:scale(1.1);opacity:0}
+}
+@keyframes mpDeskLaunchBack{
+  from{transform:scale(1.1);opacity:0}
+  to{transform:scale(1);opacity:1}
+}
+/* 共用群組卡片、頭像、空白頁插圖、表單清單（MP-009）。 */
+.mp-group{margin-bottom:20px;border-radius:18px;background:var(--mp-lv1);box-shadow:0 1px 2px rgba(20,10,30,.05),0 0 0 1px color-mix(in srgb,var(--mp-txt) 6%,transparent);overflow:hidden;}
+.mp-list-note{margin:-12px 8px 20px;font-size:var(--mp-fs-caption);line-height:1.6;color:var(--mp-txt-l);}
+.mp-icon-line{display:block;flex:none;}
+/* 頭像：有圖顯示圖；沒圖顯示名字第一個字（主題色漸層）或線條人像，填滿原本容器並沿用容器圓角。 */
+.mp-avatar{position:relative;display:inline-grid;place-items:center;flex:none;overflow:hidden;}
+.mp-avatar--circle{border-radius:50%;}
+.mp-avatar--rounded{border-radius:28%;}
+.mp-avatar>img{width:100%;height:100%;object-fit:cover;}
+.mp-av-fallback{width:100%;height:100%;display:grid;place-items:center;border-radius:inherit;color:#fff;background:linear-gradient(140deg,color-mix(in srgb,var(--mp-pink) 78%,#fff),var(--mp-pink-dk));font-weight:800;line-height:1;text-shadow:0 1px 2px rgba(0,0,0,.14);}
+.mp-av-glyph{font-size:.95em;}
+/* 個人資料主卡 */
+.mp-profile-hero{display:flex;flex-direction:column;align-items:center;padding:22px 16px 18px;text-align:center;}
+.mp-profile-avatar{position:relative;padding:0;border:0;background:transparent;border-radius:50%;cursor:pointer;transition:transform var(--mp-motion-release) var(--mp-ease-spring);}
+.mp-profile-avatar:active{transform:scale(.95);transition-duration:var(--mp-motion-press-in);}
+.mp-profile-avatar>.mp-avatar{box-shadow:0 0 0 4px var(--mp-lv1),0 0 0 6px color-mix(in srgb,var(--mp-pink) 35%,transparent),0 10px 24px rgba(20,10,30,.14);}
+.mp-profile-camera{position:absolute;right:-2px;bottom:-2px;width:30px;height:30px;display:grid;place-items:center;border-radius:50%;background:var(--mp-lv2);color:var(--mp-accent-ink);box-shadow:0 2px 8px rgba(20,10,30,.18);}
+.mp-profile-name{margin-top:12px;font-size:20px;font-weight:800;color:var(--mp-txt);}
+.mp-profile-sub{margin-top:2px;font-size:var(--mp-fs-sub);color:var(--mp-txt-l);}
+.mp-profile-tag{margin-top:8px;padding:3px 10px;border-radius:999px;font-size:var(--mp-fs-caption);font-weight:700;color:var(--mp-accent-ink);background:color-mix(in srgb,var(--mp-pink) 16%,transparent);}
+.mp-profile-remove{margin-top:10px;padding:4px 10px;border:0;background:transparent;font:inherit;font-size:var(--mp-fs-caption);font-weight:700;color:var(--mp-danger);cursor:pointer;}
+/* 表單清單：一列一個欄位，輸入框無外框、靠右對齊 */
+.mp-form-row{position:relative;display:flex;align-items:center;gap:12px;min-height:50px;padding:8px 14px;}
+.mp-form-row+.mp-form-row::before{content:"";position:absolute;top:0;left:14px;right:0;border-top:1px solid var(--mp-line);}
+.mp-form-row>span{flex:none;min-width:52px;font-size:var(--mp-fs-body);font-weight:700;color:var(--mp-txt);}
+.mp-form-row>input,.mp-form-row>textarea{flex:1;min-width:0;border:0;outline:0;background:transparent;font:inherit;font-size:var(--mp-fs-body);color:var(--mp-txt);text-align:right;}
+.mp-form-row>input::placeholder,.mp-form-row>textarea::placeholder{color:var(--mp-txt-l);opacity:.85;}
+.mp-form-row--stack{flex-direction:column;align-items:stretch;gap:6px;padding:12px 14px;}
+.mp-form-row--stack>textarea{min-height:84px;text-align:left;resize:vertical;line-height:1.6;}
+.mp-form-row:focus-within{background:color-mix(in srgb,var(--mp-pink) 6%,transparent);}
+/* 人格清單 */
+.mp-persona-row{position:relative;display:flex;align-items:center;gap:12px;width:100%;min-height:62px;padding:10px 14px;border:0;background:transparent;font:inherit;color:var(--mp-txt);text-align:left;}
+.mp-persona-row+.mp-persona-row::before{content:"";position:absolute;top:0;left:68px;right:0;border-top:1px solid var(--mp-line);}
+.mp-persona-copy{flex:1;min-width:0;display:flex;flex-direction:column;}
+.mp-persona-copy b{font-size:var(--mp-fs-name);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.mp-persona-copy small{font-size:var(--mp-fs-sub);color:var(--mp-txt-l);}
+.mp-persona-active{flex:none;padding:2px 8px;border-radius:999px;font-size:var(--mp-fs-caption);font-weight:800;color:var(--mp-accent-ink);background:color-mix(in srgb,var(--mp-pink) 16%,transparent);}
+.mp-persona-delete{flex:none;padding:4px 8px;border:0;background:transparent;font:inherit;font-size:var(--mp-fs-caption);font-weight:700;color:var(--mp-danger);cursor:pointer;}
+.mp-persona-add{cursor:pointer;color:var(--mp-accent-ink);}
+.mp-persona-add b{font-size:var(--mp-fs-body);}
+.mp-persona-add:disabled{opacity:.55;cursor:not-allowed;}
+.mp-persona-plus{flex:none;width:42px;height:42px;display:grid;place-items:center;border-radius:50%;border:1.5px dashed color-mix(in srgb,var(--mp-pink) 55%,transparent);color:var(--mp-accent-ink);}
+.mp-persona-plus.is-soft{border-style:solid;border-color:transparent;background:color-mix(in srgb,var(--mp-pink) 12%,transparent);}
+.mp-persona-count{flex:none;font-size:var(--mp-fs-sub);color:var(--mp-txt-l);}
+/* 空白頁線條插圖 */
+.mp-empty-icon{width:84px;height:84px;margin-bottom:16px;display:grid;place-items:center;border-radius:28px;color:var(--mp-accent-ink);background:linear-gradient(145deg,var(--mp-pink-lt),color-mix(in srgb,var(--mp-purple) 35%,var(--mp-pink-lt)));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--mp-pink) 22%,transparent);}
+.mp-empty-state--compact{padding:24px 18px 16px;}
+.mp-empty-state--compact .mp-empty-icon{width:64px;height:64px;border-radius:22px;margin-bottom:12px;}
+.mp-empty-state--compact .mp-empty-state-title{font-size:var(--mp-fs-name);}
+/* 頁首跟著頁面捲動時（整頁就是捲動容器，例如筆記、遊戲中心）也要固定在頂端。 */
+.mp-hdr.mp-hdr--large,.mp-hdr.mp-hdr--compact{position:sticky;top:0;z-index:5;}
+.mp-page--large>.mp-large-title{padding:0 20px 10px;}
+.mp-hdr-note{flex:none;font-size:var(--mp-fs-caption);color:var(--mp-txt-l);}
+/* 一起聽歌頁面本身有內距，頁首往外撐回滿版。 */
+.music-app-page>.mp-hdr--compact{margin:calc(var(--mp-space-md) * -1) calc(var(--mp-space-md) * -1) 6px;}
+.mp-phone .mp-lorebook-top-action small{font-size:var(--mp-fs-caption);opacity:1;color:var(--mp-txt-l);}
+.mp-large-title-text{min-width:0;}
+.mp-large-sub{margin:4px 0 0;font-size:var(--mp-fs-sub);color:var(--mp-txt-l);}
+/* 第二層頁面精簡頁首（AppHeader）＋頁首動作按鈕：所有 App 共用同一種樣子。 */
+.mp-hdr.mp-hdr--compact{min-height:52px;padding:8px 12px;gap:8px;box-shadow:none;}
+.mp-hdr--compact>.mp-htitle{flex:1;min-width:0;text-align:center;font-size:var(--mp-fs-title);line-height:1.2;}
+.mp-hdr--compact>.mp-hdr-spacer{flex:none;width:32px;}
+.mp-hsub{display:block;margin-top:1px;font-size:var(--mp-fs-caption);font-weight:500;color:var(--mp-txt-l);}
+.mp-hdr-action{flex:none;min-height:32px;padding:6px 12px;border:0;border-radius:999px;background:color-mix(in srgb,var(--mp-accent) 12%,transparent);color:var(--mp-accent-ink);font:inherit;font-size:var(--mp-fs-sub);font-weight:700;cursor:pointer;transition:transform var(--mp-motion-release) var(--mp-ease-spring);}
+.mp-hdr-action:active{transform:scale(.94);transition-duration:var(--mp-motion-press-in);}
+.mp-hdr-actions{display:flex;align-items:center;gap:6px;flex:none;}
+.mp-large-title-actions{display:flex;align-items:center;gap:6px;padding-bottom:4px;}
+/* 置頂已有分組標題與愛心，名字不再另外上金色（金色在白底對比約 3.1）。 */
+.mp-page--large .mp-chat-row.pinned .mp-chat-row-name{color:var(--mp-txt);}
+/* 聊天室置頂愛心：點下去立刻變色並彈一下，不用切出列表確認。 */
+.mp-phone .mp-chat-pin{font-size:18px;transition:color 160ms ease,transform var(--mp-motion-release) var(--mp-ease-spring);}
+.mp-phone .mp-chat-pin.active{color:var(--mp-accent-ink);}
+.mp-chat-pin.active>span{display:block;animation:mpPinPop 420ms var(--mp-ease-spring);}
+@keyframes mpPinPop{0%{transform:scale(.6)}55%{transform:scale(1.28)}100%{transform:scale(1)}}
+/* 通用元件（components/common）：返回鍵、分段控制。 */
+.mp-phone .mp-back{color:var(--mp-txt);}
+.mp-back>svg{display:block;}
+.mp-seg{position:relative;isolation:isolate;display:flex;margin:0 2px 18px;padding:3px;border-radius:12px;background:color-mix(in srgb,var(--mp-txt) 8%,transparent);}
+.mp-seg::before{content:"";position:absolute;z-index:-1;top:3px;bottom:3px;left:3px;width:calc((100% - 6px) / var(--mp-seg-count,3));border-radius:10px;background:var(--mp-lv2);box-shadow:0 2px 6px rgba(20,10,30,.12),0 0 0 .5px rgba(20,10,30,.05);transform:translateX(calc(100% * var(--mp-seg-index,0)));transition:transform 380ms var(--mp-ease-drawer);}
+.mp-seg-btn{position:relative;flex:1;min-width:0;padding:7px 4px;border:0;border-radius:10px;background:transparent;font:inherit;font-size:var(--mp-fs-sub);font-weight:700;line-height:1.3;color:var(--mp-txt-l);cursor:pointer;transition:color 160ms ease,transform var(--mp-motion-release) var(--mp-ease-spring);}
+.mp-seg-btn.active{color:var(--mp-txt);}
+.mp-seg-btn:active{transform:scale(.95);transition-duration:var(--mp-motion-press-in);}
+.mp-seg-btn>span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.mp-seg-dot{position:absolute;top:5px;right:8px;width:7px;height:7px;border-radius:50%;background:var(--mp-danger);box-shadow:0 0 0 2px var(--mp-lv2);}
+@media (prefers-reduced-motion:reduce){.mp-seg::before{transition:none;}}
+/* 主題對比修正（MP-009 自動檢查結果）。
+   沒指定文字色的 <button> 會吃瀏覽器預設黑字，夜色下變成黑字配深底；:where() 不增加權重，任何有指定顏色的規則都會優先。 */
+:where(.mp-phone) button{color:inherit;}
+/* 可當文字用的強調色：主題強調色往主文字色拉一點，淺色主題變深、夜色變亮，粉色小字不再糊在淺底上。 */
+:root{--mp-accent-ink:color-mix(in srgb,var(--mp-pink-dk) 62%,var(--mp-txt));}
+.mp-phone .mp-add{color:var(--mp-accent-ink);}
+.mp-phone .mp-sec-t{color:var(--mp-accent-ink);}
+.mp-sec-row span[style*="--mp-pink-dk"],.mp-sec-row span[style*="--mp-purple"]{color:var(--mp-accent-ink)!important;}
+.mp-phone .mp-active-badge{color:color-mix(in srgb,var(--mp-success) 55%,var(--mp-txt));background:color-mix(in srgb,var(--mp-success) 16%,transparent);}
+.mp-clock-ds{color:var(--mp-txt);}
+.mp-all-apps-handle{color:var(--mp-txt);font-size:var(--mp-fs-caption);}
+.mp-phone .mp-bank-edit{background:rgba(255,252,248,.88);}
+/* 層級與字級（MP-009）：先套在聊天列表與設定頁（.mp-page--large），其他 App 之後逐頁接上。 */
+:root{--mp-primary-gradient:linear-gradient(135deg,var(--mp-save-1,var(--mp-pink)),var(--mp-save-2,var(--mp-pink-dk)));--mp-fs-large:28px;--mp-fs-title:17px;--mp-fs-name:15px;--mp-fs-body:14px;--mp-fs-sub:13px;--mp-fs-caption:11px;--mp-lv0:color-mix(in srgb,var(--mp-pink-lt) 26%,#fff);--mp-lv1:var(--mp-surface);--mp-lv2:var(--mp-surface);}
+/* 背景 → 群組卡片 → 浮起元件三層；頂端主題色慢慢淡進底色，不再在 30% 處突然變白。 */
+.mp-page.mp-page--large,.mp-page.mp-page--sub{background:linear-gradient(180deg,var(--mp-pink-lt) 0,color-mix(in srgb,var(--mp-pink-lt) 45%,var(--mp-lv0)) 180px,var(--mp-lv0) 420px);}
+.mp-hdr.mp-hdr--large{min-height:52px;padding:8px 12px;background:transparent;border-bottom:1px solid transparent;backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:none;transition:background-color 200ms ease,border-color 200ms ease;}
+.mp-page--large.is-collapsed>.mp-hdr--large,.mp-hdr.mp-hdr--compact{background:color-mix(in srgb,var(--mp-lv0) 82%,transparent);border-bottom-color:var(--mp-line);backdrop-filter:blur(18px) saturate(140%);-webkit-backdrop-filter:blur(18px) saturate(140%);}
+.mp-hdr--large>.mp-back{flex:none;font:inherit;font-size:15px;color:var(--mp-txt);padding:0;}
+.mp-hdr--large>.mp-htitle{flex:1;text-align:center;font-size:var(--mp-fs-title);opacity:0;transform:translateY(6px);transition:opacity 180ms ease,transform 220ms var(--mp-ease-out);pointer-events:none;}
+.mp-page--large.is-collapsed>.mp-hdr--large>.mp-htitle{opacity:1;transform:none;}
+.mp-hdr--large>.mp-hdr-spacer{flex:none;width:32px;}
+.mp-large-title{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;padding:0 6px 12px;transition:opacity 160ms ease;}
+.mp-large-title h1{margin:0;font-family:var(--mp-fontd);font-size:var(--mp-fs-large);line-height:1.15;font-weight:800;letter-spacing:.01em;color:var(--mp-txt);}
+.mp-page--large.is-collapsed .mp-large-title{opacity:0;}
+.mp-page--large>.mp-cm,.mp-page--large>.mp-set{padding-top:0;}
+/* 分頁：灰底分段控制，選取格是浮起的滑塊（沿用滑動動畫）。 */
+.mp-page--large .mp-chat-switch{margin:0 2px 18px;padding:3px;gap:0;border:0;border-radius:12px;background:color-mix(in srgb,var(--mp-txt) 8%,transparent);box-shadow:none;}
+.mp-page--large .mp-chat-switch:has(>.mp-chat-switch-btn:nth-child(3):last-child)::before{top:3px;bottom:3px;left:3px;width:calc((100% - 6px) / 3);border-radius:10px;background:var(--mp-lv2);box-shadow:0 2px 6px rgba(20,10,30,.12),0 0 0 .5px rgba(20,10,30,.05);}
+.mp-page--large .mp-chat-switch:has(>.mp-chat-switch-btn:nth-child(2).active)::before{transform:translateX(100%);}
+.mp-page--large .mp-chat-switch:has(>.mp-chat-switch-btn:nth-child(3).active)::before{transform:translateX(200%);}
+.mp-page--large .mp-chat-switch-btn{padding:7px 4px;border-radius:10px;font-size:var(--mp-fs-sub);font-weight:700;color:var(--mp-txt-l);}
+.mp-page--large .mp-chat-switch-btn.active{color:var(--mp-txt)!important;}
+/* 列表：一組一張卡片，列與列之間用細線。 */
+.mp-page--large .mp-chat-list-line{padding:0 0 16px;gap:0;}
+.mp-list-section{padding:2px 8px 7px;font-size:var(--mp-fs-sub);font-weight:700;letter-spacing:.04em;color:var(--mp-txt-l);}
+.mp-chat-group{margin-bottom:20px;border-radius:18px;background:var(--mp-lv1);box-shadow:0 1px 2px rgba(20,10,30,.05),0 0 0 1px color-mix(in srgb,var(--mp-txt) 6%,transparent);overflow:hidden;}
+.mp-page--large .mp-chat-group .mp-chat-row,.mp-page--large .mp-chat-group .mp-chat-row.pinned,.mp-page--large .mp-chat-group .mp-chat-row:hover{position:relative;min-height:76px;padding:12px 14px;margin:0;border:0;border-radius:0;background:transparent;box-shadow:none;}
+.mp-page--large .mp-chat-group .mp-chat-row:active{background:color-mix(in srgb,var(--mp-txt) 5%,transparent);transform:none;}
+.mp-page--large .mp-chat-group .mp-chat-row+.mp-chat-row::before{content:"";position:absolute;top:0;left:78px;right:0;border-top:1px solid var(--mp-line);}
+.mp-page--large .mp-chat-group .mp-chat-row-avatar,.mp-page--large .mp-chat-group .mp-chat-row.pinned .mp-chat-row-avatar{width:52px;height:52px;border:0;box-shadow:0 0 0 1px color-mix(in srgb,var(--mp-txt) 6%,transparent);}
+.mp-page--large .mp-chat-list-line .mp-chat-row-name{font-size:var(--mp-fs-name);}
+.mp-page--large .mp-chat-list-line .mp-chat-row-preview{font-size:var(--mp-fs-sub);margin-top:2px;}
+.mp-page--large .mp-chat-list-line .mp-chat-row-time{font-size:var(--mp-fs-caption);}
+.mp-page--large .mp-chat-list-line .mp-chat-row-badge{font-size:var(--mp-fs-caption);}
+/* 設定頁卡片：群組卡片底色、標題改用字級系統。 */
+.mp-page--large .mp-sg,.mp-page--large .mp-sc{background:var(--mp-lv1);border:0;box-shadow:0 1px 2px rgba(20,10,30,.05),0 0 0 1px color-mix(in srgb,var(--mp-txt) 6%,transparent);backdrop-filter:none;-webkit-backdrop-filter:none;border-radius:18px;}
+.mp-page--large .mp-sg-t{font-size:var(--mp-fs-name);font-weight:800;letter-spacing:.02em;text-transform:none;color:var(--mp-txt);}
+.mp-page--large .mp-lbl{font-size:var(--mp-fs-sub);}
+/* 最小字級 11px：元件裡寫死的 7–10.5px 小字一律拉到說明字級。 */
+.mp-type-floor [style*="font-size: 7px"],.mp-type-floor [style*="font-size: 8px"],.mp-type-floor [style*="font-size: 8.5px"],.mp-type-floor [style*="font-size: 9px"],.mp-type-floor [style*="font-size: 9.5px"],.mp-type-floor [style*="font-size: 10px"],.mp-type-floor [style*="font-size: 10.5px"]{font-size:var(--mp-fs-caption)!important;}
+/* 空白頁：插圖＋說明下一步＋一個主要按鈕。 */
+.mp-empty-state{display:flex;flex-direction:column;align-items:center;text-align:center;padding:36px 22px 24px;}
+.mp-empty-art{position:relative;width:128px;height:128px;margin-bottom:20px;border-radius:38px;background:linear-gradient(145deg,var(--mp-pink-lt),color-mix(in srgb,var(--mp-purple) 40%,var(--mp-pink-lt)));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--mp-pink) 25%,transparent);}
+.mp-empty-art>span{position:absolute;border-radius:18px 18px 18px 6px;background:var(--mp-lv2);box-shadow:0 6px 16px rgba(20,10,30,.12);}
+.mp-empty-art>span:first-child{left:18px;top:32px;width:66px;height:30px;}
+.mp-empty-art>span:last-child{right:16px;bottom:30px;width:52px;height:26px;border-radius:18px 18px 6px 18px;background:linear-gradient(135deg,var(--mp-bubble),var(--mp-bubble-2));}
+.mp-empty-art i{position:absolute;top:50%;width:6px;height:6px;margin-top:-3px;border-radius:50%;background:var(--mp-txt-l);opacity:.55;animation:dtTyping 1.3s ease-in-out 3;}
+.mp-empty-art i:nth-child(1){left:16px;}.mp-empty-art i:nth-child(2){left:30px;animation-delay:.15s;}.mp-empty-art i:nth-child(3){left:44px;animation-delay:.3s;}
+.mp-empty-state-title{margin-bottom:6px;font-size:var(--mp-fs-title);font-weight:800;color:var(--mp-txt);}
+.mp-empty-state-text{max-width:250px;margin-bottom:18px;font-size:var(--mp-fs-sub);line-height:1.6;color:var(--mp-txt-l);}
+.mp-empty-state-cta{padding:11px 22px;border:0;border-radius:999px;font:inherit;font-size:var(--mp-fs-body);font-weight:700;color:#fff;cursor:pointer;background:linear-gradient(135deg,var(--mp-save-1,var(--mp-pink)),var(--mp-save-2,var(--mp-pink-dk)));box-shadow:0 8px 20px color-mix(in srgb,var(--mp-pink-dk) 25%,transparent);transition:transform var(--mp-motion-release) var(--mp-ease-spring);}
+.mp-empty-state-cta:active{transform:scale(.96);transition-duration:var(--mp-motion-press-in);}
+/* 回到頂部（components/shell/ScrollTopButton.jsx）。 */
+.mp-scroll-top{position:absolute;right:16px;bottom:calc(86px + env(safe-area-inset-bottom,0px));z-index:30;width:40px;height:40px;display:grid;place-items:center;padding:0;border:1px solid color-mix(in srgb,var(--mp-txt) 8%,transparent);border-radius:50%;background:color-mix(in srgb,var(--mp-surface) 94%,transparent);color:var(--mp-accent);box-shadow:0 6px 18px rgba(20,10,30,.14);cursor:pointer;animation:mpScrollTopIn 260ms var(--mp-ease-spring) both;transition:transform var(--mp-motion-release) var(--mp-ease-spring);}
+.mp-scroll-top:active{transform:scale(.88);transition-duration:var(--mp-motion-press-in);}
+@keyframes mpScrollTopIn{from{opacity:0;transform:translateY(10px) scale(.8)}to{opacity:1;transform:none}}
+/* 效能護欄：圖示底座是不透明像素圖，模糊看不出來卻要每格重算（粒子從後方經過時更明顯），改用實色半透明底。 */
+.mp-icon-c{backdrop-filter:none;-webkit-backdrop-filter:none;background:color-mix(in srgb,var(--mp-surface) 74%,transparent);}
+/* 一起聽歌輸入框：淺色主題下白底白框會消失，改用帶主題色的邊框與陰影。 */
+.music-app-input{background:var(--mp-surface);border:1px solid color-mix(in srgb,var(--mp-accent) 26%,var(--mp-line));box-shadow:0 4px 14px color-mix(in srgb,var(--mp-accent) 10%,transparent);transition:border-color 160ms ease,box-shadow 160ms ease;}
+.music-app-input::placeholder{color:var(--mp-muted);opacity:1;}
+.music-app-input:focus{border-color:color-mix(in srgb,var(--mp-accent) 60%,transparent);box-shadow:0 0 0 3px color-mix(in srgb,var(--mp-accent) 16%,transparent),0 4px 14px color-mix(in srgb,var(--mp-accent) 10%,transparent);}
+/* 低效能裝置（utils/devicePerformance.js 偵測後設 html[data-mp-perf="lite"]）：粒子減半、關掉毛玻璃改用較不透明的底色。 */
+html[data-mp-perf="lite"] .mp-fx-front,html[data-mp-perf="lite"] .mp-fx i[data-depth="0"]{display:none;}
+html[data-mp-perf="lite"] .mp-phone{--mp-glass:color-mix(in srgb,var(--mp-surface) 94%,transparent);}
+html[data-mp-perf="lite"] .mp-phone *{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;}
+/* 微互動：按下快速收縮、放開帶一點回彈（不加震動）。 */
+:root{--mp-ease-spring:cubic-bezier(.34,1.56,.64,1);--mp-motion-release:440ms;--mp-motion-press-in:90ms;}
+.mp-icon,.mp-dock-i,.mp-cw,.mp-phone .mp-back,.mp-phone .mp-save,.mp-chat-switch-btn,.mp-all-apps-handle{transition-property:transform,filter,background,box-shadow,color;transition-duration:var(--mp-motion-release),180ms,160ms,180ms,160ms;transition-timing-function:var(--mp-ease-spring),ease,ease,ease,ease;}
+.mp-icon:active{transform:scale(.9);filter:brightness(.93);}
+.mp-dock-i:active{transform:scale(.88);filter:brightness(.93);}
+.mp-phone .mp-back:active{transform:scale(.86);}
+.mp-cw:active,.mp-phone .mp-save:active,.mp-chat-switch-btn:active,.mp-all-apps-handle:active{transform:scale(.96);}
+.mp-icon:active,.mp-dock-i:active,.mp-phone .mp-back:active,.mp-cw:active,.mp-phone .mp-save:active,.mp-chat-switch-btn:active,.mp-all-apps-handle:active{transition-duration:var(--mp-motion-press-in),var(--mp-motion-press-in),160ms,180ms,160ms;transition-timing-function:var(--mp-ease-out);}
+/* 聊天分頁：選取底色改成滑動的膠囊，切換時從舊分頁滑到新分頁。 */
+.mp-chat-switch:has(>.mp-chat-switch-btn:nth-child(3):last-child){position:relative;isolation:isolate;}
+.mp-chat-switch:has(>.mp-chat-switch-btn:nth-child(3):last-child)::before{content:"";position:absolute;z-index:-1;top:5px;bottom:5px;left:5px;width:calc((100% - 26px) / 3);border-radius:12px;background:var(--mp-switch-pill,linear-gradient(135deg,color-mix(in srgb,var(--mp-pink) 30%,transparent),color-mix(in srgb,var(--mp-pink-lt) 90%,transparent)));box-shadow:0 2px 8px color-mix(in srgb,var(--mp-pink) 14%,transparent);transition:transform 380ms var(--mp-ease-drawer);}
+.mp-chat-switch:has(>.mp-chat-switch-btn:nth-child(2).active)::before{transform:translateX(calc(100% + 8px));}
+.mp-chat-switch:has(>.mp-chat-switch-btn:nth-child(3).active)::before{transform:translateX(calc(200% + 16px));}
+.mp-chat-switch:has(>.mp-chat-switch-btn:nth-child(3):last-child)>.mp-chat-switch-btn.active{background:transparent!important;box-shadow:none!important;}
+/* 解鎖：時間往上收、鎖屏淡出；首頁接著從稍微放大的位置落回原位。 */
+.mp-lock{transition:opacity 340ms var(--mp-ease-out),transform 340ms var(--mp-ease-out);}
+.mp-lock.out{transform:translateY(-3%) scale(1.02);}
+.mp-lock-time,.mp-lock-date{transition:transform 360ms var(--mp-ease-drawer),opacity 240ms ease;}
+.mp-lock.out .mp-lock-time{transform:translateY(-34px) scale(.94);}
+.mp-lock.out .mp-lock-date{transform:translateY(-26px);opacity:0;}
+.mp-phone[data-home-enter] .mp-desk{animation:mpHomeEnter 520ms cubic-bezier(.2,.86,.22,1) both;}
+@keyframes mpHomeEnter{from{transform:scale(1.07);opacity:0}to{transform:scale(1);opacity:1}}
+/* 主題粒子（components/shell/ThemeParticles.jsx）：只動 transform／opacity，交給 GPU 合成。 */
+.mp-fx{position:absolute;inset:0;overflow:hidden;pointer-events:none;container-type:size;contain:strict;}
+.mp-fx-back{z-index:0;}
+.mp-fx-front{z-index:32;}
+.mp-lock{isolation:isolate;}
+.mp-lock>.mp-fx{z-index:-1;}
+.mp-fx.is-paused{visibility:hidden;}
+.mp-fx.is-paused i,.mp-fx.is-paused i::before{animation-play-state:paused;}
+.mp-phone[data-app-motion] .mp-fx.is-paused{visibility:visible;}
+.mp-fx i{position:absolute;left:var(--x);top:100%;width:var(--s);height:var(--s);opacity:0;will-change:transform,opacity;animation:mpFxRise var(--d) ease-in-out var(--delay) infinite;}
+.mp-fx i::before{content:"";position:absolute;inset:0;}
+.mp-fx[data-kind="bubble"] i::before{border-radius:50%;background:radial-gradient(circle at 33% 30%,rgba(255,255,255,.95) 0 9%,rgba(255,255,255,0) 21%),radial-gradient(circle,color-mix(in srgb,var(--mp-blue-lt) 18%,transparent) 50%,rgba(255,255,255,.78) 64%,color-mix(in srgb,var(--mp-purple) 72%,transparent) 73%,color-mix(in srgb,var(--mp-blue) 62%,transparent) 80%,transparent 84%);}
+.mp-fx[data-kind="fizz"] i{animation-timing-function:cubic-bezier(.45,0,.75,.55);}
+.mp-fx[data-kind="fizz"] i::before{border-radius:50%;background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.98) 0 20%,rgba(255,255,255,.35) 40%,color-mix(in srgb,var(--mp-pink) 22%,transparent) 62%);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--mp-pink) 62%,transparent),0 0 4px rgba(255,255,255,.7);}
+.mp-fx[data-kind="fizz"] i.alt::before{inset:-40%;border-radius:0;background:rgba(255,255,255,.95);clip-path:polygon(50% 0,58% 42%,100% 50%,58% 58%,50% 100%,42% 58%,0 50%,42% 42%);}
+.mp-fx[data-kind="leaf"] i,.mp-fx[data-kind="petal"] i{top:-6%;animation-name:mpFxFall;animation-timing-function:linear;}
+.mp-fx[data-kind="leaf"] i::before,.mp-fx[data-kind="petal"] i::before{animation:mpFxFlutter var(--flutter) ease-in-out infinite alternate;}
+.mp-fx[data-kind="leaf"] i::before{bottom:28%;border-radius:0 100% 0 100%;background:linear-gradient(135deg,color-mix(in srgb,var(--mp-pink) 70%,#e8f5c8),var(--mp-pink));box-shadow:inset 1px -1px 0 rgba(255,255,255,.35);}
+.mp-fx[data-kind="leaf"] i.alt::before{inset:22%;border-radius:50%;background:radial-gradient(circle at 35% 35%,#fff6c8,var(--mp-blue));animation:none;}
+.mp-fx[data-kind="petal"] i::before{bottom:18%;border-radius:80% 0 75% 45%;background:linear-gradient(150deg,#fff1ec,var(--mp-pink) 72%);box-shadow:inset -1px 1px 0 rgba(255,255,255,.4);}
+.mp-fx[data-kind="petal"] i.alt::before{background:linear-gradient(150deg,#ffe6e3,var(--mp-pink-dk) 90%);}
+.mp-fx[data-kind="star"] i{top:var(--y);animation:mpFxTwinkle var(--d) ease-in-out var(--delay) infinite;}
+.mp-fx[data-kind="star"] i::before{background:#fbf2ff;clip-path:polygon(50% 0,60% 40%,100% 50%,60% 60%,50% 100%,40% 60%,0 50%,40% 40%);}
+.mp-fx[data-kind="star"] i::after{content:"";position:absolute;z-index:-1;inset:-70%;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--mp-purple) 42%,transparent),transparent 62%);}
+.mp-fx[data-kind="star"] i.shoot::after{display:none;}
+.mp-fx[data-kind="star"] i.alt::before{inset:30%;border-radius:50%;clip-path:none;background:color-mix(in srgb,var(--mp-blue) 70%,#fff);box-shadow:0 0 4px color-mix(in srgb,var(--mp-purple) 80%,transparent);}
+.mp-fx[data-kind="star"] i.shoot{top:14%;left:auto;right:6%;width:120px;height:2px;animation:mpFxShoot var(--d) linear var(--delay) infinite;}
+.mp-fx[data-kind="star"] i.shoot::before{border-radius:2px;clip-path:none;background:linear-gradient(90deg,#fff,color-mix(in srgb,var(--mp-purple) 60%,transparent) 30%,transparent);}
+@keyframes mpFxRise{
+  0%{transform:translate3d(0,0,0) scale(.8);opacity:0}
+  10%{opacity:var(--o)}
+  50%{transform:translate3d(var(--sway),-56cqh,0) scale(1)}
+  86%{opacity:var(--o)}
+  100%{transform:translate3d(calc(var(--sway) * -.4),-112cqh,0) scale(1.06);opacity:0}
+}
+@keyframes mpFxFall{
+  0%{transform:translate3d(0,0,0) rotate(0deg);opacity:0}
+  8%{opacity:var(--o)}
+  35%{transform:translate3d(var(--sway),38cqh,0) rotate(calc(var(--spin) * .35))}
+  70%{transform:translate3d(calc(var(--sway) * -.7),76cqh,0) rotate(calc(var(--spin) * .7))}
+  92%{opacity:var(--o)}
+  100%{transform:translate3d(calc(var(--sway) * .3),112cqh,0) rotate(var(--spin));opacity:0}
+}
+@keyframes mpFxFlutter{from{transform:rotate3d(1,.35,0,0deg)}to{transform:rotate3d(1,.35,0,68deg)}}
+@keyframes mpFxTwinkle{
+  0%,100%{transform:scale(.55) rotate(0deg);opacity:calc(var(--o) * .2)}
+  50%{transform:scale(1) rotate(30deg);opacity:var(--o)}
+}
+@keyframes mpFxShoot{
+  0%,84%{transform:rotate(-28deg) translateX(0);opacity:0}
+  86%{opacity:.9}
+  100%{transform:rotate(-28deg) translateX(-260px);opacity:0}
+}
+@media (prefers-reduced-motion:reduce){.mp-fx{display:none;}.mp-chat-switch::before{transition:none;}}
 .mp-hdr{display:flex;align-items:center;gap:10px;padding:12px 16px 10px;background:var(--mp-glass);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-bottom:1px solid var(--mp-glass-b);flex-shrink:0;z-index:5;}
 .mp-back{width:32px;height:32px;border-radius:50%;min-width:32px;display:flex;align-items:center;justify-content:center;background:var(--mp-glass);border:1px solid var(--mp-glass-b);cursor:pointer;font-size:15px;transition:transform .12s;}
 .mp-back:active{transform:scale(.97);}
@@ -890,7 +1158,7 @@ body{position:fixed;inset:0;}
 .mp-calendar-proposal{align-self:flex-start;width:min(310px,calc(100% - 54px));margin:-4px 0 8px 42px;padding:11px;border:1px solid color-mix(in srgb,var(--mp-accent) 34%,var(--mp-card-border));border-radius:15px;background:color-mix(in srgb,var(--mp-card-bg) 92%,var(--mp-accent) 8%);box-shadow:0 6px 18px rgba(50,42,55,.08);box-sizing:border-box}
 .mp-calendar-proposal-heading{display:flex;gap:8px;align-items:flex-start;margin-bottom:9px;color:var(--mp-txt)}.mp-calendar-proposal-heading>div{min-width:0}.mp-calendar-proposal-heading b{display:block;font-size:11.5px;line-height:1.35}.mp-calendar-proposal-heading small{display:block;margin-top:3px;color:var(--mp-txt-l);font-size:9px;line-height:1.45}.mp-calendar-proposal-icon{font-size:18px;line-height:1}
 .mp-calendar-proposal-title,.mp-calendar-proposal-time input{min-width:0;border:1px solid var(--mp-card-border);border-radius:9px;background:var(--mp-card-bg);color:var(--mp-txt);font:inherit;font-size:10.5px;outline:none;box-sizing:border-box}.mp-calendar-proposal-title{width:100%;padding:7px 9px}.mp-calendar-proposal-time{display:grid;grid-template-columns:1.35fr 1fr;gap:6px;margin-top:6px}.mp-calendar-proposal-time input{width:100%;padding:6px 7px}.mp-calendar-proposal-hint{margin-top:5px;color:var(--mp-txt-l);font-size:8.5px;line-height:1.4}
-.mp-calendar-proposal-actions,.mp-calendar-due-actions{display:flex;justify-content:flex-end;gap:6px;margin-top:9px}.mp-calendar-proposal-actions button,.mp-calendar-due-actions button{border:0;border-radius:99px;padding:6px 10px;background:var(--mp-glass);color:var(--mp-txt-l);font-size:9.5px;font-weight:800}.mp-calendar-proposal-actions button.primary,.mp-calendar-due-actions button.primary{background:linear-gradient(135deg,var(--mp-bubble),var(--mp-accent));color:var(--mp-on-accent)}.mp-calendar-proposal-actions button:disabled,.mp-calendar-due-actions button:disabled{opacity:.48}
+.mp-calendar-proposal-actions,.mp-calendar-due-actions{display:flex;justify-content:flex-end;gap:6px;margin-top:9px}.mp-calendar-proposal-actions button,.mp-calendar-due-actions button{border:0;border-radius:99px;padding:6px 10px;background:var(--mp-glass);color:var(--mp-txt-l);font-size:9.5px;font-weight:800}.mp-calendar-proposal-actions button.primary,.mp-calendar-due-actions button.primary{background:var(--mp-primary-gradient);color:var(--mp-on-accent)}.mp-calendar-proposal-actions button:disabled,.mp-calendar-due-actions button:disabled{opacity:.48}
 .mp-calendar-proposal-added{display:flex;align-items:center;gap:8px;padding:9px 11px;color:var(--mp-txt)}.mp-calendar-proposal-added>span{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:color-mix(in srgb,var(--mp-accent) 18%,transparent);color:var(--mp-accent);font-weight:900}.mp-calendar-proposal-added b,.mp-calendar-proposal-added small{display:block}.mp-calendar-proposal-added b{font-size:10.5px}.mp-calendar-proposal-added small{margin-top:2px;color:var(--mp-txt-l);font-size:8.5px}
 .mp-calendar-due-card{position:relative;z-index:3;margin:7px 12px 5px;padding:10px 11px;border:1px solid color-mix(in srgb,var(--mp-accent) 36%,var(--mp-card-border));border-radius:15px;background:color-mix(in srgb,var(--mp-card-bg) 93%,var(--mp-accent) 7%);box-shadow:0 6px 20px rgba(50,42,55,.1)}.mp-calendar-due-copy{display:flex;align-items:center;gap:8px;color:var(--mp-txt)}.mp-calendar-due-copy>span{font-size:18px}.mp-calendar-due-copy b,.mp-calendar-due-copy small{display:block}.mp-calendar-due-copy b{font-size:11px}.mp-calendar-due-copy small{margin-top:2px;color:var(--mp-txt-l);font-size:9px}.mp-calendar-due-actions{margin-top:7px}
 /* Android/WebView: repeated backdrop filters are expensive while whole pages move. */
@@ -997,7 +1265,7 @@ body{position:fixed;inset:0;}
 .sg-episode-generate-action{min-width:88px;min-height:40px;}
 .sg-episode-compose-row{display:flex;align-items:flex-end;gap:var(--mp-space-sm);}
 .sg-episode-compose-row .mp-inp{min-height:44px;}
-.sg-episode-send{display:grid;place-items:center;flex:0 0 44px;width:44px;height:44px;padding:0;border:1px solid color-mix(in srgb,var(--mp-pink) 58%,transparent);border-radius:50%;background:linear-gradient(135deg,var(--mp-pink),var(--mp-pink-dk));color:var(--mp-on-accent);box-shadow:0 5px 14px color-mix(in srgb,var(--mp-pink) 24%,transparent);cursor:pointer;transform:scale(1);transition:background-color var(--mp-motion-fast) var(--mp-ease-out),border-color var(--mp-motion-fast) var(--mp-ease-out),color var(--mp-motion-fast) var(--mp-ease-out),transform var(--mp-motion-press) var(--mp-ease-out);}
+.sg-episode-send{display:grid;place-items:center;flex:0 0 44px;width:44px;height:44px;padding:0;border:1px solid color-mix(in srgb,var(--mp-pink) 58%,transparent);border-radius:50%;background:var(--mp-primary-gradient);color:var(--mp-on-accent);box-shadow:0 5px 14px color-mix(in srgb,var(--mp-pink) 24%,transparent);cursor:pointer;transform:scale(1);transition:background-color var(--mp-motion-fast) var(--mp-ease-out),border-color var(--mp-motion-fast) var(--mp-ease-out),color var(--mp-motion-fast) var(--mp-ease-out),transform var(--mp-motion-press) var(--mp-ease-out);}
 .sg-episode-send svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round;stroke-width:2;}
 .sg-episode-send:focus-visible{outline:2px solid var(--mp-pink-dk);outline-offset:2px;}
 .sg-episode-send:active{transform:scale(.95);}

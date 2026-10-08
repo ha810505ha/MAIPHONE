@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { sanitizeUserImageUrl } from "../../utils/coreUtils";
+import { AvatarFallback } from "../common/Avatar";
 
 export default function PlayerPersonaIndicator({ playerProfile, persona, tr, compact = false, slim = false }) {
   const [open, setOpen] = useState(false);
@@ -19,7 +20,7 @@ export default function PlayerPersonaIndicator({ playerProfile, persona, tr, com
     <div style={{ position: "relative", flex: compact ? "0 0 auto" : "0 0 auto", marginLeft: compact ? "auto" : 0 }}>
       <button type="button" title={canSwitch ? tr("切換玩家人格", "Switch persona", "人格を切り替え", "페르소나 전환") : name} onClick={(event) => { event.stopPropagation(); togglePersonaMenu(); }} style={{ width: compact ? "auto" : "100%", minWidth: compact ? 0 : "100%", minHeight: slim ? 26 : (compact ? 36 : 28), display: "flex", alignItems: "center", justifyContent: compact ? "flex-start" : "flex-end", gap: slim ? 5 : 6, padding: slim ? "2px 7px 2px 3px" : (compact ? "3px 9px 3px 4px" : "3px 14px"), border: compact ? "1px solid color-mix(in srgb,var(--mp-pink) 34%,transparent)" : 0, borderTop: "1px solid color-mix(in srgb,var(--mp-pink) 24%,transparent)", borderRadius: compact ? 18 : 0, background: compact ? "linear-gradient(135deg,var(--mp-pink-lt),var(--mp-surface))" : "color-mix(in srgb,var(--mp-surface) 88%,transparent)", color: "var(--mp-txt-l)", fontSize: 10, boxSizing: "border-box", cursor: canSwitch ? "pointer" : "default" }}>
       <span style={{ width: avatarSize, height: avatarSize, flex: `0 0 ${avatarSize}px`, display: "grid", placeItems: "center", overflow: "hidden", borderRadius: "50%", background: "var(--mp-pink-lt)", fontSize: 10 }}>
-        {avatar ? <img src={avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : "👤"}
+        {avatar ? <img src={avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <AvatarFallback name={name} />}
       </span>
       <b style={{ maxWidth: slim ? 78 : 92, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", color: "var(--mp-pink-dk)", fontSize: slim ? 10 : 10.5 }}>{compactName}</b>
       {canSwitch && <span style={{ color: "var(--mp-pink-dk)", fontSize: 8 }}>▾</span>}
@@ -30,7 +31,7 @@ export default function PlayerPersonaIndicator({ playerProfile, persona, tr, com
           const itemProfile = active ? playerProfile : item.data?.playerProfile;
           const itemName = String(itemProfile?.name || item.label || tr("玩家人格", "Persona", "人格", "페르소나"));
           const itemAvatar = sanitizeUserImageUrl(itemProfile?.avatar);
-          return <button key={item.id} type="button" disabled={active} onClick={async () => { setOpen(false); await persona.onSwitch(item.id); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 9, padding: "8px 9px", border: 0, borderRadius: 11, background: active ? "var(--mp-pink-lt)" : "transparent", color: "var(--mp-txt)", textAlign: "left", cursor: active ? "default" : "pointer" }}><span style={{ width: 30, height: 30, flex: "0 0 30px", display: "grid", placeItems: "center", overflow: "hidden", borderRadius: "50%", background: "var(--mp-pink-lt)" }}>{itemAvatar ? <img src={itemAvatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : "👤"}</span><span style={{ flex: 1, minWidth: 0, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", fontSize: 11, fontWeight: 800 }}>{itemName}</span>{active && <small style={{ color: "var(--mp-pink-dk)" }}>{tr("使用中", "Active", "使用中", "사용 중")}</small>}</button>;
+          return <button key={item.id} type="button" disabled={active} onClick={async () => { setOpen(false); await persona.onSwitch(item.id); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 9, padding: "8px 9px", border: 0, borderRadius: 11, background: active ? "var(--mp-pink-lt)" : "transparent", color: "var(--mp-txt)", textAlign: "left", cursor: active ? "default" : "pointer" }}><span style={{ width: 30, height: 30, flex: "0 0 30px", display: "grid", placeItems: "center", overflow: "hidden", borderRadius: "50%", background: "var(--mp-pink-lt)" }}>{itemAvatar ? <img src={itemAvatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <AvatarFallback name={itemName} />}</span><span style={{ flex: 1, minWidth: 0, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", fontSize: 11, fontWeight: 800 }}>{itemName}</span>{active && <small style={{ color: "var(--mp-pink-dk)" }}>{tr("使用中", "Active", "使用中", "사용 중")}</small>}</button>;
         })}
       </div>}
     </div>

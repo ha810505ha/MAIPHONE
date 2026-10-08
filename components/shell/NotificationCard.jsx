@@ -1,6 +1,7 @@
 import React from "react";
 import { sanitizeUserImageUrl } from "../../utils/coreUtils";
 import { formatNotificationTime } from "../../services/notifications/notificationSources";
+import { AvatarFallback } from "../common/Avatar";
 
 // 鎖定畫面與 App 內橫幅共用同一張卡，只差外層 className。
 export default function NotificationCard({ notification, className, onClick, gestureHandlers, dataPhase, tr }) {
@@ -19,7 +20,7 @@ export default function NotificationCard({ notification, className, onClick, ges
   return (
     <button type="button" className={`mp-notif ${className || ""}`} data-phase={dataPhase} onClick={onClick} {...gestureHandlers}>
       <div className="mp-notif-avatar">
-        {notification.summaryCount ? "🔔" : avatar ? <img src={avatar} alt="" /> : (notification.fallbackIcon || "🙂")}
+        {notification.summaryCount ? <AvatarFallback icon="bell" /> : avatar ? <img src={avatar} alt="" /> : (notification.fallbackIcon || <AvatarFallback name={notification.title} />)}
       </div>
       <div className="mp-notif-body">
         <div className="mp-notif-head">

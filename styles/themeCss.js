@@ -61,7 +61,8 @@ export function buildThemeCss({
       .mp-bar,.mp-hdr,.mp-inp-bar,.mp-dock{background:rgba(26,22,37,.95);border-color:#3a2d4f;}
       .mp-modal,.mp-sg,.mp-cc,.mp-post,.mp-sc,.mp-cw,.mp-transfer-card{background:rgba(36,27,51,.95);border-color:#3a2d4f;box-shadow:0 8px 24px rgba(7,4,12,.26);}
       .game-center-page .mp-cw-name,.game-center-page .mp-cw div{color:#4a3c48 !important;}
-      .game-center-page .mp-cw div[style*="var(--mp-txt-l)"]{color:#8d7485 !important;}
+      .game-center-page .mp-cw div[style*="var(--mp-txt-l)"]{color:#6e5a6b !important;}
+      .mp-wchip.active{color:#1a1625;}
       .yunyin-game-page [data-yunyin-panel="1"]{color:#4a4038 !important;}
       .yunyin-game-page [data-yunyin-panel="1"] div,.yunyin-game-page [data-yunyin-panel="1"] span,.yunyin-game-page [data-yunyin-panel="1"] b,.yunyin-game-page [data-yunyin-panel="1"] small{color:#4a4038 !important;}
       .mp-icon-c,.mp-dock-i,.mp-back{background:rgba(47,36,64,.9);border-color:#3a2d4f;box-shadow:0 3px 12px rgba(7,4,12,.24);}
@@ -132,9 +133,6 @@ export function buildThemeCss({
       .mp-chat-row-time,.mp-msg-t,.mp-reality-t,.mp-post-tm{font-family:var(--mp-hand);font-size:10px;}
       .mp-cr::before{content:'';position:absolute;inset:0;pointer-events:none;z-index:0;background-image:radial-gradient(color-mix(in srgb,var(--mp-pink-dk) 8%,transparent) 1px,transparent 1px),radial-gradient(circle at 15% 10%,color-mix(in srgb,var(--mp-pink-lt) 45%,transparent),transparent 38%);background-size:9px 9px,100% 100%;}
       .mp-msgs{position:relative;z-index:1;}
-      .mp-phone::before,.mp-phone::after{position:absolute;top:-26px;z-index:95;pointer-events:none;font-size:12px;opacity:0;animation:mpPetal 12s linear infinite;}
-      .mp-phone::before{content:'🌸';left:12%;text-shadow:98px 76px 0 rgba(244,169,176,.8);}
-      .mp-phone::after{content:'🌸';left:64%;text-shadow:74px 128px 0 rgba(224,122,139,.72);animation-delay:3s;animation-duration:14s;}
       .mp-desk-scroll>.mp-cw{position:relative;height:155px;margin:6px 0 12px;padding:0;display:block;overflow:hidden;border:0;border-radius:20px;background:repeating-linear-gradient(45deg,color-mix(in srgb,var(--mp-surface) 78%,transparent) 0 12px,color-mix(in srgb,var(--mp-pink) 12%,transparent) 12px 24px);box-shadow:0 8px 24px color-mix(in srgb,var(--mp-pink-dk) 10%,transparent);touch-action:pan-x pan-y;}
       .mp-desk-scroll>.mp-cw::before{content:'角色立繪 ／ 自訂桌布';position:absolute;left:50%;top:50%;z-index:0;transform:translate(-50%,-50%);padding:7px 13px;border-radius:12px;background:color-mix(in srgb,var(--mp-surface) 86%,transparent);color:var(--mp-txt-l);font-size:10px;white-space:nowrap;}
       .mp-desk-scroll>.mp-cw>.mp-av{position:absolute;inset:0;z-index:1;width:100%;height:100%;border-radius:0;background:transparent;box-shadow:none;font-size:0;}
@@ -180,39 +178,9 @@ export function buildThemeCss({
       @media (prefers-reduced-motion:reduce){.mp-phone::before,.mp-phone::after{display:none;}}
     ` : ``}
     ${!hasPeachEffects ? `.mp-cr::before{display:none!important}` : ``}
-    ${!renderThemeEffects ? `.mp-phone::before,.mp-phone::after{display:none!important;animation:none!important}` : ``}
-    ${false && showThemeEffects && normalizedThemeName === "莓果蘇打" ? `
-      .mp-phone::before,.mp-phone::after{display:block;content:'○';top:auto;bottom:-30px;color:rgba(255,255,255,.72);font-size:25px;text-shadow:72px -130px 0 rgba(144,202,249,.38),188px -48px 0 rgba(206,147,216,.32),278px -210px 0 rgba(244,143,177,.36);animation:mpBubbleRise 13s ease-in infinite;}
-      .mp-phone::after{left:46%;font-size:17px;animation-delay:5s;animation-duration:16s;}
-    ` : ``}
-    ${false && showThemeEffects && normalizedThemeName === "夜色絨幕" ? `
-      .mp-phone::before,.mp-phone::after{display:block;content:'✦';top:12%;left:12%;color:#f4dfff;font-size:9px;text-shadow:62px 88px 0 #a5c9e8,176px 22px 0 #f48fb1,248px 154px 0 #c8a8e0,94px 310px 0 #fff;animation:mpStarTwinkle 4.8s ease-in-out infinite;}
-      .mp-phone::after{content:'·';top:24%;left:28%;font-size:17px;animation-delay:1.8s;animation-duration:6.2s;}
-    ` : ``}
-    ${false && showThemeEffects && normalizedThemeName === "抹茶檸檬" ? `
-      .mp-phone::before,.mp-phone::after{display:block;content:'🍃';top:-30px;left:13%;font-size:13px;text-shadow:104px 120px 0 rgba(124,179,66,.55),232px 30px 0 rgba(230,168,23,.38);animation:mpLeafFall 15s linear infinite;}
-      .mp-phone::after{left:58%;font-size:10px;animation-delay:6s;animation-duration:18s;}
-    ` : ``}
-    ${false && showThemeEffects && normalizedThemeName === "海鹽汽水" ? `
-      .mp-phone::before,.mp-phone::after{display:block;content:'';inset:0;top:0;left:0;font-size:0;background-image:radial-gradient(ellipse at 20% 30%,rgba(255,255,255,.22) 0 2px,transparent 3px),radial-gradient(ellipse at 70% 65%,rgba(77,182,172,.16) 0 3px,transparent 4px);background-size:54px 38px,76px 52px;animation:mpWaterShimmer 12s ease-in-out infinite;}
-      .mp-phone::after{animation-delay:3s;animation-duration:16s;filter:blur(1px);}
-    ` : ``}
-    ${renderThemeEffects && normalizedThemeName === "莓果蘇打" ? `
-      .mp-phone::before,.mp-phone::after{content:'🫧';top:auto;bottom:-28px;color:rgba(255,255,255,.82);font-family:var(--mp-font);font-size:22px;text-shadow:none;filter:none;animation:mpBubbleRise 13s ease-in infinite;}
-      .mp-phone::after{content:'🫧';left:58%;font-size:20px;text-shadow:none;filter:none;animation-name:mpBubbleRiseAlt;animation-delay:3.7s;animation-duration:16.8s;animation-timing-function:ease-in-out;}
-    ` : ``}
-    ${renderThemeEffects && normalizedThemeName === "夜色絨幕" ? `
-      .mp-phone::before,.mp-phone::after{content:'✦';color:#f4dfff;font-size:11px;text-shadow:98px 76px 0 rgba(165,201,232,.78);}
-      .mp-phone::after{content:'⋆';font-size:15px;color:#c8a8e0;text-shadow:74px 128px 0 rgba(244,143,177,.72);}
-    ` : ``}
-    ${renderThemeEffects && normalizedThemeName === "抹茶檸檬" ? `
-      .mp-phone::before,.mp-phone::after{content:'🍃';font-size:13px;text-shadow:98px 76px 0 rgba(124,179,66,.48);}
-      .mp-phone::after{content:'•';font-size:18px;color:#e6a817;text-shadow:74px 128px 0 rgba(230,168,23,.42);}
-    ` : ``}
-    ${renderThemeEffects && normalizedThemeName === "海鹽汽水" ? `
-      .mp-phone::before,.mp-phone::after{content:'❄️';top:22%;left:-25px;font-size:14px;text-shadow:78px 34px 0 rgba(79,195,247,.22);animation:mpSaltCrystalDrift 15s ease-in-out infinite;}
-      .mp-phone::after{content:'❄️';top:62%;left:auto;right:-25px;font-size:10px;color:rgba(255,255,255,.82);text-shadow:64px -32px 0 rgba(77,182,172,.2);animation:mpSaltCrystalDriftAlt 18s ease-in-out 4s infinite;}
-    ` : ``}
+    /* 主題粒子改由 components/shell/ThemeParticles.jsx 繪製；舊的 emoji 偽元素粒子停用。 */
+    .mp-phone::before,.mp-phone::after{display:none!important;animation:none!important}
+    ${!renderThemeEffects ? `.mp-fx i,.mp-fx i::before{animation-play-state:paused!important}` : ``}
     ${scopedCustomCss}
   `;
 }

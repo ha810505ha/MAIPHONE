@@ -447,4 +447,41 @@ assert(
   "chat screenshots must replace OKLab/OKLCH colors that html2canvas cannot parse",
 );
 
+
+// ---- 動效與粒子護欄（MP-009）----
+const [themeParticles, appLaunchMotion, devicePerformance, mainEntry] = await Promise.all([
+  source("components/shell/ThemeParticles.jsx"),
+  source("utils/appLaunchMotion.js"),
+  source("utils/devicePerformance.js"),
+  source("main.jsx"),
+]);
+// 常駐無限循環動畫會讓 GPU 一直醒著；新增前必須確認只在需要時播放，再加入這份清單。
+const INFINITE_ANIMATION_ALLOWLIST = new Set([
+  "mpTail", "mpInsertPulse", "mpThoughtPulse", "mpVoiceSpin", "mpDot", "dtTyping", "mpManualReplySpin",
+  "mpFxRise", "mpFxFlutter", "mpFxTwinkle", "mpFxShoot",
+]);
+for (const [name, text] of [["maliPhone.css", phoneCss], ["themeCss.js", themeCss]]) {
+  for (const match of text.matchAll(/animation(?:-name)?\s*:\s*([A-Za-z][\w-]*)[^;}`]*\binfinite\b/g)) {
+    assert(INFINITE_ANIMATION_ALLOWLIST.has(match[1]), `${name}: infinite animation ${match[1]} is not in the allowlist`);
+  }
+  assert((text.match(/animation-iteration-count\s*:\s*infinite/g) || []).length <= (name === "maliPhone.css" ? 1 : 0), `${name}: new animation-iteration-count:infinite rule`);
+}
+assert(!/\.mp-lock-hint\{[^}]*infinite/.test(phoneCss), "lock hint must float a few times and stop, not loop forever");
+assert((phoneCss.match(/backdrop-filter\s*:\s*blur/g) || []).length <= 43, "maliPhone.css backdrop blur declarations must not grow beyond 43 (incl. -webkit-; +2 = large-title header, blurred only after collapse)");
+assert(/\.mp-icon-c\{backdrop-filter:none;/.test(phoneCss), "home icon tiles must not use backdrop blur (36 tiles re-blur every frame behind particles)");
+for (const match of themeParticles.matchAll(/counts:\s*\[(\d+),\s*(\d+),\s*(\d+)\]/g)) {
+  const total = Number(match[1]) + Number(match[2]) + Number(match[3]);
+  assert(total <= 20, `theme particle count ${total} exceeds the 20-per-theme budget`);
+}
+assert(themeParticles.includes("is-paused") && phoneCss.includes(".mp-fx.is-paused{visibility:hidden;}"), "theme particles must pause and hide while an app covers the home screen");
+assert(phoneCss.includes("@media (prefers-reduced-motion:reduce){.mp-fx{display:none;}"), "theme particles must be hidden for reduced motion");
+assert(
+  appLaunchMotion.includes('stage.dataset.launched = "true"') && phoneCss.includes(".mp-app-stage[data-launched]>.mp-page"),
+  "icon-launched pages must not replay mpAppOpen after the launch animation (visible flash)",
+);
+assert(
+  mainEntry.includes("applyPerformanceMode();") && devicePerformance.includes("dataset.mpPerf") && phoneCss.includes('html[data-mp-perf="lite"] .mp-phone *{backdrop-filter:none!important;'),
+  "low-power devices must get the lite visual mode",
+);
+
 console.log("ok: gallery, animation, route chunking, smart preloading, and Yunyin HUD/settings guards hold");

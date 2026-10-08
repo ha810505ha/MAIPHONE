@@ -4,7 +4,9 @@ import { SpecialMemoryModal } from "../gacha/SpecialMemoryCard";
 import { sanitizeUserImageUrl } from "../../utils/coreUtils";
 import { reviewCoupleInviteReplies } from "../../utils/coupleInviteReview";
 import { loadFeatureEntity, saveFeatureEntity } from "../../utils/indexedDbStorage";
+import { AppHeader, LargeTitle, LargeTitleHeader, SUB_PAGE_CLASS, useLargeTitle } from "../shell/LargeTitle";
 import { coupleDayKey, generateLoveSign, generateDailyTask, judgeCoupleTask, settleTemperature, temperatureComment } from "../../services/couple/coupleDailyService";
+import Icon from "../common/Icon";
 
 const RARITY_COLORS = { SSR: "#c99a4b", SR: "#8f6cc9", R: "#6f9cc9" };
 const GLASS = { background: "rgba(255,255,255,.66)", border: "1px solid rgba(255,255,255,.85)" };
@@ -552,7 +554,7 @@ export default function CoupleApp({ closeApp, characters = [], chatHistory = {},
   if (dailyStore === null) {
     return (
       <div className="mp-page couple-app-page" data-mp-surface="light" style={{ background: "linear-gradient(180deg,#ffe0ea 0%,#ffd7e4 45%,#f3e3ff 100%)" }}>
-        <div className="mp-hdr" style={{ background: "transparent" }}><div className="mp-back" onClick={closeApp}>←</div><div className="mp-htitle">💞 {tr("情侶空間", "Couple Space", "カップルスペース", "커플 공간")}</div></div>
+        <AppHeader title={`💞 ${tr("情侶空間", "Couple Space", "カップルスペース", "커플 공간")}`} onBack={closeApp} backLabel={tr("返回首頁", "Back to Home", "ホームに戻る", "홈으로 돌아가기")} style={{ background: "transparent" }} />
         <div style={{ flex: 1, display: "grid", placeItems: "center", color: "#a86e84", fontSize: 12 }}>💗</div>
       </div>
     );
@@ -562,14 +564,14 @@ export default function CoupleApp({ closeApp, characters = [], chatHistory = {},
   if (choosing || !partner) {
     return (
       <div className="mp-page couple-app-page" data-mp-surface="light" style={{ background: "linear-gradient(180deg,#ffe0ea 0%,#ffd7e4 45%,#f3e3ff 100%)" }}>
-        <div className="mp-hdr" style={{ background: "transparent" }}><div className="mp-back" onClick={() => (partner ? setChoosing(false) : closeApp())}>←</div><div className="mp-htitle">💞 {tr("情侶空間", "Couple Space", "カップルスペース", "커플 공간")}</div></div>
+        <AppHeader title={`💞 ${tr("情侶空間", "Couple Space", "カップルスペース", "커플 공간")}`} onBack={() => (partner ? setChoosing(false) : closeApp())} backLabel={tr("返回", "Back", "戻る", "뒤로")} style={{ background: "transparent" }} />
         <div style={{ flex: 1, overflowY: "auto", padding: "6px 16px 26px" }}>
           <div style={{ textAlign: "center", padding: "10px 0 16px" }}>
             <div style={{ fontSize: 26 }}>💌</div>
             <div style={{ fontSize: 13, fontWeight: 900, color: "#7a4257", marginTop: 6, fontFamily: HAND_FONT }}>{tr("選擇一個雙人空間", "Choose a shared space", "二人のスペースを選択", "두 사람의 공간 선택")}</div>
             <div style={{ fontSize: 10.5, color: "#a86e84", marginTop: 4, lineHeight: 1.7 }}>{tr("已開通的空間會永久保留；尚未開通的角色可以先送出邀請。", "Opened spaces are kept permanently. You can invite characters whose spaces are not open yet.", "開通したスペースは永久に残ります。未開通のキャラには招待を送れます。", "개설된 공간은 계속 유지됩니다. 아직 열리지 않은 캐릭터에게 초대를 보낼 수 있습니다.")}</div>
           </div>
-          {partners.length === 0 && <div className="mp-empty"><div className="mp-empty-i">💞</div><div className="mp-empty-t">{tr("還沒有角色", "No characters yet", "キャラがまだいません", "아직 캐릭터가 없습니다")}<br />{tr("先去建立一位吧", "Create one first", "先に作成しましょう", "먼저 캐릭터를 만들어 보세요")}</div></div>}
+          {partners.length === 0 && <div className="mp-empty"><div className="mp-empty-icon" aria-hidden="true"><Icon name="heart" size={34} /></div><div className="mp-empty-t">{tr("還沒有角色", "No characters yet", "キャラがまだいません", "아직 캐릭터가 없습니다")}<br />{tr("先去建立一位吧", "Create one first", "先に作成しましょう", "먼저 캐릭터를 만들어 보세요")}</div></div>}
           {acceptedPartners.length > 0 && <>
             <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "2px 4px 9px", color: "#9b566e", fontSize: 11, fontWeight: 900 }}>
               <span>💗 {tr("已開通空間", "Opened spaces", "開通済みスペース", "개설된 공간")}</span><span style={{ color: "#c68ba0", fontSize: 9.5 }}>({acceptedPartners.length})</span>
@@ -602,7 +604,7 @@ export default function CoupleApp({ closeApp, characters = [], chatHistory = {},
     const rarityCounts = allMemories.reduce((acc, m) => { acc[m.itemRarity] = (acc[m.itemRarity] || 0) + 1; return acc; }, {});
     return (
       <div className="mp-page couple-app-page" data-mp-surface="light" style={{ background: "linear-gradient(180deg,#ffe0ea 0%,#ffd7e4 45%,#f3e3ff 100%)" }}>
-        <div className="mp-hdr" style={{ background: "transparent" }}><div className="mp-back" onClick={() => setView("home")}>←</div><div className="mp-htitle">📖 {tr("我們的回憶", "Our Memories", "二人の思い出", "우리의 추억")}</div></div>
+        <AppHeader title={`📖 ${tr("我們的回憶", "Our Memories", "二人の思い出", "우리의 추억")}`} onBack={() => setView("home")} backLabel={tr("返回", "Back", "戻る", "뒤로")} style={{ background: "transparent" }} />
         <div style={{ flex: 1, overflowY: "auto", padding: "2px 16px 28px" }}>
           {allMemories.length > 0 && (
             <div style={{ display: "flex", justifyContent: "center", gap: 6, margin: "10px 0 4px" }}>
@@ -668,12 +670,10 @@ export default function CoupleApp({ closeApp, characters = [], chatHistory = {},
     <div className="mp-page couple-app-page" data-mp-surface="light" style={{ overflow: "hidden", background: "linear-gradient(180deg,#ffe0ea 0%,#ffd7e4 45%,#f3e3ff 100%)" }}>
       <style>{MOONLIT_SIGN_STYLES}</style>
       {daily?.milestones?.fullHeart && <FullHeartBackdrop />}
-      <div className="mp-hdr" style={{ position: "relative", zIndex: 1, background: "transparent" }}>
-        <div className="mp-back" onClick={closeApp}>←</div>
-        <div className="mp-htitle">💗 {tr("我們的日子", "Our Days", "二人の日々", "우리의 날들")}</div>
+      <AppHeader title={`💗 ${tr("我們的日子", "Our Days", "二人の日々", "우리의 날들")}`} onBack={closeApp} backLabel={tr("返回首頁", "Back to Home", "ホームに戻る", "홈으로 돌아가기")} style={{ position: "relative", zIndex: 1, background: "transparent" }} right={
         <button type="button" title={tr("更換主要互動對象", "Change primary partner", "主な交流相手を変更", "주요 교류 상대 변경")} onClick={() => setChoosing(true)}
           style={{ marginLeft: "auto", border: "1px solid rgba(255,255,255,.85)", borderRadius: 99, background: "rgba(255,255,255,.55)", color: "#a86e84", fontSize: 9.5, fontWeight: 800, padding: "5px 10px" }}>⇄ {tr("換人", "Switch", "変更", "변경")}</button>
-      </div>
+      } />
       <div style={{ position: "relative", zIndex: 1, flex: 1, overflowY: "auto", padding: "2px 16px 28px" }}>
 
         {/* 關係頭部 */}

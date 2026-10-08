@@ -10,7 +10,9 @@ import {
 } from "./services/diagnostics/runtimeDiagnostics.js";
 import { installNativeAuthRedirectHandler } from "./services/auth/nativeAuthRedirect.js";
 import { handleGoogleDriveWebRedirect } from "./services/backup/googleDriveBackupService.js";
+import { applyPerformanceMode } from "./utils/devicePerformance.js";
 
+applyPerformanceMode();
 installGlobalRuntimeDiagnostics();
 installRootBlankScreenWatchdog();
 void installNativeAuthRedirectHandler();

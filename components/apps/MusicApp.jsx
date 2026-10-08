@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from "react";
 import { useMusicPlayer } from "../../contexts/MusicPlayerContext";
 import { generateMusicReaction, generateSongPick } from "../../services/music/musicReactionService";
 import { sanitizeUserImageUrl } from "../../utils/coreUtils";
+import { AppHeader, LargeTitle, LargeTitleHeader, SUB_PAGE_CLASS, useLargeTitle } from "../shell/LargeTitle";
+import { AvatarFallback } from "../common/Avatar";
 
 const GLASS = { background: "var(--mp-card-bg)", border: "1px solid var(--mp-card-border)" };
 const SOURCE_LABELS = { sp: "Spotify", yt: "YouTube" };
@@ -97,16 +99,17 @@ export default function MusicApp({ closeApp, apiConfig, characters = [], playerP
 
   return (
     <div className="mp-page music-app-page" style={{ "--music-accent": "var(--mp-accent)", "--music-accent-soft": "var(--mp-accent-soft)", background: "var(--mp-page-bg)", padding: "var(--mp-space-md) var(--mp-space-md) var(--mp-space-lg)", overflowY: "auto" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <div className="mp-back" onClick={closeApp}>←</div>
-        <div className="music-app-title" style={{ fontSize: 15, fontWeight: 900, color: "var(--mp-txt)" }}>🎧 {tr("一起聽歌", "Listen together", "一緒に音楽を聴く", "함께 음악 듣기")}</div>
-        {mp.track && (
-          <div style={{ ...GLASS, marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, borderRadius: 99, padding: "4px 10px" }}>
+      <AppHeader
+        title={tr("一起聽歌", "Listen together", "一緒に音楽を聴く", "함께 음악 듣기")}
+        onBack={closeApp}
+        backLabel={tr("返回首頁", "Back to Home", "ホームに戻る", "홈으로 돌아가기")}
+        right={mp.track ? (
+          <div style={{ ...GLASS, display: "flex", alignItems: "center", gap: 6, borderRadius: 99, padding: "4px 10px" }}>
             <span style={{ width: 7, height: 7, borderRadius: "50%", background: mp.isPlaying ? "var(--mp-success)" : "var(--mp-muted)" }} />
             <span style={{ fontSize: 10, fontWeight: 700, color: "var(--mp-txt)" }}>{mp.isPlaying ? tr("播放中", "Playing", "再生中", "재생 중") : tr("已暫停", "Paused", "一時停止", "일시 정지")}</span>
           </div>
-        )}
-      </div>
+        ) : null}
+      />
 
       {/* 預設自己聽；選中的角色展開成膠囊，其他只留頭像 */}
       {
@@ -114,7 +117,7 @@ export default function MusicApp({ closeApp, apiConfig, characters = [], playerP
           onWheel={(event) => { if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) event.currentTarget.scrollLeft += event.deltaY; }}>
           <button type="button" title={tr("不和角色一起聽", "Listen without a character", "キャラと一緒に聴かない", "캐릭터 없이 듣기")} onClick={() => chooseListener(null)}
             style={!activeChar
-              ? { flex: "0 0 auto", border: 0, borderRadius: 99, padding: "7px 12px", background: "linear-gradient(135deg,var(--mp-bubble),var(--music-accent))", color: "var(--mp-on-accent)", fontSize: 11, fontWeight: 800, boxShadow: "var(--mp-shadow)" }
+              ? { flex: "0 0 auto", border: 0, borderRadius: 99, padding: "7px 12px", background: "var(--mp-primary-gradient)", color: "var(--mp-on-accent)", fontSize: 11, fontWeight: 800, boxShadow: "var(--mp-shadow)" }
               : { flex: "0 0 auto", border: "1px solid var(--mp-card-border)", borderRadius: 99, padding: "7px 12px", background: "var(--mp-glass)", color: "var(--mp-muted)", fontSize: 11, fontWeight: 800 }}>
             🎧 {tr("自己聽", "Listen alone", "ひとりで聴く", "혼자 듣기")}
           </button>
@@ -126,13 +129,13 @@ export default function MusicApp({ closeApp, apiConfig, characters = [], playerP
               <span style={{ width: selected ? 24 : 30, height: selected ? 24 : 30, borderRadius: "50%", overflow: "hidden", flex: "0 0 auto",
                   background: "var(--mp-card-bg)", display: "grid", placeItems: "center", fontSize: selected ? 11 : 13,
                   border: selected ? 0 : "1.5px solid var(--mp-card-border)", boxShadow: selected ? "none" : "var(--mp-shadow)", transition: "all .18s" }}>
-                {avatar ? <img src={avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (c.name?.[0] || "🙂")}
+                {avatar ? <img src={avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <AvatarFallback name={c.name} />}
               </span>
             );
             return (
               <button key={c.id} type="button" title={c.name} onClick={() => chooseListener(c.id)}
                 style={selected
-                  ? { flex: "0 0 auto", display: "flex", alignItems: "center", gap: 6, background: "linear-gradient(135deg,var(--mp-bubble),var(--music-accent))", color: "var(--mp-on-accent)", border: 0, borderRadius: 99, padding: "3px 12px 3px 4px", fontSize: 11, fontWeight: 800, boxShadow: "var(--mp-shadow)", transition: "all .18s" }
+                  ? { flex: "0 0 auto", display: "flex", alignItems: "center", gap: 6, background: "var(--mp-primary-gradient)", color: "var(--mp-on-accent)", border: 0, borderRadius: 99, padding: "3px 12px 3px 4px", fontSize: 11, fontWeight: 800, boxShadow: "var(--mp-shadow)", transition: "all .18s" }
                   : { flex: "0 0 auto", display: "grid", placeItems: "center", background: "transparent", border: 0, padding: 0, opacity: .78, transition: "all .18s" }}>
                 {face}
                 {selected && <span style={{ whiteSpace: "nowrap" }}>{c.name}</span>}
@@ -144,7 +147,7 @@ export default function MusicApp({ closeApp, apiConfig, characters = [], playerP
       }
 
       <button type="button" disabled={busy || !activeChar} onClick={() => requestRecommendation(input)}
-        style={{ width: "100%", marginTop: 10, border: 0, borderRadius: 14, padding: "10px 14px", background: activeChar ? "linear-gradient(135deg,var(--mp-bubble),var(--music-accent))" : "var(--mp-line)", color: activeChar ? "var(--mp-on-accent)" : "var(--mp-muted)", fontSize: 11.5, fontWeight: 900, boxShadow: activeChar ? "var(--mp-shadow)" : "none" }}>
+        style={{ width: "100%", marginTop: 10, border: 0, borderRadius: 14, padding: "10px 14px", background: activeChar ? "var(--mp-primary-gradient)" : "var(--mp-line)", color: activeChar ? "var(--mp-on-accent)" : "var(--mp-muted)", fontSize: 11.5, fontWeight: 900, boxShadow: activeChar ? "var(--mp-shadow)" : "none" }}>
         {busy
           ? tr("正在請角色選歌…", "Asking for a song…", "キャラが曲を選んでいます…", "캐릭터에게 노래를 부탁하는 중…")
           : activeChar
@@ -179,7 +182,7 @@ export default function MusicApp({ closeApp, apiConfig, characters = [], playerP
           <div style={{ width: 30, height: 30, flex: "none", borderRadius: "50%", overflow: "hidden", background: "var(--music-accent)", color: "var(--mp-on-accent)", fontSize: 13, fontWeight: 700, display: "grid", placeItems: "center" }}>
             {(() => { const c = characters.find((x) => x.name === mp.charReaction.characterName); const a = sanitizeUserImageUrl(c?.avatar); return a ? <img src={a} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (mp.charReaction.characterName?.[0] || "♪"); })()}
           </div>
-          <div className="music-app-reaction" style={{ background: "linear-gradient(135deg,var(--mp-bubble),var(--music-accent))", color: "var(--mp-on-accent)", fontSize: 12, lineHeight: 1.6, padding: "9px 12px", borderRadius: "4px 14px 14px 14px" }}>{mp.charReaction.text}</div>
+          <div className="music-app-reaction" style={{ background: "var(--mp-primary-gradient)", color: "var(--mp-on-accent)", fontSize: 12, lineHeight: 1.6, padding: "9px 12px", borderRadius: "4px 14px 14px 14px" }}>{mp.charReaction.text}</div>
         </div>
       )}
 
@@ -208,7 +211,7 @@ export default function MusicApp({ closeApp, apiConfig, characters = [], playerP
         <input value={input} disabled={busy} onChange={(event) => setInput(event.target.value)}
           onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) submit(); }}
           placeholder={busy ? tr("處理中…", "Working…", "処理中…", "처리 중…") : tr("貼 YouTube／Spotify 連結，或輸入心情、曲風後請角色推薦", "Paste a YouTube/Spotify link, or enter a mood or genre for a recommendation", "YouTube／Spotifyのリンクを貼るか、気分やジャンルを入力しておすすめを頼む", "YouTube/Spotify 링크를 붙여넣거나 기분·장르를 입력해 추천받기")}
-          className="music-app-input" style={{ ...GLASS, width: "100%", boxSizing: "border-box", borderRadius: 99, padding: "11px 16px", fontSize: 12, color: "var(--mp-txt)", outline: "none" }} />
+          className="music-app-input" style={{ width: "100%", boxSizing: "border-box", borderRadius: 99, padding: "11px 16px", fontSize: 12, color: "var(--mp-txt)", outline: "none" }} />
       </div>
     </div>
   );

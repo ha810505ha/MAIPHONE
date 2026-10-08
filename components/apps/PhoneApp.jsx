@@ -1,8 +1,11 @@
 import React from "react";
+import BackButton from "../common/BackButton";
 import { PHONE_APP_META, sanitizePhoneTheme, phoneWallpaperCss, mixHex, getReadableTextColor } from "../../utils/phoneAppGen";
 import { pseudoImageStyle } from "../../utils/pseudoImage";
 import { generateCityMap, categoryColor } from "../../utils/mapGen";
 import PseudoVoiceBubble from "../chat/PseudoVoiceBubble";
+import { AvatarFallback } from "../common/Avatar";
+import Icon from "../common/Icon";
 
 const AI_APP_PAGES = ["gallery", "music", "map", "shop", "diary", "browser", "usage"];
 
@@ -84,12 +87,12 @@ export default function PhoneApp({
       <div className={`mp-page phone-app-page ${!inImmersivePhone ? "phone-picker-page" : "phone-generated-page"}`} style={inImmersivePhone ? { padding: 0 } : undefined}>
         {!inImmersivePhone && (
           <div className="mp-hdr">
-            <div className="mp-back" onClick={closeApp}>←</div>
+            <BackButton onClick={closeApp} label={tr("返回首頁", "Back to Home", "ホームに戻る", "홈으로 돌아가기")} />
             <div className="mp-htitle">{t("phone")}</div>
           </div>
         )}
         <div className={`mp-cm ${!inImmersivePhone ? "phone-picker-content" : ""}`} style={inImmersivePhone ? { padding: 0 } : undefined}>
-          {characters.length === 0 && <div className="mp-empty"><div className="mp-empty-i">📱</div><div className="mp-empty-t">{t("characters")} {t("phone")}</div></div>}
+          {characters.length === 0 && <div className="mp-empty"><div className="mp-empty-icon" aria-hidden="true"><Icon name="phone" size={34} /></div><div className="mp-empty-t">{t("characters")} {t("phone")}</div></div>}
           {characters.length > 0 && !inImmersivePhone && (
             <div className="mp-sc phone-picker-panel" style={{padding:12}}>
               <div className="phone-picker-description" style={{fontWeight:700,fontSize:14,marginBottom:8}}>{t("contactsHint")}</div>
@@ -97,7 +100,7 @@ export default function PhoneApp({
                 {characters.map((c) => (
                   <button key={c.id} className="mp-cc phone-picker-card" style={{textAlign:"left",color:"var(--mp-txt)"}} onClick={(e) => { e.stopPropagation(); openDesktop(c.id); }}>
                     <div style={{display:"flex",alignItems:"center",gap:10}}>
-                      <div className="mp-av phone-picker-avatar">{sanitizeUserImageUrl(c.avatar)?<img src={sanitizeUserImageUrl(c.avatar)} alt=""/>:"🦊"}</div>
+                      <div className="mp-av phone-picker-avatar">{sanitizeUserImageUrl(c.avatar)?<img src={sanitizeUserImageUrl(c.avatar)} alt=""/>:<AvatarFallback name={c.name} />}</div>
                       <div style={{flex:1}}>
                         <div className="phone-picker-name" style={{fontWeight:700,fontSize:13,color:"var(--mp-txt)"}}>{c.name}</div>
                         <div className="phone-picker-hint" style={{fontSize:11,color:"var(--mp-txt-l)"}}>{t("contactsHint")}</div>
@@ -122,7 +125,7 @@ export default function PhoneApp({
             );
             return (
               <div style={{ position: "relative", height: "100%", minHeight: 640, background: phoneWallpaperCss(th), padding: "14px 14px 24px", display: "flex", flexDirection: "column", gap: 12 }}>
-                <button className="mp-back" style={{ position: "absolute", left: 12, top: 12, zIndex: 5 }} onClick={openPicker}>←</button>
+                <BackButton style={{ position: "absolute", left: 12, top: 12, zIndex: 5 }} onClick={openPicker} label={tr("返回", "Back", "戻る", "뒤로")} />
                 <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, color: th.textSub, fontSize: 13, padding: "2px 8px 0 56px" }}>
                   <span>{phoneTime}</span><span>{phoneDate}</span>
                 </div>
@@ -138,7 +141,7 @@ export default function PhoneApp({
                 {/* 狀態一句話 */}
                 <div style={{ ...cardS, borderRadius: 14, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10 }}>
                   <div className="mp-av" style={{ width: 30, height: 30, flex: "none", background: th.accent, color: "#fff", fontSize: 13, fontWeight: 700 }}>
-                    {sanitizeUserImageUrl(selectedChar.avatar) ? <img src={sanitizeUserImageUrl(selectedChar.avatar)} alt="" /> : (selectedChar.name?.[0] || "🙂")}
+                    {sanitizeUserImageUrl(selectedChar.avatar) ? <img src={sanitizeUserImageUrl(selectedChar.avatar)} alt="" /> : <AvatarFallback name={selectedChar.name} />}
                   </div>
                   <div style={{ fontSize: 12, color: th.text, lineHeight: 1.5, flex: 1 }}>
                     {th.status || tr("尚未生成主題", "Theme not generated yet", "テーマ未生成", "테마 미생성")}
@@ -200,7 +203,7 @@ export default function PhoneApp({
           })()}
           {characters.length > 0 && selectedChar && phonePage === "wallet" && (
             <div style={{position:"relative",height:"100%",minHeight:640,background:phoneWallpaperCss(phTh),padding:"14px 12px 24px",boxSizing:"border-box",width:"100%",maxWidth:"100%",overflowX:"hidden"}}>
-              <button className="mp-back" style={{position:"absolute",left:12,top:12,zIndex:5}} onClick={closeApp}>←</button>
+              <BackButton style={{position:"absolute",left:12,top:12,zIndex:5}} onClick={closeApp} label={tr("返回首頁", "Back to Home", "ホームに戻る", "홈으로 돌아가기")} />
               <div style={{padding:"2px 8px 0 56px",display:"flex",justifyContent:"space-between",fontWeight:700,color:phTh.textSub,fontSize:13}}>
                 <span>{phoneTime}</span><span>{phoneDate}</span>
               </div>
@@ -242,7 +245,7 @@ export default function PhoneApp({
           )}
           {characters.length > 0 && selectedChar && phonePage === "chatlist" && (
             <div style={{position:"relative",height:"100%",minHeight:640,background:phoneWallpaperCss(phTh),padding:"14px 12px 24px",boxSizing:"border-box",width:"100%",maxWidth:"100%",overflowX:"hidden"}}>
-              <button className="mp-back" style={{position:"absolute",left:12,top:12,zIndex:5}} onClick={closeApp}>←</button>
+              <BackButton style={{position:"absolute",left:12,top:12,zIndex:5}} onClick={closeApp} label={tr("返回首頁", "Back to Home", "ホームに戻る", "홈으로 돌아가기")} />
               <div style={{padding:"2px 8px 0 56px",display:"flex",justifyContent:"space-between",fontWeight:700,color:phTh.textSub,fontSize:13}}>
                 <span>{phoneTime}</span><span>{phoneDate}</span>
               </div>
@@ -280,7 +283,7 @@ export default function PhoneApp({
           )}
           {characters.length > 0 && selectedChar && phonePage === "thread" && (
             <div style={{position:"relative",height:"100%",minHeight:640,background:phoneWallpaperCss(phTh),padding:"14px 12px 24px",boxSizing:"border-box",width:"100%",maxWidth:"100%",overflowX:"hidden"}}>
-              <button className="mp-back" style={{position:"absolute",left:12,top:12,zIndex:5}} onClick={closeApp}>←</button>
+              <BackButton style={{position:"absolute",left:12,top:12,zIndex:5}} onClick={closeApp} label={tr("返回首頁", "Back to Home", "ホームに戻る", "홈으로 돌아가기")} />
               <div style={{padding:"2px 8px 0 56px",display:"flex",justifyContent:"space-between",fontWeight:700,color:phTh.textSub,fontSize:13}}>
                 <span>{phoneTime}</span><span>{phoneDate}</span>
               </div>
@@ -325,7 +328,7 @@ export default function PhoneApp({
 
             return (
               <div style={{ position: "relative", height: "100%", minHeight: 640, background: phoneWallpaperCss(th), padding: "14px 14px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
-                <button className="mp-back" style={{ position: "absolute", left: 12, top: 12, zIndex: 5 }} onClick={closeApp}>←</button>
+                <BackButton style={{ position: "absolute", left: 12, top: 12, zIndex: 5 }} onClick={closeApp} label={tr("返回首頁", "Back to Home", "ホームに戻る", "홈으로 돌아가기")} />
                 <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, color: th.textSub, fontSize: 13, padding: "2px 8px 0 56px" }}>
                   <span>{phoneTime}</span><span>{phoneDate}</span>
                 </div>

@@ -72,6 +72,7 @@ import MaliPhoneSettingsSurface from "./components/settings/MaliPhoneSettingsSur
 import MaliPhoneShell from "./components/shell/MaliPhoneShell";
 import MaliPhoneOverlays from "./components/shell/MaliPhoneOverlays";
 import usePhoneNavigation from "./hooks/navigation/usePhoneNavigation";
+import { playAppClose } from "./utils/appLaunchMotion.js";
 import useNotificationCenter from "./hooks/notifications/useNotificationCenter";
 import { subscribeSystemNotificationClicks } from "./services/notifications/systemNotifications";
 import useTransientItem from "./hooks/useTransientItem";
@@ -945,6 +946,7 @@ export default function MaliPhone() {
       }
       setCurrentApp(appId);
     },
+    onBeforeCloseApp: playAppClose,
     onCloseApp: () => {
       setCurrentApp(null);
       setCurrentChatChar(null);
@@ -1513,7 +1515,7 @@ export default function MaliPhone() {
   }, [hydrated, characters, chatHistory, proactiveSettings, proactiveUnread, apiConfig, notificationCenter.settings.pauseProactive]);
 
 
-  const { isNightTheme, isPeachTheme, themeCss } = useThemeRuntime({
+  const { isNightTheme, isPeachTheme, themeCss, normalizedThemeName } = useThemeRuntime({
     themeName,
     fontName,
     fontSizeScale,
@@ -1636,8 +1638,10 @@ export default function MaliPhone() {
   const toggleChatPin = (charId) => {
     setCharacters((prev) => {
       const target = prev.find((c) => c.id === charId);
-      showToast(target?.pinned ? tr("已取消釘選", "Unpinned", "固定を解除しました", "고정 해제됨") : tr("已釘選", "Pinned", "固定しました", "고정됨"));
-      return prev.map((c) => (c.id === charId ? { ...c, pinned: !c.pinned } : c));
+      // 舊資料可能用 chatPinned 記置頂；兩個欄位一起判斷、一起寫回，聊天室與列表才會一致。
+      const wasPinned = !!(target?.pinned || target?.chatPinned);
+      showToast(wasPinned ? tr("已取消置頂", "Unpinned", "固定を解除しました", "고정 해제됨") : tr("已置頂", "Pinned", "固定しました", "고정됨"));
+      return prev.map((c) => (c.id === charId ? { ...c, pinned: !wasPinned, chatPinned: false } : c));
     });
   };
   const {
@@ -1737,6 +1741,7 @@ export default function MaliPhone() {
     openChatSettings,
     openChatroomImport,
     openCreateGroup,
+    openCharactersApp: () => openApp("characters"),
     openEditGroup,
     parseShareEventNotice,
     personaController,
@@ -2031,6 +2036,7 @@ export default function MaliPhone() {
   return (
     <MaliPhoneShell
       themeCss={themeCss}
+      effects={{ enabled: themeEffectsEnabled, theme: normalizedThemeName }}
       locked={locked}
       lockProps={{
         unlocking,

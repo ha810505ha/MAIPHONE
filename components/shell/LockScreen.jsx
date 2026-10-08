@@ -10,11 +10,12 @@ const gestureGuards = {
   onPointerDown: stopGesture, onPointerUp: stopGesture,
 };
 
-export default function LockScreen({ unlocking, notifications, onOpenNotification, onUnlock, gestureHandlers, ft, fd, tr }) {
+export default function LockScreen({ unlocking, notifications, onOpenNotification, onUnlock, gestureHandlers, ft, fd, tr, effects = null }) {
   return (
     <div className="mp-wrap">
       <div className="mp-phone" data-runtime-phone="true">
         <div className={`mp-lock ${unlocking ? "out" : ""}`} {...gestureHandlers} onDoubleClick={onUnlock}>
+          {effects}
           <BarClock ft={ft} hideTime />
           <LockClock ft={ft} fd={fd} />
           <div className="mp-lock-notifs" {...gestureGuards}>

@@ -104,4 +104,55 @@ for (const fileName of await readdir(appsRoot)) {
   );
 }
 
-console.log("ok: semantic page colors, light-surface chrome, and new-app foreground-color guard hold");
+
+// ---- 介面一致性（MP-009）：新 App 一律用共用頁首／返回鍵；例外清單只能縮小，不能新增。----
+const UI_LEGACY_ALLOWLIST = new Map([
+  ["components/common/BackButton.jsx", "共用返回鍵本身"],
+  ["components/chat/ChatHeader.jsx", "聊天室頂欄控制項多，保留自訂排版（返回鍵已共用）"],
+  ["components/apps/PhoneApp.jsx", "角色手機模擬畫面（返回鍵已共用）"],
+  ["components/chat/ChatScreenshotModal.jsx", "截圖用裝飾頂欄"],
+  ["components/shell/AppRuntimeBoundary.jsx", "錯誤保護畫面（返回鍵已共用）"],
+  ["components/apps/DatingApp.jsx", "功能旗標關閉，重新開放前改用共用頁首"],
+  ["components/gacha/GachaGame.jsx", "功能旗標關閉，重新開放前改用共用頁首"],
+  ["components/gacha/RealityEpisodeRoom.jsx", "功能旗標關閉，重新開放前改用共用頁首"],
+  ["components/gacha/EpisodeRoom.jsx", "特別篇房間（返回鍵已共用）"],
+]);
+async function listJsx(dir) {
+  const out = [];
+  for (const entry of await readdir(resolve(projectRoot, dir), { withFileTypes: true })) {
+    const rel = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) out.push(...await listJsx(rel));
+    else if (entry.name.endsWith(".jsx")) out.push(rel);
+  }
+  return out;
+}
+const uiFiles = [...await listJsx("components"), ...await listJsx("yunyin").catch(() => [])];
+for (const file of uiFiles) {
+  if (UI_LEGACY_ALLOWLIST.has(file)) continue;
+  const text = await source(file);
+  assert(!/className=["{`]+mp-back\b/.test(text), `ui consistency: ${file} hand-writes a back button; use components/common/BackButton.jsx`);
+  assert(!/className="mp-hdr"/.test(text), `ui consistency: ${file} hand-writes a .mp-hdr header; use LargeTitleHeader (first level) or AppHeader (second level) from components/shell/LargeTitle.jsx`);
+}
+for (const file of UI_LEGACY_ALLOWLIST.keys()) {
+  const text = await source(file).catch(() => "");
+  assert(text, `ui consistency: allowlisted ${file} no longer exists; remove it from UI_LEGACY_ALLOWLIST`);
+}
+// 主要按鈕漸層一律用 --mp-primary-gradient；主色直接混到強調色（抹茶綠→焦橘、海鹽藍綠→紅）中段會發灰變髒。
+const mixedPrimaryGradient = /linear-gradient\(135deg,\s*var\(--mp-(?:bubble|pink)\),\s*var\(--(?:mp-pink-dk|mp-accent|music-accent|calendar-accent)\)\)/;
+for (const file of [...uiFiles, "styles/maliPhone.css", "styles/themeCss.js"]) {
+  const text = await source(file);
+  assert(!mixedPrimaryGradient.test(text), `ui consistency: ${file} mixes the theme main color into the accent color in one gradient; use var(--mp-primary-gradient)`);
+}
+// 「沒有東西」不要再用 emoji：空白頁用 EmptyState 或 Icon，沒頭像用 AvatarFallback（名字第一個字）。
+const emojiPlaceholder = /className="mp-empty-i"|["'](?:🦊|🙂|👤|🐱|👥)["']/u;
+for (const file of uiFiles) {
+  if (UI_LEGACY_ALLOWLIST.has(file)) continue;
+  const text = await source(file);
+  assert(!emojiPlaceholder.test(text), `ui consistency: ${file} uses an emoji placeholder; use components/common/EmptyState.jsx, Icon.jsx, or AvatarFallback from Avatar.jsx`);
+}
+const backButtonSource = await source("components/common/BackButton.jsx");
+assert(backButtonSource.includes('type="button"') && backButtonSource.includes("aria-label={label}"), "ui consistency: BackButton must stay a real button with a translatable label");
+const largeTitleSource = await source("components/shell/LargeTitle.jsx");
+assert(["export function useLargeTitle", "export function LargeTitleHeader", "export function LargeTitle", "export function AppHeader", "export const SUB_PAGE_CLASS"].every((name) => largeTitleSource.includes(name)), "ui consistency: shared header exports must remain available");
+
+console.log("ok: semantic page colors, light-surface chrome, new-app foreground-color, and shared header/back-button guards hold");

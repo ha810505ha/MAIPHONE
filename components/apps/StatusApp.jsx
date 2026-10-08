@@ -2,12 +2,15 @@ import React, { useRef, useState } from "react";
 import { useGacha } from "../../contexts/GachaContext";
 import { SpecialMemoryModal } from "../gacha/SpecialMemoryCard";
 import { splitArchivedMemories } from "../../services/chat/memoryRecall";
+import { AppHeader, LargeTitle, LargeTitleHeader, SUB_PAGE_CLASS, useLargeTitle } from "../shell/LargeTitle";
 import {
   DEFAULT_MEMORY_COMPRESS_PROMPT,
   MEMORY_COMPRESSION,
   isSummaryMemory,
   isUsingDefaultCompressPrompt,
 } from "../../services/chat/memoryCompression";
+import { AvatarFallback } from "../common/Avatar";
+import Icon from "../common/Icon";
 
 const SPECIAL_MEMORY_FRAME = { SSR: "#c99a4b", SR: "#8f6cc9", R: "#6f9cc9" };
 const VAULT_PAGE_SIZE = 5;
@@ -139,6 +142,7 @@ export default function StatusApp({
   togglePinMemory, deleteMemory, generateMemory, archiveMemory, restoreMemory, compressMemories, revertMemorySummary,
   memoryPrompt, genLoading, applyUserPlaceholder, playerProfile,
 }) {
+  const largeTitle = useLargeTitle();
   const { specialMemories } = useGacha();
   const [viewingSpecialMemory, setViewingSpecialMemory] = useState(null);
   // 壓縮的多選狀態綁在角色上，切到別的角色卡就自動失效，避免跨角色誤選。
@@ -165,10 +169,11 @@ export default function StatusApp({
     onPointerLeave: () => { specialDragRef.current = null; },
   };
   return (
-      <div className="mp-page">
-        <div className="mp-hdr"><div className="mp-back" onClick={closeApp}>←</div><div className="mp-htitle">{t("status")}</div></div>
-        <div className="mp-cm">
-          {characters.length === 0 ? <div className="mp-empty"><div className="mp-empty-i">🧩</div><div className="mp-empty-t">{tr("目前尚未建立角色", "No characters yet", "まだキャラがありません", "아직 캐릭터가 없습니다")}</div></div>
+      <div className={largeTitle.pageClassName}>
+        <LargeTitleHeader title={t("status")} onBack={closeApp} backLabel={tr("返回首頁", "Back to Home", "ホームに戻る", "홈으로 돌아가기")} />
+        <div className="mp-cm" onScroll={largeTitle.onScroll}>
+          <LargeTitle title={t("status")} />
+          {characters.length === 0 ? <div className="mp-empty"><div className="mp-empty-icon" aria-hidden="true"><Icon name="users" size={34} /></div><div className="mp-empty-t">{tr("目前尚未建立角色", "No characters yet", "まだキャラがありません", "아직 캐릭터가 없습니다")}</div></div>
           : characters.map(c => {
             const msgs = chatHistory[c.id] || [];
             const dialogueMsgs = msgs.filter((m) => m.role === "user" || m.role === "assistant");
@@ -190,7 +195,7 @@ export default function StatusApp({
             return (
               <div key={c.id} className="mp-sc">
                 <div className="mp-sc-ban" />
-                <div className="mp-sc-avl">{sanitizeUserImageUrl(c.avatar) ? <img src={sanitizeUserImageUrl(c.avatar)} alt="" /> : "🦊"}</div>
+                <div className="mp-sc-avl">{sanitizeUserImageUrl(c.avatar) ? <img src={sanitizeUserImageUrl(c.avatar)} alt="" /> : <AvatarFallback name={c.name} />}</div>
                 <div className="mp-sc-body">
                   <div className="mp-sc-nm">{c.name}</div>
                   <div style={{fontSize:12,color:"var(--mp-txt-l)",marginTop:4,lineHeight:1.5}}>{(c.statusText || tr("尚無狀態", "No status yet", "まだステータスがありません", "아직 상태가 없습니다")).slice(0,80)}</div>

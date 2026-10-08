@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { gid, sanitizeText } from "../../utils/coreUtils";
 import { categoriesFor, findCategory, categoryLabel } from "../../constants/ledgerCategories";
+import { AppHeader, SUB_PAGE_CLASS } from "../shell/LargeTitle";
+import Icon from "../common/Icon";
 
 // 生活記帳：玩家自己的真實收支，與劇情錢包（wallet.balance / wallet.transactions）完全隔離。
 // 這裡的收支永遠不影響角色轉帳、商店等劇情扣款，只在錢包首頁的總資產做顯示層加總。
@@ -131,15 +133,14 @@ export default function LifeLedgerView({ wallet, setWallet, onBack, tr, formatMo
   const cats = categoriesFor(type);
   const maxCat = Math.max(1, ...byCategory.map((c) => c.total));
 
-  return <div className="mp-page">
-    <div className="mp-hdr">
-      <div className="mp-back" onClick={onBack}>←</div>
-      <div>
-        <div className="mp-htitle">{tr("生活記帳", "Life ledger", "生活家計簿", "생활 가계부")}</div>
-        <div className="mp-wallet-month-sub">{tr("我自己的收支", "My own spending", "自分の収支", "나의 수입·지출")}</div>
-      </div>
-      <button className="mp-ibtn" style={{ marginLeft: "auto" }} onClick={exportCsv} title="CSV">⬇</button>
-    </div>
+  return <div className={SUB_PAGE_CLASS}>
+    <AppHeader
+      title={tr("生活記帳", "Life ledger", "生活家計簿", "생활 가계부")}
+      subtitle={tr("我自己的收支", "My own spending", "自分の収支", "나의 수입·지출")}
+      onBack={onBack}
+      backLabel={tr("返回錢包", "Back to Wallet", "ウォレットに戻る", "지갑으로 돌아가기")}
+      right={<button type="button" className="mp-hdr-action" onClick={exportCsv} title="CSV" aria-label={tr("匯出 CSV", "Export CSV", "CSV を書き出す", "CSV 내보내기")}>CSV</button>}
+    />
     <div className="mp-cm">
       <div className="mp-life-bank">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -226,7 +227,7 @@ export default function LifeLedgerView({ wallet, setWallet, onBack, tr, formatMo
         </div>)}
         {visible < txs.length && <button className="mp-save" onClick={() => setVisible((v) => v + 60)}>{tr("載入更多", "Load more", "もっと見る", "더 보기")}</button>}
       </> : <div className="mp-empty">
-        <div className="mp-empty-i">📒</div>
+        <div className="mp-empty-icon" aria-hidden="true"><Icon name="notebook" size={34} /></div>
         <div className="mp-empty-t">{tr("還沒有記帳，從上面記第一筆吧", "No entries yet — add your first one above", "まだ記録がありません。上から最初の1件を", "아직 기록이 없어요. 위에서 첫 기록을 남겨보세요")}</div>
       </div>)}
     </div>

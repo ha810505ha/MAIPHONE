@@ -1,6 +1,12 @@
 import { toSimplifiedChinese } from "../utils/i18n.js";
 
 const ZH_CHANGELOG = {
+  "1.3.0": [
+    "10/08 更新",
+    "介面｜調整小手機各項動畫與部分介面排版，並一併優化主題配色與個人資料頁。",
+    "聊天｜調整聊天列表排版，置頂角色獨立分區顯示，點選置頂後會立即生效。",
+    "修正｜修正一起聽歌輸入框不夠明顯的問題。",
+  ],
   "1.2.19": [
     "09/12 修正更新",
     "聊天截圖｜修正同一天多次截圖可能產生重複檔名、覆蓋舊圖的問題。",
@@ -150,6 +156,26 @@ const ZH_CHANGELOG = {
 };
 
 const TRANSLATED_CHANGELOG = {
+  "1.3.0": {
+    en: [
+      "10/08 Update",
+      "Interface | Refined animations and parts of the layout across MaliPhone, along with theme colors and the profile page.",
+      "Chat | Refreshed the chat list layout. Pinned characters now have their own section, and pinning takes effect immediately.",
+      "Fixes | Made the Listen Together input field easier to see.",
+    ],
+    ja: [
+      "10/08 アップデート",
+      "インターフェース｜MaliPhone 全体のアニメーションと一部のレイアウトを調整し、テーマ配色とプロフィール画面も改善しました。",
+      "チャット｜チャット一覧のレイアウトを調整し、ピン留めしたキャラクターを別のセクションに表示するようにしました。ピン留めはすぐに反映されます。",
+      "修正｜「一緒に音楽を聴く」の入力欄が見えにくい問題を修正しました。",
+    ],
+    ko: [
+      "10/08 업데이트",
+      "인터페이스 | MaliPhone 전체의 애니메이션과 일부 레이아웃을 조정하고, 테마 색상과 프로필 화면도 개선했습니다.",
+      "채팅 | 채팅 목록 레이아웃을 조정하고 고정한 캐릭터를 별도 구역에 표시합니다. 고정은 바로 반영됩니다.",
+      "수정 | '함께 음악 듣기' 입력창이 잘 보이지 않던 문제를 수정했습니다.",
+    ],
+  },
   "1.2.19": {
     en: [
       "09/12 Fix Update",

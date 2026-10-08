@@ -1,6 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import MotionPresence from "../motion/MotionPresence.jsx";
+import { AppHeader, LargeTitle, LargeTitleHeader, SUB_PAGE_CLASS, useLargeTitle } from "../shell/LargeTitle";
+import SegmentedControl from "../common/SegmentedControl";
 import { stripSocialPostCountMetadata } from "../../services/social/characterInteraction";
+import { AvatarFallback } from "../common/Avatar";
+import Icon from "../common/Icon";
 
 const SOCIAL_PAGE_SIZE = 5;
 const SOCIAL_NOTIFICATION_GROUP_WINDOW_MS = 5 * 60 * 1000;
@@ -58,6 +62,8 @@ export default function SocialApp({
 }) {
   const [characterSearch, setCharacterSearch] = useState("");
   const [socialSettingsTab, setSocialSettingsTab] = useState("settings");
+  const largeTitle = useLargeTitle();
+  const backSocial = tr("返回社群", "Back to Social", "ソーシャルに戻る", "소셜로 돌아가기");
   const [characterPostingOpen, setCharacterPostingOpen] = useState(true);
   const [characterPostRefreshing, setCharacterPostRefreshing] = useState(false);
   const [feedPage, setFeedPage] = useState(1);
@@ -269,24 +275,25 @@ export default function SocialApp({
 
   return (
     socialNotificationsOpen ? (
-      <div className="mp-page">
-        <div className="mp-hdr">
-          <div className="mp-back" onClick={() => setSocialNotificationsOpen(false)}>←</div>
-          <div className="mp-htitle">{tr("通知", "Notifications", "通知", "알림")}</div>
-          {socialUnreadCount > 0 && (
+      <div className={SUB_PAGE_CLASS}>
+        <AppHeader
+          title={tr("通知", "Notifications", "通知", "알림")}
+          onBack={() => setSocialNotificationsOpen(false)}
+          backLabel={backSocial}
+          right={socialUnreadCount > 0 ? (
             <button
               type="button"
-              className="mp-social-notification-read-all"
+              className="mp-hdr-action mp-social-notification-read-all"
               onClick={() => markSocialReadThrough?.(socialActivities[0]?.time)}
             >
               {tr("全部已讀", "Mark all read", "すべて既読", "모두 읽음")}
             </button>
-          )}
-        </div>
+          ) : null}
+        />
         <div className="mp-social-notification-list">
           {groupedSocialActivities.length === 0 ? (
             <div className="mp-empty">
-              <div className="mp-empty-i">🔔</div>
+              <div className="mp-empty-icon" aria-hidden="true"><Icon name="bell" size={34} /></div>
               <div className="mp-empty-t">
                 {tr("目前沒有社群通知", "No social notifications yet", "通知はまだありません", "아직 소셜 알림이 없습니다")}
               </div>
@@ -321,36 +328,18 @@ export default function SocialApp({
         </div>
       </div>
     ) : socialSettingsOpen ? (
-      <div className="mp-page">
-        <div className="mp-hdr">
-          <div className="mp-back" onClick={() => setSocialSettingsOpen(false)}>←</div>
-          <div className="mp-htitle">{t("settings")}</div>
-        </div>
-        <div
-          role="tablist"
-          aria-label={tr("社群設定分頁", "Social settings sections", "ソーシャル設定のセクション", "소셜 설정 섹션")}
-          style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "8px 14px 2px" }}
-        >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={socialSettingsTab === "settings"}
-            className="mp-ibtn"
-            onClick={() => setSocialSettingsTab("settings")}
-            style={socialSettingsTab === "settings" ? { background: "var(--mp-pink-dk)", color: "var(--mp-page-on-accent)", borderColor: "var(--mp-pink-dk)" } : undefined}
-          >
-            {t("settings")}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={socialSettingsTab === "saved"}
-            className="mp-ibtn"
-            onClick={() => setSocialSettingsTab("saved")}
-            style={socialSettingsTab === "saved" ? { background: "var(--mp-pink-dk)", color: "var(--mp-page-on-accent)", borderColor: "var(--mp-pink-dk)" } : undefined}
-          >
-            {tr("珍藏", "Saved", "保存", "저장")}
-          </button>
+      <div className={SUB_PAGE_CLASS}>
+        <AppHeader title={t("settings")} onBack={() => setSocialSettingsOpen(false)} backLabel={backSocial} />
+        <div style={{ padding: "4px 14px 0" }}>
+          <SegmentedControl
+            items={[
+              { id: "settings", label: t("settings") },
+              { id: "saved", label: tr("珍藏", "Saved", "保存", "저장") },
+            ]}
+            value={socialSettingsTab}
+            onChange={setSocialSettingsTab}
+            ariaLabel={tr("社群設定分頁", "Social settings sections", "ソーシャル設定のセクション", "소셜 설정 섹션")}
+          />
         </div>
         <div className="mp-set">
           {socialSettingsTab === "settings" && <>
@@ -540,11 +529,12 @@ export default function SocialApp({
         </div>
       </div>
     ) : (
-    <div className="mp-page">
-      <div className="mp-hdr">
-        <div className="mp-back" onClick={closeApp}>←</div>
-            <div className="mp-htitle">{t("social")}</div>
-        <div className="mp-social-head-actions">
+    <div className={largeTitle.pageClassName}>
+      <LargeTitleHeader
+        title={t("social")}
+        onBack={closeApp}
+        backLabel={tr("返回首頁", "Back to Home", "ホームに戻る", "홈으로 돌아가기")}
+        right={<div className="mp-hdr-actions mp-social-head-actions">
           <button
             type="button"
             className="mp-social-notification-bell"
@@ -560,26 +550,30 @@ export default function SocialApp({
               </span>
             )}
           </button>
-          <button className="mp-pill-btn mp-pill-btn-ghost" onClick={() => setPlayerPostModalOpen(true)}>{tr("發文", "Post", "投稿", "게시")}</button>
-          {characters.length > 0 && (
-            <button
-              className="mp-pill-btn"
-              onClick={refreshCharacterPost}
-              disabled={characterPostRefreshing}
-              aria-busy={characterPostRefreshing}
-            >
-              {characterPostRefreshing
-                ? tr("發文中…", "Posting…", "投稿中…", "게시 중…")
-                : t("refresh")}
-            </button>
-          )}
-          <button className="mp-pill-btn mp-pill-btn-ghost" onClick={() => setSocialSettingsOpen(true)}>{t("settings")}</button>
-        </div>
-      </div>
-      <div className="mp-feed" ref={socialFeedRef}>
+          <button type="button" className="mp-hdr-action" onClick={() => setSocialSettingsOpen(true)}>{t("settings")}</button>
+        </div>}
+      />
+      <div className="mp-feed" ref={socialFeedRef} onScroll={largeTitle.onScroll}>
+        <LargeTitle title={t("social")}>
+          <div className="mp-large-title-actions">
+            <button className="mp-pill-btn mp-pill-btn-ghost" onClick={() => setPlayerPostModalOpen(true)}>{tr("發文", "Post", "投稿", "게시")}</button>
+            {characters.length > 0 && (
+              <button
+                className="mp-pill-btn"
+                onClick={refreshCharacterPost}
+                disabled={characterPostRefreshing}
+                aria-busy={characterPostRefreshing}
+              >
+                {characterPostRefreshing
+                  ? tr("發文中…", "Posting…", "投稿中…", "게시 중…")
+                  : t("refresh")}
+              </button>
+            )}
+          </div>
+        </LargeTitle>
         {posts.length === 0 ? (
           <div className="mp-empty">
-            <div className="mp-empty-i">📰</div>
+            <div className="mp-empty-icon" aria-hidden="true"><Icon name="post" size={34} /></div>
             <div className="mp-empty-t">{tr("目前還沒有貼文", "No posts yet", "まだ投稿はありません", "아직 게시물이 없습니다")}<br/>{tr("發一則動態試試吧", "Try posting an update", "投稿してみましょう", "게시물을 올려보세요")}</div>
           </div>
         ) : <>
@@ -600,7 +594,7 @@ export default function SocialApp({
             <div key={p.id} data-post-id={p.id} className={`mp-post ${highlightedPostId === p.id ? "mp-thought-jump-highlight" : ""}`}>
               <div className="mp-post-hd">
                 <div className={`mp-post-av ${isPlayerPost ? "player" : ""}`}>
-                  {authorAvatar ? <img src={authorAvatar} alt="" /> : (isPlayerPost ? "👤" : "🦊")}
+                  {authorAvatar ? <img src={authorAvatar} alt="" /> : <AvatarFallback name={authorName} />}
                 </div>
                 <div>
                   <div className="mp-post-au">{authorName}</div>

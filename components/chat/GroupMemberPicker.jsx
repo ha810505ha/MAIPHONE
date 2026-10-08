@@ -1,5 +1,6 @@
 import React from "react";
 import { sanitizeUserImageUrl } from "../../utils/coreUtils";
+import { AvatarFallback } from "../common/Avatar";
 
 export default function GroupMemberPicker({
   characters,
@@ -59,7 +60,7 @@ export default function GroupMemberPicker({
                       <img src={avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                     ) : (
                       <div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", background: "linear-gradient(135deg,#fce4ec,#e1f5fe)", color: "#5c6f7b", fontSize: 24, fontWeight: 800 }}>
-                        {character.name?.[0] || "🙂"}
+                        <AvatarFallback name={character.name} />
                       </div>
                     )}
                     <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "12px 5px 6px", background: "linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,.48) 100%)", color: "#fff", fontSize: 11, fontWeight: 700, lineHeight: 1.05, boxSizing: "border-box" }}>

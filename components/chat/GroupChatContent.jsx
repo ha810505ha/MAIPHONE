@@ -7,6 +7,7 @@ import { pseudoImageStyle } from "../../utils/pseudoImage";
 import useAutoResizeTextarea from "../../hooks/chat/useAutoResizeTextarea";
 import PlayerPersonaIndicator from "./PlayerPersonaIndicator";
 import { toImageDataUrl } from "../../utils/imagePayload.js";
+import { AvatarFallback } from "../common/Avatar";
 
 export default function GroupChatContent({ messages, isTyping, activeMessageId, setActiveMessageId, playerAvatar, playerProfile, persona, resolveSpeakerAvatar, chatMsgsRef, messagesEndRef, onScroll, isConnectionErrorNotice, onRetry, onEdit, onDelete, showScrollToBottom, onScrollToBottom, chatImage, onClearImage, chatPseudoImage, onSetPseudoImage, actionPanelOpen, setActionPanelOpen, fileInputRef, onImageUpload, chatInput, setChatInput, onSend, tr }) {
   const [pseudoPickerOpen, setPseudoPickerOpen] = useState(false);
@@ -20,7 +21,7 @@ export default function GroupChatContent({ messages, isTyping, activeMessageId, 
             if (message.role === "system_notice") return <div key={message.id} className="mp-msg-note-wrap"><div className="mp-msg-note"><div>{message.content}</div>{isConnectionErrorNotice(message.content) && <button className="mp-retry-btn" disabled={isTyping} onClick={(event) => { event.stopPropagation(); onRetry(message.id); }}>{tr("重新生成", "Regenerate", "再生成", "다시 생성")}</button>}</div></div>;
             const speakerAvatar = message.role === "user" ? playerAvatar : resolveSpeakerAvatar?.(message);
             return <div key={message.id} className={`mp-msg-wrap ${message.role === "user" ? "mp-msg-wrap-user mp-group-msg-wrap-user" : "mp-msg-wrap-ai mp-group-msg-wrap-ai"}`}>
-              <div className="mp-group-msg-meta"><div className="mp-group-msg-avatar">{speakerAvatar ? <img src={speakerAvatar} alt="" /> : (message.role === "user" ? null : "👥")}</div>{message.role !== "user" && <div className="mp-group-msg-name">{message.speakerName || tr("群組", "Group", "グループ", "그룹")}</div>}</div>
+              <div className="mp-group-msg-meta"><div className="mp-group-msg-avatar">{speakerAvatar ? <img src={speakerAvatar} alt="" /> : (message.role === "user" ? null : <AvatarFallback name={message.speakerName} icon="users" />)}</div>{message.role !== "user" && <div className="mp-group-msg-name">{message.speakerName || tr("群組", "Group", "グループ", "그룹")}</div>}</div>
               <div className={`mp-msg ${message.role === "user" ? "mp-msg-user" : "mp-msg-ai"}`} onClick={() => setActiveMessageId((previous) => previous === message.id ? null : message.id)}>{message.image && <img src={toImageDataUrl(message.image, message.imageMime)} className="mp-msg-img" alt="" />}{message.pseudoImage && <PseudoImageBubble pseudoImage={message.pseudoImage} tr={tr} />}{message.content && <div>{message.content}</div>}<div className="mp-msg-t">{new Date(message.time).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" })}</div></div>
               <div style={{ display: "flex", gap: 6, alignItems: "center" }}><button className={`mp-msg-editbtn ${activeMessageId === message.id ? "" : "mp-msg-editbtn-hidden"}`} onClick={() => onEdit(message)}>✎</button><button className={`mp-msg-editbtn ${activeMessageId === message.id ? "" : "mp-msg-editbtn-hidden"}`} onClick={() => onDelete(message)}>🗑</button></div>
             </div>;

@@ -90,7 +90,9 @@ private-assets/
 
 # Local developer config / internal planning docs
 .claude/
+.codex/
 .hallmark/
+CLAUDE.md
 backend/docs/plan.md
 /docs/
 /tmp/

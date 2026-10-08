@@ -2,6 +2,7 @@ import React, { useRef } from "react";
 import GroupMemberPicker from "./GroupMemberPicker";
 import { calculateCoverCrop, calculateCropDrag } from "../../utils/imageCrop";
 import MotionPresence from "../motion/MotionPresence.jsx";
+import { AvatarFallback } from "../common/Avatar";
 
 const COVER_BOX_SIZE = 220;
 
@@ -71,7 +72,7 @@ function GroupFormModal({
           <div className="mp-lbl">{tr("群組圖片", "Group cover", "グループ画像", "그룹 이미지")}</div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div className="mp-av" style={{ cursor: "pointer" }} onClick={() => coverInputRef.current?.click()}>
-              {cover ? <img src={cover} alt="" /> : "👥"}
+              {cover ? <img src={cover} alt="" /> : <AvatarFallback icon="users" />}
             </div>
             <input type="file" ref={coverInputRef} accept="image/*" style={{ display: "none" }} onChange={onCoverUpload} />
             <button className="mp-ibtn" style={{ padding: "6px 12px", fontSize: 12, lineHeight: 1 }} onClick={() => coverInputRef.current?.click()}>

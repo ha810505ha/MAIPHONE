@@ -1,4 +1,6 @@
 import React from "react";
+import BackButton from "../common/BackButton";
+import Icon from "../common/Icon";
 import {
   copyRuntimeDiagnostics,
   recordRuntimeDiagnostic,
@@ -53,11 +55,11 @@ export default class AppRuntimeBoundary extends React.Component {
     return (
       <div className="mp-page" role="alert" style={{ background: "var(--mp-page-bg)", color: "var(--mp-txt)" }}>
         <div className="mp-hdr">
-          {canGoBack && <button type="button" className="mp-back" onClick={this.props.onBack} aria-label={tr("返回主畫面", "Back to Home", "ホームに戻る", "홈으로 돌아가기")}>←</button>}
+          {canGoBack && <BackButton onClick={this.props.onBack} label={tr("返回主畫面", "Back to Home", "ホームに戻る", "홈으로 돌아가기")} />}
           <div className="mp-htitle">{tr("App 載入異常", "App loading issue", "アプリの読み込みエラー", "앱 로딩 오류")}</div>
         </div>
         <div className="mp-empty" style={{ flex: 1, padding: 24, textAlign: "center" }}>
-          <div className="mp-empty-i">{recovering ? "↻" : "⚠️"}</div>
+          <div className="mp-empty-icon" aria-hidden="true"><Icon name={recovering ? "refresh" : "warning"} size={34} /></div>
           <div className="mp-empty-t" style={{ lineHeight: 1.7 }}>
             {recovering
               ? tr("正在自動重新載入小手機⋯", "Reloading the phone automatically…", "スマホを自動で再読み込みしています…", "휴대폰을 자동으로 다시 불러오는 중…")

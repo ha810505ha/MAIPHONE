@@ -8,6 +8,7 @@ export default function usePhoneNavigation({
   canOpenApp = () => true,
   onOpenApp,
   onCloseApp,
+  onBeforeCloseApp,
   onUnlockStart,
   onUnlockComplete,
   preloadApp,
@@ -71,6 +72,7 @@ export default function usePhoneNavigation({
 
   const closeApp = () => {
     armAppClickSuppression(DEFAULT_CLICK_SUPPRESSION_MS);
+    onBeforeCloseApp?.();
     onCloseApp?.();
   };
 

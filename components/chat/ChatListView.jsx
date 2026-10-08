@@ -4,6 +4,10 @@ import { messagePreviewText } from "../../utils/pseudoImage";
 import { useGacha } from "../../contexts/GachaContext";
 import EpisodeRoom from "../gacha/EpisodeRoom";
 import PlayerPersonaIndicator from "./PlayerPersonaIndicator";
+import { LargeTitle, LargeTitleHeader, useLargeTitle } from "../shell/LargeTitle";
+import SegmentedControl from "../common/SegmentedControl";
+import { AvatarFallback } from "../common/Avatar";
+import Icon from "../common/Icon";
 
 const PAGE_SIZE = 10;
 
@@ -11,7 +15,7 @@ function formatMessageTime(time) {
   return time ? new Date(time).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" }) : "";
 }
 
-function ListPager({ page, pageCount, onChange }) {
+function ListPager({ page, pageCount, onChange, tr }) {
   if (pageCount <= 1) return null;
   const buttonStyle = {
     width: 34,
@@ -25,9 +29,9 @@ function ListPager({ page, pageCount, onChange }) {
   };
   return (
     <div style={{ position: "sticky", bottom: 0, zIndex: 2, display: "flex", alignItems: "center", justifyContent: "center", gap: 12, padding: "13px 0 7px", background: "linear-gradient(180deg, transparent, var(--mp-bg) 35%)" }}>
-      <button type="button" aria-label="上一頁" disabled={page === 0} onClick={() => onChange(page - 1)} style={{ ...buttonStyle, opacity: page === 0 ? 0.35 : 1, cursor: page === 0 ? "default" : "pointer" }}>‹</button>
+      <button type="button" aria-label={tr("上一頁", "Previous page", "前のページ", "이전 페이지")} disabled={page === 0} onClick={() => onChange(page - 1)} style={{ ...buttonStyle, opacity: page === 0 ? 0.35 : 1, cursor: page === 0 ? "default" : "pointer" }}>‹</button>
       <span style={{ minWidth: 58, textAlign: "center", color: "var(--mp-txt-l)", fontSize: 13, fontWeight: 800 }}>{page + 1} / {pageCount}</span>
-      <button type="button" aria-label="下一頁" disabled={page >= pageCount - 1} onClick={() => onChange(page + 1)} style={{ ...buttonStyle, opacity: page >= pageCount - 1 ? 0.35 : 1, cursor: page >= pageCount - 1 ? "default" : "pointer" }}>›</button>
+      <button type="button" aria-label={tr("下一頁", "Next page", "次のページ", "다음 페이지")} disabled={page >= pageCount - 1} onClick={() => onChange(page + 1)} style={{ ...buttonStyle, opacity: page >= pageCount - 1 ? 0.35 : 1, cursor: page >= pageCount - 1 ? "default" : "pointer" }}>›</button>
     </div>
   );
 }
@@ -70,6 +74,7 @@ export default function ChatListView({
   characterBlockStates,
   closeApp,
   openCreateGroup,
+  onOpenCharacters,
   onOpenCharacter,
   onOpenGroup,
   getGroupMembers,
@@ -100,78 +105,94 @@ export default function ChatListView({
       `${sender}님이 이미지를 보냈습니다`,
     );
   };
+  const largeTitle = useLargeTitle();
+  const renderFriendRow = (character) => {
+    const messages = chatHistory[character.id] || [];
+    const lastMessage = messages[messages.length - 1];
+    const pinned = !!character.pinned || !!character.chatPinned;
+    const unreadCount = Number(proactiveUnread?.[character.id]) || 0;
+    const unread = unreadCount > 0;
+    const playerBlocksCharacter = characterBlockStates?.[character.id]?.playerBlocksCharacter === true || characterBlockStates?.[character.id]?.blocked === true;
+    const characterBlocksPlayer = characterBlockStates?.[character.id]?.characterBlocksPlayer === true;
+    const blockLabel = playerBlocksCharacter && characterBlocksPlayer ? tr("互相封鎖", "Mutual block", "相互ブロック", "서로 차단") : characterBlocksPlayer ? tr("對方封鎖你", "Blocked you", "相手がブロック", "상대가 차단") : playerBlocksCharacter ? tr("已封鎖", "Blocked", "ブロック中", "차단됨") : "";
+    const lastMessageIntercepted = lastMessage?.interceptedByBlock === true || lastMessage?.interceptedByCharacterBlock === true;
+    const avatar = sanitizeUserImageUrl(character.avatar);
+    const preview = messagePreviewText(lastMessage, {
+      imageText: imagePreview(lastMessage, character.name),
+      voiceText: tr("[語音訊息]", "[Voice message]", "[ボイスメッセージ]", "[음성 메시지]"),
+      fallback: t("noMessagesShort"),
+    });
+    return (
+      <button key={character.id} className={`mp-chat-row ${pinned ? "pinned" : ""}`} onClick={() => onOpenCharacter(character, unread)}>
+        <div className="mp-chat-row-avatar">{avatar ? <img src={avatar} alt="" /> : <AvatarFallback name={character.name} />}</div>
+        <div className="mp-chat-row-body">
+          <div className="mp-chat-row-top">
+            <div className="mp-chat-row-name">
+              {pinned && <span className="mp-chat-row-pin">♥</span>}
+              <span>{character.name}</span>
+              {blockLabel && <span className="mp-chat-row-blocked">{blockLabel}</span>}
+            </div>
+            <div className="mp-chat-row-time">{formatMessageTime(lastMessage?.time)}</div>
+          </div>
+          <div className="mp-chat-row-bottom">
+            <div className="mp-chat-row-preview" style={unread ? { fontWeight: 700, color: "var(--mp-txt)" } : undefined}>{preview}{lastMessageIntercepted && <span className="mp-chat-row-intercepted" title={tr("訊息已攔截", "Message intercepted", "メッセージを遮断", "메시지 차단됨")}>!</span>}</div>
+            {unread && <span className="mp-chat-row-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>}
+          </div>
+        </div>
+      </button>
+    );
+  };
+  const pinnedFriends = visibleCharacters.filter((character) => !!character.pinned || !!character.chatPinned);
+  const otherFriends = visibleCharacters.filter((character) => !character.pinned && !character.chatPinned);
+  const friendSections = [
+    { key: "pinned", label: pinnedFriends.length && otherFriends.length ? tr("置頂", "Pinned", "ピン留め", "고정됨") : "", items: pinnedFriends },
+    { key: "recent", label: pinnedFriends.length && otherFriends.length ? tr("最近", "Recent", "最近", "최근") : "", items: otherFriends },
+  ].filter((section) => section.items.length);
   const selectedEpisode = episodes.find((episode) => episode.id === selectedEpisodeId);
   if (selectedEpisode) return <EpisodeRoom episode={selectedEpisode} character={characters.find((character) => String(character.id) === String(selectedEpisode.characterId))} playerProfile={playerProfile} apiConfig={apiConfig} recentMessages={chatHistory[selectedEpisode.characterId] || []} onBack={() => setSelectedEpisodeId(null)} tr={tr} />;
   return (
-    <div className="mp-page">
-      <div className="mp-hdr">
-        <div className="mp-back" onClick={closeApp}>←</div>
-        <div className="mp-htitle">{t("chat")}</div>
-        <PlayerPersonaIndicator playerProfile={playerProfile} persona={persona} tr={tr} compact />
-      </div>
-      <div className="mp-cm" style={{ paddingTop: 2 }}>
-        <div className="mp-chat-switch">
-          <button className={`mp-chat-switch-btn ${tab === "friends" ? "active" : ""}`} onClick={() => setTab("friends")}>
-            <span>{tr("好友", "Friends", "フレンド", "친구")}</span>
-          </button>
-          <button className={`mp-chat-switch-btn ${tab === "groups" ? "active" : ""}`} onClick={() => setTab("groups")}>
-            <span>{tr("群組", "Groups", "グループ", "그룹")}</span>
-          </button>
-          <button className={`mp-chat-switch-btn ${tab === "episodes" ? "active" : ""}`} onClick={() => setTab("episodes")}>
-            <span>特別篇</span>
-          </button>
-        </div>
+    <div className={largeTitle.pageClassName}>
+      <LargeTitleHeader
+        title={t("chat")}
+        onBack={closeApp}
+        backLabel={tr("返回首頁", "Back to Home", "ホームに戻る", "홈으로 돌아가기")}
+        right={<PlayerPersonaIndicator playerProfile={playerProfile} persona={persona} tr={tr} compact />}
+      />
+      <div className="mp-cm" onScroll={largeTitle.onScroll}>
+        <LargeTitle title={t("chat")} />
+        <SegmentedControl
+          items={[
+            { id: "friends", label: tr("好友", "Friends", "フレンド", "친구") },
+            { id: "groups", label: tr("群組", "Groups", "グループ", "그룹") },
+            { id: "episodes", label: tr("特別篇", "Specials", "特別編", "특별편") },
+          ]}
+          value={tab}
+          onChange={setTab}
+          ariaLabel={t("chat")}
+        />
 
         {tab === "friends" ? (
           characters.length === 0 ? (
-            <div className="mp-empty mp-chat-empty">
-              <div className="mp-empty-i">💬</div>
-              <div className="mp-empty-t">No friend chats yet</div>
+            <div className="mp-empty-state">
+              <div className="mp-empty-art" aria-hidden="true"><span><i /><i /><i /></span><span /></div>
+              <div className="mp-empty-state-title">{tr("還沒有好友聊天", "No friend chats yet", "まだフレンドとのチャットはありません", "아직 친구 채팅이 없어요")}</div>
+              <div className="mp-empty-state-text">{tr("先在「聯絡人」建立或匯入一位角色，就能開始和對方聊天。", "Create or import a character in Contacts to start chatting.", "「連絡先」でキャラクターを作成またはインポートすると、チャットを始められます。", "'연락처'에서 캐릭터를 만들거나 가져오면 대화를 시작할 수 있어요.")}</div>
+              {onOpenCharacters && <button type="button" className="mp-empty-state-cta" onClick={onOpenCharacters}>{tr("前往聯絡人", "Open Contacts", "連絡先を開く", "연락처 열기")}</button>}
             </div>
           ) : (
             <div className="mp-chat-list mp-chat-list-line">
-              {visibleCharacters.map((character) => {
-                const messages = chatHistory[character.id] || [];
-                const lastMessage = messages[messages.length - 1];
-                const pinned = !!character.pinned || !!character.chatPinned;
-                const unreadCount = Number(proactiveUnread?.[character.id]) || 0;
-                const unread = unreadCount > 0;
-                const playerBlocksCharacter = characterBlockStates?.[character.id]?.playerBlocksCharacter === true || characterBlockStates?.[character.id]?.blocked === true;
-                const characterBlocksPlayer = characterBlockStates?.[character.id]?.characterBlocksPlayer === true;
-                const blockLabel = playerBlocksCharacter && characterBlocksPlayer ? tr("互相封鎖", "Mutual block", "相互ブロック", "서로 차단") : characterBlocksPlayer ? tr("對方封鎖你", "Blocked you", "相手がブロック", "상대가 차단") : playerBlocksCharacter ? tr("已封鎖", "Blocked", "ブロック中", "차단됨") : "";
-                const lastMessageIntercepted = lastMessage?.interceptedByBlock === true || lastMessage?.interceptedByCharacterBlock === true;
-                const avatar = sanitizeUserImageUrl(character.avatar);
-                const preview = messagePreviewText(lastMessage, {
-                  imageText: imagePreview(lastMessage, character.name),
-                  voiceText: tr("[語音訊息]", "[Voice message]", "[ボイスメッセージ]", "[음성 메시지]"),
-                  fallback: t("noMessagesShort"),
-                });
-                return (
-                  <button key={character.id} className={`mp-chat-row ${pinned ? "pinned" : ""}`} onClick={() => onOpenCharacter(character, unread)}>
-                    <div className="mp-chat-row-avatar">{avatar ? <img src={avatar} alt="" /> : (character.name?.[0] || "🙂")}</div>
-                    <div className="mp-chat-row-body">
-                      <div className="mp-chat-row-top">
-                        <div className="mp-chat-row-name">
-                          {pinned && <span className="mp-chat-row-pin">♥</span>}
-                          <span>{character.name}</span>
-                          {blockLabel && <span className="mp-chat-row-blocked">{blockLabel}</span>}
-                        </div>
-                        <div className="mp-chat-row-time">{formatMessageTime(lastMessage?.time)}</div>
-                      </div>
-                      <div className="mp-chat-row-bottom">
-                        <div className="mp-chat-row-preview" style={unread ? { fontWeight: 700, color: "var(--mp-txt)" } : undefined}>{preview}{lastMessageIntercepted && <span className="mp-chat-row-intercepted" title={tr("訊息已攔截", "Message intercepted", "メッセージを遮断", "메시지 차단됨")}>!</span>}</div>
-                        {unread && <span className="mp-chat-row-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-              <ListPager page={friendPage} pageCount={friendPageCount} onChange={setFriendPage} />
+              {friendSections.map((section) => (
+                <React.Fragment key={section.key}>
+                  {section.label && <div className="mp-list-section">{section.label}</div>}
+                  <div className="mp-chat-group">{section.items.map(renderFriendRow)}</div>
+                </React.Fragment>
+              ))}
+              <ListPager page={friendPage} pageCount={friendPageCount} onChange={setFriendPage} tr={tr} />
             </div>
           )
         ) : tab === "groups" ? (
           <div className="mp-chat-list mp-chat-list-line" style={{ paddingBottom: 76 }}>
-            {visibleGroups.map((group) => {
+            {visibleGroups.length > 0 && <div className="mp-chat-group">{visibleGroups.map((group) => {
               const messages = group.messages || [];
               const lastMessage = messages[messages.length - 1];
               const members = getGroupMembers(group);
@@ -185,7 +206,7 @@ export default function ChatListView({
               return (
                 <button key={group.id} className={`mp-chat-row ${group.pinned ? "pinned" : ""}`} onClick={() => onOpenGroup(group)}>
                   <div className="mp-chat-row-avatar">
-                    {cover ? <img src={cover} alt="" /> : (memberAvatar ? <img src={memberAvatar} alt="" /> : "👥")}
+                    {cover ? <img src={cover} alt="" /> : (memberAvatar ? <img src={memberAvatar} alt="" /> : <AvatarFallback name={group.name} icon="users" />)}
                   </div>
                   <div className="mp-chat-row-body">
                     <div className="mp-chat-row-top">
@@ -199,10 +220,10 @@ export default function ChatListView({
                   </div>
                 </button>
               );
-            })}
-            <ListPager page={groupPage} pageCount={groupPageCount} onChange={setGroupPage} />
+            })}</div>}
+            <ListPager page={groupPage} pageCount={groupPageCount} onChange={setGroupPage} tr={tr} />
           </div>
-        ) : episodes.length ? <EpisodeLibrary episodes={episodes} characters={characters} onOpen={setSelectedEpisodeId} /> : <div className="mp-empty mp-chat-empty"><div className="mp-empty-i">🌸</div><div className="mp-empty-t">尚未建立特別篇</div></div>}
+        ) : episodes.length ? <EpisodeLibrary episodes={episodes} characters={characters} onOpen={setSelectedEpisodeId} /> : <div className="mp-empty mp-chat-empty"><div className="mp-empty-icon" aria-hidden="true"><Icon name="flower" size={34} /></div><div className="mp-empty-t">{tr("尚未建立特別篇", "No specials yet", "特別編はまだありません", "아직 특별편이 없어요")}</div></div>}
       </div>
       {tab === "groups" && (
         <button
@@ -210,7 +231,7 @@ export default function ChatListView({
           onClick={openCreateGroup}
           title={tr("新增群組", "Add group", "グループを追加", "그룹 추가")}
           aria-label={tr("新增群組", "Add group", "グループを追加", "그룹 추가")}
-          style={{ position: "absolute", right: 18, bottom: 20, zIndex: 4, width: 50, height: 50, display: "grid", placeItems: "center", border: "1px solid color-mix(in srgb,var(--mp-pink) 42%,transparent)", borderRadius: "50%", background: "linear-gradient(135deg,var(--mp-pink),var(--mp-pink-dk))", color: "#fff", boxShadow: "0 8px 22px color-mix(in srgb,var(--mp-pink) 38%,transparent)", fontSize: 25, lineHeight: 1, cursor: "pointer" }}
+          style={{ position: "absolute", right: 18, bottom: 20, zIndex: 4, width: 50, height: 50, display: "grid", placeItems: "center", border: "1px solid color-mix(in srgb,var(--mp-pink) 42%,transparent)", borderRadius: "50%", background: "var(--mp-primary-gradient)", color: "#fff", boxShadow: "0 8px 22px color-mix(in srgb,var(--mp-pink) 38%,transparent)", fontSize: 25, lineHeight: 1, cursor: "pointer" }}
         >
           ＋
         </button>

@@ -102,6 +102,7 @@ export default function useChatRenderController({
   openChatSettings,
   openChatroomImport,
   openCreateGroup,
+  openCharactersApp,
   openEditGroup,
   parseShareEventNotice,
   personaController,
@@ -191,7 +192,8 @@ export default function useChatRenderController({
           onPageClick: () => setModelBadgeOpen(false),
           members,
           header: {
-            item: currentChatGroup, modelBadgeOpen, setModelBadgeOpen,
+            // 用最新的群組資料，置頂等狀態點了就能立刻反映在頂欄。
+            item: groupChats.find((group) => group.id === currentChatGroup.id) || currentChatGroup, modelBadgeOpen, setModelBadgeOpen,
             onBack: () => setCurrentChatGroup(null),
             onTogglePinned: () => setGroupChats((previous) => previous.map((group) => group.id === currentChatGroup.id ? { ...group, pinned: !group.pinned } : group)),
             onOpenSettings: () => openEditGroup(currentChatGroup),
@@ -221,7 +223,7 @@ export default function useChatRenderController({
     if (!currentChatChar) {
       return <MaliPhoneChatSurface tr={tr} list={{
         tab: chatListTab, setTab: setChatListTab, characters: sortChatThreads(characters.filter((character) => !character.chatroomDeleted)),
-        chatHistory, groups: sortGroupChats(groupChats), proactiveUnread, characterBlockStates, closeApp, openCreateGroup,
+        chatHistory, groups: sortGroupChats(groupChats), proactiveUnread, characterBlockStates, closeApp, openCreateGroup, onOpenCharacters: openCharactersApp,
         onOpenCharacter: (character, unread) => {
           if (Date.now() <= suppressAppClickUntilRef.current) return;
           if (unread) setProactiveUnread((previous) => { const next = { ...previous }; delete next[character.id]; return next; });
@@ -325,7 +327,8 @@ export default function useChatRenderController({
       tr={tr}
       onDirectPageClick={() => setModelBadgeOpen(false)}
       directHeader={{
-        item: currentChatChar, modelBadgeOpen, setModelBadgeOpen,
+        // currentChatChar 是開啟聊天室時的快照；頂欄改讀最新角色資料，置頂點了立刻顯示。
+        item: characters.find((character) => character.id === currentChatChar.id) || currentChatChar, modelBadgeOpen, setModelBadgeOpen,
         testQuotaEnabled: apiConfig?.aiSource === "hosted_test",
         rooms: chatRooms[currentChatChar.id] || [],
         activeRoomId: activeRoomIds[currentChatChar.id],

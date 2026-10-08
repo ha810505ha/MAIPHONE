@@ -1,5 +1,7 @@
 import React from "react";
 import { exportToastMessage } from "../../utils/exportFile";
+import { AppHeader, LargeTitle, LargeTitleHeader, SUB_PAGE_CLASS, useLargeTitle } from "../shell/LargeTitle";
+import Icon from "../common/Icon";
 
 export default function LorebookApp({
   lorebooks, setLorebooks, activeLorebookId, setActiveLorebookId,
@@ -7,6 +9,7 @@ export default function LorebookApp({
   pendingLorebookExport, setPendingLorebookExport, viewingLorebookEntry, setViewingLorebookEntry,
   lorebookImportInputRef, closeApp, t, tr, sanitizeText, downloadJsonFile, showToast, gid, notify, ask,
 }) {
+  const largeTitle = useLargeTitle();
     const activeBook = lorebooks.find((b) => b.id === activeLorebookId) || null;
     const entries = activeBook?.entries || [];
     const sortedEntries = [...entries].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
@@ -157,9 +160,12 @@ export default function LorebookApp({
       notify(tr("條目已刪除", "Entry deleted", "項目を削除しました", "항목이 삭제되었습니다"), "Entry deleted");
     };
     return (
-      <div className="mp-page">
-          <div className="mp-hdr"><div className="mp-back" onClick={() => { if (activeBook) setActiveLorebookId(null); else closeApp(); }}>←</div><div className="mp-htitle">{tr("世界書", "Lorebook", "世界観", "월드북")}</div></div>
-        <div className="mp-cm">
+      <div className={activeBook ? SUB_PAGE_CLASS : largeTitle.pageClassName}>
+        {activeBook
+          ? <AppHeader title={activeBook.name || tr("世界書", "Lorebook", "世界観", "월드북")} onBack={() => setActiveLorebookId(null)} backLabel={tr("返回世界書", "Back to Lorebooks", "世界観一覧に戻る", "월드북 목록으로")} />
+          : <LargeTitleHeader title={tr("世界書", "Lorebook", "世界観", "월드북")} onBack={closeApp} backLabel={tr("返回首頁", "Back to Home", "ホームに戻る", "홈으로 돌아가기")} />}
+        <div className="mp-cm" onScroll={activeBook ? undefined : largeTitle.onScroll}>
+          {!activeBook && <LargeTitle title={tr("世界書", "Lorebook", "世界観", "월드북")} />}
           {!activeBook ? <>
               <div className="mp-lorebook-guide">
                 <b>{tr("世界書是做什麼的？", "What are lorebooks for?", "世界観とは？", "월드북이란?")}</b>
@@ -171,7 +177,7 @@ export default function LorebookApp({
                 <input ref={lorebookImportInputRef} type="file" accept="application/json,.json" hidden onChange={importLorebookFile} />
               </div>
             <div style={{height:8}} />
-            {sortedBooks.length === 0 ? <div className="mp-empty"><div className="mp-empty-i">📚</div><div className="mp-empty-t">{tr("目前沒有世界書", "No lorebooks yet", "まだ世界観がありません", "아직 월드북이 없습니다")}</div></div> : sortedBooks.map((b) => (
+            {sortedBooks.length === 0 ? <div className="mp-empty"><div className="mp-empty-icon" aria-hidden="true"><Icon name="books" size={34} /></div><div className="mp-empty-t">{tr("目前沒有世界書", "No lorebooks yet", "まだ世界観がありません", "아직 월드북이 없습니다")}</div></div> : sortedBooks.map((b) => (
               <div key={b.id} className="mp-cc">
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
                     <div style={{fontWeight:700,fontSize:13}}>{b.name}</div>
@@ -201,7 +207,7 @@ export default function LorebookApp({
             </div>
             <button className="mp-add" onClick={() => setEditingLorebookEntry({ id: null, title: "", keywords: "", content: "", enabled: true })}>＋ {tr("新增世界設定條目", "Add world setting entry", "世界設定の項目を追加", "세계 설정 항목 추가")}</button>
             <div style={{height:8}} />
-            {sortedEntries.length === 0 ? <div className="mp-empty"><div className="mp-empty-i">📖</div><div className="mp-empty-t">{tr("這本世界書尚無條目", "This lorebook has no entries yet", "この世界観にはまだ項目がありません", "이 월드북에는 아직 항목이 없습니다")}</div></div> : sortedEntries.map((e) => (
+            {sortedEntries.length === 0 ? <div className="mp-empty"><div className="mp-empty-icon" aria-hidden="true"><Icon name="book" size={34} /></div><div className="mp-empty-t">{tr("這本世界書尚無條目", "This lorebook has no entries yet", "この世界観にはまだ項目がありません", "이 월드북에는 아직 항목이 없습니다")}</div></div> : sortedEntries.map((e) => (
               <div key={e.id} className="mp-cc">
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
                   <div style={{fontWeight:700,fontSize:13}}>{e.title}</div>

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { loadFeatureEntity, saveFeatureEntity } from "../../utils/indexedDbStorage";
 import { parseIcs } from "../../services/calendar/icsParser";
 import { fetchWithTimeout, isRequestCancelled, NETWORK_TIMEOUTS } from "../../utils/networkRequest.js";
+import { AppHeader, LargeTitle, LargeTitleHeader, SUB_PAGE_CLASS, useLargeTitle } from "../shell/LargeTitle";
 
 const STORE_KEY = "ent_calendar";
 const pad = (n) => String(n).padStart(2, "0");
@@ -21,6 +22,7 @@ const monthMatrix = (year, month) => {
 // 日曆 App：本地事件＋ICS 匯入。事件可設定「角色可見」，
 // 之後由聊天 prompt 注入管線取用（與約定清單共用，注入規則另行定案）。
 export default function CalendarApp({ closeApp, tr }) {
+  const largeTitle = useLargeTitle();
   const [store, setStore] = useState(null); // {events: []}
   const [cursor, setCursor] = useState(() => { const d = new Date(); return { year: d.getFullYear(), month: d.getMonth() }; });
   const [selected, setSelected] = useState(() => ymd(new Date()));
@@ -168,14 +170,12 @@ export default function CalendarApp({ closeApp, tr }) {
   const inputStyle = { width: "100%", boxSizing: "border-box", border: "1px solid var(--mp-card-border)", borderRadius: 12, background: "var(--mp-card-bg)", padding: "9px 12px", fontSize: 12, color: "var(--mp-txt)", outline: "none" };
 
   return (
-    <div className="mp-page calendar-app-page" style={{ "--calendar-accent": "var(--mp-accent)", "--calendar-muted": "var(--mp-muted)", background: "var(--mp-page-bg)" }}>
-      <div className="mp-hdr" style={{ background: "transparent" }}>
-        <div className="mp-back" onClick={closeApp}>←</div>
-        <div className="mp-htitle">🗓️ {tr("日曆", "Calendar", "カレンダー", "달력")}</div>
-        <button type="button" onClick={() => { setNotice(""); setModal("import"); }}
-          className="calendar-import-button" style={{ marginLeft: "auto", border: "1px solid var(--mp-card-border)", borderRadius: 99, background: "var(--mp-glass)", color: "var(--mp-txt)", fontSize: 9.5, fontWeight: 800, padding: "5px 10px" }}>⇪ {tr("匯入 ICS", "Import ICS", "ICSを読み込む", "ICS 가져오기")}</button>
-      </div>
-      <div style={{ flex: 1, overflowY: "auto", padding: "2px 14px 24px" }}>
+    <div className={`${largeTitle.pageClassName} calendar-app-page`} style={{ "--calendar-accent": "var(--mp-accent)", "--calendar-muted": "var(--mp-muted)" }}>
+      <LargeTitleHeader title={tr("日曆", "Calendar", "カレンダー", "달력")} onBack={closeApp} backLabel={tr("返回首頁", "Back to Home", "ホームに戻る", "홈으로 돌아가기")} right={
+        <button type="button" className="mp-hdr-action calendar-import-button" onClick={() => { setNotice(""); setModal("import"); }}>⇪ {tr("匯入 ICS", "Import ICS", "ICSを読み込む", "ICS 가져오기")}</button>
+      } />
+      <div style={{ flex: 1, overflowY: "auto", padding: "0 14px 24px" }} onScroll={largeTitle.onScroll}>
+        <LargeTitle title={tr("日曆", "Calendar", "カレンダー", "달력")} />
 
         {/* 月份導航：點標題展開年月選擇器 */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 16, padding: "6px 0 10px" }}>
@@ -203,7 +203,7 @@ export default function CalendarApp({ closeApp, tr }) {
                 return (
                   <button key={m} type="button" onClick={() => { setCursor({ year: pickerYear, month: m }); setPickerYear(null); }}
                     style={{ border: isThisMonth && !isCurrent ? "1.5px solid var(--calendar-accent)" : "1.5px solid transparent", borderRadius: 11, padding: "8px 0", fontSize: 11.5, fontWeight: 800,
-                      color: isCurrent ? "var(--mp-on-accent)" : "var(--mp-txt)", background: isCurrent ? "linear-gradient(135deg,var(--mp-bubble),var(--calendar-accent))" : "var(--mp-glass)" }}>
+                      color: isCurrent ? "var(--mp-on-accent)" : "var(--mp-txt)", background: isCurrent ? "var(--mp-primary-gradient)" : "var(--mp-glass)" }}>
                     {tr(`${m + 1} 月`, `${m + 1}`, `${m + 1}月`, `${m + 1}월`)}
                   </button>
                 );
@@ -230,7 +230,7 @@ export default function CalendarApp({ closeApp, tr }) {
                 const hasVisible = list?.some((e) => e.visibleToChar);
                 return (
                   <button key={key} type="button" onClick={() => { setSelected(key); if (!inMonth) setCursor({ year: day.getFullYear(), month: day.getMonth() }); }}
-                    style={{ border: 0, background: isSelected ? "linear-gradient(135deg,var(--mp-bubble),var(--calendar-accent))" : "transparent", borderRadius: 11, padding: "6px 0 4px", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, opacity: inMonth ? 1 : .35 }}>
+                    style={{ border: 0, background: isSelected ? "var(--mp-primary-gradient)" : "transparent", borderRadius: 11, padding: "6px 0 4px", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, opacity: inMonth ? 1 : .35 }}>
                     <span style={{ fontSize: 12, fontWeight: isToday || isSelected ? 900 : 600, color: isSelected ? "var(--mp-on-accent)" : isToday ? "var(--calendar-accent)" : "var(--mp-txt)", width: 20, lineHeight: "20px", borderRadius: "50%", border: isToday && !isSelected ? "1.5px solid var(--calendar-accent)" : "1.5px solid transparent" }}>{day.getDate()}</span>
                     <span style={{ height: 5, display: "flex", gap: 2 }}>
                       {list?.length ? <span style={{ width: 5, height: 5, borderRadius: "50%", background: isSelected ? "var(--mp-on-accent)" : hasVisible ? "var(--calendar-accent)" : "var(--calendar-muted)" }} /> : null}
@@ -247,7 +247,7 @@ export default function CalendarApp({ closeApp, tr }) {
           <span style={{ fontSize: 12, fontWeight: 900, color: "var(--mp-txt)" }}>{dateLabel(Number(selected.slice(5, 7)), Number(selected.slice(8, 10)))}</span>
           <span style={{ fontSize: 9, color: "var(--calendar-muted)" }}>🩷 {tr("角色可見", "Visible to characters", "キャラに表示", "캐릭터에게 공개")} · 🔒 {tr("僅自己可見", "Private", "自分のみ", "나만 보기")}</span>
           <button type="button" onClick={() => { setForm({ title: "", date: selected, time: "", note: "", visibleToChar: true, characterReminderEnabled: false }); setEditingId(null); setModal("add"); }}
-            className="calendar-add-button" style={{ marginLeft: "auto", border: 0, borderRadius: 99, background: "linear-gradient(135deg,var(--mp-bubble),var(--calendar-accent))", color: "var(--mp-on-accent)", fontSize: 10, fontWeight: 800, padding: "5px 12px", boxShadow: "var(--mp-shadow)" }}>＋ {tr("新增", "Add", "追加", "추가")}</button>
+            className="calendar-add-button" style={{ marginLeft: "auto", border: 0, borderRadius: 99, background: "var(--mp-primary-gradient)", color: "var(--mp-on-accent)", fontSize: 10, fontWeight: 800, padding: "5px 12px", boxShadow: "var(--mp-shadow)" }}>＋ {tr("新增", "Add", "追加", "추가")}</button>
         </div>
         {dayEvents.length === 0
           ? <div style={{ textAlign: "center", fontSize: 11, color: "var(--calendar-muted)", padding: "16px 0" }}>{tr("這天還沒有安排", "Nothing scheduled for this day", "この日の予定はありません", "이날 예정이 없습니다")}</div>
