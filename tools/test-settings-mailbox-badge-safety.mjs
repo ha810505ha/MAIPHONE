@@ -14,12 +14,14 @@ const [settings, mailbox, settingsSurface, app] = await Promise.all([
   source("MaliPhone.jsx"),
 ]);
 
-assert(settings.includes('{ id: "data", label: t("data"), unread: mailboxUnreadCount > 0 }'), "the Data tab must derive its dot from mailbox unread state");
-assert(settings.includes('data-settings-mailbox-dot="1"'), "the Data tab must render a stable unread-dot marker");
-assert(settings.includes("有未讀信件"), "the unread Data tab must remain accessible to screen readers");
-assert(mailbox.includes("countUnreadMails(mails)"), "the mailbox card and Data tab must share one unread-count rule");
-assert(settingsSurface.includes("mailboxUnreadCount={countUnreadMails(mailboxMails)}"), "the settings tabs must receive live mailbox state");
+// MP-012：信箱固定在設定頁分頁上方（任何分頁都看得到未讀數），不再藏在「資料」分頁。
+const mailboxAt = settings.indexOf("<SystemMailboxSettings");
+assert(mailboxAt > 0 && mailboxAt < settings.indexOf("<SegmentedControl"), "the mailbox card must sit above the settings tabs");
+assert(settings.includes("refreshKey={mailboxUnreadCount}"), "the mailbox card must refresh when the live unread count changes");
+assert(mailbox.includes("[locale, refreshKey]"), "the mailbox card must reload mail when refreshKey changes");
+assert(mailbox.includes("countUnreadMails(mails)"), "the mailbox card must use the shared unread-count rule");
+assert(settingsSurface.includes("mailboxUnreadCount={countUnreadMails(mailboxMails)}"), "the settings page must receive live mailbox state");
 assert(app.includes("mailboxMails={mailboxMails}"), "the settings surface must receive live mailbox state");
-assert(app.includes("window.addEventListener(MAILBOX_CHANGED_EVENT, refreshMailbox)"), "reading a mail must refresh the Data-tab dot immediately");
+assert(app.includes("window.addEventListener(MAILBOX_CHANGED_EVENT, refreshMailbox)"), "reading a mail must refresh the unread count immediately");
 
-console.log("ok: Settings Data tab follows the live system-mailbox unread state");
+console.log("ok: Settings mailbox card follows the live system-mailbox unread state");

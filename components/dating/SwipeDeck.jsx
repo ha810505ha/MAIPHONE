@@ -73,12 +73,12 @@ export default function SwipeDeck({ deck, superLikes, canRewind, onSwipe, onRewi
         </div>
       </div>
       <div className="dt-actions">
-        <button type="button" className="dt-act rewind" disabled={!canRewind} onClick={onRewind} aria-label="回上一張">↺</button>
-        <button type="button" className="dt-act pass" onClick={() => commit("pass")} aria-label="跳過">✕</button>
+        <button type="button" className="dt-act rewind" disabled={!canRewind} onClick={onRewind} aria-label={tr("回上一張", "Rewind", "ひとつ戻す", "되돌리기")}>↺</button>
+        <button type="button" className="dt-act pass" onClick={() => commit("pass")} aria-label={tr("跳過", "Pass", "スキップ", "넘기기")}>✕</button>
         <button type="button" className="dt-act super" disabled={superLikes <= 0} onClick={() => commit("super")} aria-label="Super Like">
           ★<span className="dt-act-count">{superLikes}</span>
         </button>
-        <button type="button" className="dt-act like" onClick={() => commit("like")} aria-label="喜歡">♥</button>
+        <button type="button" className="dt-act like" onClick={() => commit("like")} aria-label={tr("喜歡", "Like", "いいね", "좋아요")}>♥</button>
       </div>
     </>
   );

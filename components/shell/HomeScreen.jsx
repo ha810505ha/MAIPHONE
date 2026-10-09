@@ -6,13 +6,13 @@ import { sanitizeUserImageUrl } from "../../utils/coreUtils";
 function ActiveCharacterCard({ character, peachTheme, onOpen, onOpenFromTouch, tr }) {
   if (!character) return null;
   const status = (character.statusText || character.description || tr("線上", "Online", "オンライン中", "온라인 중")).slice(0, 34);
-  if (peachTheme) return <PeachHero character={character} imageUrl={sanitizeUserImageUrl(character.heroImage)} statusText={status} onOpen={onOpen} />;
+  if (peachTheme) return <PeachHero character={character} imageUrl={sanitizeUserImageUrl(character.heroImage)} statusText={status} onOpen={onOpen} tr={tr} />;
   const avatar = sanitizeUserImageUrl(character.avatar);
   return (
     <div className="mp-cw" onClick={(event) => { event.stopPropagation(); onOpen(); }} onPointerUp={(event) => onOpenFromTouch(event)}>
       <div className="mp-av">{avatar ? <img src={avatar} alt="" /> : "??"}</div>
       <div className="mp-cw-info">
-        <div className="mp-cw-name">{character.name}<span className="mp-active-badge">ACTIVE</span></div>
+        <div className="mp-cw-name">{character.name}<span className="mp-active-badge">{tr("陪伴中", "Companion", "パートナー", "동행 중")}</span></div>
         <div className="mp-cw-desc">{status}</div>
         <div style={{ fontSize: 10, color: "var(--mp-txt-l)", marginTop: 2 }}>
           {tr("更新：", "Updated: ", "更新: ", "업데이트: ")}{character.statusUpdatedAt ? new Date(character.statusUpdatedAt).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" }) : "--:--"}

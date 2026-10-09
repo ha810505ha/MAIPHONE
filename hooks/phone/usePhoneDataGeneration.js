@@ -90,12 +90,12 @@ ${recent || "（尚無）"}
           })).filter((m) => !!m.text),
         };
       }).filter((t) => t.messages.length > 0);
-      if (!threads.length) throw new Error("模型未回傳可用的聊天資料");
+      if (!threads.length) throw new Error(tr("模型未回傳可用的聊天資料", "Model returned no usable chats", "モデルが有効なチャットを返しませんでした", "모델이 사용할 수 있는 채팅을 반환하지 않았습니다"));
       setPhoneInboxCache((prev) => ({
         ...prev,
         [char.id]: { ...(prev[char.id] || {}), updatedAt: Date.now(), threads },
       }));
-      showToast(`已更新其他聊天（${threads.length} 人）`);
+      showToast(tr(`已更新其他聊天（${threads.length} 人）`, `Updated other chats (${threads.length})`, `ほかのチャットを更新しました（${threads.length}人）`, `다른 채팅을 업데이트했습니다 (${threads.length}명)`));
     } catch (err) {
       showToast(`${tr("生成失敗", "Generation failed", "生成に失敗しました", "생성 실패")}：${sanitizeText(err?.message || tr("未知錯誤", "Unknown error", "不明なエラー", "알 수 없는 오류"), 120)}`);
     }
@@ -197,7 +197,7 @@ ${recent || "（尚無）"}
         ...prev,
         [char.id]: { ...(prev[char.id] || {}), playerContact, playerContactUpdatedAt: Date.now() },
       }));
-      showToast("玩家暱稱與備註已更新");
+      showToast(tr("玩家暱稱與備註已更新", "Your nickname and note were updated", "プレイヤーの呼び名とメモを更新しました", "플레이어 호칭과 메모를 업데이트했습니다"));
     } catch (err) {
       showToast(`${tr("生成失敗", "Generation failed", "生成に失敗しました", "생성 실패")}：${sanitizeText(err?.message || "", 120)}`);
     } finally {
@@ -205,10 +205,13 @@ ${recent || "（尚無）"}
     }
   };
 
-  const generatePhoneApp = async (char, appId) => {
+  // options.themeScope（只用於 theme）："content" 只換狀態／音樂／待辦、"palette" 只換配色、"all" 整組換新。
+  const generatePhoneApp = async (char, appId, options = {}) => {
     if (!char) return;
     const {
       PHONE_APP_META,
+      phoneAppLabel,
+      mergePhoneThemeScope,
       sanitizePhoneTheme,
       buildPhonePromptContext,
       buildPhoneAppPrompt,
@@ -216,6 +219,8 @@ ${recent || "（尚無）"}
     } = await loadPhoneAppGen();
     if (!PHONE_APP_META[appId]) return;
     if (!canUseCurrentProvider()) { showToast(tr("請先完成 AI 連線設定（API Key）", "Please finish AI connection setup first", "先にAI接続設定を完了してください", "먼저 AI 연결 설정을 완료해주세요")); return; }
+    // 還沒有主題時，只換內容／只換配色沒有東西可保留，一律整組生成。
+    const themeScope = appId === "theme" && phoneAppCache[char.id]?.theme ? (options.themeScope || "all") : "all";
     setPhoneAppGenLoading(appId);
     try {
       const theme = sanitizePhoneTheme(phoneAppCache[char.id]?.theme?.data);
@@ -238,7 +243,7 @@ ${recent || "（尚無）"}
               prevTitles: (phoneAppCache[char.id]?.diary?.data?.entries || []).map((e) => e.title),
               dateContext: diaryDateContext(),
             }
-          : { mode: theme.mode };
+          : { mode: theme.mode, themeScope: appId === "theme" ? themeScope : undefined, currentThemeName: theme.themeName };
       const playerFormalName = sanitizeText(playerProfile?.name || "玩家", 40);
       const ctx = buildPhonePromptContext(char, chatHistory, playerFormalName);
       const prompt = [{ role: "user", content: buildPhoneAppPrompt(appId, getOutputLanguageDirective(), ctx, extra) }];
@@ -247,7 +252,9 @@ ${recent || "（尚無）"}
         app: "phone",
         action: `app_${safeAppId}_refresh`,
       });
-      const data = sanitizePhoneAppData(appId, parseJsonObjectFromText(raw), phoneAppCache[char.id]?.[appId]?.data, { playerName: playerFormalName, charName: char.name });
+      const parsed = parseJsonObjectFromText(raw);
+      const mergedInput = appId === "theme" ? mergePhoneThemeScope(phoneAppCache[char.id]?.theme?.data, parsed, themeScope) : parsed;
+      const data = sanitizePhoneAppData(appId, mergedInput, phoneAppCache[char.id]?.[appId]?.data, { playerName: playerFormalName, charName: char.name });
       if (!data) throw new Error(tr("模型未回傳可用資料", "Model returned no usable data", "モデルが有効なデータを返しませんでした", "모델이 사용 가능한 데이터를 반환하지 않았습니다"));
       setPhoneAppCache((prev) => ({
         ...prev,
@@ -255,7 +262,12 @@ ${recent || "（尚無）"}
       }));
       if (appId === "shop") syncShopOrdersToWallet(char.id, data.orders);
       if (appId === "diary") setDiaryPage(0);
-      showToast(`已更新${PHONE_APP_META[appId].name}`);
+      const label = phoneAppLabel(appId, tr);
+      showToast(appId === "theme" && themeScope === "content"
+        ? tr("已換新桌面內容，配色保留", "Home screen refreshed, colors kept", "ホーム画面の内容を更新しました（配色はそのまま）", "홈 화면 내용을 새로 바꿨어요 (색상 유지)")
+        : appId === "theme" && themeScope === "palette"
+          ? tr(`已換成新配色「${data.themeName}」`, `New colors: ${data.themeName}`, `新しい配色「${data.themeName}」にしました`, `새 색상 「${data.themeName}」으로 바꿨어요`)
+          : tr(`已更新${label}`, `${label} updated`, `${label}を更新しました`, `${label}을(를) 업데이트했습니다`));
     } catch (err) {
       showToast(`${tr("生成失敗", "Generation failed", "生成に失敗しました", "생성 실패")}：${sanitizeText(err?.message || "", 120)}`);
     }

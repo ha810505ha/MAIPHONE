@@ -170,7 +170,7 @@ export function buildThemeCss({
       .mp-chat-list-line .mp-chat-row-top{align-items:center;}
       .mp-chat-list-line .mp-chat-row-name{font-size:14px;color:var(--mp-txt);}
       .mp-chat-list-line .mp-chat-row-name>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-      .mp-chat-list-line .mp-chat-row-pin{order:2;color:var(--mp-pink-dk);font-size:11px;}
+      .mp-chat-list-line .mp-chat-row-pin{order:2;color:#ec5f8a;font-size:11px;} /* 釘選愛心固定粉紅，不跟主題（小舞 2026-10-09） */
       .mp-chat-list-line .mp-chat-row-time{font-family:var(--mp-hand);font-size:9px;color:var(--mp-txt-l);padding:0;}
       .mp-chat-list-line .mp-chat-row-preview{min-width:0;max-width:100%;margin-top:4px;font-size:12px;color:var(--mp-txt-l);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
       .mp-chat-list-line .mp-chat-row-bottom{align-items:center;}
@@ -178,6 +178,20 @@ export function buildThemeCss({
       @media (prefers-reduced-motion:reduce){.mp-phone::before,.mp-phone::after{display:none;}}
     ` : ``}
     ${!hasPeachEffects ? `.mp-cr::before{display:none!important}` : ``}
+    ${activeTheme?.vars?.["--mp-accent-story"] ? `
+      /* 聊天室重點分色：只在主題有設定劇情色／身分色時產生，其他主題維持原樣。
+         劇情色＝此刻、劇情快捷；身分色＝AI 模型、玩家名稱、心聲；設定按鈕改中性。 */
+      .mp-story-status{border-color:color-mix(in srgb,var(--mp-accent-story) 24%,transparent);background:var(--mp-accent-story-bg);}
+      .mp-story-status-toggle,.mp-story-status-summary-chip small{color:var(--mp-accent-story);}
+      .mp-story-status-summary-chip{border-color:color-mix(in srgb,var(--mp-accent-story) 26%,transparent);background:rgba(255,255,255,.72);}
+      .mp-story-status-body{border-top-color:color-mix(in srgb,var(--mp-accent-story) 18%,transparent);}
+      .mp-quick-toggle{border-color:color-mix(in srgb,var(--mp-accent-story) 30%,transparent);background:var(--mp-accent-story-bg);color:var(--mp-accent-story);}
+      .mp-quick-toggle.active{background:var(--mp-accent-story);color:#fff;}
+      .mp-model-badge{border-color:color-mix(in srgb,var(--mp-accent-identity) 30%,transparent);background:var(--mp-accent-identity-bg);color:var(--mp-accent-identity);}
+      .mp-hdr-neutral{border-color:color-mix(in srgb,var(--mp-txt) 12%,transparent);background:var(--mp-surface);color:var(--mp-txt);}
+      .mp-thought-peek{color:var(--mp-accent-identity);}
+      .mp-persona-chip{--mp-pink:var(--mp-accent-identity);--mp-pink-dk:var(--mp-accent-identity);--mp-pink-lt:var(--mp-accent-identity-bg);}
+    ` : ``}
     /* 主題粒子改由 components/shell/ThemeParticles.jsx 繪製；舊的 emoji 偽元素粒子停用。 */
     .mp-phone::before,.mp-phone::after{display:none!important;animation:none!important}
     ${!renderThemeEffects ? `.mp-fx i,.mp-fx i::before{animation-play-state:paused!important}` : ``}

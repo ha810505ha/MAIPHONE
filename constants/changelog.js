@@ -1,6 +1,16 @@
 import { toSimplifiedChinese } from "../utils/i18n.js";
 
 const ZH_CHANGELOG = {
+  "1.4.0": [
+    "10/10 更新",
+    "情侶空間｜新增約定、紀念日與回憶時間軸，換上新的抽籤動畫；關係溫度升高可以解鎖小獎勵。",
+    "狀態｜改成角色總覽，記憶和里程碑一目了然。",
+    "聯絡人｜改成通訊錄式清單，「設為主角」改名為「設為陪伴」。",
+    "社群｜貼文改成臉書風格。",
+    "角色手機｜重新設計桌面，新增可以收藏配色的「主題」App。",
+    "設定｜重新調整設定內分頁。",
+    "主題與修正｜抹茶檸檬、海鹽汽水更清楚；修正待機畫面閃回莓果配色等問題。",
+  ],
   "1.3.0": [
     "10/08 更新",
     "介面｜調整小手機各項動畫與部分介面排版，並一併優化主題配色與個人資料頁。",
@@ -156,6 +166,38 @@ const ZH_CHANGELOG = {
 };
 
 const TRANSLATED_CHANGELOG = {
+  "1.4.0": {
+    en: [
+      "10/10 Update",
+      "Couple Space | Added promises, anniversaries, and a memory timeline, plus a new fortune-drawing animation. Raising your relationship warmth unlocks small rewards.",
+      "Status | Now an overview of all characters, with memories and milestones at a glance.",
+      "Contacts | Redesigned as an address-book list. \"Set as main character\" is now \"Set as companion\".",
+      "Social | Posts now use a Facebook-style layout.",
+      "Character phone | Redesigned home screen and a new Theme app where you can save favorite color sets.",
+      "Settings | Reorganized the tabs in Settings.",
+      "Themes & fixes | Matcha Lemon and Sea Salt Soda are easier to read. Fixed the lock screen briefly flashing Berry colors and other issues.",
+    ],
+    ja: [
+      "10/10 アップデート",
+      "カップルスペース｜約束、記念日、思い出タイムラインを追加し、おみくじのアニメーションを一新しました。関係温度が上がると小さなご褒美が解放されます。",
+      "ステータス｜全キャラクターの一覧表示になり、記憶やマイルストーンがひと目でわかります。",
+      "連絡先｜アドレス帳風のリストに変更し、「メインキャラクターに設定」を「パートナーに設定」に名称変更しました。",
+      "SNS｜投稿を Facebook 風のレイアウトに変更しました。",
+      "キャラのスマホ｜ホーム画面をリデザインし、配色を保存できる「テーマ」アプリを追加しました。",
+      "設定｜設定内のタブを整理しました。",
+      "テーマと修正｜抹茶レモンとシーソルトソーダを見やすくしました。待機画面で一瞬ベリーの配色に戻る問題などを修正しました。",
+    ],
+    ko: [
+      "10/10 업데이트",
+      "커플 공간 | 약속, 기념일, 추억 타임라인을 추가하고 새로운 운세 뽑기 애니메이션을 적용했습니다. 관계 온도가 오르면 작은 보상이 해금됩니다.",
+      "상태 | 모든 캐릭터를 한눈에 보는 화면으로 바뀌어 기억과 마일스톤을 쉽게 확인할 수 있습니다.",
+      "연락처 | 주소록 형식의 목록으로 바뀌었고, '주요 캐릭터로 설정'이 '동행으로 설정'으로 이름이 바뀌었습니다.",
+      "소셜 | 게시물을 페이스북 스타일 레이아웃으로 바꿨습니다.",
+      "캐릭터 휴대폰 | 홈 화면을 새로 디자인하고, 색상을 저장할 수 있는 '테마' 앱을 추가했습니다.",
+      "설정 | 설정 안의 탭을 다시 정리했습니다.",
+      "테마 및 수정 | 말차 레몬과 씨솔트 소다를 더 보기 쉽게 했습니다. 대기 화면이 잠깐 베리 색상으로 돌아가던 문제 등을 수정했습니다.",
+    ],
+  },
   "1.3.0": {
     en: [
       "10/08 Update",

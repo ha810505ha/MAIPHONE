@@ -7,8 +7,19 @@ import { loadFeatureEntity, saveFeatureEntity } from "../../utils/indexedDbStora
 import { AppHeader, LargeTitle, LargeTitleHeader, SUB_PAGE_CLASS, useLargeTitle } from "../shell/LargeTitle";
 import { coupleDayKey, generateLoveSign, generateDailyTask, judgeCoupleTask, settleTemperature, temperatureComment } from "../../services/couple/coupleDailyService";
 import Icon from "../common/Icon";
+import MoonlitSignStage from "../couple/MoonlitSignStage";
+import {
+  COUPLE_OPEN_PROMISE_LIMIT, COUPLE_UNLOCKS, addCoupleAnniversary, addCouplePromise, buildCoupleAnniversaries, buildCoupleTimeline,
+  completeCouplePromise, daysTogether as countDaysTogether, daysUntil, fromDateKey, getCoupleAnniversaries, getCoupleNickname,
+  getCouplePeakTemperature, getCouplePromises, isCoupleUnlocked, removeCoupleAnniversary, removeCouplePromise, reopenCouplePromise,
+  splitCouplePromises, toDateKey, withCoupleNickname, withCouplePeakTemperature,
+} from "../../utils/coupleSpace";
 
 const RARITY_COLORS = { SSR: "#c99a4b", SR: "#8f6cc9", R: "#6f9cc9" };
+// 情侶空間固定配色（不跟主題走）。之後調整配色只要改這裡。
+const COUPLE_COLORS = { ink: "#7a4257", sub: "#a86e84", faint: "#b98a9c", accent: "#d16a8d", gold: "#a2652f", ok: "#3f9d63", onAccent: "#fff" };
+const PROMISE_PAGE_SIZE = 5;
+const TIMELINE_MONTH_STEP = 2;
 const GLASS = { background: "rgba(255,255,255,.66)", border: "1px solid rgba(255,255,255,.85)" };
 const HAND_FONT = "'LXGW WenKai TC','Noto Serif TC',serif";
 const DAILY_KEY = "ent_coupleDaily";
@@ -16,174 +27,60 @@ const TASK_REWARD = 180;       // 一次單抽所需的靈魂結晶
 const STREAK_BONUS = 540;      // 連續 7 天加碼 ×3
 const formatDate = (time, locale = "zh-TW") => new Intl.DateTimeFormat(locale, { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(time));
 const MOONLIT_SIGN_STYLES = `
-  @keyframes coupleMoonRise {
-    0% { opacity: 0; transform: translate(-50%, 12px) scale(.88); }
-    100% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  @keyframes coupleStampIn {
+    0% { opacity: 0; transform: scale(1.9) rotate(-12deg); }
+    60% { opacity: 1; }
+    100% { opacity: 1; transform: scale(1) rotate(0); }
   }
-  @keyframes coupleMoonRipple {
-    0% { opacity: .55; transform: translate(-50%, -50%) scale(.35); }
-    75%, 100% { opacity: 0; transform: translate(-50%, -50%) scale(1.4); }
+  @keyframes coupleFadeUp {
+    0% { opacity: 0; transform: translateY(6px); }
+    100% { opacity: 1; transform: none; }
   }
-  @keyframes coupleMoonShimmer {
-    0% { transform: translateX(-48%) skewX(-18deg); opacity: 0; }
-    25% { opacity: .55; }
-    70%, 100% { transform: translateX(160%) skewX(-18deg); opacity: 0; }
-  }
-  @keyframes couplePaperUnderwater {
-    0%, 100% { transform: translate(-50%, 18px) rotate(-1.5deg); opacity: .42; }
-    50% { transform: translate(-50%, 12px) rotate(1deg); opacity: .72; }
-  }
-  @keyframes coupleMistDrift {
-    0%, 100% { transform: translateX(-5%); opacity: .18; }
-    50% { transform: translateX(5%); opacity: .36; }
-  }
-  @keyframes coupleSignSurface {
-    0% { opacity: 0; transform: translateY(14px) rotate(.5deg) scale(.98); filter: blur(2px); clip-path: inset(58% 2% 0 2% round 12px); }
-    70% { opacity: 1; filter: blur(0); }
-    100% { opacity: 1; transform: translateY(0) rotate(0) scale(1); filter: blur(0); clip-path: inset(0 0 0 0 round 0); }
-  }
-  @keyframes coupleMoonSweep {
-    0% { transform: translateX(-130%) skewX(-18deg); opacity: 0; }
-    30% { opacity: .55; }
-    100% { transform: translateX(180%) skewX(-18deg); opacity: 0; }
-  }
-  .couple-moon-sign-stage {
+  .couple-moon-stage {
     position: relative;
-    height: 132px;
+    height: 176px;
     margin-top: 9px;
     overflow: hidden;
     border-radius: 16px;
     isolation: isolate;
-    background:
-      radial-gradient(circle at 50% 16%, rgba(255,244,205,.24), transparent 31%),
-      linear-gradient(180deg, #b8a9d5 0%, #8fa7c2 42%, #647f9d 58%, #496983 100%);
+    background: linear-gradient(180deg, #a898d2 0%, #93a9c8 56%, #7d98b8 56%, #45627f 100%);
     box-shadow: inset 0 1px 0 rgba(255,255,255,.42), inset 0 -18px 34px rgba(20,46,74,.22);
   }
-  .couple-moon-sign-stage::before {
-    content: "";
+  .couple-moon-stage canvas { display: block; width: 100%; height: 100%; }
+  .couple-moon-slip {
     position: absolute;
-    inset: 54% -20% -20%;
     z-index: 2;
-    background:
-      repeating-linear-gradient(176deg, rgba(255,255,255,.12) 0 1px, transparent 1px 8px),
-      linear-gradient(180deg, rgba(132,176,201,.2), rgba(28,66,95,.4));
-    transform: perspective(120px) rotateX(56deg) scale(1.2);
-    transform-origin: top;
-  }
-  .couple-moon-disc {
-    position: absolute;
-    z-index: 1;
+    left: 50%;
     top: 10px;
-    left: 50%;
-    width: 46px;
-    height: 46px;
-    border-radius: 50%;
-    background: radial-gradient(circle at 38% 34%, #fffdf0 0 18%, #f9eec7 57%, #e9d6a8 100%);
-    box-shadow: 0 0 16px rgba(255,240,187,.65), 0 0 42px rgba(255,235,182,.32);
-    animation: coupleMoonRise 420ms cubic-bezier(.23,1,.32,1) both;
-  }
-  .couple-moon-reflection {
-    position: absolute;
-    z-index: 3;
-    left: 50%;
-    top: 58px;
-    width: 30px;
-    height: 50px;
+    opacity: 0;
     transform: translateX(-50%);
-    background: linear-gradient(180deg, rgba(255,239,183,.62), rgba(255,244,210,0));
-    filter: blur(4px);
-    clip-path: polygon(35% 0,65% 0,82% 26%,62% 38%,88% 54%,56% 65%,76% 82%,24% 100%,42% 68%,13% 55%,42% 38%,20% 22%);
+    filter: drop-shadow(0 10px 18px rgba(20,30,60,.38));
   }
-  .couple-moon-ripple {
-    position: absolute;
-    z-index: 4;
-    left: 50%;
-    top: 78px;
-    width: 112px;
-    height: 26px;
-    border: 1px solid rgba(246,238,211,.62);
-    border-radius: 50%;
-    transform: translate(-50%, -50%);
-    animation: coupleMoonRipple 1700ms cubic-bezier(.23,1,.32,1) infinite;
-  }
-  .couple-moon-ripple:nth-of-type(2) { animation-delay: 680ms; }
-  .couple-moon-paper {
-    position: absolute;
-    z-index: 5;
-    left: 50%;
-    bottom: -7px;
-    width: 82px;
-    height: 58px;
-    display: grid;
-    place-items: center;
-    border: 1px solid rgba(231,216,177,.72);
-    border-radius: 5px 5px 2px 2px;
-    color: rgba(111,78,70,.7);
-    font-family: ${HAND_FONT};
-    font-size: 10px;
-    letter-spacing: .12em;
-    background:
-      linear-gradient(90deg, transparent 49%, rgba(187,157,112,.12) 50%, transparent 51%),
-      linear-gradient(155deg, #fff9e9, #eee1c5);
-    box-shadow: 0 7px 22px rgba(20,45,68,.28);
-    animation: couplePaperUnderwater 2100ms ease-in-out infinite;
-  }
-  .couple-moon-paper::after {
-    content: "☾";
-    position: absolute;
-    right: 7px;
-    bottom: 5px;
-    color: rgba(181,128,123,.58);
-    font-size: 13px;
-  }
-  .couple-moon-shimmer {
-    position: absolute;
-    z-index: 6;
-    inset: 54% auto 0 -25%;
-    width: 35%;
-    background: linear-gradient(90deg, transparent, rgba(255,250,226,.32), transparent);
-    animation: coupleMoonShimmer 2200ms cubic-bezier(.23,1,.32,1) infinite;
-  }
-  .couple-moon-mist {
-    position: absolute;
-    z-index: 7;
-    left: -10%;
-    right: -10%;
-    bottom: 22px;
-    height: 24px;
-    background: radial-gradient(ellipse, rgba(235,238,246,.55), transparent 70%);
-    filter: blur(8px);
-    animation: coupleMistDrift 2600ms ease-in-out infinite;
-  }
+  .couple-moon-slip svg { display: block; }
+  .couple-moon-stamp { transform-box: fill-box; transform-origin: center; opacity: 0; }
   .couple-moon-status {
     position: absolute;
-    z-index: 8;
+    z-index: 3;
     left: 0;
     right: 0;
     bottom: 8px;
-    color: rgba(255,255,255,.88);
-    font-size: 10px;
+    padding: 0 10px;
+    color: rgba(255,255,255,.92);
+    font-size: 11px;
     font-weight: 800;
-    letter-spacing: .08em;
+    letter-spacing: .06em;
+    text-align: center;
     text-shadow: 0 1px 5px rgba(28,48,72,.5);
+    transition: opacity 250ms ease;
   }
   .couple-sign-result {
     position: relative;
     overflow: hidden;
   }
-  .couple-sign-result.is-revealing {
-    animation: coupleSignSurface 520ms cubic-bezier(.23,1,.32,1) both;
-  }
-  .couple-sign-result.is-revealing::after {
-    content: "";
-    position: absolute;
-    z-index: 3;
-    inset: 0 auto 0 -30%;
-    width: 22%;
-    pointer-events: none;
-    background: linear-gradient(90deg, transparent, rgba(255,250,222,.64), transparent);
-    animation: coupleMoonSweep 700ms 120ms cubic-bezier(.23,1,.32,1) both;
-  }
+  .couple-sign-result.is-revealing .couple-sign-level { animation: coupleStampIn 500ms cubic-bezier(.2,1.4,.4,1) both; }
+  .couple-sign-result.is-revealing .couple-sign-tip { animation: coupleFadeUp 400ms 250ms both; }
+  .couple-sign-result.is-revealing .couple-sign-text { animation: coupleFadeUp 500ms 400ms both; }
+  .couple-sign-result.is-revealing .couple-sign-share { animation: coupleFadeUp 400ms 650ms both; }
   .couple-sign-moon-seal {
     position: absolute;
     right: 2px;
@@ -212,34 +109,70 @@ const MOONLIT_SIGN_STYLES = `
     box-shadow: 0 2px 8px rgba(220,150,60,.24) !important;
     filter: brightness(.98);
   }
+  @keyframes coupleGoldSpin { to { transform: rotate(360deg); } }
+  .couple-gold-frame { position: relative; flex: 0 0 auto; display: grid; place-items: center; }
+  .couple-gold-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: conic-gradient(from 0deg, #f6dc8c, #d9a441, #fff4cf, #c98f2e, #f6dc8c);
+    animation: coupleGoldSpin 7s linear infinite;
+  }
+  .couple-gold-orbit {
+    position: absolute;
+    z-index: 2;
+    inset: -7px;
+    border-radius: 50%;
+    pointer-events: none;
+    animation: coupleGoldSpin 4.5s linear infinite;
+  }
+  .couple-gold-frame.reverse .couple-gold-orbit { animation-direction: reverse; }
+  .couple-gold-orbit i {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    font-style: normal;
+    font-size: 9px;
+    line-height: 1;
+    color: var(--couple-star, #f2c14e);
+    text-shadow: 0 0 6px rgba(255,220,120,.9);
+  }
+  .couple-gold-orbit i:first-child { top: -2px; }
+  .couple-gold-orbit i:last-child { bottom: -2px; font-size: 7px; }
   @media (prefers-reduced-motion: reduce) {
-    .couple-moon-disc { animation: none; transform: translateX(-50%); }
-    .couple-moon-ripple, .couple-moon-paper, .couple-moon-shimmer, .couple-moon-mist { animation: none; }
-    .couple-sign-result.is-revealing { animation: none; }
-    .couple-sign-result.is-revealing::after { display: none; }
+    .couple-sign-result.is-revealing * { animation: none !important; }
+    .couple-gold-ring, .couple-gold-orbit { animation: none; }
   }
 `;
 
-function MoonlitFortuneStage({ characterName, tr }) {
+// golden：溫度 100° 解鎖的情侶頭像框（流光金框＋兩顆繞圈的小星星；reverse 讓兩個頭像方向相反）。
+function Avatar({ src, fallback, size = 52, ring = "#f191ae", golden = false, reverse = false }) {
+  const face = (
+    <span style={{ position: "relative", zIndex: 1, width: size, height: size, borderRadius: "50%", overflow: "hidden", flex: "0 0 auto", display: "grid", placeItems: "center", background: "rgba(255,255,255,.85)", border: golden ? "2px solid #fff" : `2.5px solid ${ring}`, boxShadow: "0 4px 14px rgba(190,90,120,.25)", fontSize: size * .42, fontWeight: 800, color: "#b05e75" }}>
+      {src ? <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (fallback || "♥")}
+    </span>
+  );
+  if (!golden) return face;
   return (
-    <div className="couple-moon-sign-stage" role="status" aria-live="polite" aria-label={tr("正在抽取今日戀愛籤", "Drawing today's love fortune", "今日の恋みくじを引いています", "오늘의 연애 운세를 뽑는 중")}>
-      <span className="couple-moon-disc" aria-hidden="true" />
-      <span className="couple-moon-reflection" aria-hidden="true" />
-      <span className="couple-moon-ripple" aria-hidden="true" />
-      <span className="couple-moon-ripple" aria-hidden="true" />
-      <span className="couple-moon-paper" aria-hidden="true">{tr("戀愛籤", "Love fortune", "恋みくじ", "연애 운세")}</span>
-      <span className="couple-moon-shimmer" aria-hidden="true" />
-      <span className="couple-moon-mist" aria-hidden="true" />
-      <span className="couple-moon-status">{tr(`月光正在映出${characterName}的心意…`, `Moonlight is revealing ${characterName}'s feelings…`, `月明かりが${characterName}の想いを映しています…`, `달빛이 ${characterName}의 마음을 비추는 중…`)}</span>
-    </div>
+    <span className={`couple-gold-frame${reverse ? " reverse" : ""}`} style={{ width: size + 6, height: size + 6 }}>
+      <span className="couple-gold-ring" aria-hidden="true" />
+      <span className="couple-gold-orbit" aria-hidden="true"><i>✦</i><i>✦</i></span>
+      {face}
+    </span>
   );
 }
 
-function Avatar({ src, fallback, size = 52, ring = "#f191ae" }) {
+// 解鎖頭像框後中間的愛心：粉紅愛心＋金色描邊（不加心跳動畫）。
+function GoldenHeart() {
   return (
-    <span style={{ width: size, height: size, borderRadius: "50%", overflow: "hidden", flex: "0 0 auto", display: "grid", placeItems: "center", background: "rgba(255,255,255,.85)", border: `2.5px solid ${ring}`, boxShadow: "0 4px 14px rgba(190,90,120,.25)", fontSize: size * .42, fontWeight: 800, color: "#b05e75" }}>
-      {src ? <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (fallback || "♥")}
-    </span>
+    <svg width="24" height="22" viewBox="0 0 24 22" aria-hidden="true" style={{ display: "block" }}>
+      <defs>
+        <linearGradient id="coupleHeartPink" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#ff9cbc" /><stop offset="1" stopColor="#ec5f8a" /></linearGradient>
+        <linearGradient id="coupleHeartGold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#fff1c4" /><stop offset=".5" stopColor="#e2b04a" /><stop offset="1" stopColor="#b9842a" /></linearGradient>
+      </defs>
+      <path d="M12 20.2C5.6 15.6 2 12.1 2 7.6 2 4.7 4.2 2.5 7 2.5c2 0 3.6 1.1 5 2.9 1.4-1.8 3-2.9 5-2.9 2.8 0 5 2.2 5 5.1 0 4.5-3.6 8-10 12.6z" fill="url(#coupleHeartPink)" stroke="url(#coupleHeartGold)" strokeWidth="2" />
+      <path d="M6.5 6.2c.6-1 1.6-1.5 2.6-1.4" stroke="#fff" strokeWidth="1.3" strokeLinecap="round" fill="none" opacity=".8" />
+    </svg>
   );
 }
 
@@ -257,14 +190,24 @@ export default function CoupleApp({ closeApp, characters = [], chatHistory = {},
   const { specialMemories, changeCrystals } = useGacha();
   const [partnerId, setPartnerId] = useState(null);
   const [choosing, setChoosing] = useState(false); // 只有第一次或主動換人時才顯示選擇頁
-  const [view, setView] = useState("home"); // home | memories
+  const [view, setView] = useState("home"); // home | cards（特別記憶卡牆）
+  const [tab, setTab] = useState("today"); // today | promises | memories
+  const [promiseForm, setPromiseForm] = useState(null); // { text, date }
+  const [donePage, setDonePage] = useState(0);
+  const [anniversaryForm, setAnniversaryForm] = useState(null); // { title, date, yearly }
+  const [timelineMonths, setTimelineMonths] = useState(TIMELINE_MONTH_STEP);
+  const [nicknameDraft, setNicknameDraft] = useState(null);
   const [rarityFilter, setRarityFilter] = useState("ALL");
   const [viewingMemory, setViewingMemory] = useState(null);
   const [dailyStore, setDailyStore] = useState(null); // null = 尚未載入
   const [dailyLoading, setDailyLoading] = useState(false);
   const [judging, setJudging] = useState(false);
   const [notice, setNotice] = useState("");
-  const generatingRef = useRef(false);
+  const [judgeFailed, setJudgeFailed] = useState(false);
+  const generatingRef = useRef(null); // 正在生成今日互動的角色 id
+  const [generationTick, setGenerationTick] = useState(0);
+  const dailyStoreRef = useRef(null);
+  const writeQueueRef = useRef(Promise.resolve());
   const playerName = String(playerProfile?.name || "").trim() || tr("你", "You", "あなた", "나");
   const playerAvatar = sanitizeUserImageUrl(playerProfile?.avatar);
   const uiLocale = typeof document !== "undefined" ? (document.documentElement.lang || "zh-TW") : "zh-TW";
@@ -289,14 +232,39 @@ export default function CoupleApp({ closeApp, characters = [], chatHistory = {},
       else setChoosing(true);
     }).catch(() => { setDailyStore({}); setChoosing(true); });
   }, []);
-  const saveStore = (next) => { setDailyStore(next); saveFeatureEntity(DAILY_KEY, next).catch(() => {}); };
+  dailyStoreRef.current = dailyStore;
+  // 聊天室回覆也會寫同一份資料（邀請答覆、小互動結束）。每次存檔前先重讀最新版本，
+  // 只改這次要改的欄位，並排隊依序寫入，避免用畫面上的舊資料把別人剛寫的蓋掉。
+  const updateStore = (mutate) => {
+    const run = writeQueueRef.current.then(async () => {
+      const latest = await loadFeatureEntity(DAILY_KEY, null).catch(() => null);
+      const base = latest && typeof latest === "object" ? latest : (dailyStoreRef.current || {});
+      const next = mutate(base);
+      if (!next || next === base) { setDailyStore(base); return base; }
+      setDailyStore(next);
+      await saveFeatureEntity(DAILY_KEY, next).catch(() => {});
+      return next;
+    });
+    writeQueueRef.current = run.catch(() => {});
+    return run;
+  };
+  const updateSpace = (store, charId, patch) => ({
+    ...store,
+    _spaces: { ...(store._spaces || {}), [charId]: patch(store._spaces?.[charId] || {}) },
+  });
   const openSpace = (charId) => {
     setPartnerId(charId);
     setChoosing(false);
     setView("home");
+    setTab("today");
+    setDonePage(0);
+    setTimelineMonths(TIMELINE_MONTH_STEP);
+    setPromiseForm(null);
+    setAnniversaryForm(null);
     setRarityFilter("ALL");
     setNotice("");
-    saveStore({ ...(dailyStore || {}), _activeSpaceId: charId });
+    setJudgeFailed(false);
+    updateStore((store) => ({ ...store, _activeSpaceId: charId }));
   };
 
   const inviteCharacter = (charId) => {
@@ -319,10 +287,7 @@ export default function CoupleApp({ closeApp, characters = [], chatHistory = {},
       `💞 커플 공간 초대\n${playerName}님이 함께 ‘커플 공간’을 열자고 초대했습니다.\n두 사람만의 공유 공간에서 매일 연애 운세를 뽑고, 작은 활동을 완료하며 추억을 모을 수 있습니다.\n수락 여부는 자유이며, 이 초대가 현재 관계를 바로 바꿔야 한다는 뜻은 아닙니다.`
     );
     setChatHistory((history) => ({ ...history, [charId]: [...(history[charId] || []), { id: `couple_invite_${now}`, role: "system_notice", content, time: now }] }));
-    saveStore({
-      ...dailyStore,
-      _spaces: { ...(dailyStore._spaces || {}), [charId]: { status: "pending", invitedAt: now, pendingRound: 0 } },
-    });
+    updateStore((store) => updateSpace(store, charId, () => ({ status: "pending", invitedAt: now, pendingRound: 0 })));
     setNotice(tr("邀請已送到聊天室，角色會在三次回覆內做出決定。", "The invitation was sent to chat. The character will decide within three replies.", "招待をチャットに送りました。キャラは3回以内の返信で決めます。", "초대를 채팅방에 보냈습니다. 캐릭터가 3번의 답변 안에 결정합니다."));
   };
 
@@ -341,18 +306,13 @@ export default function CoupleApp({ closeApp, characters = [], chatHistory = {},
     }
     if (result.decision === "declined") {
       const now = Date.now();
-      saveStore({
-        ...dailyStore,
-        _spaces: {
-          ...(dailyStore._spaces || {}),
-          [charId]: {
-            ...space,
-            status: "declined",
-            declinedAt: now,
-            canInviteAgainAt: Math.max(Number(space.invitedAt) + 3 * 86400000, now),
-          },
-        },
-      });
+      updateStore((store) => updateSpace(store, charId, (latest) => ({
+        ...space,
+        ...latest,
+        status: "declined",
+        declinedAt: now,
+        canInviteAgainAt: Math.max(Number(space.invitedAt) + 3 * 86400000, now),
+      })));
       setNotice(tr(`重新確認第 ${result.matchedRound} 輪回覆後，判定角色婉拒了邀請。`, `After reviewing reply ${result.matchedRound}, the character was determined to have declined the invitation.`, `${result.matchedRound}回目の返信を再確認し、キャラが招待を断ったと判断しました。`, `${result.matchedRound}번째 답변을 다시 확인한 결과 캐릭터가 초대를 거절한 것으로 판단했습니다.`));
       return;
     }
@@ -362,14 +322,9 @@ export default function CoupleApp({ closeApp, characters = [], chatHistory = {},
       : result.matchedText;
     if (!window.confirm(tr(`偵測到角色可能已同意：\n\n「${preview}」\n\n是否開通情侶空間？`, `The character may have agreed:\n\n“${preview}”\n\nOpen the Couple Space?`, `キャラが同意した可能性があります：\n\n「${preview}」\n\nカップルスペースを開きますか？`, `캐릭터가 동의한 것으로 보입니다:\n\n“${preview}”\n\n커플 공간을 열까요?`))) return;
     const now = Date.now();
-    const { canInviteAgainAt: _cooldown, expiredAt: _expiredAt, ...rest } = space;
-    saveStore({
-      ...dailyStore,
-      _activeSpaceId: charId,
-      _spaces: {
-        ...(dailyStore._spaces || {}),
-        [charId]: { ...rest, status: "accepted", acceptedAt: now, reviewedAt: now },
-      },
+    updateStore((store) => {
+      const { canInviteAgainAt: _cooldown, expiredAt: _expiredAt, ...rest } = { ...space, ...(store._spaces?.[charId] || {}) };
+      return { ...updateSpace(store, charId, () => ({ ...rest, status: "accepted", acceptedAt: now, reviewedAt: now })), _activeSpaceId: charId };
     });
     setChatHistory((history) => ({
       ...history,
@@ -432,6 +387,18 @@ export default function CoupleApp({ closeApp, characters = [], chatHistory = {},
   const space = character && dailyStore ? dailyStore._spaces?.[character.id] : null;
   const daily = character && dailyStore ? dailyStore[character.id] : null;
   const today = coupleDayKey();
+  const firstChatAt = character ? (chatHistory[character.id] || []).find((message) => message?.time)?.time || null : null;
+  const anniversaryLabels = {
+    firstChat: () => tr("第一次聊天", "First chat", "初めての会話", "첫 대화"),
+    spaceOpen: () => tr("開通情侶空間", "Couple Space opened", "カップルスペース開通", "커플 공간 개설"),
+    day: (count) => tr(`在一起第 ${count} 天`, `Day ${count} together`, `一緒に ${count} 日目`, `함께한 지 ${count}일`),
+    chatYears: (count) => tr(`認識 ${count} 週年`, `${count}-year anniversary`, `出会って ${count} 周年`, `만난 지 ${count}주년`),
+    spaceYears: (count) => tr(`情侶空間 ${count} 週年`, `Couple Space ${count}-year anniversary`, `カップルスペース ${count} 周年`, `커플 공간 ${count}주년`),
+  };
+  const anniversaries = character && dailyStore
+    ? buildCoupleAnniversaries({ firstChatAt, acceptedAt: space?.acceptedAt, custom: getCoupleAnniversaries(dailyStore, character.id), labels: anniversaryLabels })
+    : null;
+  const todayOccasion = anniversaries?.today.map((item) => item.title).join("、") || "";
 
   const shareToChat = (kind) => {
     if (!character || !daily || typeof setChatHistory !== "function") return;
@@ -446,11 +413,15 @@ export default function CoupleApp({ closeApp, characters = [], chatHistory = {},
       ...history,
       [character.id]: [...(history[character.id] || []), { id: `couple_${kind}_${now}`, role: "system_notice", content, time: now }],
     }));
-    saveStore({
-      ...dailyStore,
-      [character.id]: isTask
-        ? { ...daily, taskSharedAt: now, taskChatState: "active", taskChatEndedAt: null }
-        : { ...daily, signSharedAt: now },
+    const charId = character.id;
+    updateStore((store) => {
+      const latest = store[charId] || daily;
+      return {
+        ...store,
+        [charId]: isTask
+          ? { ...latest, taskSharedAt: now, taskChatState: "active", taskChatEndedAt: null }
+          : { ...latest, signSharedAt: now },
+      };
     });
     setNotice(isTask
       ? tr("已分享到聊天室；互動結束後會停止提供背景資訊。", "Shared to chat. Background context will stop after the activity ends.", "チャットに共有しました。交流終了後は背景情報の提供を停止します。", "채팅방에 공유했습니다. 활동이 끝나면 배경 정보 제공이 중지됩니다.")
@@ -463,12 +434,12 @@ export default function CoupleApp({ closeApp, characters = [], chatHistory = {},
     const current = dailyStore[character.id];
     // 當天任務已存在就不重生成；戀愛簽改由玩家按鈕抽，這裡不生成
     if (current?.day === today && current?.task?.text) return;
-    generatingRef.current = true;
+    const charId = character.id;
+    generatingRef.current = charId;
     setDailyLoading(true);
-    const messages = chatHistory[character.id] || [];
+    const messages = chatHistory[charId] || [];
     const lastMessageAt = messages[messages.length - 1]?.time || null;
-    const lastMemoryAt = specialMemories.filter((m) => String(m.characterId) === String(character.id))[0]?.createdAt || null;
-    const settled = settleTemperature({ previous: current?.temperature, lastMessageAt, lastTaskDoneDay: current?.lastDoneDay, lastMemoryAt, maxTemperatureReached: !!current?.maxTemperatureReached });
+    const lastMemoryAt = specialMemories.filter((m) => String(m.characterId) === String(charId))[0]?.createdAt || null;
     const taskGenerationCharacter = {
       ...character,
       description: [
@@ -476,57 +447,88 @@ export default function CoupleApp({ closeApp, characters = [], chatHistory = {},
         character.description || character.personality || character.prompt || character.persona || "",
       ].filter(Boolean).join("\n"),
     };
-    generateDailyTask({ character: taskGenerationCharacter, playerProfile, recentMessages: messages.slice(-12), apiConfig, locale: uiLocale }).then((task) => {
-      const sameDay = current?.day === today;
-      saveStore({
-        ...dailyStore,
-        [character.id]: {
+    generateDailyTask({ character: taskGenerationCharacter, playerProfile, recentMessages: messages.slice(-12), apiConfig, locale: uiLocale, occasion: todayOccasion }).then((task) => updateStore((store) => {
+      const latest = store[charId];
+      if (latest?.day === today && latest?.task?.text) return store;
+      // 同一天只補上任務，其他欄位（已抽的籤、分享狀態）原樣保留。
+      if (latest?.day === today) return { ...store, [charId]: { ...latest, task } };
+      const settled = settleTemperature({ previous: latest?.temperature, lastMessageAt, lastTaskDoneDay: latest?.lastDoneDay, lastMemoryAt, maxTemperatureReached: !!latest?.maxTemperatureReached });
+      return {
+        // 解鎖看「曾經到過的最高溫度」，降溫不會收回。
+        ...withCouplePeakTemperature(store, charId, Math.max(settled.temperature, latest?.temperature || 0)),
+        [charId]: {
           day: today,
-          sign: sameDay && current?.sign?.text ? current.sign : null,
-          signAt: sameDay ? current?.signAt || null : null,
+          sign: null,
+          signAt: null,
           task,
-          taskDone: sameDay ? !!current.taskDone : false,
-          taskComment: sameDay ? current.taskComment || "" : "",
-          streak: current?.streak || 0,
-          lastDoneDay: current?.lastDoneDay || null,
-          temperature: sameDay ? current.temperature : settled.temperature,
-          tempDelta: sameDay ? current.tempDelta : settled.delta,
-          maxTemperatureReached: current?.maxTemperatureReached || settled.maxTemperatureReached,
-          firstMaxedAt: current?.firstMaxedAt || (settled.temperature >= 100 ? Date.now() : null),
+          taskDone: false,
+          taskComment: "",
+          streak: latest?.streak || 0,
+          lastDoneDay: latest?.lastDoneDay || null,
+          temperature: settled.temperature,
+          tempDelta: settled.delta,
+          maxTemperatureReached: latest?.maxTemperatureReached || settled.maxTemperatureReached,
+          firstMaxedAt: latest?.firstMaxedAt || (settled.temperature >= 100 ? Date.now() : null),
           milestones: {
-            ...(current?.milestones || {}),
-            ...(settled.temperature >= 100 && !current?.milestones?.fullHeart ? { fullHeart: { unlocked: true, unlockedAt: Date.now() } } : {}),
+            ...(latest?.milestones || {}),
+            ...(settled.temperature >= 100 && !latest?.milestones?.fullHeart ? { fullHeart: { unlocked: true, unlockedAt: Date.now() } } : {}),
           },
         },
-      });
-    }).finally(() => { generatingRef.current = false; setDailyLoading(false); });
-  }, [character?.id, dailyStore === null ? "loading" : "ready", today]);
+      };
+    })).finally(() => {
+      generatingRef.current = null;
+      setDailyLoading(false);
+      // 生成期間換了對象：再跑一次，讓新對象也能生成今日互動，不會一直停在載入中。
+      setGenerationTick((tick) => tick + 1);
+    });
+  }, [character?.id, dailyStore === null ? "loading" : "ready", today, generationTick]);
 
   const [drawingSign, setDrawingSign] = useState(false);
+  const [drawnSign, setDrawnSign] = useState(null); // 籤已抽好、等動畫揭曉
   const [signReveal, setSignReveal] = useState(false);
-  useEffect(() => setSignReveal(false), [character?.id, today]);
+  useEffect(() => { setSignReveal(false); setDrawingSign(false); setDrawnSign(null); }, [character?.id, today]);
+  const finishSignReveal = () => { setDrawingSign(false); setDrawnSign(null); setSignReveal(true); };
+  // 籤一回來就先存檔（中途離開也不會遺失），動畫播完才換成結果。
   const drawSign = async () => {
     if (!character || !daily || daily.sign?.text || drawingSign) return;
     setSignReveal(false);
+    setDrawnSign(null);
     setDrawingSign(true);
     try {
-      const sign = await generateLoveSign({ character, playerProfile, recentMessages: (chatHistory[character.id] || []).slice(-12), apiConfig, locale: uiLocale });
-      setSignReveal(true);
-      saveStore({ ...dailyStore, [character.id]: { ...daily, sign, signAt: Date.now() } });
-    } finally { setDrawingSign(false); }
+      const charId = character.id;
+      const sign = await generateLoveSign({ character, playerProfile, recentMessages: (chatHistory[charId] || []).slice(-12), apiConfig, locale: uiLocale, occasion: todayOccasion });
+      const saved = await updateStore((store) => {
+        const latest = store[charId] || daily;
+        if (latest.sign?.text) return store;
+        return { ...store, [charId]: { ...latest, sign, signAt: Date.now() } };
+      });
+      setDrawnSign(saved?.[charId]?.sign || sign);
+    } catch {
+      setDrawingSign(false);
+    }
   };
 
   const checkTask = async () => {
     if (!character || !daily || daily.taskDone || judging) return;
     setJudging(true);
     setNotice("");
+    setJudgeFailed(false);
+    const charId = character.id;
     try {
       const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
       const todayMessages = (chatHistory[character.id] || []).filter((m) => (m.time || 0) >= dayStart.getTime());
       const verdict = await judgeCoupleTask({ task: daily.task?.text, character, playerProfile, todayMessages, apiConfig, locale: uiLocale });
       if (verdict.done) {
         const yesterday = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Taipei" }).format(new Date(Date.now() - 86400000));
-        const streak = daily.lastDoneDay === yesterday ? (daily.streak || 0) + 1 : 1;
+        let streak = 0;
+        let alreadyDone = false;
+        await updateStore((store) => {
+          const latest = store[charId] || daily;
+          if (latest.taskDone) { alreadyDone = true; return store; }
+          streak = latest.lastDoneDay === yesterday ? (latest.streak || 0) + 1 : 1;
+          return { ...store, [charId]: { ...latest, taskDone: true, taskComment: verdict.comment, streak, lastDoneDay: today, taskChatState: "completed", taskChatEndedAt: Date.now() } };
+        });
+        if (alreadyDone) return; // 已經結算過，不重複發結晶
         const bonus = streak > 0 && streak % 7 === 0 ? STREAK_BONUS : 0;
         changeCrystals(TASK_REWARD + bonus, {
           source: "couple",
@@ -534,7 +536,6 @@ export default function CoupleApp({ closeApp, characters = [], chatHistory = {},
             ? tr(`完成情侶空間互動・連續 ${streak} 天加碼`, `Couple Space activity · ${streak}-day streak bonus`, `カップルスペース交流・${streak}日連続ボーナス`, `커플 공간 활동 · ${streak}일 연속 보너스`)
             : tr("完成情侶空間互動", "Completed Couple Space activity", "カップルスペース交流を達成", "커플 공간 활동 완료"),
         });
-        saveStore({ ...dailyStore, [character.id]: { ...daily, taskDone: true, taskComment: verdict.comment, streak, lastDoneDay: today, taskChatState: "completed", taskChatEndedAt: Date.now() } });
         setNotice(tr(
           `💎 獲得 ${TASK_REWARD} 靈魂結晶${bonus ? `，連續 ${streak} 天加碼 +${bonus}！` : `（連續 ${streak} 天）`}`,
           `💎 Earned ${TASK_REWARD} Soul Crystals${bonus ? `, plus ${bonus} for a ${streak}-day streak!` : ` (${streak}-day streak)`}`,
@@ -542,10 +543,11 @@ export default function CoupleApp({ closeApp, characters = [], chatHistory = {},
           `💎 영혼 크리스털 ${TASK_REWARD}개 획득${bonus ? `, ${streak}일 연속 보너스 +${bonus}!` : `(${streak}일 연속)`}`
         ));
       } else {
-        saveStore({ ...dailyStore, [character.id]: { ...daily, taskComment: verdict.comment } });
+        await updateStore((store) => ({ ...store, [charId]: { ...(store[charId] || daily), taskComment: verdict.comment } }));
         setNotice("");
       }
     } catch (reason) {
+      setJudgeFailed(true);
       setNotice(reason?.message || tr("驗收失敗，請稍後再試。", "Could not verify the activity. Please try again later.", "確認できませんでした。しばらくしてからもう一度お試しください。", "확인에 실패했습니다. 잠시 후 다시 시도하세요."));
     } finally { setJudging(false); }
   };
@@ -595,16 +597,16 @@ export default function CoupleApp({ closeApp, characters = [], chatHistory = {},
   const characterAvatar = sanitizeUserImageUrl(character.avatar);
   const messages = chatHistory[character.id] || [];
   const firstMessageAt = messages[0]?.time || null;
-  const daysTogether = firstMessageAt ? Math.max(1, Math.ceil((Date.now() - firstMessageAt) / 86400000)) : null;
+  const daysTogether = firstMessageAt ? countDaysTogether(firstMessageAt) : null;
   const allMemories = specialMemories.filter((m) => String(m.characterId) === String(character.id)).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
   // ---- 回憶牆 ----
-  if (view === "memories") {
+  if (view === "cards") {
     const memories = rarityFilter === "ALL" ? allMemories : allMemories.filter((m) => m.itemRarity === rarityFilter);
     const rarityCounts = allMemories.reduce((acc, m) => { acc[m.itemRarity] = (acc[m.itemRarity] || 0) + 1; return acc; }, {});
     return (
       <div className="mp-page couple-app-page" data-mp-surface="light" style={{ background: "linear-gradient(180deg,#ffe0ea 0%,#ffd7e4 45%,#f3e3ff 100%)" }}>
-        <AppHeader title={`📖 ${tr("我們的回憶", "Our Memories", "二人の思い出", "우리의 추억")}`} onBack={() => setView("home")} backLabel={tr("返回", "Back", "戻る", "뒤로")} style={{ background: "transparent" }} />
+        <AppHeader title={`📖 ${tr("我們的回憶", "Our Memories", "二人の思い出", "우리의 추억")}`} onBack={() => { setView("home"); setTab("memories"); }} backLabel={tr("返回", "Back", "戻る", "뒤로")} style={{ background: "transparent" }} />
         <div style={{ flex: 1, overflowY: "auto", padding: "2px 16px 28px" }}>
           {allMemories.length > 0 && (
             <div style={{ display: "flex", justifyContent: "center", gap: 6, margin: "10px 0 4px" }}>
@@ -662,38 +664,140 @@ export default function CoupleApp({ closeApp, characters = [], chatHistory = {},
     );
   }
 
-  // ---- 主頁：溫度計＋戀愛簽＋任務 ----
+  // ---- 主頁：分頁（今日／約定／回憶）----
   const temperature = daily?.temperature ?? 60;
   const tempDelta = daily?.tempDelta ?? 0;
   const signTime = daily?.signAt ? new Intl.DateTimeFormat(uiLocale, { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(daily.signAt)) : "";
+  const peakTemperature = getCouplePeakTemperature(dailyStore, character.id, temperature);
+  const nickname = getCoupleNickname(dailyStore, character.id);
+  const goldenMoon = isCoupleUnlocked(peakTemperature, "goldenMoon");
+  const avatarFrame = isCoupleUnlocked(peakTemperature, "avatarFrame");
+  const unlockLabel = (id) => ({
+    goldenMoon: tr("金色月光籤", "Golden moon fortune", "金色の月みくじ", "황금 달빛 운세"),
+    nickname: tr("專屬暱稱", "Pet name", "特別な呼び名", "전용 애칭"),
+    avatarFrame: tr("情侶頭像框", "Couple avatar frame", "ペアアイコン枠", "커플 프로필 테두리"),
+  })[id];
+  const { open: openPromises, done: donePromises } = splitCouplePromises(getCouplePromises(dailyStore, character.id));
+  const donePageCount = Math.max(1, Math.ceil(donePromises.length / PROMISE_PAGE_SIZE));
+  const safeDonePage = Math.min(donePage, donePageCount - 1);
+  const timeline = buildCoupleTimeline({ anniversaries, promises: getCouplePromises(dailyStore, character.id), specialMemories: allMemories });
+  const customAnniversaries = getCoupleAnniversaries(dailyStore, character.id);
+  const monthLabel = (group) => new Intl.DateTimeFormat(uiLocale, { year: "numeric", month: "long" }).format(new Date(group.year, group.month - 1, 1));
+  const shortDate = (time) => new Intl.DateTimeFormat(uiLocale, { month: "numeric", day: "numeric" }).format(new Date(time));
+  const leftLabel = (days) => (days === 0
+    ? tr("今天", "Today", "今日", "오늘")
+    : days > 0
+      ? tr(`${days} 天後`, `in ${days} days`, `${days}日後`, `${days}일 후`)
+      : tr(`已過 ${-days} 天`, `${-days} days ago`, `${-days}日前`, `${-days}일 지남`));
+  const sectionLabel = (text, extra) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "16px 4px 2px", color: COUPLE_COLORS.sub, fontSize: 12, fontWeight: 900 }}>
+      <span>{text}</span>{extra && <span style={{ fontSize: 11, fontWeight: 700, color: COUPLE_COLORS.faint }}>{extra}</span>}
+      <span style={{ height: 1, flex: 1, background: "rgba(190,112,140,.22)" }} />
+    </div>
+  );
+  const ghostButton = { width: "100%", marginTop: 10, border: "1px solid rgba(209,106,141,.25)", borderRadius: 12, padding: "8px 12px", fontSize: 12, fontWeight: 800, color: COUPLE_COLORS.sub, background: "rgba(255,255,255,.75)" };
+  const primaryButton = { border: 0, borderRadius: 10, padding: "7px 12px", fontSize: 12, fontWeight: 800, color: COUPLE_COLORS.onAccent, background: "linear-gradient(135deg,#e88aaa,#c96f91)" };
+  const inputStyle = { minWidth: 0, border: "1px solid rgba(209,106,141,.3)", borderRadius: 10, padding: "7px 9px", fontSize: 12, color: COUPLE_COLORS.ink, background: "rgba(255,255,255,.92)", boxSizing: "border-box" };
+
+  const submitPromise = () => {
+    const text = String(promiseForm?.text || "").trim();
+    if (!text) return;
+    let status = "";
+    updateStore((store) => {
+      const result = addCouplePromise(store, character.id, { text, date: promiseForm?.date || "", source: "manual" });
+      status = result.status;
+      return result.store;
+    }).then(() => {
+      if (status === "added") { setPromiseForm(null); setNotice(""); }
+      else if (status === "duplicate") setNotice(tr("清單裡已經有很像的約定了。", "A similar promise is already on the list.", "似た約束がすでにリストにあります。", "비슷한 약속이 이미 목록에 있어요."));
+      else if (status === "full") setNotice(tr(`進行中的約定最多 ${COUPLE_OPEN_PROMISE_LIMIT} 個，先完成或刪掉一些吧。`, `You can keep up to ${COUPLE_OPEN_PROMISE_LIMIT} open promises. Complete or remove some first.`, `進行中の約束は最大${COUPLE_OPEN_PROMISE_LIMIT}件です。先に完了か削除をしてください。`, `진행 중인 약속은 최대 ${COUPLE_OPEN_PROMISE_LIMIT}개예요. 먼저 완료하거나 삭제해 주세요.`));
+    });
+  };
+  // 手動打勾一律先確認，避免誤觸。
+  const completePromise = (promise) => {
+    if (!window.confirm(tr(`確定這個約定已經完成了嗎？\n\n「${promise.text}」`, `Mark this promise as done?\n\n“${promise.text}”`, `この約束を完了にしますか？\n\n「${promise.text}」`, `이 약속을 완료로 표시할까요?\n\n“${promise.text}”`))) return;
+    updateStore((store) => completeCouplePromise(store, character.id, promise.id));
+    setDonePage(0);
+  };
+  const reopenPromise = (promise) => {
+    if (!window.confirm(tr(`要把「${promise.text}」改回進行中嗎？`, `Move “${promise.text}” back to open?`, `「${promise.text}」を進行中に戻しますか？`, `“${promise.text}”을(를) 진행 중으로 되돌릴까요?`))) return;
+    updateStore((store) => reopenCouplePromise(store, character.id, promise.id));
+  };
+  const deletePromise = (promise) => {
+    if (!window.confirm(tr(`確定要刪除「${promise.text}」嗎？`, `Delete “${promise.text}”?`, `「${promise.text}」を削除しますか？`, `“${promise.text}”을(를) 삭제할까요?`))) return;
+    updateStore((store) => removeCouplePromise(store, character.id, promise.id));
+  };
+  const submitAnniversary = () => {
+    let status = "";
+    updateStore((store) => {
+      const result = addCoupleAnniversary(store, character.id, anniversaryForm || {});
+      status = result.status;
+      return result.store;
+    }).then(() => {
+      if (status === "added") { setAnniversaryForm(null); setNotice(""); }
+      else if (status === "full") setNotice(tr("自訂紀念日最多 20 個。", "You can add up to 20 anniversaries.", "記念日は最大20件です。", "기념일은 최대 20개까지 추가할 수 있어요."));
+      else setNotice(tr("請填寫名稱和日期。", "Please enter a name and a date.", "名前と日付を入力してください。", "이름과 날짜를 입력해 주세요."));
+    });
+  };
+  const deleteAnniversary = (item) => {
+    if (!window.confirm(tr(`確定要刪除紀念日「${item.title}」嗎？`, `Delete the anniversary “${item.title}”?`, `記念日「${item.title}」を削除しますか？`, `기념일 “${item.title}”을(를) 삭제할까요?`))) return;
+    updateStore((store) => removeCoupleAnniversary(store, character.id, item.id));
+  };
+  const tabs = [
+    ["today", tr("今日", "Today", "今日", "오늘")],
+    ["promises", tr("約定", "Promises", "約束", "약속")],
+    ["memories", tr("回憶", "Memories", "思い出", "추억")],
+  ];
+  const nextAnniversary = anniversaries?.next;
+  const ringColor = avatarFrame ? "#d9a441" : "#f191ae";
+
   return (
     <div className="mp-page couple-app-page" data-mp-surface="light" style={{ overflow: "hidden", background: "linear-gradient(180deg,#ffe0ea 0%,#ffd7e4 45%,#f3e3ff 100%)" }}>
       <style>{MOONLIT_SIGN_STYLES}</style>
       {daily?.milestones?.fullHeart && <FullHeartBackdrop />}
-      <AppHeader title={`💗 ${tr("我們的日子", "Our Days", "二人の日々", "우리의 날들")}`} onBack={closeApp} backLabel={tr("返回首頁", "Back to Home", "ホームに戻る", "홈으로 돌아가기")} style={{ position: "relative", zIndex: 1, background: "transparent" }} right={
+      <AppHeader title={`💞 ${tr("情侶空間", "Couple Space", "カップルスペース", "커플 공간")}`} onBack={closeApp} backLabel={tr("返回首頁", "Back to Home", "ホームに戻る", "홈으로 돌아가기")} style={{ position: "relative", zIndex: 1, background: "transparent" }} right={
         <button type="button" title={tr("更換主要互動對象", "Change primary partner", "主な交流相手を変更", "주요 교류 상대 변경")} onClick={() => setChoosing(true)}
-          style={{ marginLeft: "auto", border: "1px solid rgba(255,255,255,.85)", borderRadius: 99, background: "rgba(255,255,255,.55)", color: "#a86e84", fontSize: 9.5, fontWeight: 800, padding: "5px 10px" }}>⇄ {tr("換人", "Switch", "変更", "변경")}</button>
+          style={{ marginLeft: "auto", border: "1px solid rgba(255,255,255,.85)", borderRadius: 99, background: "rgba(255,255,255,.55)", color: COUPLE_COLORS.sub, fontSize: 11, fontWeight: 800, padding: "5px 10px" }}>⇄ {tr("換人", "Switch", "変更", "변경")}</button>
       } />
       <div style={{ position: "relative", zIndex: 1, flex: 1, overflowY: "auto", padding: "2px 16px 28px" }}>
 
-        {/* 關係頭部 */}
-        <div style={{ textAlign: "center", padding: "8px 0 2px" }}>
+        {/* 關係頭部：置中 */}
+        <div style={{ textAlign: "center", padding: "6px 0 2px" }}>
           <div style={{ display: "flex", justifyContent: "center", alignItems: "center" }}>
-            <Avatar src={characterAvatar} fallback={character.name?.[0]} />
-            <span style={{ margin: "0 -7px", zIndex: 1, fontSize: 20, filter: "drop-shadow(0 2px 4px rgba(200,80,110,.4))" }}>💗</span>
-            <Avatar src={playerAvatar} fallback={playerName[0]} />
+            <Avatar src={characterAvatar} fallback={character.name?.[0]} ring={ringColor} golden={avatarFrame} />
+            <span style={{ position: "relative", margin: "0 -7px", zIndex: 3, fontSize: 20, filter: "drop-shadow(0 2px 4px rgba(200,80,110,.4))" }}>{avatarFrame ? <GoldenHeart /> : "💗"}</span>
+            <Avatar src={playerAvatar} fallback={playerName[0]} ring={ringColor} golden={avatarFrame} reverse />
           </div>
-          <div style={{ marginTop: 8, fontSize: 15, fontWeight: 900, color: "#7a4257", fontFamily: HAND_FONT }}>{character.name} ✕ {playerName}</div>
-          <div style={{ marginTop: 3, fontSize: 10.5, color: "#a86e84" }}>{daysTogether
-            ? tr(
-                `開始互動的第 ${daysTogether} 天`,
-                `Day ${daysTogether} together`,
-                `交流を始めて ${daysTogether} 日目`,
-                `함께한 지 ${daysTogether}일째`
-              )
+          <div style={{ marginTop: 8, fontSize: 15, fontWeight: 900, color: COUPLE_COLORS.ink, fontFamily: HAND_FONT }}>{character.name} ✕ {playerName}</div>
+          <div style={{ marginTop: 3, fontSize: 11, color: COUPLE_COLORS.sub }}>{daysTogether
+            ? tr(`在一起第 ${daysTogether} 天・溫度 ${temperature}°`, `Day ${daysTogether} together · ${temperature}°`, `一緒に ${daysTogether} 日目・${temperature}°`, `함께한 지 ${daysTogether}일째 · ${temperature}°`)
             : tr("故事還沒開始，先去打聲招呼吧", "Your story has not started yet. Go say hello.", "物語はまだ始まっていません。まずは挨拶してみましょう。", "아직 이야기가 시작되지 않았어요. 먼저 인사해 보세요.")}</div>
         </div>
 
+        {/* 下一個紀念日 */}
+        {nextAnniversary && <button type="button" onClick={() => setTab("memories")}
+          style={{ ...GLASS, width: "100%", display: "flex", alignItems: "center", gap: 8, marginTop: 10, padding: "8px 12px", borderRadius: 14, fontSize: 12, color: COUPLE_COLORS.ink, textAlign: "left" }}>
+          <span>{nextAnniversary.isToday ? "🎉" : "💗"}</span>
+          <span style={{ flex: 1, minWidth: 0 }}>{nextAnniversary.isToday
+            ? tr(`今天是「${nextAnniversary.title}」`, `Today is “${nextAnniversary.title}”`, `今日は「${nextAnniversary.title}」`, `오늘은 “${nextAnniversary.title}”`)
+            : tr(`距離「${nextAnniversary.title}」還有 ${nextAnniversary.daysLeft} 天`, `${nextAnniversary.daysLeft} days until “${nextAnniversary.title}”`, `「${nextAnniversary.title}」まであと${nextAnniversary.daysLeft}日`, `“${nextAnniversary.title}”까지 ${nextAnniversary.daysLeft}일`)}</span>
+          <span style={{ fontSize: 11, color: COUPLE_COLORS.faint }}>{tr("回憶 ›", "Memories ›", "思い出 ›", "추억 ›")}</span>
+        </button>}
+
+        {/* 分頁 */}
+        <div role="tablist" style={{ position: "sticky", top: 0, zIndex: 2, display: "flex", gap: 2, marginTop: 10, padding: 3, borderRadius: 12, background: "rgba(255,255,255,.6)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)" }}>
+          {tabs.map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => { setTab(id); setNotice(""); }}
+            style={{ flex: 1, border: 0, borderRadius: 9, padding: "7px 0", fontSize: 12, fontWeight: 800, color: tab === id ? COUPLE_COLORS.ink : COUPLE_COLORS.sub, background: tab === id ? "#fff" : "transparent", boxShadow: tab === id ? "0 2px 6px rgba(200,110,140,.18)" : "none" }}>
+            {label}{id === "promises" && openPromises.length > 0 ? ` ${openPromises.length}` : ""}
+          </button>)}
+        </div>
+
+        {tab === "today" && <>
+          {anniversaries?.today.length > 0 && <SectionCard style={{ textAlign: "center", background: "linear-gradient(135deg,#fff3d9,#ffe2ec)" }}>
+            <div style={{ fontSize: 22 }}>🎉</div>
+            <div style={{ fontSize: 15, fontWeight: 900, color: COUPLE_COLORS.ink, fontFamily: HAND_FONT }}>{tr(`今天是「${todayOccasion}」`, `Today is “${todayOccasion}”`, `今日は「${todayOccasion}」`, `오늘은 “${todayOccasion}”`)}</div>
+            <div style={{ fontSize: 11, color: COUPLE_COLORS.sub, marginTop: 3 }}>{tr(`今天的籤和小互動，${character.name}會記得這一天`, `Today's fortune and activity will remember this day`, `今日のおみくじと交流は、この日を覚えています`, `오늘의 운세와 활동은 이날을 기억해요`)}</div>
+          </SectionCard>}
         {/* 關係溫度 */}
         <SectionCard>
           <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
@@ -707,6 +811,25 @@ export default function CoupleApp({ closeApp, characters = [], chatHistory = {},
             <div style={{ width: `${temperature}%`, height: "100%", borderRadius: 99, background: "linear-gradient(90deg,#ffb2c8,#e91e63)", transition: "width .6s" }} />
           </div>
           <div style={{ fontSize: 10.5, color: "#a86e84", marginTop: 8, fontFamily: HAND_FONT }}>{tr(`${character.name}說：`, `${character.name} says: `, `${character.name}：`, `${character.name}: `)}{temperatureComment(tempDelta, temperature, uiLocale)}</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 9 }}>
+            {COUPLE_UNLOCKS.map((unlock) => {
+              const unlocked = peakTemperature >= unlock.temperature;
+              const label = unlockLabel(unlock.id);
+              const clickable = unlocked && unlock.id === "nickname";
+              return <button key={unlock.id} type="button" disabled={!clickable} onClick={() => setNicknameDraft((draft) => (draft === null ? nickname : null))}
+                style={{ border: 0, borderRadius: 99, padding: "3px 9px", fontSize: 11, fontWeight: unlocked ? 800 : 600, color: unlocked ? COUPLE_COLORS.gold : COUPLE_COLORS.sub, background: unlocked ? "linear-gradient(135deg,#fff3d9,#ffe8bd)" : "rgba(255,255,255,.8)", cursor: clickable ? "pointer" : "default", opacity: 1 }}>
+                {unlocked
+                  ? `✓ ${unlock.temperature}° ${label}${unlock.id === "nickname" ? (nickname ? `：${nickname}` : tr("（點我設定）", " (tap to set)", "（タップで設定）", " (눌러서 설정)")) : ""}`
+                  : tr(`${unlock.temperature}° ${label}（還差 ${unlock.temperature - peakTemperature}°）`, `${unlock.temperature}° ${label} (${unlock.temperature - peakTemperature}° to go)`, `${unlock.temperature}° ${label}（あと ${unlock.temperature - peakTemperature}°）`, `${unlock.temperature}° ${label} (${unlock.temperature - peakTemperature}° 남음)`)}
+              </button>;
+            })}
+          </div>
+          {nicknameDraft !== null && <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+            <input value={nicknameDraft} maxLength={20} onChange={(event) => setNicknameDraft(event.target.value)} placeholder={tr(`希望${character.name}怎麼叫你？`, `What should ${character.name} call you?`, `${character.name}にどう呼ばれたい？`, `${character.name}이(가) 뭐라고 불러 주면 좋을까요?`)}
+              style={{ flex: 1, minWidth: 0, border: "1px solid rgba(209,106,141,.3)", borderRadius: 10, padding: "6px 9px", fontSize: 12, color: COUPLE_COLORS.ink, background: "rgba(255,255,255,.9)" }} />
+            <button type="button" onClick={() => { const value = nicknameDraft.trim(); updateStore((store) => withCoupleNickname(store, character.id, value)); setNicknameDraft(null); }}
+              style={{ border: 0, borderRadius: 10, padding: "6px 12px", fontSize: 12, fontWeight: 800, color: COUPLE_COLORS.onAccent, background: "linear-gradient(135deg,#e88aaa,#c96f91)" }}>{tr("儲存", "Save", "保存", "저장")}</button>
+          </div>}
           {daily?.milestones?.fullHeart && <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(209,106,141,.18)", fontSize: 10.5, fontWeight: 900, color: "#c35f86" }}>✦ {tr("羈絆里程碑：心意滿格", "Bond milestone: Hearts full", "絆のマイルストーン：想いが満タン", "유대 이정표: 마음 가득")}</div>}
         </SectionCard>
 
@@ -715,30 +838,32 @@ export default function CoupleApp({ closeApp, characters = [], chatHistory = {},
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 17 }}>🥠</span>
             <span style={{ fontSize: 12, fontWeight: 900, color: "#7a4257" }}>{tr("今日戀愛簽", "Today's Love Fortune", "今日の恋みくじ", "오늘의 연애 운세")}</span>
-            {daily?.sign?.text && <span style={{ marginLeft: "auto", fontSize: 9.5, color: "#c093a4" }}>{tr(`${signTime} 抽的`, `Drawn at ${signTime}`, `${signTime} に引きました`, `${signTime}에 뽑음`)}</span>}
+            {daily?.sign?.text && !drawingSign && <span style={{ marginLeft: "auto", fontSize: 9.5, color: "#c093a4" }}>{tr(`${signTime} 抽的`, `Drawn at ${signTime}`, `${signTime} に引きました`, `${signTime}에 뽑음`)}</span>}
           </div>
-          {daily?.sign?.text ? (
+          {drawingSign ? (
+            <MoonlitSignStage characterName={character.name} sign={drawnSign} tr={tr} golden={goldenMoon} onDone={finishSignReveal} />
+          ) : daily?.sign?.text ? (
             <div className={`couple-sign-result${signReveal ? " is-revealing" : ""}`}>
               <span className="couple-sign-moon-seal" aria-hidden="true" />
               <div style={{ display: "flex", gap: 6, marginTop: 9 }}>
-                <span style={{ background: "linear-gradient(135deg,#f2c14e,#dd9f33)", color: "#fff", borderRadius: 8, padding: "2px 9px", fontSize: 10.5, fontWeight: 900 }}>{daily.sign.level}</span>
-                <span style={{ ...GLASS, borderRadius: 8, padding: "2px 9px", fontSize: 10.5, fontWeight: 800, color: "#b05e75" }}>{daily.sign.tip}</span>
+                <span className="couple-sign-level" style={{ background: "linear-gradient(135deg,#f2c14e,#dd9f33)", color: "#fff", borderRadius: 8, padding: "2px 9px", fontSize: 10.5, fontWeight: 900 }}>{daily.sign.level}</span>
+                <span className="couple-sign-tip" style={{ ...GLASS, borderRadius: 8, padding: "2px 9px", fontSize: 10.5, fontWeight: 800, color: "#b05e75" }}>{daily.sign.tip}</span>
               </div>
-              <div style={{ fontSize: 12.5, lineHeight: 1.85, color: "#6d3c50", marginTop: 8, fontFamily: HAND_FONT }}>「{daily.sign.text}」</div>
-              <button type="button" disabled={!!daily.signSharedAt} onClick={() => shareToChat("sign")}
+              <div className="couple-sign-text" style={{ fontSize: 12.5, lineHeight: 1.85, color: "#6d3c50", marginTop: 8, fontFamily: HAND_FONT }}>「{daily.sign.text}」</div>
+              <button className="couple-sign-share" type="button" disabled={!!daily.signSharedAt} onClick={() => shareToChat("sign")}
                 style={{ marginTop: 9, border: 0, borderRadius: 10, padding: "7px 12px", fontSize: 10.5, fontWeight: 800, color: daily.signSharedAt ? "#a98b96" : "#fff", background: daily.signSharedAt ? "rgba(255,255,255,.72)" : "linear-gradient(135deg,#e88aaa,#c96f91)" }}>
                 {daily.signSharedAt ? tr("已分享到聊天室", "Shared to chat", "チャットに共有済み", "채팅방에 공유됨") : tr("分享到聊天室", "Share to chat", "チャットに共有", "채팅방에 공유")}
               </button>
             </div>
           ) : (
             <div style={{ textAlign: "center", padding: "10px 0 4px" }}>
-              {drawingSign ? <MoonlitFortuneStage characterName={character.name} tr={tr} /> : <>
+              <>
                 <div style={{ fontSize: 10.5, color: "#a86e84", marginBottom: 10 }}>{tr(`今天的籤還在籤筒裡，抽一支看看${character.name}想對你說什麼`, `Today's fortune is still waiting. Draw one to see what ${character.name} wants to tell you.`, `今日のおみくじはまだ筒の中。一本引いて、${character.name}が伝えたいことを見てみましょう。`, `오늘의 운세는 아직 통 안에 있어요. 하나 뽑아 ${character.name}이(가) 하고 싶은 말을 확인해 보세요.`)}</div>
                 <button className="couple-sign-draw-btn" type="button" disabled={dailyLoading || !daily} onClick={drawSign}
                   style={{ border: 0, borderRadius: 14, padding: "9px 22px", fontSize: 12, fontWeight: 800, color: "#fff", background: "linear-gradient(135deg,#f2b25e,#dd8f33)", boxShadow: "0 4px 14px rgba(220,150,60,.35)", opacity: dailyLoading || !daily ? .6 : 1 }}>
                   🌙 {tr("月下抽一支", "Draw under the moon", "月下で一本引く", "달빛 아래 뽑기")}
                 </button>
-              </>}
+              </>
             </div>
           )}
         </SectionCard>
@@ -769,7 +894,9 @@ export default function CoupleApp({ closeApp, characters = [], chatHistory = {},
                       style={{ border: 0, borderRadius: 12, padding: "8px 16px", fontSize: 11, fontWeight: 800, color: "#fff", background: "linear-gradient(135deg,#f06292,#d16a8d)", boxShadow: "0 4px 12px rgba(233,30,99,.3)", opacity: judging ? .6 : 1 }}>
                       {judging
                         ? tr(`${character.name}驗收中…`, `${character.name} is checking…`, `${character.name}が確認中…`, `${character.name}이(가) 확인 중…`)
-                        : tr(`去聊天完成後，請${character.name}驗收`, `Complete it in chat, then ask ${character.name} to check`, `チャットで達成したら${character.name}に確認してもらう`, `채팅에서 완료한 뒤 ${character.name}에게 확인받기`)}
+                        : judgeFailed
+                          ? tr(`↻ 再請${character.name}驗收一次`, `↻ Ask ${character.name} to check again`, `↻ もう一度${character.name}に確認してもらう`, `↻ ${character.name}에게 다시 확인받기`)
+                          : tr(`去聊天完成後，請${character.name}驗收`, `Complete it in chat, then ask ${character.name} to check`, `チャットで達成したら${character.name}に確認してもらう`, `채팅에서 완료한 뒤 ${character.name}에게 확인받기`)}
                     </button>}
                 <span style={{ marginLeft: "auto", fontSize: 9.5, color: "#c093a4" }}>{tr(
                   `連續 7 天加碼 ×3 · 目前連續 ${daily.streak || 0} 天`,
@@ -782,30 +909,127 @@ export default function CoupleApp({ closeApp, characters = [], chatHistory = {},
           )}
         </SectionCard>
 
-        {notice && <div style={{ textAlign: "center", fontSize: 11, fontWeight: 800, color: "#a2652f", marginTop: 10 }}>{notice}</div>}
+          {notice && <div style={{ textAlign: "center", fontSize: 11, fontWeight: 800, color: COUPLE_COLORS.gold, marginTop: 10 }}>{notice}</div>}
+        </>}
 
-        {/* 功能入口 */}
-        <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-          <button type="button" onClick={() => setView("memories")}
-            style={{ ...GLASS, flex: 1, borderRadius: 16, padding: "13px 10px", textAlign: "center", boxShadow: "0 5px 16px rgba(200,110,140,.13)" }}>
-            <div style={{ fontSize: 19 }}>📖</div>
-            <div style={{ fontSize: 11, fontWeight: 900, color: "#7a4257", marginTop: 4 }}>{tr("我們的回憶", "Our Memories", "二人の思い出", "우리의 추억")}</div>
-            <div style={{ fontSize: 9, color: "#a86e84", marginTop: 2 }}>{allMemories.length
-              ? tr(`✦ ${allMemories.length} 段`, `✦ ${allMemories.length}`, `✦ ${allMemories.length}件`, `✦ ${allMemories.length}개`)
-              : tr("還沒有", "None yet", "まだありません", "아직 없음")}</div>
+        {tab === "promises" && <>
+          {sectionLabel(tr("進行中", "Open", "進行中", "진행 중"), `${openPromises.length}/${COUPLE_OPEN_PROMISE_LIMIT}`)}
+          {openPromises.length === 0 && !promiseForm && <SectionCard style={{ textAlign: "center", fontSize: 12, lineHeight: 1.7, color: COUPLE_COLORS.sub }}>
+            {tr(`還沒有約定。聊天時和${character.name}說好的事，會跳出提示讓你收進來；也可以自己新增。`, `No promises yet. When you and ${character.name} agree on something in chat, you'll be asked whether to save it. You can also add one yourself.`, `まだ約束はありません。チャットで${character.name}と約束すると追加の確認が出ます。自分で追加することもできます。`, `아직 약속이 없어요. 채팅에서 ${character.name}와(과) 약속하면 저장할지 물어봐요. 직접 추가할 수도 있어요.`)}
+          </SectionCard>}
+          {openPromises.map((promise) => {
+            const left = promise.date ? daysUntil(fromDateKey(promise.date)) : null;
+            return <SectionCard key={promise.id} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+              <button type="button" aria-label={tr("標記為完成", "Mark as done", "完了にする", "완료로 표시")} onClick={() => completePromise(promise)}
+                style={{ flex: "0 0 24px", height: 24, borderRadius: "50%", border: "2px solid #e3a6bb", background: "#fff", padding: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, lineHeight: 1.6, color: COUPLE_COLORS.ink, fontFamily: HAND_FONT, wordBreak: "break-word" }}>{promise.text}</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 5 }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, borderRadius: 99, padding: "1px 8px", color: COUPLE_COLORS.accent, background: "rgba(209,106,141,.12)" }}>{promise.source === "chat" ? tr("💬 聊天時說好的", "💬 From chat", "💬 チャットで約束", "💬 채팅에서 약속") : tr("✎ 我新增的", "✎ Added by me", "✎ 自分で追加", "✎ 직접 추가")}</span>
+                  {promise.date && <span style={{ fontSize: 11, fontWeight: 800, borderRadius: 99, padding: "1px 8px", color: left < 0 ? COUPLE_COLORS.sub : COUPLE_COLORS.gold, background: "linear-gradient(135deg,#fff3d9,#ffe8bd)" }}>📅 {shortDate(fromDateKey(promise.date))}・{leftLabel(left)}</span>}
+                </div>
+              </div>
+              <button type="button" aria-label={tr("刪除約定", "Delete promise", "約束を削除", "약속 삭제")} onClick={() => deletePromise(promise)}
+                style={{ border: 0, background: "transparent", color: COUPLE_COLORS.faint, fontSize: 16, lineHeight: 1, padding: 2 }}>×</button>
+            </SectionCard>;
+          })}
+          {promiseForm ? <SectionCard>
+            <input value={promiseForm.text} maxLength={60} autoFocus onChange={(event) => setPromiseForm((form) => ({ ...form, text: event.target.value }))}
+              placeholder={tr("要約定什麼呢？例如：週末一起看一部電影", "What's the promise? e.g. Watch a movie together this weekend", "どんな約束？例：週末に一緒に映画を見る", "어떤 약속인가요? 예: 주말에 같이 영화 보기")} style={{ ...inputStyle, width: "100%" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7 }}>
+              <span style={{ fontSize: 11, color: COUPLE_COLORS.sub }}>{tr("日期（可不填）", "Date (optional)", "日付（任意）", "날짜(선택)")}</span>
+              <input type="date" value={promiseForm.date} onChange={(event) => setPromiseForm((form) => ({ ...form, date: event.target.value }))} style={{ ...inputStyle, flex: 1 }} />
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 9 }}>
+              <button type="button" onClick={() => setPromiseForm(null)} style={{ ...primaryButton, color: COUPLE_COLORS.sub, background: "rgba(255,255,255,.8)" }}>{tr("取消", "Cancel", "キャンセル", "취소")}</button>
+              <button type="button" disabled={!promiseForm.text.trim()} onClick={submitPromise} style={{ ...primaryButton, opacity: promiseForm.text.trim() ? 1 : .55 }}>{tr("新增約定", "Add promise", "約束を追加", "약속 추가")}</button>
+            </div>
+          </SectionCard> : <button type="button" onClick={() => setPromiseForm({ text: "", date: "" })} style={ghostButton}>＋ {tr("新增約定", "Add a promise", "約束を追加", "약속 추가")}</button>}
+          {notice && <div style={{ textAlign: "center", fontSize: 11, fontWeight: 800, color: COUPLE_COLORS.gold, marginTop: 10 }}>{notice}</div>}
+
+          {donePromises.length > 0 && <>
+            {sectionLabel(tr("已完成", "Done", "完了", "완료"), String(donePromises.length))}
+            {donePromises.slice(safeDonePage * PROMISE_PAGE_SIZE, (safeDonePage + 1) * PROMISE_PAGE_SIZE).map((promise) => (
+              <SectionCard key={promise.id} style={{ display: "flex", gap: 10, alignItems: "center", padding: "9px 12px" }}>
+                <span style={{ flex: "0 0 22px", height: 22, borderRadius: "50%", display: "grid", placeItems: "center", fontSize: 12, color: COUPLE_COLORS.onAccent, background: COUPLE_COLORS.ok }}>✓</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12.5, color: COUPLE_COLORS.ink, fontFamily: HAND_FONT, textDecoration: "line-through", opacity: .65, wordBreak: "break-word" }}>{promise.text}</div>
+                  <div style={{ fontSize: 11, color: COUPLE_COLORS.sub, marginTop: 2 }}>{tr(`${shortDate(promise.doneAt)} 完成`, `Done ${shortDate(promise.doneAt)}`, `${shortDate(promise.doneAt)} 完了`, `${shortDate(promise.doneAt)} 완료`)}</div>
+                </div>
+                <button type="button" title={tr("改回進行中", "Move back to open", "進行中に戻す", "진행 중으로 되돌리기")} onClick={() => reopenPromise(promise)}
+                  style={{ border: 0, background: "transparent", color: COUPLE_COLORS.faint, fontSize: 14, padding: 2 }}>↺</button>
+              </SectionCard>
+            ))}
+            {donePageCount > 1 && <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginTop: 10 }}>
+              <button type="button" disabled={safeDonePage <= 0} onClick={() => setDonePage(safeDonePage - 1)} aria-label={tr("上一頁", "Previous page", "前のページ", "이전 페이지")}
+                style={{ ...GLASS, width: 30, height: 30, borderRadius: "50%", fontSize: 16, color: COUPLE_COLORS.sub, opacity: safeDonePage <= 0 ? .4 : 1 }}>‹</button>
+              <span style={{ fontSize: 12, color: COUPLE_COLORS.sub }}>{safeDonePage + 1} / {donePageCount}</span>
+              <button type="button" disabled={safeDonePage >= donePageCount - 1} onClick={() => setDonePage(safeDonePage + 1)} aria-label={tr("下一頁", "Next page", "次のページ", "다음 페이지")}
+                style={{ ...GLASS, width: 30, height: 30, borderRadius: "50%", fontSize: 16, color: COUPLE_COLORS.sub, opacity: safeDonePage >= donePageCount - 1 ? .4 : 1 }}>›</button>
+            </div>}
+          </>}
+        </>}
+
+        {tab === "memories" && <>
+          {sectionLabel(tr("紀念日", "Anniversaries", "記念日", "기념일"))}
+          {anniversaries?.upcoming.length > 0 && <SectionCard style={{ display: "flex", gap: 6, padding: "10px 8px", textAlign: "center" }}>
+            {anniversaries.upcoming.slice(0, 3).map((item) => <div key={item.key} style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 900, color: COUPLE_COLORS.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</div>
+              <div style={{ fontSize: 11, color: item.isToday ? COUPLE_COLORS.accent : COUPLE_COLORS.sub, marginTop: 2 }}>{item.isToday ? tr("就是今天", "Today", "今日", "오늘") : `${shortDate(item.time)}・${leftLabel(item.daysLeft)}`}</div>
+            </div>)}
+          </SectionCard>}
+          {customAnniversaries.map((item) => <SectionCard key={item.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px" }}>
+            <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: COUPLE_COLORS.ink }}>💗 {item.title}<span style={{ marginLeft: 6, fontSize: 11, color: COUPLE_COLORS.sub }}>{item.date}{item.yearly ? tr("・每年", " · yearly", "・毎年", " · 매년") : ""}</span></span>
+            <button type="button" aria-label={tr("刪除紀念日", "Delete anniversary", "記念日を削除", "기념일 삭제")} onClick={() => deleteAnniversary(item)} style={{ border: 0, background: "transparent", color: COUPLE_COLORS.faint, fontSize: 16, lineHeight: 1 }}>×</button>
+          </SectionCard>)}
+          {anniversaryForm ? <SectionCard>
+            <input value={anniversaryForm.title} maxLength={40} autoFocus onChange={(event) => setAnniversaryForm((form) => ({ ...form, title: event.target.value }))}
+              placeholder={tr("紀念日名稱，例如：第一次告白", "Name, e.g. The day we confessed", "記念日の名前（例：初めての告白）", "기념일 이름 (예: 처음 고백한 날)")} style={{ ...inputStyle, width: "100%" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 7 }}>
+              <input type="date" value={anniversaryForm.date} onChange={(event) => setAnniversaryForm((form) => ({ ...form, date: event.target.value }))} style={{ ...inputStyle, flex: 1 }} />
+              <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: COUPLE_COLORS.sub }}>
+                <input type="checkbox" checked={anniversaryForm.yearly} onChange={(event) => setAnniversaryForm((form) => ({ ...form, yearly: event.target.checked }))} />{tr("每年", "Yearly", "毎年", "매년")}
+              </label>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 9 }}>
+              <button type="button" onClick={() => setAnniversaryForm(null)} style={{ ...primaryButton, color: COUPLE_COLORS.sub, background: "rgba(255,255,255,.8)" }}>{tr("取消", "Cancel", "キャンセル", "취소")}</button>
+              <button type="button" onClick={submitAnniversary} style={primaryButton}>{tr("新增", "Add", "追加", "추가")}</button>
+            </div>
+          </SectionCard> : <button type="button" onClick={() => setAnniversaryForm({ title: "", date: toDateKey(Date.now()), yearly: true })} style={ghostButton}>＋ {tr("新增紀念日", "Add an anniversary", "記念日を追加", "기념일 추가")}</button>}
+          {notice && <div style={{ textAlign: "center", fontSize: 11, fontWeight: 800, color: COUPLE_COLORS.gold, marginTop: 10 }}>{notice}</div>}
+
+          {sectionLabel(tr("我們的時間軸", "Our timeline", "二人のタイムライン", "우리의 타임라인"))}
+          {timeline.length === 0 && <div style={{ textAlign: "center", padding: "14px 0", fontSize: 12, color: COUPLE_COLORS.sub }}>{tr("一起累積的回憶會出現在這裡", "Memories you build together will appear here", "二人で積み重ねた思い出がここに表示されます", "함께 쌓은 추억이 여기에 표시돼요")}</div>}
+          <div style={{ position: "relative", paddingLeft: 20, marginTop: 8 }}>
+            {timeline.length > 0 && <div style={{ position: "absolute", left: 7, top: 6, bottom: 6, width: 2, borderRadius: 2, background: "linear-gradient(180deg,#f6b6ca,#e3c6f5)" }} />}
+            {timeline.slice(0, timelineMonths).map((group) => <div key={group.key}>
+              <div style={{ position: "relative", display: "inline-block", margin: "4px 0 8px -20px", padding: "1px 9px", borderRadius: 99, background: "rgba(255,255,255,.85)", fontSize: 11, fontWeight: 800, color: COUPLE_COLORS.sub }}>{monthLabel(group)}</div>
+              {group.items.map((item) => {
+                const icon = item.type === "promise" ? "🤞" : item.type === "special" ? "✦" : "💗";
+                const sub = item.type === "promise"
+                  ? tr("完成的約定", "Promise kept", "果たした約束", "지킨 약속")
+                  : item.type === "special"
+                    ? tr(`特別記憶・${item.rarity || ""}`, `Special memory · ${item.rarity || ""}`, `特別な思い出・${item.rarity || ""}`, `특별한 추억 · ${item.rarity || ""}`)
+                    : tr("紀念日", "Anniversary", "記念日", "기념일");
+                return <div key={item.key} style={{ position: "relative", marginBottom: 8 }}>
+                  <span style={{ position: "absolute", left: -17, top: 13, width: 9, height: 9, borderRadius: "50%", background: item.type === "special" ? (RARITY_COLORS[item.rarity] || RARITY_COLORS.R) : "#f191ae", boxShadow: "0 0 0 2px #fff" }} />
+                  <button type="button" disabled={item.type !== "special"} onClick={() => item.memory && setViewingMemory(item.memory)}
+                    style={{ ...GLASS, width: "100%", display: "block", borderRadius: 14, padding: "8px 12px", textAlign: "left", cursor: item.type === "special" ? "pointer" : "default" }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 800, color: COUPLE_COLORS.ink, wordBreak: "break-word" }}>{icon} {item.title}</div>
+                    <div style={{ fontSize: 11, color: COUPLE_COLORS.sub, marginTop: 2 }}>{shortDate(item.time)}・{sub}</div>
+                  </button>
+                </div>;
+              })}
+            </div>)}
+          </div>
+          {timeline.length > timelineMonths && <button type="button" onClick={() => setTimelineMonths((count) => count + TIMELINE_MONTH_STEP)} style={ghostButton}>{tr("顯示更早的回憶", "Show earlier memories", "もっと前の思い出を表示", "이전 추억 더 보기")}</button>}
+          <button type="button" onClick={() => setView("cards")} style={{ ...GLASS, width: "100%", display: "flex", alignItems: "center", marginTop: 12, padding: "11px 14px", borderRadius: 16 }}>
+            <span style={{ fontSize: 12.5, fontWeight: 900, color: COUPLE_COLORS.ink }}>📖 {tr("特別記憶卡牆", "Special memory wall", "特別な思い出の壁", "특별한 추억 벽")}</span>
+            <span style={{ marginLeft: "auto", fontSize: 11, color: COUPLE_COLORS.sub }}>{allMemories.length ? tr(`${allMemories.length} 張 ›`, `${allMemories.length} ›`, `${allMemories.length}枚 ›`, `${allMemories.length}장 ›`) : tr("還沒有 ›", "None yet ›", "まだありません ›", "아직 없음 ›")}</span>
           </button>
-          <button type="button" disabled style={{ ...GLASS, flex: 1, borderRadius: 16, padding: "13px 10px", textAlign: "center", opacity: .55 }}>
-            <div style={{ fontSize: 19 }}>🎁</div>
-            <div style={{ fontSize: 11, fontWeight: 900, color: "#7a4257", marginTop: 4 }}>{tr("交換禮物", "Exchange Gifts", "プレゼント交換", "선물 교환")}</div>
-            <div style={{ fontSize: 9, color: "#a86e84", marginTop: 2 }}>{tr("即將推出", "Coming soon", "近日公開", "출시 예정")}</div>
-          </button>
-          <button type="button" disabled style={{ ...GLASS, flex: 1, borderRadius: 16, padding: "13px 10px", textAlign: "center", opacity: .55 }}>
-            <div style={{ fontSize: 19 }}>🤞</div>
-            <div style={{ fontSize: 11, fontWeight: 900, color: "#7a4257", marginTop: 4 }}>{tr("約定", "Promises", "約束", "약속")}</div>
-            <div style={{ fontSize: 9, color: "#a86e84", marginTop: 2 }}>{tr("即將推出", "Coming soon", "近日公開", "출시 예정")}</div>
-          </button>
-        </div>
+        </>}
       </div>
+      {viewingMemory && <SpecialMemoryModal memory={viewingMemory} characterAvatar={characterAvatar} playerAvatar={playerAvatar} playerName={playerName} tr={tr} locale={uiLocale} onClose={() => setViewingMemory(null)} />}
     </div>
   );
 }

@@ -29,7 +29,7 @@ export default function AboutInfoSettings({ tr, version, currentChangelogTitle, 
               <div className="mp-sg">
                 <div className="mp-sg-t">{tr("版本資訊", "Version info", "バージョン情報", "버전 정보")}</div>
                 <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.7,marginBottom:8}}>
-                  <strong>MaliPhone</strong> v{version}<br/>AI 角色互動小手機介面
+                  <strong>MaliPhone</strong> v{version}<br/>{tr("AI 角色互動小手機介面", "AI character companion phone", "AIキャラクターと交流するスマホ", "AI 캐릭터 교류 스마트폰")}
                 </div>
                 <div className="mp-version-row" onClick={() => setVersionOpen((v) => !v)}>
                   <span>{currentChangelogTitle}　{tr("版本", "Version", "バージョン", "버전")}：{version}</span>

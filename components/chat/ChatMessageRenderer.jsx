@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { OnlineChatMessage, RealityChatMessage, SystemNoticeMessage, TransferMessage } from "./DirectMessageTypes";
 import CalendarAppointmentCard from "./CalendarAppointmentCard";
+import CouplePromiseCard from "./CouplePromiseCard";
 import { ThinkingPanel } from "./ChatMessageParts";
 import SwipePicker from "./SwipePicker";
 import { findTailAssistantSwipeAnchor } from "../../utils/assistantSwipeGroups.js";
@@ -48,6 +49,8 @@ export default function ChatMessageRenderer({
   onResolveTransfer,
   onAddCalendarProposal,
   onDismissCalendarProposal,
+  onAddCouplePromise,
+  onDismissCouplePromise,
   onSelectSwipe,
   onGenerateSwipe,
   onDeleteSwipe,
@@ -96,6 +99,7 @@ export default function ChatMessageRenderer({
       && !message.pseudoImage
       && !message.pseudoVoice
       && !message.calendarProposal
+      && !message.couplePromiseProposal
       && typeof onGenerateSwipe === "function";
     const swipe = canSwipe ? {
       index: swipeIndex,
@@ -136,8 +140,13 @@ export default function ChatMessageRenderer({
       swipe,
       tr,
     };
-    const appointmentCard = !isUser && message.calendarProposal
-      ? <CalendarAppointmentCard message={message} proposal={message.calendarProposal} onAdd={onAddCalendarProposal} onDismiss={onDismissCalendarProposal} tr={tr} />
+    // 同一則訊息同時有約定和日曆提案時，只顯示約定卡（卡內可順便加入日曆）。
+    const promisePending = !isUser && message.couplePromiseProposal && message.couplePromiseProposal.status !== "dismissed";
+    const appointmentCard = !isUser && (message.calendarProposal || message.couplePromiseProposal)
+      ? <>
+        {message.couplePromiseProposal && <CouplePromiseCard message={message} proposal={message.couplePromiseProposal} calendarProposal={message.calendarProposal} onAdd={onAddCouplePromise} onDismiss={onDismissCouplePromise} tr={tr} />}
+        {message.calendarProposal && (!promisePending || message.calendarProposal.status === "added") && <CalendarAppointmentCard message={message} proposal={message.calendarProposal} onAdd={onAddCalendarProposal} onDismiss={onDismissCalendarProposal} tr={tr} />}
+      </>
       : null;
     if (getMessageMode(message) === "reality") {
       return wrapSelectable(message, <React.Fragment key={message.id}>

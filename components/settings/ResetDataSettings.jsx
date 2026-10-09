@@ -1,7 +1,7 @@
 import React from "react";
 
 export default function ResetDataSettings({ tr, open, setOpen, clearCacheArmed, onClearAll, onClearCache }) {
-  return <div className="mp-sg">
+  return <div className="mp-sg mp-sg--danger">
     <div className="mp-sg-t" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }} onClick={() => setOpen((value) => !value)}>
       <span>{tr("重置資料", "Reset data", "データをリセット", "데이터 초기화")}</span>
       <span style={{ fontSize: 11, color: "var(--mp-txt-l)", fontWeight: 600 }}>{open ? tr("收合", "Collapse", "折りたたむ", "접기") : tr("展開", "Expand", "展開", "펼치기")}</span>

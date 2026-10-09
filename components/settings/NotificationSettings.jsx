@@ -1,4 +1,5 @@
 import React from "react";
+import { DATING_ENABLED } from "../../config/featureFlags";
 
 const Switch = ({ checked, onChange, disabled }) => (
   <button type="button" role="switch" aria-checked={!!checked} disabled={disabled}
@@ -39,7 +40,7 @@ export default function NotificationSettings({ tr, settings, updateSettings, sys
     ["social", tr("社群動態", "Social updates", "ソーシャル", "소셜")],
     ["wallet", tr("錢包入帳", "Wallet", "ウォレット", "지갑")],
     ["mailbox", tr("系統信箱", "System mailbox", "システムメール", "시스템 우편함")],
-  ];
+  ].filter(([key]) => DATING_ENABLED || (key !== "match" && key !== "like")); // 信風未開放時不列出它的通知類型
   const surfaceLabels = [
     ["banner", tr("App 內橫幅", "In-app banner", "アプリ内バナー", "앱 내 배너"), tr("使用其他 App 時從上方滑入", "Slides in from the top while using other apps", "他のアプリ利用中に上部から表示", "다른 앱 사용 중 상단에서 표시")],
     ["lockScreen", tr("鎖定畫面", "Lock screen", "ロック画面", "잠금 화면"), tr("解鎖前就能看到並直接點入", "Visible and tappable before unlocking", "ロック解除前に確認できます", "잠금 해제 전에 확인 가능")],
@@ -90,13 +91,6 @@ export default function NotificationSettings({ tr, settings, updateSettings, sys
             onChange={(event) => patchSection("quietHours", "end", event.target.value)} />
         </div>
       )}
-    </div>
-
-    <div className="mp-sg">
-      <Row label={tr("暫停角色主動傳訊息", "Pause proactive messages", "キャラからの自動送信を停止", "캐릭터 자동 메시지 중지")}
-        hint={tr("這個開關省的是 API 額度，不是打擾：角色不會再自動生成訊息。", "This one saves API quota rather than attention: characters stop generating messages on their own.", "これは通知ではなく API の消費を抑える設定です。キャラが自動でメッセージを生成しなくなります。", "이 설정은 알림이 아니라 API 사용량을 줄입니다. 캐릭터가 스스로 메시지를 생성하지 않습니다.")}>
-        <Switch checked={settings.pauseProactive} onChange={(value) => updateSettings({ pauseProactive: value })} />
-      </Row>
     </div>
     </>}
   </>;

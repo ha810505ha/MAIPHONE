@@ -322,8 +322,6 @@ export default function MaliPhoneSettingsSurface({
   };
 
   const settingsAppearance = {
-    open: appearance.open,
-    toggleOpen: () => appearance.setOpen((value) => !value),
     themeProps: { t, tr, ...appearance.theme },
     cssProps: {
       tr,

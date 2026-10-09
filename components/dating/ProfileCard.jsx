@@ -3,6 +3,9 @@ import { PHOTO_ROTATE_MS } from "../../constants/dating";
 import { tagLabel } from "../../data/dating/interestTags";
 import { sanitizeUserImageUrl } from "../../utils/coreUtils";
 
+/** 「職業・N 公里內」的距離段。職業是角色資料，不翻。 */
+export const distanceLabel = (km, tr) => tr(`${km} 公里內`, `within ${km} km`, `${km}km以内`, `${km}km 이내`);
+
 /**
  * 照片自動輪播。單獨做會被當成 bug，所以一定要配頂部的分段進度條——
  * 有進度條是設計，沒進度條是閃爍。
@@ -43,21 +46,21 @@ export default function ProfileCard({ entry, paused, dragX, dragY, onOpenDetail,
           </div>
         )}
         {photos.length > 1 && <>
-          <button type="button" className="dt-photo-nav left" onClick={(event) => { event.stopPropagation(); step(-1); }} aria-label="上一張" />
-          <button type="button" className="dt-photo-nav right" onClick={(event) => { event.stopPropagation(); step(1); }} aria-label="下一張" />
+          <button type="button" className="dt-photo-nav left" onClick={(event) => { event.stopPropagation(); step(-1); }} aria-label={tr("上一張照片", "Previous photo", "前の写真", "이전 사진")} />
+          <button type="button" className="dt-photo-nav right" onClick={(event) => { event.stopPropagation(); step(1); }} aria-label={tr("下一張照片", "Next photo", "次の写真", "다음 사진")} />
         </>}
         <div className="dt-stamp like" style={{ opacity: likeOpacity }}>LIKE</div>
         <div className="dt-stamp nope" style={{ opacity: nopeOpacity }}>NOPE</div>
-        {dragY < -30 && <div className="dt-stamp info" style={{ opacity: Math.min(1, -dragY / 70) }}>資料</div>}
+        {dragY < -30 && <div className="dt-stamp info" style={{ opacity: Math.min(1, -dragY / 70) }}>{tr("資料", "INFO", "詳細", "정보")}</div>}
       </div>
       <div className="dt-card-info" onClick={onOpenDetail}>
         <div className="dt-card-name">{entry.profile.name}<span>{entry.profile.age}</span></div>
-        <div className="dt-card-meta">{entry.profile.job}・{entry.profile.distance} 公里內</div>
+        <div className="dt-card-meta">{entry.profile.job}・{distanceLabel(entry.profile.distance, tr)}</div>
         <div className="dt-card-tags">
           {(entry.profile.tags || []).slice(0, 4).map((tag) => <span key={tag} className="dt-tag">{tagLabel(tag, tr)}</span>)}
           {(entry.profile.tags || []).length > 4 && <span className="dt-tag ghost">+{entry.profile.tags.length - 4}</span>}
         </div>
-        <div className="dt-card-more">↑ 上滑看完整資料</div>
+        <div className="dt-card-more">{tr("↑ 上滑看完整資料", "↑ Swipe up for full profile", "↑ 上にスワイプで詳細", "↑ 위로 밀어 전체 프로필 보기")}</div>
       </div>
     </div>
   );

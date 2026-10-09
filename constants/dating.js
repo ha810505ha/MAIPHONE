@@ -22,6 +22,9 @@ export const RESPONSE_DELAY_RANGES = Object.freeze({
 
 // 跳過的人隔一天回鍋。卡池有限，這是主要的「還有事可做」來源。
 export const PASS_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+// 喜歡／Super Like 沒配到的人也會回鍋：這不是真的交友軟體，每個角色都要留機會聊到。
+// 刻意比最慢的配對延遲（24 小時）長，否則人一回來玩家就知道「沒配到」。
+export const LIKE_RETRY_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000;
 
 export const PHOTO_ROTATE_MS = 4000;
 export const SWIPE_THRESHOLD = 88;

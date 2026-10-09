@@ -12,14 +12,16 @@ export default function CustomCssSettings({
   onApply,
   onReset,
   onOpenGuide,
+  onCollapse,
 }) {
   return (
-    <div className="mp-sg" style={{ padding: 12, margin: "10px 0", order: 3 }}>
+    <div className="mp-sg">
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-        <div>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div className="mp-sg-t" style={{ marginBottom: 2 }}>{tr("自訂 CSS", "Custom CSS", "カスタム CSS", "사용자 CSS")}</div>
           <div style={{ fontSize: 10, color: "var(--mp-txt-l)", lineHeight: 1.5 }}>{tr("只套用於手機介面，最多 30,000 字", "Applied only inside the phone, up to 30,000 characters", "スマホ画面内のみに適用・最大30,000文字", "휴대폰 화면에만 적용・최대 30,000자")}</div>
         </div>
+        {onCollapse && <button type="button" className="mp-set-fold" onClick={onCollapse}>{tr("收合", "Collapse", "折りたたむ", "접기")}</button>}
         <button type="button" role="switch" aria-checked={enabled} className={`mp-switch ${enabled ? "active" : ""}`} onClick={() => setEnabled((value) => !value)}><span /></button>
       </div>
       <textarea

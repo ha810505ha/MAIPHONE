@@ -61,6 +61,8 @@ export default function SocialApp({
   postLimit = 100, downloadTextFile, exportToastMessage,
 }) {
   const [characterSearch, setCharacterSearch] = useState("");
+  const playerAvatar = sanitizeUserImageUrl(getPostAuthorAvatar({ authorType: "player" }));
+  const playerName = getPostAuthorName({ authorType: "player" });
   const [socialSettingsTab, setSocialSettingsTab] = useState("settings");
   const largeTitle = useLargeTitle();
   const backSocial = tr("返回社群", "Back to Social", "ソーシャルに戻る", "소셜로 돌아가기");
@@ -556,7 +558,6 @@ export default function SocialApp({
       <div className="mp-feed" ref={socialFeedRef} onScroll={largeTitle.onScroll}>
         <LargeTitle title={t("social")}>
           <div className="mp-large-title-actions">
-            <button className="mp-pill-btn mp-pill-btn-ghost" onClick={() => setPlayerPostModalOpen(true)}>{tr("發文", "Post", "投稿", "게시")}</button>
             {characters.length > 0 && (
               <button
                 className="mp-pill-btn"
@@ -571,6 +572,10 @@ export default function SocialApp({
             )}
           </div>
         </LargeTitle>
+        <button type="button" className="mp-post-compose" onClick={() => setPlayerPostModalOpen(true)}>
+          <span className="mp-post-av player">{playerAvatar ? <img src={playerAvatar} alt="" /> : <AvatarFallback name={playerName} />}</span>
+          <span className="mp-post-compose-ph">{tr("在想些什麼？", "What's on your mind?", "今なにしてる？", "무슨 생각을 하고 있나요?")}</span>
+        </button>
         {posts.length === 0 ? (
           <div className="mp-empty">
             <div className="mp-empty-icon" aria-hidden="true"><Icon name="post" size={34} /></div>
@@ -590,6 +595,8 @@ export default function SocialApp({
           const postExpanded = !!expandedSocialPosts[p.id];
           const canExpandPost = shouldClampSocialPost(postContent);
           const scrollComments = shouldScrollComments(comments);
+          const likeCountText = formatSocialCount(getPostLikeCount(p));
+          const toggleComments = () => { setSocialReplyTarget(null); setActiveCommentPostId((id) => id === p.id ? null : p.id); };
           return (
             <div key={p.id} data-post-id={p.id} className={`mp-post ${highlightedPostId === p.id ? "mp-thought-jump-highlight" : ""}`}>
               <div className="mp-post-hd">
@@ -645,22 +652,42 @@ export default function SocialApp({
                   {postExpanded ? tr("收合", "Collapse", "折りたたむ", "접기") : tr("顯示更多", "Show more", "もっと見る", "더 보기")}
                 </button>
               )}
+              {/* 臉書式：統計列（讚數／留言數）＋讚、留言、分享三等分按鈕 */}
+              <div className="mp-post-stats">
+                <button
+                  type="button"
+                  className="mp-post-stat"
+                  onClick={() => setActiveLikePostId((id) => id === p.id ? null : p.id)}
+                  aria-label={tr(`${likeCountText} 個讚`, `${likeCountText} likes`, `いいね ${likeCountText} 件`, `좋아요 ${likeCountText}개`)}
+                >
+                  <span className="mp-post-heart" aria-hidden="true"><Icon name="heart" size={11} strokeWidth={2.6} /></span>
+                  {likeCountText}
+                </button>
+                {comments.length > 0 && (
+                  <button type="button" className="mp-post-stat" onClick={toggleComments}>
+                    {tr(`${comments.length} 則留言`, `${comments.length} comments`, `コメント ${comments.length} 件`, `댓글 ${comments.length}개`)}
+                  </button>
+                )}
+              </div>
               <div className="mp-post-acts">
                 <button
+                  type="button"
                   className={`mp-post-act ${p.liked ? "liked" : ""}`}
+                  aria-pressed={!!p.liked}
                   onClick={() => setPosts((ps) => ps.map((x) => (
                     x.id === p.id ? { ...x, liked: !x.liked, likes: x.liked ? x.likes - 1 : x.likes + 1 } : x
                   )))}
                 >
-                  {p.liked ? "❤️" : "🤍"}
+                  <Icon name="heart" size={18} />{tr("讚", "Like", "いいね", "좋아요")}
                 </button>
-                <button className="mp-post-act mp-post-like-count" onClick={() => setActiveLikePostId((id) => id === p.id ? null : p.id)}>
-                  {formatSocialCount(getPostLikeCount(p))}
+                <button type="button" className="mp-post-act" aria-expanded={commentsOpen} onClick={toggleComments}>
+                  <Icon name="chat" size={18} />{tr("留言", "Comment", "コメント", "댓글")}
                 </button>
-                <button className="mp-post-act" onClick={() => { setSocialReplyTarget(null); setActiveCommentPostId((id) => id === p.id ? null : p.id); }}>
-                  {tr("留言", "Comments", "コメント", "댓글")} {comments.length}
-                </button>
-                {!isPlayerPost && <button className="mp-post-act" onClick={() => sharePostToChat(p)}>{tr("分享", "Share", "共有", "공유")}</button>}
+                {!isPlayerPost && (
+                  <button type="button" className="mp-post-act" onClick={() => sharePostToChat(p)}>
+                    <Icon name="share" size={18} />{tr("分享", "Share", "共有", "공유")}
+                  </button>
+                )}
               </div>
               {isPlayerPost && likesOpen && (
                 <div className="mp-liked-by">{likeListText || tr("還沒有人按讚", "No likes yet", "まだいいねはありません", "아직 좋아요가 없습니다")}</div>
@@ -689,12 +716,19 @@ export default function SocialApp({
                     const isEditing = editingPlayerComment?.postId === p.id
                       && editingPlayerComment?.commentId === c.id;
                     const replyInputKey = `${p.id}:${c.id}`;
+                    const commentAvatar = c.role === "assistant"
+                      ? sanitizeUserImageUrl(getPostAuthorAvatar({ authorType: "character", charId: c.charId }))
+                      : playerAvatar;
                     return (
                     <div
                       key={c.id}
                       data-comment-id={c.id}
                       className={`mp-comment ${depth > 1 ? "reply" : ""} ${canReply || canManage ? "clickable" : ""} ${c.deleted ? "deleted" : ""} ${highlightedNotificationCommentId === c.id ? "notification-highlight" : ""}`}
                     >
+                      <span className="mp-comment-av" aria-hidden="true">
+                        {commentAvatar ? <img src={commentAvatar} alt="" /> : <AvatarFallback name={author} />}
+                      </span>
+                      <div className="mp-comment-main">
                       <div
                         className="mp-comment-body"
                         onClick={() => {
@@ -713,17 +747,23 @@ export default function SocialApp({
                           }
                         }}
                       >
-                        <span>{author}：</span>
+                        <span className="mp-comment-author">{author}</span>
                         {!c.deleted && c.replyToName && <em>{tr(`回覆 ${c.replyToName} `, `Replying to ${c.replyToName} `, `${c.replyToName} に返信 `, `${c.replyToName}에게 답글 `)}</em>}
                         {c.deleted
                           ? <i className="mp-comment-deleted">{tr("此留言已刪除", "This comment was deleted", "このコメントは削除されました", "삭제된 댓글입니다")}</i>
                           : c.content}
-                        {!c.deleted && c.editedAt && (
-                          <small className="mp-comment-edited">
-                            {tr("已編輯", "Edited", "編集済み", "수정됨")}
-                          </small>
-                        )}
                       </div>
+                      {/* 泡泡下方的小字：留言時間＋已編輯（臉書式） */}
+                      {(c.time || (!c.deleted && c.editedAt)) && (
+                        <div className="mp-comment-meta">
+                          {c.time ? formatPostTime(c.time) : null}
+                          {!c.deleted && c.editedAt && (
+                            <small className="mp-comment-edited">
+                              {tr("已編輯", "Edited", "編集済み", "수정됨")}
+                            </small>
+                          )}
+                        </div>
+                      )}
                       {isPlayerMenuOpen && !isEditing && (
                         <div className="mp-comment-manage">
                           <button
@@ -800,6 +840,7 @@ export default function SocialApp({
                           <button className="mp-ibtn" onClick={() => addPostComment(p.id, targetForThis)}>{tr("送出", "Send", "送信", "보내기")}</button>
                         </div>
                       )}
+                      </div>
                     </div>
                   );})}
                   <div className="mp-comment-input">

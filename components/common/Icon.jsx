@@ -22,6 +22,8 @@ const PATHS = {
   camera: <><path d="M4 8h3l1.8-2.5h6.4L17 8h3v11H4z" /><circle cx="12" cy="13.2" r="3.4" /></>,
   plus: <path d="M12 5v14M5 12h14" />,
   doll: <><circle cx="12" cy="6" r="2.6" /><path d="M8 20l1.5-6.5L7 10.5h10l-2.5 3L16 20M12 8.6v4" /></>,
+  share: <path d="M21 3 10 14M21 3l-7 18-4-7-7-4z" />,
+  search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></>,
 };
 
 export default function Icon({ name, size = 24, className = "", strokeWidth = 1.8, title }) {

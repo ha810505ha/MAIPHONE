@@ -5,6 +5,13 @@ import {
   NOTIFICATION_TYPES,
 } from "../../constants/notifications.js";
 import { messagePreviewText } from "../../utils/pseudoImage.js";
+import { normalizeUiLanguage, translate } from "../../utils/i18n.js";
+
+// 通知在 hook 裡彙整、拿不到元件的 tr，直接讀目前介面語言（非瀏覽器環境退回繁中）。
+const uiTr = (...translations) => translate(
+  normalizeUiLanguage(typeof document !== "undefined" ? document.documentElement.lang : ""),
+  ...translations,
+);
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const bool = (value, fallback) => (typeof value === "boolean" ? value : fallback);
@@ -198,8 +205,10 @@ function collectDatingNotifications({ datingState, datingProfiles }) {
     return {
       id: `${fresh ? NOTIFICATION_TYPES.MATCH : NOTIFICATION_TYPES.MESSAGE}:dating:${match.profileId}`,
       type: fresh ? NOTIFICATION_TYPES.MATCH : NOTIFICATION_TYPES.MESSAGE,
-      title: fresh ? `和 ${entry.profile.name} 配對成功` : entry.profile.name,
-      body: fresh ? "點進去看看他說了什麼" : (last?.content || ""),
+      title: fresh
+        ? uiTr(`和 ${entry.profile.name} 配對成功`, `You matched with ${entry.profile.name}`, `${entry.profile.name}とマッチしました`, `${entry.profile.name}님과 매칭됐어요`)
+        : entry.profile.name,
+      body: fresh ? uiTr("點進去看看他說了什麼", "Tap to see what they said", "タップしてメッセージを見る", "눌러서 메시지를 확인하세요") : (last?.content || ""),
       avatar: entry.profile.photos?.[0] || "",
       fallbackIcon: fresh ? "💘" : (entry.profile.name?.[0] || "🙂"),
       count: fresh ? 1 : unread,

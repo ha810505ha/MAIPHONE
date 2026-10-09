@@ -33,7 +33,7 @@ export function findTailAssistantSwipeAnchor(messages) {
   for (let index = list.length - 1; index > lastUserIndex; index -= 1) {
     const message = list[index];
     if (message?.role !== "assistant" || !asContent(message.content)) continue;
-    if (message.image || message.pseudoImage || message.pseudoVoice || message.calendarProposal) continue;
+    if (message.image || message.pseudoImage || message.pseudoVoice || message.calendarProposal || message.couplePromiseProposal) continue;
     const group = findAssistantSwipeGroup(list, message.id);
     if (group?.anchor?.id) return group.anchor.id;
   }
@@ -63,6 +63,7 @@ const createGroupMessages = ({ group, contents, variants, swipeIndex, time, crea
       replyGroupSize: _oldGroupSize,
       innerThought: _oldThought,
       calendarProposal: _oldProposal,
+      couplePromiseProposal: _oldPromiseProposal,
       ...base
     } = previous;
     const reusableId = group.entries[index]?.message?.id;

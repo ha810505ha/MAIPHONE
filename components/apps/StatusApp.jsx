@@ -1,8 +1,9 @@
-import React, { useRef, useState } from "react";
+import React, { useState } from "react";
 import { useGacha } from "../../contexts/GachaContext";
 import { SpecialMemoryModal } from "../gacha/SpecialMemoryCard";
 import { splitArchivedMemories } from "../../services/chat/memoryRecall";
 import { AppHeader, LargeTitle, LargeTitleHeader, SUB_PAGE_CLASS, useLargeTitle } from "../shell/LargeTitle";
+import SegmentedControl from "../common/SegmentedControl";
 import {
   DEFAULT_MEMORY_COMPRESS_PROMPT,
   MEMORY_COMPRESSION,
@@ -137,15 +138,17 @@ function ArchivedMemoryVault({ tr, charId, memories, applyUserPlaceholder, onRes
 export default function StatusApp({
   closeApp, t, tr, characters, chatHistory, memories, posts, sanitizeUserImageUrl,
   statusMemoryPages = {}, setStatusMemoryPages,
-  statusExpandedCharId, setStatusExpandedCharId, statusMemoryExpandedCharId, setStatusMemoryExpandedCharId,
-  refreshCharacterStatus, statusRefreshingIds, activeMemoryId, setActiveMemoryId, setMemoryEditor,
+  statusExpandedCharId, setStatusExpandedCharId,
+  refreshCharacterStatus, statusRefreshingIds, setMemoryEditor,
   togglePinMemory, deleteMemory, generateMemory, archiveMemory, restoreMemory, compressMemories, revertMemorySummary,
-  memoryPrompt, genLoading, applyUserPlaceholder, playerProfile,
+  memoryPrompt, genLoading, applyUserPlaceholder, playerProfile, activeCharId,
 }) {
   const largeTitle = useLargeTitle();
   const { specialMemories } = useGacha();
   const [viewingSpecialMemory, setViewingSpecialMemory] = useState(null);
-  // 壓縮的多選狀態綁在角色上，切到別的角色卡就自動失效，避免跨角色誤選。
+  // MP-016：第一層是所有角色的總覽，點進角色才看概況／記憶／特別記憶。打開哪位角色沿用 statusExpandedCharId。
+  const [detailTab, setDetailTab] = useState("overview");
+  // 壓縮的多選狀態綁在角色上，切到別的角色就自動失效，避免跨角色誤選。
   const [compressCharId, setCompressCharId] = useState(null);
   const [compressSelection, setCompressSelection] = useState([]);
   const [compressConfirmOpen, setCompressConfirmOpen] = useState(false);
@@ -153,233 +156,302 @@ export default function StatusApp({
   const toggleCompressPick = (memoryId) => setCompressSelection((prev) => (
     prev.includes(memoryId) ? prev.filter((id) => id !== memoryId) : [...prev, memoryId]
   ));
-  // 桌面滑鼠不會拖動 overflow 容器、滾輪只捲垂直，所以縮圖列自己接手；觸控維持原生捲動
-  const specialDragRef = useRef(null);
-  const specialDragHandlers = {
-    onWheel: (e) => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) e.currentTarget.scrollLeft += e.deltaY; },
-    onPointerDown: (e) => { if (e.pointerType !== "mouse") return; specialDragRef.current = { x: e.clientX, left: e.currentTarget.scrollLeft, moved: false }; },
-    onPointerMove: (e) => {
-      const drag = specialDragRef.current;
-      if (!drag || e.pointerType !== "mouse") return;
-      const dx = e.clientX - drag.x;
-      if (Math.abs(dx) > 4) drag.moved = true;
-      e.currentTarget.scrollLeft = drag.left - dx;
-    },
-    onPointerUp: () => { setTimeout(() => { specialDragRef.current = null; }, 0); },
-    onPointerLeave: () => { specialDragRef.current = null; },
+  const uiLocale = (typeof document !== "undefined" && document.documentElement.lang) || "zh-TW";
+  const fmtDate = (time) => (time ? new Date(time).toLocaleDateString(uiLocale, { year: "numeric", month: "long", day: "numeric" }) : "--");
+  const fmtTime = (time) => new Date(time).toLocaleTimeString(uiLocale, { hour: "2-digit", minute: "2-digit" });
+  const relativeDay = (time) => {
+    if (!time) return tr("還沒聊過", "Not yet", "まだ", "아직 없음");
+    const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+    const diff = Math.floor((startOfToday.getTime() - new Date(time).setHours(0, 0, 0, 0)) / 86400000);
+    if (diff <= 0) return tr("今天", "Today", "今日", "오늘");
+    if (diff === 1) return tr("昨天", "Yesterday", "昨日", "어제");
+    if (diff < 7) return tr(`${diff} 天前`, `${diff} days ago`, `${diff}日前`, `${diff}일 전`);
+    return fmtDate(time);
   };
-  return (
-      <div className={largeTitle.pageClassName}>
-        <LargeTitleHeader title={t("status")} onBack={closeApp} backLabel={tr("返回首頁", "Back to Home", "ホームに戻る", "홈으로 돌아가기")} />
-        <div className="mp-cm" onScroll={largeTitle.onScroll}>
-          <LargeTitle title={t("status")} />
-          {characters.length === 0 ? <div className="mp-empty"><div className="mp-empty-icon" aria-hidden="true"><Icon name="users" size={34} /></div><div className="mp-empty-t">{tr("目前尚未建立角色", "No characters yet", "まだキャラがありません", "아직 캐릭터가 없습니다")}</div></div>
-          : characters.map(c => {
-            const msgs = chatHistory[c.id] || [];
-            const dialogueMsgs = msgs.filter((m) => m.role === "user" || m.role === "assistant");
-            const { active: mems, archived: archivedMems } = splitArchivedMemories(memories[c.id] || []);
-            const uMsgs = dialogueMsgs.filter(m => m.role === "user").length;
-            const assistantReplyKeys = new Set(
-              dialogueMsgs
-                .filter((m) => m.role === "assistant")
-                .map((m) => m.replyGroupId || m.id)
-            );
-            const aMsgs = assistantReplyKeys.size;
-            const conversationCount = uMsgs + aMsgs;
-            const firstD = dialogueMsgs.length > 0 ? new Date(dialogueMsgs[0].time).toLocaleDateString("zh-TW") : "--";
-            const lastD = dialogueMsgs.length > 0 ? new Date(dialogueMsgs[dialogueMsgs.length-1].time).toLocaleDateString("zh-TW") : "--";
-            const days = msgs.length > 0 ? Math.max(1, Math.ceil((Date.now() - msgs[0].time) / 86400000)) : 0;
-            const exp = statusExpandedCharId === c.id;
-            const memoryExpanded = statusMemoryExpandedCharId === c.id;
-            const specials = specialMemories.filter((m) => String(m.characterId) === String(c.id));
-            return (
-              <div key={c.id} className="mp-sc">
-                <div className="mp-sc-ban" />
-                <div className="mp-sc-avl">{sanitizeUserImageUrl(c.avatar) ? <img src={sanitizeUserImageUrl(c.avatar)} alt="" /> : <AvatarFallback name={c.name} />}</div>
-                <div className="mp-sc-body">
-                  <div className="mp-sc-nm">{c.name}</div>
-                  <div style={{fontSize:12,color:"var(--mp-txt-l)",marginTop:4,lineHeight:1.5}}>{(c.statusText || tr("尚無狀態", "No status yet", "まだステータスがありません", "아직 상태가 없습니다")).slice(0,80)}</div>
-                  {c.statusUpdatedAt ? <div style={{fontSize:10,color:"var(--mp-txt-l)",opacity:.8,marginTop:2}}>{tr("更新時間", "Updated", "更新時刻", "업데이트 시간")}：{new Date(c.statusUpdatedAt).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"})}</div> : null}
-                  <div style={{marginTop:6}}>
-                    <button type="button" className="mp-ibtn" disabled={!!statusRefreshingIds?.[c.id]} onClick={(event) => { event.stopPropagation(); void refreshCharacterStatus(c.id, true); }}>{statusRefreshingIds?.[c.id] ? tr("更新中...", "Updating...", "更新中...", "업데이트 중...") : tr("更新狀態", "Refresh status", "ステータスを更新", "상태 새로고침")}</button>
+  const avatarOf = (c) => (sanitizeUserImageUrl(c.avatar) ? <img src={sanitizeUserImageUrl(c.avatar)} alt="" /> : <AvatarFallback name={c.name} />);
+  const companionTag = <span className="mp-status-tag">{tr("陪伴中", "Companion", "パートナー", "동행 중")}</span>;
+
+  // 每位角色的紀錄都從現有資料即時算出，不另外存。
+  const statsOf = (c) => {
+    const msgs = chatHistory[c.id] || [];
+    const dialogueMsgs = msgs.filter((m) => m.role === "user" || m.role === "assistant");
+    const { active, archived } = splitArchivedMemories(memories[c.id] || []);
+    const uMsgs = dialogueMsgs.filter((m) => m.role === "user").length;
+    const aMsgs = new Set(dialogueMsgs.filter((m) => m.role === "assistant").map((m) => m.replyGroupId || m.id)).size;
+    const specials = specialMemories.filter((m) => String(m.characterId) === String(c.id));
+    return {
+      dialogueMsgs, uMsgs, aMsgs, conversationCount: uMsgs + aMsgs,
+      days: msgs.length > 0 ? Math.max(1, Math.ceil((Date.now() - msgs[0].time) / 86400000)) : 0,
+      firstTime: dialogueMsgs[0]?.time || 0,
+      lastTime: dialogueMsgs[dialogueMsgs.length - 1]?.time || 0,
+      mems: active, archivedMems: archived, specials,
+      postCount: posts.filter((p) => p.charId === c.id).length,
+    };
+  };
+  // 里程碑：只用已有的時間戳推算（第一次聊天、訊息數、認識天數、第一則記憶、第一張特別記憶），不呼叫 AI。
+  const milestonesOf = (s) => {
+    const items = [];
+    if (s.firstTime) items.push({ time: s.firstTime, text: tr("第一次聊天", "First chat", "初めての会話", "첫 대화") });
+    [100, 500, 1000].forEach((count) => {
+      const msg = s.dialogueMsgs[count - 1];
+      if (msg) items.push({ time: msg.time, text: tr(`第 ${count} 則訊息`, `${count}th message`, `${count} 通目のメッセージ`, `${count}번째 메시지`) });
+    });
+    [30, 100, 365].forEach((dayCount) => {
+      if (s.firstTime && s.days >= dayCount) items.push({ time: s.firstTime + (dayCount - 1) * 86400000, text: tr(`認識滿 ${dayCount} 天`, `${dayCount} days together`, `出会って ${dayCount} 日`, `만난 지 ${dayCount}일`) });
+    });
+    const memoryDates = [...s.mems, ...s.archivedMems].map((m) => Number(m.date) || 0).filter(Boolean);
+    if (memoryDates.length) items.push({ time: Math.min(...memoryDates), text: tr("第一則記憶", "First memory", "最初の記憶", "첫 기억") });
+    const firstSpecial = [...s.specials].filter((m) => m.createdAt).sort((a, b) => a.createdAt - b.createdAt)[0];
+    if (firstSpecial) items.push({ time: firstSpecial.createdAt, gold: true, text: tr(`第一張特別記憶「${firstSpecial.title}」`, `First special memory: “${firstSpecial.title}”`, `最初の特別な記憶「${firstSpecial.title}」`, `첫 특별한 기억 「${firstSpecial.title}」`) });
+    return items.sort((a, b) => b.time - a.time);
+  };
+
+  // 陪伴中的角色排第一，其餘沿用聯絡人的共用排序與釘選。
+  const ordered = activeCharId
+    ? [...characters.filter((c) => c.id === activeCharId), ...characters.filter((c) => c.id !== activeCharId)]
+    : characters;
+  const openChar = characters.find((c) => c.id === statusExpandedCharId) || null;
+  const openCharacter = (id) => { exitCompressMode(); setDetailTab("overview"); setStatusExpandedCharId(id); };
+  const closeCharacter = () => { exitCompressMode(); setStatusExpandedCharId(null); };
+
+  const modals = <>
+    {viewingSpecialMemory && <SpecialMemoryModal
+      memory={viewingSpecialMemory.memory}
+      characterAvatar={sanitizeUserImageUrl(viewingSpecialMemory.character?.avatar)}
+      playerAvatar={sanitizeUserImageUrl(playerProfile?.avatar)}
+      playerName={String(playerProfile?.name || "").trim() || tr("你", "You", "あなた", "나")}
+      onClose={() => setViewingSpecialMemory(null)}
+    />}
+    {compressConfirmOpen && (() => {
+      const char = characters.find((item) => item.id === compressCharId);
+      const pool = splitArchivedMemories(memories[compressCharId] || []).active;
+      const selected = compressSelection.map((id) => pool.find((m) => m.id === id)).filter(Boolean);
+      if (!char || !selected.length) return null;
+      return <MemoryCompressModal
+        tr={tr}
+        charName={char.name}
+        selected={selected}
+        prompt={memoryPrompt?.value || ""}
+        onPrompt={(text) => memoryPrompt?.onChange?.(text)}
+        applyUserPlaceholder={applyUserPlaceholder}
+        busy={genLoading}
+        onCancel={() => setCompressConfirmOpen(false)}
+        onConfirm={async () => {
+          const result = await compressMemories(char, compressSelection);
+          if (result?.status === "compressed") exitCompressMode();
+        }}
+      />;
+    })()}
+  </>;
+
+  // ===== 第二層：角色頁 =====
+  if (openChar) {
+    const c = openChar;
+    const s = statsOf(c);
+    const milestones = milestonesOf(s);
+    const refreshing = !!statusRefreshingIds?.[c.id];
+    return (
+      <div className={SUB_PAGE_CLASS}>
+        <AppHeader title={c.name} onBack={closeCharacter} backLabel={tr("返回狀態", "Back to Status", "ステータスに戻る", "상태로 돌아가기")} />
+        <div className="mp-cm">
+          <div className="mp-status-hero">
+            <span className="mp-status-av lg">{avatarOf(c)}</span>
+            <div className="mp-status-hero-name">{c.name}{c.id === activeCharId && companionTag}</div>
+            <div className="mp-status-hero-days">
+              {tr("已經認識", "Together for", "出会って", "만난 지")}<b>{s.days}</b>{tr(`天・聊了 ${s.conversationCount} 則`, ` days · ${s.conversationCount} messages`, `日・${s.conversationCount} 通`, `일 · ${s.conversationCount}개 대화`)}
+            </div>
+            <div className="mp-status-hero-text">{c.statusText || tr("尚無狀態", "No status yet", "まだステータスがありません", "아직 상태가 없습니다")}</div>
+            <div className="mp-status-hero-meta">
+              {c.statusUpdatedAt ? <span>{tr(`${fmtTime(c.statusUpdatedAt)} 更新`, `Updated ${fmtTime(c.statusUpdatedAt)}`, `${fmtTime(c.statusUpdatedAt)} 更新`, `${fmtTime(c.statusUpdatedAt)} 업데이트`)}</span> : null}
+              <button type="button" className="mp-status-refresh" disabled={refreshing} onClick={() => void refreshCharacterStatus(c.id, true)}>
+                {refreshing ? tr("更新中...", "Updating...", "更新中...", "업데이트 중...") : tr("↻ 更新狀態", "↻ Refresh status", "↻ ステータスを更新", "↻ 상태 새로고침")}
+              </button>
+            </div>
+          </div>
+          <SegmentedControl
+            items={[
+              { id: "overview", label: tr("概況", "Overview", "概要", "개요") },
+              { id: "memories", label: tr("記憶", "Memories", "記憶", "기억") },
+              { id: "specials", label: tr("特別記憶", "Special", "特別な記憶", "특별한 기억") },
+            ]}
+            value={detailTab}
+            onChange={(next) => { exitCompressMode(); setDetailTab(next); }}
+            ariaLabel={tr(`${c.name} 的紀錄`, `${c.name}'s records`, `${c.name}の記録`, `${c.name}의 기록`)}
+          />
+
+          {detailTab === "overview" && <>
+            <div className="mp-status-stats">
+              {[
+                [s.conversationCount, tr("訊息", "Messages", "メッセージ", "메시지")],
+                [s.mems.length, tr("記憶", "Memories", "記憶", "기억")],
+                [s.specials.length, tr("特別記憶", "Special", "特別な記憶", "특별한 기억")],
+                [s.postCount, tr("貼文", "Posts", "投稿", "게시물")],
+              ].map(([value, label]) => <div key={label}><b>{value}</b><small>{label}</small></div>)}
+            </div>
+            <div className="mp-list-section">{tr("對話紀錄", "Chat record", "会話の記録", "대화 기록")}</div>
+            <div className="mp-group mp-status-kv">
+              <div><span>{tr("你傳的訊息", "Your messages", "あなたのメッセージ", "내가 보낸 메시지")}</span><span>{tr(`${s.uMsgs} 則`, `${s.uMsgs}`, `${s.uMsgs} 通`, `${s.uMsgs}개`)}</span></div>
+              <div><span>{tr(`${c.name} 的回覆`, `${c.name}'s replies`, `${c.name}の返信`, `${c.name}의 답장`)}</span><span>{tr(`${s.aMsgs} 則`, `${s.aMsgs}`, `${s.aMsgs} 通`, `${s.aMsgs}개`)}</span></div>
+              <div><span>{tr("首次對話", "First chat", "最初の会話", "첫 대화")}</span><span>{fmtDate(s.firstTime)}</span></div>
+              <div><span>{tr("最近對話", "Latest chat", "最近の会話", "최근 대화")}</span><span>{relativeDay(s.lastTime)}</span></div>
+              <div><span>{tr("互動天數", "Days together", "交流日数", "교류 일수")}</span><span>{tr(`${s.days} 天`, `${s.days} days`, `${s.days} 日`, `${s.days}일`)}</span></div>
+            </div>
+            {milestones.length > 0 && <>
+              <div className="mp-list-section">{tr("里程碑", "Milestones", "マイルストーン", "마일스톤")}</div>
+              <div className="mp-status-milestones">
+                {milestones.map((item) => (
+                  <div key={`${item.time}-${item.text}`} className={item.gold ? "gold" : ""}>
+                    {item.text}<small>{fmtDate(item.time)}</small>
                   </div>
-                  {c.tags?.length > 0 && <div className="mp-sc-tags">{c.tags.map((t,i) => <span key={i} className="mp-tag">{t}</span>)}</div>}
-                  {c.creator && <div style={{fontSize:10,color:"var(--mp-txt-l)",marginTop:4}}>by {c.creator}</div>}
-                  <div className="mp-sc-stats">
-                    <div className="mp-stat"><div className="mp-stat-v">{conversationCount}</div><div className="mp-stat-lb">{tr("訊息", "Messages", "メッセージ", "메시지")}</div></div>
-                    <div className="mp-stat"><div className="mp-stat-v">{days}</div><div className="mp-stat-lb">{tr("互動天數", "Days", "日数", "일수")}</div></div>
-                    <div className="mp-stat"><div className="mp-stat-v">{mems.length}</div><div className="mp-stat-lb">{tr("記憶", "Memories", "記憶", "기억")}</div></div>
-                    <div className="mp-stat"><div className="mp-stat-v">{specials.length}</div><div className="mp-stat-lb">{tr("特別記憶", "Special", "特別な記憶", "특별한 기억")}</div></div>
-                    <div className="mp-stat"><div className="mp-stat-v">{posts.filter(p=>p.charId===c.id).length}</div><div className="mp-stat-lb">{tr("貼文", "Posts", "投稿", "게시물")}</div></div>
-                  </div>
-                  <div className="mp-sec">
-                    <div className="mp-sec-t">{tr("對話摘要", "Conversation summary", "会話要約", "대화 요약")}</div>
-                    <div className="mp-sec-ct">
-                      <div className="mp-sec-row"><span>{tr("使用者訊息", "User messages", "ユーザーメッセージ", "사용자 메시지")}</span><span style={{color:"var(--mp-pink-dk)"}}>{uMsgs}</span></div>
-                      <div className="mp-sec-row"><span>{c.name} {tr("回覆", "replies", "の返信", "응답")}</span><span style={{color:"var(--mp-purple)"}}>{aMsgs}</span></div>
-                      <div className="mp-sec-row"><span>{tr("首次對話", "First chat", "最初の会話", "첫 대화")}</span><span>{firstD}</span></div>
-                      <div className="mp-sec-row"><span>{tr("最近對話", "Latest chat", "最近の会話", "최근 대화")}</span><span>{lastD}</span></div>
-                    </div>
-                  </div>
-                  <div className="mp-sec">
-                    <div
-                      className="mp-sec-t mp-sec-t-toggle"
-                      onClick={() => setStatusMemoryExpandedCharId(memoryExpanded ? null : c.id)}
-                    >
-                      <span>{tr("記憶片段", "Memory snippets", "記憶スニペット", "기억 조각")}</span>
-                      <span className="mp-sec-toggle-tag">{memoryExpanded ? tr("收起", "Collapse", "折りたたむ", "접기") : tr("展開", "Expand", "展開", "펼치기")}</span>
-                    </div>
-                    {memoryExpanded && (
-                      <>
-                        {mems.length === 0 ? <div style={{fontSize:11,color:"var(--mp-txt-l)",textAlign:"center",padding:6}}>{tr("目前尚無記憶，點擊下方按鈕可生成", "No memories yet. Tap the button below to generate one.", "まだ記憶がありません。下のボタンで生成できます。", "아직 기억이 없습니다. 아래 버튼을 눌러 생성할 수 있습니다.")}</div>
-                    : <div className="mp-tl">{(() => {
-                      const sortedMems = [...mems].sort((a, b) => {
-                      if (!!b.pinned !== !!a.pinned) return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0);
-                      return (b.date || 0) - (a.date || 0);
-                      });
-                      const pageSize = 5;
-                      const pageCount = Math.max(1, Math.ceil(sortedMems.length / pageSize));
-                      const page = Math.min(Math.max(0, Number(statusMemoryPages[c.id]) || 0), pageCount - 1);
-                      const pageMems = sortedMems.slice(page * pageSize, (page + 1) * pageSize);
-                      return <>
-                      {pageMems.map((m,i) => {
-                      const picking = compressCharId === c.id;
-                      const picked = picking && compressSelection.includes(m.id);
-                      return (
+                ))}
+              </div>
+            </>}
+          </>}
+
+          {detailTab === "memories" && <>
+            <div className="mp-status-count">
+              <b>{tr(`共 ${s.mems.length} 則記憶`, `${s.mems.length} memories`, `記憶 ${s.mems.length} 件`, `기억 ${s.mems.length}개`)}</b>
+              {s.archivedMems.length > 0 && <span>{tr(`另有塵封 ${s.archivedMems.length} 則`, `${s.archivedMems.length} archived`, `封印 ${s.archivedMems.length} 件`, `봉인 ${s.archivedMems.length}개`)}</span>}
+            </div>
+            {s.mems.length === 0
+              ? <div className="mp-status-empty">{tr("目前尚無記憶，點擊下方按鈕可生成", "No memories yet. Tap the button below to generate one.", "まだ記憶がありません。下のボタンで生成できます。", "아직 기억이 없습니다. 아래 버튼을 눌러 생성할 수 있습니다.")}</div>
+              : <div className="mp-tl">{(() => {
+                const sortedMems = [...s.mems].sort((a, b) => {
+                  if (!!b.pinned !== !!a.pinned) return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0);
+                  return (b.date || 0) - (a.date || 0);
+                });
+                const pageSize = 5;
+                const pageCount = Math.max(1, Math.ceil(sortedMems.length / pageSize));
+                const page = Math.min(Math.max(0, Number(statusMemoryPages[c.id]) || 0), pageCount - 1);
+                const pageMems = sortedMems.slice(page * pageSize, (page + 1) * pageSize);
+                return <>
+                  {pageMems.map((m, i) => {
+                    const picking = compressCharId === c.id;
+                    const picked = picking && compressSelection.includes(m.id);
+                    return (
                       <div key={m.id || i} className="mp-tl-item">
-                        <div className="mp-tl-dot" style={{top:6}} />
+                        <div className="mp-tl-dot" style={{ top: 6 }} />
                         <div
                           className="mp-mem"
                           style={picked ? { outline: "2px solid var(--mp-acc)", borderRadius: 8 } : undefined}
-                          onClick={() => (picking ? toggleCompressPick(m.id) : setActiveMemoryId((p) => (p === m.id ? null : m.id)))}
+                          onClick={() => (picking ? toggleCompressPick(m.id) : undefined)}
                         >{picking ? `${picked ? "☑" : "☐"} ` : ""}{applyUserPlaceholder(m.text)}</div>
-                        <div className="mp-mem-d" style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:6}}>
+                        <div className="mp-mem-d" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
                           <span>
-                            {new Date(m.date).toLocaleDateString("zh-TW")}
+                            {fmtDate(m.date)}
                             {m.pinned ? ` · ${tr("已釘選", "Pinned", "固定済み", "고정됨")}` : ""}
                             {isSummaryMemory(m) ? ` · ${tr(`摘要（${m.sourceIds.length} 條）`, `Summary (${m.sourceIds.length})`, `要約（${m.sourceIds.length} 件）`, `요약 (${m.sourceIds.length}개)`)}` : ""}
                           </span>
-                          <span style={{display:"flex",gap:6}}>
-                            {isSummaryMemory(m) && !picking && (
-                              <button
-                                className={`mp-ibtn ${activeMemoryId===m.id?"":"mp-ibtn-hidden"}`}
-                                title={tr("還原成原本的記憶", "Revert to the original memories", "元の記憶に戻す", "원래 기억으로 되돌리기")}
-                                onClick={() => revertMemorySummary(c.id, m.id)}
-                              >⤺</button>
+                          {/* 操作鈕直接顯示：以前要先點一下記憶才會出現，很難發現 */}
+                          {!picking && <span style={{ display: "flex", gap: 6 }}>
+                            {isSummaryMemory(m) && (
+                              <button className="mp-ibtn" title={tr("還原成原本的記憶", "Revert to the original memories", "元の記憶に戻す", "원래 기억으로 되돌리기")} onClick={() => revertMemorySummary(c.id, m.id)}>⤺</button>
                             )}
-                            <button className={`mp-ibtn ${activeMemoryId===m.id?"":"mp-ibtn-hidden"}`} onClick={() => setMemoryEditor({ charId: c.id, memoryId: m.id, text: m.text || "" })}>✎</button>
-                            <button className={`mp-ibtn ${activeMemoryId===m.id?"":"mp-ibtn-hidden"}`} onClick={() => togglePinMemory(c.id, m.id)}>{m.pinned ? "📌" : "📍"}</button>
-                            <button
-                              className={`mp-ibtn ${activeMemoryId===m.id?"":"mp-ibtn-hidden"}`}
-                              title={tr("移入塵封書庫", "Move to the archive", "封印書庫へ移す", "봉인 서고로 이동")}
-                              onClick={() => archiveMemory(c.id, m.id)}
-                            >🗝</button>
-                            <button className={`mp-ibtn-r ${activeMemoryId===m.id?"":"mp-ibtn-hidden"}`} onClick={() => deleteMemory(c.id, m.id)}>🗑</button>
-                          </span>
+                            <button className="mp-ibtn" title={tr("編輯", "Edit", "編集", "편집")} onClick={() => setMemoryEditor({ charId: c.id, memoryId: m.id, text: m.text || "" })}>✎</button>
+                            <button className="mp-ibtn" title={m.pinned ? tr("取消釘選", "Unpin", "固定解除", "고정 해제") : tr("釘選", "Pin", "固定", "고정")} onClick={() => togglePinMemory(c.id, m.id)}>{m.pinned ? "📌" : "📍"}</button>
+                            <button className="mp-ibtn" title={tr("移入塵封書庫", "Move to the archive", "封印書庫へ移す", "봉인 서고로 이동")} onClick={() => archiveMemory(c.id, m.id)}>🗝</button>
+                            <button className="mp-ibtn-r" title={tr("刪除", "Delete", "削除", "삭제")} onClick={() => deleteMemory(c.id, m.id)}>🗑</button>
+                          </span>}
                         </div>
                       </div>
-                      );})}
-                      {pageCount > 1 && <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginTop:8}}>
-                        <button type="button" className="mp-ibtn" disabled={page <= 0} onClick={() => setStatusMemoryPages?.((prev) => ({...prev, [c.id]: Math.max(0, page - 1)}))}>‹</button>
-                        <span style={{fontSize:11,color:"var(--mp-txt-l)"}}>{page + 1} / {pageCount}</span>
-                        <button type="button" className="mp-ibtn" disabled={page >= pageCount - 1} onClick={() => setStatusMemoryPages?.((prev) => ({...prev, [c.id]: Math.min(pageCount - 1, page + 1)}))}>›</button>
-                      </div>}
-                      </>;
-                    })()}</div>}
-                        {compressCharId === c.id ? (
-                          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6 }}>
-                            <span style={{ fontSize: 11, color: "var(--mp-txt-l)" }}>
-                              {tr(`已選 ${compressSelection.length} 條`, `${compressSelection.length} selected`, `${compressSelection.length} 件選択`, `${compressSelection.length}개 선택`)}
-                            </span>
-                            <button className="mp-gbtn" onClick={exitCompressMode}>{tr("取消", "Cancel", "キャンセル", "취소")}</button>
-                            <button
-                              className="mp-gbtn"
-                              disabled={compressSelection.length < MEMORY_COMPRESSION.minSelection || genLoading}
-                              onClick={() => setCompressConfirmOpen(true)}
-                            >{tr("壓縮所選", "Compress selected", "選択を圧縮", "선택 항목 압축")}</button>
-                          </div>
-                        ) : (
-                          <button className="mp-gbtn" onClick={() => generateMemory(c)} disabled={genLoading}>{genLoading ? tr("生成中...", "Generating...", "生成中...", "생성 중...") : tr("生成記憶", "Generate memory", "記憶を生成", "기억 생성")}</button>
-                        )}
-                        {compressCharId !== c.id && mems.length >= MEMORY_COMPRESSION.minSelection && (
-                          <button className="mp-gbtn" onClick={() => { setCompressCharId(c.id); setCompressSelection([]); }} style={{ marginTop: 6 }}>
-                            {tr("壓縮記憶", "Compress memories", "記憶を圧縮", "기억 압축")}
-                          </button>
-                        )}
-                        <ArchivedMemoryVault
-                          tr={tr}
-                          charId={c.id}
-                          memories={archivedMems}
-                          applyUserPlaceholder={applyUserPlaceholder}
-                          onRestore={restoreMemory}
-                          onDelete={deleteMemory}
-                        />
-                      </>
-                    )}
-                  </div>
-                  {specials.length > 0 && <div className="mp-sec">
-                    <div className="mp-sec-t">✦ {tr("特別記憶", "Special memories", "特別な記憶", "특별한 기억")}</div>
-                    <div style={{display:"flex",gap:8,overflowX:"auto",padding:"6px 2px 4px",scrollbarWidth:"none",cursor:"grab",touchAction:"pan-x"}} {...specialDragHandlers}>
-                      {specials.map((m) => (
-                        <button key={m.id} type="button"
-                          style={{flex:"0 0 auto",width:76,position:"relative",border:`1.5px solid ${SPECIAL_MEMORY_FRAME[m.itemRarity] || SPECIAL_MEMORY_FRAME.R}`,borderRadius:12,background:"var(--mp-surface)",padding:"9px 5px 7px",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}
-                          onClick={() => { if (specialDragRef.current?.moved) return; setViewingSpecialMemory({ memory: m, character: c }); }}>
-                          {m.pinned && <span style={{position:"absolute",top:-7,right:-6,width:17,height:17,borderRadius:"50%",display:"grid",placeItems:"center",fontSize:10,lineHeight:1,color:"#fff",background:"radial-gradient(circle at 35% 30%,#eed49a,#c99a4b)",border:"1px solid #b8894040",boxShadow:"0 2px 5px rgba(160,115,40,.45)"}}>✦</span>}
-                          <span style={{fontSize:22,lineHeight:1}}>{m.itemIcon || "🌸"}</span>
-                          <span style={{fontSize:9.5,fontWeight:700,color:"var(--mp-txt)",width:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textAlign:"center"}}>{m.title}</span>
-                          <span style={{fontSize:8.5,fontWeight:800,color:SPECIAL_MEMORY_FRAME[m.itemRarity] || SPECIAL_MEMORY_FRAME.R}}>{m.itemRarity}</span>
-                        </button>
-                      ))}
-                    </div>
+                    );
+                  })}
+                  {pageCount > 1 && <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 8 }}>
+                    <button type="button" className="mp-ibtn" disabled={page <= 0} onClick={() => setStatusMemoryPages?.((prev) => ({ ...prev, [c.id]: Math.max(0, page - 1) }))}>‹</button>
+                    <span style={{ fontSize: 11, color: "var(--mp-txt-l)" }}>{page + 1} / {pageCount}</span>
+                    <button type="button" className="mp-ibtn" disabled={page >= pageCount - 1} onClick={() => setStatusMemoryPages?.((prev) => ({ ...prev, [c.id]: Math.min(pageCount - 1, page + 1) }))}>›</button>
                   </div>}
-                  <div className="mp-sec">
-                    <div className="mp-sec-t" style={{cursor:"pointer"}} onClick={() => setStatusExpandedCharId(exp ? null : c.id)}>
-                      {tr("角色設定", "Character settings", "キャラ設定", "캐릭터 설정")} {exp ? tr("收起", "Collapse", "折りたたむ", "접기") : tr("展開", "Expand", "展開", "펼치기")}
-                    </div>
-                    {exp && (
-                      <div className="mp-persona">
-                        {c.description && <><strong>{tr("角色設定", "Description", "説明", "설명")}：</strong>{c.description}{"\n\n"}</>}
-                        {c.systemPrompt && <><strong>{tr("System Prompt", "System prompt", "システムプロンプト", "시스템 프롬프트")}：</strong>{c.systemPrompt}{"\n\n"}</>}
-                        {c.personality && <><strong>{tr("個性", "Personality", "個性", "개성")}：</strong>{c.personality}{"\n\n"}</>}
-                        {c.scenario && <><strong>{tr("情境", "Scenario", "シナリオ", "상황")}：</strong>{c.scenario}</>}
-                        {!c.description && !c.systemPrompt && !c.personality && !c.scenario && (
-                          <div style={{color:"var(--mp-txt-l)"}}>{tr("目前沒有可顯示的角色設定。", "No character settings to display yet.", "表示できるキャラ設定はまだありません。", "표시할 캐릭터 설정이 없습니다.")}</div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
+                </>;
+              })()}</div>}
+            {compressCharId === c.id ? (
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6 }}>
+                <span style={{ fontSize: 11, color: "var(--mp-txt-l)" }}>
+                  {tr(`已選 ${compressSelection.length} 條`, `${compressSelection.length} selected`, `${compressSelection.length} 件選択`, `${compressSelection.length}개 선택`)}
+                </span>
+                <button className="mp-gbtn" onClick={exitCompressMode}>{tr("取消", "Cancel", "キャンセル", "취소")}</button>
+                <button
+                  className="mp-gbtn"
+                  disabled={compressSelection.length < MEMORY_COMPRESSION.minSelection || genLoading}
+                  onClick={() => setCompressConfirmOpen(true)}
+                >{tr("壓縮所選", "Compress selected", "選択を圧縮", "선택 항목 압축")}</button>
               </div>
+            ) : (
+              <button className="mp-gbtn" onClick={() => generateMemory(c)} disabled={genLoading}>{genLoading ? tr("生成中...", "Generating...", "生成中...", "생성 중...") : tr("生成記憶", "Generate memory", "記憶を生成", "기억 생성")}</button>
+            )}
+            {compressCharId !== c.id && s.mems.length >= MEMORY_COMPRESSION.minSelection && (
+              <button className="mp-gbtn" onClick={() => { setCompressCharId(c.id); setCompressSelection([]); }} style={{ marginTop: 6 }}>
+                {tr("壓縮記憶", "Compress memories", "記憶を圧縮", "기억 압축")}
+              </button>
+            )}
+            <ArchivedMemoryVault
+              tr={tr}
+              charId={c.id}
+              memories={s.archivedMems}
+              applyUserPlaceholder={applyUserPlaceholder}
+              onRestore={restoreMemory}
+              onDelete={deleteMemory}
+            />
+          </>}
+
+          {detailTab === "specials" && <>
+            <div className="mp-status-count"><b>{tr(`共 ${s.specials.length} 張特別記憶`, `${s.specials.length} special memories`, `特別な記憶 ${s.specials.length} 枚`, `특별한 기억 ${s.specials.length}장`)}</b></div>
+            {s.specials.length === 0
+              ? <div className="mp-status-empty">{tr("還沒有特別記憶，抽卡劇情結束時有機會獲得", "No special memories yet — they can come from gacha episodes.", "まだ特別な記憶はありません。ガチャのエピソードで手に入ることがあります", "아직 특별한 기억이 없어요. 가챠 에피소드에서 얻을 수 있어요")}</div>
+              : <div className="mp-status-specials">
+                {s.specials.map((m) => (
+                  <button key={m.id} type="button" style={{ borderColor: SPECIAL_MEMORY_FRAME[m.itemRarity] || SPECIAL_MEMORY_FRAME.R }} onClick={() => setViewingSpecialMemory({ memory: m, character: c })}>
+                    {m.pinned && <span className="mp-status-special-pin" aria-hidden="true">✦</span>}
+                    <span className="mp-status-special-icon">{m.itemIcon || "🌸"}</span>
+                    <span className="mp-status-special-title">{m.title}</span>
+                    <span className="mp-status-special-rarity" style={{ color: SPECIAL_MEMORY_FRAME[m.itemRarity] || SPECIAL_MEMORY_FRAME.R }}>{m.itemRarity}</span>
+                  </button>
+                ))}
+              </div>}
+          </>}
+        </div>
+        {modals}
+      </div>
+    );
+  }
+
+  // ===== 第一層：所有角色總覽 =====
+  return (
+    <div className={largeTitle.pageClassName}>
+      <LargeTitleHeader title={t("status")} onBack={closeApp} backLabel={tr("返回首頁", "Back to Home", "ホームに戻る", "홈으로 돌아가기")} />
+      <div className="mp-cm" onScroll={largeTitle.onScroll}>
+        <LargeTitle title={t("status")} subtitle={characters.length ? tr("角色們的近況與我們的紀錄", "What everyone's up to, and our story so far", "キャラたちの近況とふたりの記録", "캐릭터들의 근황과 우리의 기록") : null} />
+        {characters.length === 0
+          ? <div className="mp-empty"><div className="mp-empty-icon" aria-hidden="true"><Icon name="users" size={34} /></div><div className="mp-empty-t">{tr("目前尚未建立角色", "No characters yet", "まだキャラがありません", "아직 캐릭터가 없습니다")}</div></div>
+          : ordered.map((c) => {
+            const s = statsOf(c);
+            const companion = c.id === activeCharId;
+            return (
+              <button key={c.id} type="button" className={`mp-status-card ${companion ? "companion" : ""}`} onClick={() => openCharacter(c.id)}>
+                <span className="mp-status-card-top">
+                  <span className="mp-status-av">{avatarOf(c)}</span>
+                  <span className="mp-status-card-copy">
+                    <span className="mp-status-card-name">
+                      <b>{c.name}</b>{companion && companionTag}
+                      <span className="mp-status-days">{s.days}<small>{tr("天", "d", "日", "일")}</small></span>
+                    </span>
+                    <span className="mp-status-card-text">{c.statusText || tr("尚無狀態", "No status yet", "まだステータスがありません", "아직 상태가 없습니다")}</span>
+                    <span className="mp-status-card-sub">
+                      {c.statusUpdatedAt ? tr(`${fmtTime(c.statusUpdatedAt)} 更新・`, `Updated ${fmtTime(c.statusUpdatedAt)} · `, `${fmtTime(c.statusUpdatedAt)} 更新・`, `${fmtTime(c.statusUpdatedAt)} 업데이트 · `) : ""}
+                      {tr(`最後聊天：${relativeDay(s.lastTime)}`, `Last chat: ${relativeDay(s.lastTime)}`, `最後の会話：${relativeDay(s.lastTime)}`, `마지막 대화: ${relativeDay(s.lastTime)}`)}
+                    </span>
+                  </span>
+                </span>
+                <span className="mp-status-chips">
+                  <span>{tr("訊息", "Messages", "メッセージ", "메시지")} <b>{s.conversationCount}</b> {tr("則", "", "通", "개")}</span>
+                  <span>{tr("記憶", "Memories", "記憶", "기억")} <b>{s.mems.length}</b> {tr("則", "", "件", "개")}</span>
+                  <span>{tr("特別記憶", "Special", "特別な記憶", "특별한 기억")} <b>{s.specials.length}</b> {tr("張", "", "枚", "장")}</span>
+                  <span>{tr("貼文", "Posts", "投稿", "게시물")} <b>{s.postCount}</b> {tr("篇", "", "件", "개")}</span>
+                </span>
+              </button>
             );
           })}
-        </div>
-        {viewingSpecialMemory && <SpecialMemoryModal
-          memory={viewingSpecialMemory.memory}
-          characterAvatar={sanitizeUserImageUrl(viewingSpecialMemory.character?.avatar)}
-          playerAvatar={sanitizeUserImageUrl(playerProfile?.avatar)}
-          playerName={String(playerProfile?.name || "").trim() || "你"}
-          onClose={() => setViewingSpecialMemory(null)}
-        />}
-        {compressConfirmOpen && (() => {
-          const char = characters.find((item) => item.id === compressCharId);
-          const pool = splitArchivedMemories(memories[compressCharId] || []).active;
-          const selected = compressSelection.map((id) => pool.find((m) => m.id === id)).filter(Boolean);
-          if (!char || !selected.length) return null;
-          return <MemoryCompressModal
-            tr={tr}
-            charName={char.name}
-            selected={selected}
-            prompt={memoryPrompt?.value || ""}
-            onPrompt={(text) => memoryPrompt?.onChange?.(text)}
-            applyUserPlaceholder={applyUserPlaceholder}
-            busy={genLoading}
-            onCancel={() => setCompressConfirmOpen(false)}
-            onConfirm={async () => {
-              const result = await compressMemories(char, compressSelection);
-              if (result?.status === "compressed") exitCompressMode();
-            }}
-          />;
-        })()}
       </div>
+      {modals}
+    </div>
   );
 }

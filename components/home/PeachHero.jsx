@@ -11,7 +11,7 @@ export function heroImgStyle(x, y, zoom) {
     transform: `translate(${shift(vx)}%, ${shift(vy)}%) scale(${z})`,
   };
 }
-export default function PeachHero({ character, imageUrl, statusText }) {
+export default function PeachHero({ character, imageUrl, statusText, tr }) {
   const view = character.heroView || {};
   const displayImage = imageUrl || sanitizeUserImageUrl(character.avatarOriginal || character.avatar);
   const displayStatus = character.statusText || statusText;
@@ -42,7 +42,7 @@ export default function PeachHero({ character, imageUrl, statusText }) {
       <img src={displayImage} alt="" draggable={false} style={heroImgStyle(view.x, view.y, view.zoom)} />
     </> : "??"}</div>
     <div className={`mp-cw-info ${collapsed ? "is-collapsed" : ""}`} onClick={toggleStatus} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") toggleStatus(e); }}>
-      <div className="mp-cw-name">{character.name}<span className="mp-active-badge">ACTIVE</span>{!collapsed && updatedLabel && <span className="peach-status-time">{updatedLabel}</span>}{collapsed && hasNewStatus && <span className="peach-status-new" aria-label="有新狀態" />}</div>
+      <div className="mp-cw-name">{character.name}<span className="mp-active-badge">{tr("陪伴中", "Companion", "パートナー", "동행 중")}</span>{!collapsed && updatedLabel && <span className="peach-status-time">{updatedLabel}</span>}{collapsed && hasNewStatus && <span className="peach-status-new" aria-label="有新狀態" />}</div>
       {!collapsed && <div className="mp-cw-desc">{displayStatus}</div>}
     </div>
   </div>;

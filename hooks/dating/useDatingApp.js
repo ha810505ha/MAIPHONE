@@ -40,6 +40,8 @@ export default function useDatingApp({ apiConfig, playerName, onError }) {
   const [openChatId, setOpenChatId] = useState(null);
   const stateRef = useRef(state);
   stateRef.current = state;
+  const openChatIdRef = useRef(openChatId);
+  openChatIdRef.current = openChatId;
   // 每個對象各自持有 request token；不同對象可並行，同一對象不可重複生成。
   const replyLifecycleRef = useRef(null);
   if (!replyLifecycleRef.current) replyLifecycleRef.current = createDatingReplyLifecycle();
@@ -156,13 +158,14 @@ export default function useDatingApp({ apiConfig, playerName, onError }) {
     });
   }, []);
 
-  // 回上一張只還原滑動紀錄，不退還 Super Like，也不撤銷已經骰出的配對。
+  // 回上一張只救手滑的「跳過」。喜歡／Super Like 已經骰過結果，能退回就等於能重骰；
+  // 沒配到的人冷卻後本來就會回到牌堆，不需要靠回上一張。
   const rewind = useCallback((profileId) => {
     setState((current) => {
-      if (!current.swiped[profileId]) return current;
+      if (current.swiped[profileId]?.action !== "pass") return current;
       const swiped = { ...current.swiped };
       delete swiped[profileId];
-      return { ...current, swiped, pending: current.pending.filter((item) => item.profileId !== profileId) };
+      return { ...current, swiped };
     });
   }, []);
 
@@ -195,17 +198,21 @@ export default function useDatingApp({ apiConfig, playerName, onError }) {
       ) return;
       patchRelation(profileId, (relation) => (relation.contactCharId ? {} : {
           messages: [...relation.messages, { id: newId(), role: "assistant", content: reply, time: Date.now() }],
-          // 補回的訊息要算未讀，才會跳通知；玩家正在看的話 openChat 會清掉。
-          unread: catchUp ? relation.unread + 1 : relation.unread,
+          // 補回的訊息要算未讀才會跳通知；玩家正開著這個聊天室就是已讀。
+          unread: catchUp && openChatIdRef.current !== profileId ? relation.unread + 1 : relation.unread,
+          replyFailedAt: 0,
         }));
     } catch (error) {
-      // 玩家的訊息已經寫進去了，保留它；只回報失敗，讓玩家可以重試。
+      // 玩家的訊息已經寫進去了，保留它；標記失敗後 sweep 不再自動重試（避免每 30 秒白燒 API），
+      // 改由玩家在聊天室按重試或再傳一則新訊息。
       if (
         !isRequestCancelled(error)
         && lifecycleGeneration === lifecycleGenerationRef.current
         && replyLifecycleRef.current.isActive(request)
       ) {
-        onError?.(error?.message || "訊息傳送失敗");
+        patchRelation(profileId, () => ({ replyFailedAt: Date.now() }));
+        // 預設訊息由呼叫端用介面語言補上，hook 本身不碰翻譯。
+        onError?.(error?.message || "");
       }
     } finally {
       if (replyLifecycleRef.current.finish(request)) syncTypingProfiles();
@@ -220,9 +227,22 @@ export default function useDatingApp({ apiConfig, playerName, onError }) {
     if (stateRef.current.relations[profileId]?.contactCharId) return;
     patchRelation(profileId, (relation) => (relation.contactCharId ? {} : {
         messages: [...relation.messages, { id: newId(), role: "user", content, time: Date.now() }],
+        // 玩家再傳一則就是主動要求重來，清掉失敗標記。
+        replyFailedAt: 0,
       }));
     // 離線就先不回；等他上線後由 sweep 一次回完，這樣才有真實的時間差。
     if (!isOnline(entry)) return;
+    await produceReply(entry, null);
+  }, [patchRelation, produceReply]);
+
+  /** 回覆失敗後由玩家手動重試。對方離線的話只清掉標記，等上線後照常補回。 */
+  const retryReply = useCallback(async (profileId) => {
+    const entry = findProfile(profileId);
+    const relation = stateRef.current.relations[profileId];
+    if (!entry || !relation || relation.contactCharId || stateRef.current.blocked?.[profileId]) return;
+    if (replyLifecycleRef.current.has(profileId)) return;
+    patchRelation(profileId, () => ({ replyFailedAt: 0 }));
+    if (!pendingUserMessages(relation.messages).length || !isOnline(entry)) return;
     await produceReply(entry, null);
   }, [patchRelation, produceReply]);
 
@@ -230,7 +250,7 @@ export default function useDatingApp({ apiConfig, playerName, onError }) {
   const deliverPendingReplies = useCallback(() => {
     const current = stateRef.current;
     for (const [profileId, relation] of Object.entries(current.relations || {})) {
-      if (relation.contactCharId || current.blocked?.[profileId] || replyLifecycleRef.current.has(profileId)) continue;
+      if (relation.contactCharId || relation.replyFailedAt || current.blocked?.[profileId] || replyLifecycleRef.current.has(profileId)) continue;
       const entry = findProfile(profileId);
       if (!entry || !isOnline(entry)) continue;
       const pending = pendingUserMessages(relation.messages);
@@ -478,8 +498,11 @@ export default function useDatingApp({ apiConfig, playerName, onError }) {
     setOpenChatId(null);
   }, [openChatId, cancelReply]);
 
+  // 離開 App 時清掉「正在看的聊天室」，否則背景補回的訊息會被當成已讀、不跳通知。
+  const clearOpenChat = useCallback(() => setOpenChatId(null), []);
+
   return {
-    state, hydrated, typingProfiles, openChatId, openChat, closeChat, swipe, rewind, sendMessage, promoteToContact,
+    state, hydrated, typingProfiles, openChatId, openChat, closeChat, clearOpenChat, swipe, rewind, sendMessage, retryReply, promoteToContact,
     releaseContact, reconcileContacts, setBlocked, report, claimReportReward, cancelAllReplies,
     deck: useMemo(() => availableProfiles(state, Date.now()), [state, tick]),
     refreshAt: useMemo(() => nextRefreshAt(state, Date.now()), [state, tick]),

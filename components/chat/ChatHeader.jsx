@@ -21,8 +21,8 @@ export default function ChatHeader({ item, modelShort, modelFull, modelBadgeOpen
           <span aria-hidden="true">{pinned ? "♥" : "♡"}</span>
         </button>
         {hasRooms ? <button type="button" className="mp-htitle" onClick={() => setRoomPickerOpen(true)} style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", border: 0, background: "transparent", color: "inherit", padding: 0, textAlign: "left", cursor: "pointer" }}>{item.name}{activeRoom?.title ? <span style={{ fontSize: 10, color: "var(--mp-txt-l)" }}> · {activeRoom.title}</span> : null} <span style={{ fontSize: 10, color: "var(--mp-txt-l)" }}>⌄</span></button> : <div className="mp-htitle" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</div>}
-        <button type="button" className="mp-ibtn" style={{ marginLeft: "auto" }} title={modelFull} onClick={(event) => { event.stopPropagation(); setModelBadgeOpen((value) => !value); }}>{modelShort}</button>
-        <button type="button" className="mp-ibtn" onClick={onOpenSettings}>{tr("設定", "Settings", "設定", "설정")}</button>
+        <button type="button" className="mp-ibtn mp-model-badge" style={{ marginLeft: "auto" }} title={modelFull} onClick={(event) => { event.stopPropagation(); setModelBadgeOpen((value) => !value); }}>{modelShort}</button>
+        <button type="button" className="mp-ibtn mp-hdr-neutral" onClick={onOpenSettings}>{tr("設定", "Settings", "設定", "설정")}</button>
       </div>
       <ChatRoomSwitcher open={roomPickerOpen} onClose={() => setRoomPickerOpen(false)} rooms={rooms} activeRoomId={activeRoomId} roomBusy={roomBusy} onSwitchRoom={onSwitchRoom} onCreateRoom={onCreateRoom} onCreateBranch={onCreateBranch} onRenameRoom={onRenameRoom} onDeleteRoom={onDeleteRoom} onArchiveRoom={onArchiveRoom} onRestoreRoom={onRestoreRoom} onMoveRoom={onMoveRoom} onOpenSettings={onOpenSettings} tr={tr} />
       <MotionPresence show={modelBadgeOpen} exitMs={140}>

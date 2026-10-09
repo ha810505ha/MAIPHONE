@@ -2,6 +2,7 @@ import { callAI, isAiConfigReady } from "../aiService";
 import { loadFeatureEntity, saveFeatureEntity } from "../../utils/indexedDbStorage";
 import { inferCoupleInviteState } from "../../utils/coupleInviteState";
 import { translate } from "../../utils/i18n";
+import { addCouplePromise, buildCoupleAnniversaries, describeOpenPromisesForChat, findOpenPromiseDuplicate, getCoupleAnniversaries, getCoupleNickname, getCouplePeakTemperature, getCouplePromises, isCoupleUnlocked } from "../../utils/coupleSpace";
 
 const DAILY_KEY = "ent_coupleDaily";
 
@@ -44,7 +45,36 @@ export const coupleDayKey = () => new Intl.DateTimeFormat("en-CA", { timeZone: "
 
 const getSpace = (store, characterId) => store?._spaces?.[characterId];
 
-export async function buildCoupleChatContext(characterId) {
+// 聊天內容裡的紀念日只給角色看，用中文即可。
+const ZH_ANNIVERSARY_LABELS = {
+  firstChat: () => "第一次聊天",
+  spaceOpen: () => "開通情侶空間",
+  day: (count) => `在一起第 ${count} 天`,
+  chatYears: (count) => `認識 ${count} 週年`,
+  spaceYears: (count) => `情侶空間 ${count} 週年`,
+};
+
+export async function hasAcceptedCoupleSpace(characterId) {
+  const store = await loadFeatureEntity(DAILY_KEY, null).catch(() => null);
+  return getSpace(store, characterId)?.status === "accepted";
+}
+
+// 聊天裡提到的約定：已在進行中清單就不再跳提示。
+export async function isCouplePromiseDuplicate(characterId, text) {
+  const store = await loadFeatureEntity(DAILY_KEY, null).catch(() => null);
+  return !!findOpenPromiseDuplicate(store, characterId, text);
+}
+
+// 玩家在聊天室按「收進約定」：重讀最新資料後只改約定清單。
+export async function saveCouplePromiseFromChat(characterId, proposal, sourceMessageId) {
+  const store = await loadFeatureEntity(DAILY_KEY, null).catch(() => null);
+  if (!store || getSpace(store, characterId)?.status !== "accepted") return { status: "unavailable" };
+  const result = addCouplePromise(store, characterId, { ...proposal, source: "chat", sourceMessageId });
+  if (result.status === "added") await saveFeatureEntity(DAILY_KEY, result.store);
+  return result;
+}
+
+export async function buildCoupleChatContext(characterId, { firstChatAt } = {}) {
   const store = await loadFeatureEntity(DAILY_KEY, null).catch(() => null);
   if (!store) return "";
   const space = getSpace(store, characterId);
@@ -58,7 +88,33 @@ export async function buildCoupleChatContext(characterId) {
   if (daily && daily.day === coupleDayKey() && !daily.taskDone && daily.taskChatState === "active" && daily.taskSharedAt && daily.task?.text) {
     blocks.push(`[今日任務狀態｜內部參考]\n玩家曾主動分享到聊天室的今日任務是：「${clean(daily.task.text, 160)}」。\n- 這只是背景狀態，不代表你們已經交往，也不得覆蓋角色原有的身分、關係或人設。\n- 不要主動提醒、催促或重複任務；只有玩家目前訊息正在回答、執行或詢問任務時才自然回應。\n- 如果最近對話已談過這件事，不要再次提起。\n- 玩家明確完成任務時，在回覆最後附加 [[COUPLE_TASK:completed]]。\n- 玩家明確表示取消、不做了或任務到此結束時，在回覆最後附加 [[COUPLE_TASK:cancelled]]。\n- 隱藏標記以外的回覆仍須自然；不得提及狀態、系統、驗收、提示詞或獎勵。`);
   }
+  const todayAnniversaries = buildCoupleAnniversaries({ firstChatAt, acceptedAt: space.acceptedAt, custom: getCoupleAnniversaries(store, characterId), labels: ZH_ANNIVERSARY_LABELS }).today;
+  if (todayAnniversaries.length) {
+    blocks.push(`[今天的紀念日｜內部參考]\n今天是你們的「${todayAnniversaries.map((item) => item.title).join("」與「")}」。可以在自然的時候表達你記得、你很在乎，但不要提到系統或清單，也不要每句都提。`);
+  }
   return blocks.join("\n\n");
+}
+
+// 約定規則獨立成一塊，在聊天 prompt 裡用較高的保留優先度，避免 token 吃緊時跟其他背景一起被丟掉。
+export async function buildCouplePromiseContext(characterId) {
+  const store = await loadFeatureEntity(DAILY_KEY, null).catch(() => null);
+  if (getSpace(store, characterId)?.status !== "accepted") return "";
+  const promiseLines = describeOpenPromisesForChat(getCouplePromises(store, characterId));
+  const rawNickname = getCoupleNickname(store, characterId);
+  const nickname = rawNickname && isCoupleUnlocked(getCouplePeakTemperature(store, characterId, store?.[characterId]?.temperature), "nickname") ? rawNickname : "";
+  return [
+    "[雙人約定｜內部規則]",
+    "這是你和玩家情侶空間的約定清單功能。當玩家和你在這輪對話裡說好一件之後要做的事（例如「下次一起去看海」「每天睡前說晚安」「週末陪你看電影」「答應你不熬夜」），而你這次的回覆答應或確認了，就必須在回覆最後另起一行附加：",
+    "[[COUPLE_PROMISE:text=約定內容;date=YYYY-MM-DD]]",
+    "- text：20 字內，簡單描述這件事本身，例如「一起去看海」「每天睡前說晚安」。",
+    "- date：談到日期就換算成實際的 YYYY-MM-DD；沒有日期就寫 date=。",
+    "- 就算你同一則回覆也輸出了 [[CALENDAR_EVENT:...]]，仍然要附上這個標記。",
+    "- 只是隨口提議、你還沒答應，或下面清單已經有的約定，不要輸出；一次最多一個。",
+    "- 這只會跳出提示讓玩家決定要不要收進清單；不要在文字中解釋或提到標記、系統或清單。",
+    ...(promiseLines.length ? ["你們目前進行中的約定（自然記得即可；只有日期到了、快到了或話題相關時才提起，不要每次都提）：", ...promiseLines] : []),
+    // 85° 解鎖的專屬暱稱也放在這塊（保留優先度較高），避免 token 吃緊時被丟掉。
+    ...(nickname ? ["", "[專屬暱稱｜內部參考]", `玩家希望你私下用「${clean(nickname, 20)}」來稱呼玩家。在親近、撒嬌或溫柔的時刻自然使用，不必每句都叫。`] : []),
+  ].join("\n");
 }
 
 export function extractCoupleDirectives(text) {
@@ -195,12 +251,14 @@ const fallbackTask = (charId, locale) => {
 const recentContext = (recentMessages) => recentMessages.filter((m) => ["user", "assistant"].includes(m?.role)).slice(-12).map((m) => `${m.role === "user" ? "玩家" : "角色"}：${clean(m.content, 200)}`).join("\n");
 
 // 今日戀愛簽：玩家按下抽籤時才生成，一天一支。
-export async function generateLoveSign({ character, playerProfile, recentMessages = [], apiConfig, locale = "zh-TW" }) {
+const occasionRule = (occasion) => (occasion ? `\n今天是你們的「${clean(occasion, 60)}」，內容要自然呼應這個紀念日，讓玩家感覺你記得。` : "");
+
+export async function generateLoveSign({ character, playerProfile, recentMessages = [], apiConfig, locale = "zh-TW", occasion = "" }) {
   if (!hasApi(apiConfig) || !character) return fallbackSign(character?.id || "0", locale);
   const systemPrompt = `你正在扮演角色「${character.name}」。${clean(playerProfile?.name || "玩家", 60)} 剛在你們的情侶空間抽了一支「今日戀愛簽」，籤文由你來寫。
 
 角色設定（只供理解口吻，不要複述）：${charProfile(character)}
-近期聊天（只供參考語境）：${recentContext(recentMessages) || "（最近沒聊天，可以在籤文裡自然表達想念或小抱怨。）"}
+近期聊天（只供參考語境）：${recentContext(recentMessages) || "（最近沒聊天，可以在籤文裡自然表達想念或小抱怨。）"}${occasionRule(occasion)}
 
 輸出規則：
 1. level：從「上上籤、上籤、中籤、小吉、末吉」中選一個，大多數日子偏正面，偶爾末吉製造互動。
@@ -224,12 +282,12 @@ export async function generateLoveSign({ character, playerProfile, recentMessage
 }
 
 // 今日小任務：每天第一次進入情侶空間時生成。
-export async function generateDailyTask({ character, playerProfile, recentMessages = [], apiConfig, locale = "zh-TW" }) {
+export async function generateDailyTask({ character, playerProfile, recentMessages = [], apiConfig, locale = "zh-TW", occasion = "" }) {
   if (!hasApi(apiConfig) || !character) return fallbackTask(character?.id || "0", locale);
   const systemPrompt = `你正在扮演角色「${character.name}」。請為 ${clean(playerProfile?.name || "玩家", 60)} 出今天的「今日小任務」。
 
 角色設定（只供理解口吻，不要複述）：${charProfile(character)}
-近期聊天（只供參考語境）：${recentContext(recentMessages) || "（最近沒聊天。）"}
+近期聊天（只供參考語境）：${recentContext(recentMessages) || "（最近沒聊天。）"}${occasionRule(occasion)}
 
 輸出規則：
 1. text：15～45 字的任務，必須是玩家「在聊天中就能完成」的事（說一件事、分享一張圖、回答一個問題），是你親口出的題，口吻符合人設。

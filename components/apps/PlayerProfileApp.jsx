@@ -19,7 +19,8 @@ export default function PlayerProfileApp({
   const profileAvatar = sanitizeImage(profile?.avatar);
   const profileName = String(profile?.name || "").trim() || tr("玩家", "Player", "プレイヤー", "플레이어");
   const activePersona = persona?.personas?.[persona?.activePersonaId];
-  const activePersonaLabel = activePersona ? String(activePersona.label || profileName).trim() : "";
+  // 人格 label 只在切換／存檔時才從玩家姓名同步；使用中的人格直接顯示即時姓名，改名時才會馬上跟著變（跟下方人格清單一致）。
+  const activePersonaLabel = activePersona ? profileName : "";
   return <div className={largeTitle.pageClassName}>
     <LargeTitleHeader title={t("playerProfile")} onBack={closeApp} backLabel={tr("返回首頁", "Back to Home", "ホームに戻る", "홈으로 돌아가기")} />
     <div className="mp-cm" onScroll={largeTitle.onScroll}>

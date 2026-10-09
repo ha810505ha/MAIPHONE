@@ -1,6 +1,11 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import BackButton from "../common/BackButton";
-import { PHONE_APP_META, sanitizePhoneTheme, phoneWallpaperCss, mixHex, getReadableTextColor } from "../../utils/phoneAppGen";
+import { LargeTitle, LargeTitleHeader, useLargeTitle } from "../shell/LargeTitle";
+import {
+  PHONE_APP_META, phoneAppLabel, sanitizePhoneTheme, phoneWallpaperCss, mixHex, getReadableTextColor,
+  normalizePhoneThemeFavorites, pickPhoneThemePalette, samePhoneThemePalette,
+} from "../../utils/phoneAppGen";
 import { pseudoImageStyle } from "../../utils/pseudoImage";
 import { generateCityMap, categoryColor } from "../../utils/mapGen";
 import PseudoVoiceBubble from "../chat/PseudoVoiceBubble";
@@ -16,6 +21,14 @@ export default function PhoneApp({
   regenerateCharacterWallet, formatMoney, displayWalletText, armAppClickSuppression, suppressAppClickUntilRef, gid,
   phoneAppCache, setPhoneAppCache, phoneAppGenLoading, generatePhoneApp, diaryPage, setDiaryPage,
 }) {
+    const [chatMenuOpen, setChatMenuOpen] = React.useState(false);
+    const [themeSheet, setThemeSheet] = React.useState(null); // "regen" | { slot }
+    const [themeNotice, setThemeNotice] = React.useState("");
+    const largeTitle = useLargeTitle();
+    const longPressRef = React.useRef({ timer: null, fired: false });
+    const uiLocale = (typeof document !== "undefined" && document.documentElement.lang) || "zh-TW";
+    const clock = (time) => new Date(time).toLocaleTimeString(uiLocale, { hour: "2-digit", minute: "2-digit" });
+    const updatedText = (time) => tr(`更新於 ${time ? clock(time) : "--:--"}`, `Updated ${time ? clock(time) : "--:--"}`, `${time ? clock(time) : "--:--"} 更新`, `${time ? clock(time) : "--:--"} 업데이트`);
     const selectedCharId = phoneViewCharId || null;
     const selectedChar = characters.find((c) => c.id === selectedCharId) || null;
     const hasPendingTransfer = !!selectedChar && (transfers || []).some((item) => item.status === "pending" && item.characterId === selectedChar.id);
@@ -25,24 +38,25 @@ export default function PhoneApp({
     const playerBaseName = String(playerProfile?.nickname || playerProfile?.name || tr("你", "You", "あなた", "나")).trim();
     const playerContactName = playerContact.suffix ? `${playerBaseName}（${playerContact.suffix}）` : playerBaseName;
     const now = new Date();
-    const phoneTime = now.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false });
-    const phoneDate = now.toLocaleDateString("zh-TW", { month: "2-digit", day: "2-digit" });
+    const phoneTime = now.toLocaleTimeString(uiLocale, { hour: "2-digit", minute: "2-digit", hour12: false });
+    const phoneDate = now.toLocaleDateString(uiLocale, { month: "2-digit", day: "2-digit" });
     const allThreads = [
       {
         id: "player",
         name: playerContactName,
         relation: playerContact.note || selectedChar?.relationshipToUser || "",
         messages: playerMsgs.map((m, i) => {
-          const noticeText = m.noticeType === "character_blocked" ? `${playerContactName} 已封鎖你`
-            : m.noticeType === "character_unblocked" ? `${playerContactName} 已解除對你的封鎖`
-              : m.noticeType === "player_blocked_by_character" ? `你已封鎖 ${playerContactName}`
-                : m.noticeType === "player_unblocked_by_character" ? `你已解除對 ${playerContactName} 的封鎖`
+          const name = playerContactName;
+          const noticeText = m.noticeType === "character_blocked" ? tr(`${name} 已封鎖你`, `${name} blocked you`, `${name}にブロックされました`, `${name}님이 나를 차단했습니다`)
+            : m.noticeType === "character_unblocked" ? tr(`${name} 已解除對你的封鎖`, `${name} unblocked you`, `${name}のブロックが解除されました`, `${name}님이 차단을 해제했습니다`)
+              : m.noticeType === "player_blocked_by_character" ? tr(`你已封鎖 ${name}`, `You blocked ${name}`, `${name}をブロックしました`, `${name}님을 차단했습니다`)
+                : m.noticeType === "player_unblocked_by_character" ? tr(`你已解除對 ${name} 的封鎖`, `You unblocked ${name}`, `${name}のブロックを解除しました`, `${name}님의 차단을 해제했습니다`)
                   : m.content;
           return {
             id: `p-${i}-${m.id || gid()}`,
             from: m.role === "system_notice" ? "system" : m.role === "assistant" ? "char" : "other",
             // 只有示意圖片、沒有文字時不補 [圖片]：下面會直接畫出色塊。
-            text: m.pseudoVoice ? "" : (noticeText || (m.pseudoImage ? "" : "[圖片]")),
+            text: m.pseudoVoice ? "" : (noticeText || (m.pseudoImage ? "" : tr("[圖片]", "[Image]", "[画像]", "[이미지]"))),
             pseudoImage: m.pseudoImage || null,
             pseudoVoice: m.pseudoVoice || null,
             noticeType: m.noticeType || null,
@@ -82,136 +96,324 @@ export default function PhoneApp({
     // 主題化的面板與按鈕樣式（聊天/錢包等舊頁面共用）
     const phPanel = phTh ? { background: phTh.card, border: `1px solid ${phTh.cardBorder}` } : {};
     const phBtn = phTh ? { background: phTh.card, border: `1px solid ${phTh.cardBorder}`, color: phTh.text } : {};
-    const inImmersivePhone = ["desktop", "chatlist", "thread", "wallet", ...AI_APP_PAGES].includes(phonePage);
+    const inImmersivePhone = ["desktop", "chatlist", "thread", "wallet", "theme", ...AI_APP_PAGES].includes(phonePage);
+    const goTo = (page) => (event) => {
+      event?.stopPropagation?.();
+      armAppClickSuppression();
+      setChatMenuOpen(false);
+      setThemeSheet(null);
+      setThemeNotice("");
+      if (page === "desktop") setDiaryPage(0);
+      setPhonePage(page);
+    };
+    // 手機內頁頂欄（MP-015）：左上返回只回上一層——以前會直接 closeApp 離開整個手機，旁邊又另有「回到桌面」，容易按錯。
+    const statusRow = (color) => (
+      <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, color, fontSize: 13, padding: "2px 8px 0" }}>
+        <span>{phoneTime}</span><span>{phoneDate}</span>
+      </div>
+    );
+    const pageBar = ({ backTo, backLabel, title, color, sub, subColor, right }) => (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "10px 0 8px", position: "relative" }}>
+        <BackButton onClick={goTo(backTo)} label={backLabel} />
+        <div style={{ flex: 1, minWidth: 0, fontWeight: 800, fontSize: 15, color, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</div>
+        {sub && <span style={{ fontSize: 11, color: subColor || color, flex: "none" }}>{sub}</span>}
+        {right}
+      </div>
+    );
+    const backToDesktopLabel = tr("返回桌面", "Back to home screen", "ホーム画面に戻る", "홈 화면으로 돌아가기");
+    // 狀態旁的角色頭像：直接引用角色原本的頭像網址，不另外生成或複製一份圖片。
+    const statusAvatar = (size, theme) => {
+      const src = selectedChar ? sanitizeUserImageUrl(selectedChar.avatar) : "";
+      return (
+        <span className="mp-av" aria-hidden="true" style={{ width: size, height: size, minWidth: size, borderRadius: "50%", flex: "none", background: theme.accent, color: getReadableTextColor(theme.accent), fontSize: Math.round(size * 0.45), fontWeight: 700, boxShadow: "none" }}>
+          {src ? <img src={src} alt="" /> : <AvatarFallback name={selectedChar?.name} />}
+        </span>
+      );
+    };
     return (
-      <div className={`mp-page phone-app-page ${!inImmersivePhone ? "phone-picker-page" : "phone-generated-page"}`} style={inImmersivePhone ? { padding: 0 } : undefined}>
-        {!inImmersivePhone && (
-          <div className="mp-hdr">
-            <BackButton onClick={closeApp} label={tr("返回首頁", "Back to Home", "ホームに戻る", "홈으로 돌아가기")} />
-            <div className="mp-htitle">{t("phone")}</div>
-          </div>
-        )}
-        <div className={`mp-cm ${!inImmersivePhone ? "phone-picker-content" : ""}`} style={inImmersivePhone ? { padding: 0 } : undefined}>
-          {characters.length === 0 && <div className="mp-empty"><div className="mp-empty-icon" aria-hidden="true"><Icon name="phone" size={34} /></div><div className="mp-empty-t">{t("characters")} {t("phone")}</div></div>}
+      // mp-type-floor：手機內大量 8–10px 的 inline 小字一律拉到 11px（UI 規範最小字級）。
+      <div className={`${inImmersivePhone ? "mp-page mp-type-floor" : largeTitle.pageClassName} phone-app-page ${!inImmersivePhone ? "phone-picker-page" : "phone-generated-page"}`} style={inImmersivePhone ? { padding: 0 } : undefined}>
+        {!inImmersivePhone && <LargeTitleHeader title={t("phone")} onBack={closeApp} backLabel={tr("返回首頁", "Back to Home", "ホームに戻る", "홈으로 돌아가기")} />}
+        <div className={`mp-cm ${!inImmersivePhone ? "phone-picker-content" : ""}`} style={inImmersivePhone ? { padding: 0 } : undefined} onScroll={!inImmersivePhone ? largeTitle.onScroll : undefined}>
+          {!inImmersivePhone && <LargeTitle title={t("phone")} subtitle={characters.length ? tr("選一位角色，看看他的手機", "Pick a character to peek at their phone", "キャラクターを選んでスマホをのぞいてみよう", "캐릭터를 골라 휴대폰을 살펴보세요") : null} />}
+          {characters.length === 0 && <div className="mp-empty"><div className="mp-empty-icon" aria-hidden="true"><Icon name="phone" size={34} /></div><div className="mp-empty-t">{tr("還沒有角色，先到聯絡人新增吧", "No characters yet. Add one in Contacts first.", "キャラクターがいません。先に連絡先で追加しましょう", "아직 캐릭터가 없어요. 먼저 연락처에서 추가하세요")}</div></div>}
           {characters.length > 0 && !inImmersivePhone && (
-            <div className="mp-sc phone-picker-panel" style={{padding:12}}>
-              <div className="phone-picker-description" style={{fontWeight:700,fontSize:14,marginBottom:8}}>{t("contactsHint")}</div>
-              <div className="phone-picker-list" style={{display:"grid",gridTemplateColumns:"1fr",gap:8}}>
-                {characters.map((c) => (
-                  <button key={c.id} className="mp-cc phone-picker-card" style={{textAlign:"left",color:"var(--mp-txt)"}} onClick={(e) => { e.stopPropagation(); openDesktop(c.id); }}>
-                    <div style={{display:"flex",alignItems:"center",gap:10}}>
-                      <div className="mp-av phone-picker-avatar">{sanitizeUserImageUrl(c.avatar)?<img src={sanitizeUserImageUrl(c.avatar)} alt=""/>:<AvatarFallback name={c.name} />}</div>
-                      <div style={{flex:1}}>
-                        <div className="phone-picker-name" style={{fontWeight:700,fontSize:13,color:"var(--mp-txt)"}}>{c.name}</div>
-                        <div className="phone-picker-hint" style={{fontSize:11,color:"var(--mp-txt-l)"}}>{t("contactsHint")}</div>
-                      </div>
+            // 每位角色是一支迷你鎖定畫面：只讀已存的主題（沒生成過就用內建預設），打開這頁不會呼叫 AI。
+            <div className="phone-picker-list" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, paddingBottom: 16 }}>
+              {characters.map((c) => {
+                const pth = sanitizePhoneTheme(phoneAppCache[c.id]?.theme?.data);
+                const hasTheme = !!phoneAppCache[c.id]?.theme;
+                const avatar = sanitizeUserImageUrl(c.avatar);
+                return (
+                  <button key={c.id} type="button" className="phone-picker-card" onClick={(e) => { e.stopPropagation(); openDesktop(c.id); }}
+                    aria-label={tr(`查看 ${c.name} 的手機`, `View ${c.name}'s phone`, `${c.name}のスマホを見る`, `${c.name}의 휴대폰 보기`)}
+                    style={{ position: "relative", height: 196, border: 0, borderRadius: 22, padding: "14px 10px 18px", background: phoneWallpaperCss(pth), color: pth.text, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", cursor: "pointer", font: "inherit", overflow: "hidden", boxShadow: "0 6px 18px rgba(80,40,70,.14)" }}>
+                    <div style={{ fontSize: 30, fontWeight: 300, letterSpacing: 1, lineHeight: 1.1 }}>{phoneTime}</div>
+                    <div style={{ fontSize: 11, color: pth.textSub, marginTop: 2 }}>{now.toLocaleDateString(uiLocale, { month: "short", day: "numeric", weekday: "short" })}</div>
+                    <div className="mp-av" style={{ width: 42, height: 42, borderRadius: "50%", marginTop: 14, border: `2px solid ${pth.cardBorder}`, background: pth.card }}>
+                      {avatar ? <img src={avatar} alt="" /> : <AvatarFallback name={c.name} />}
                     </div>
+                    <div style={{ fontWeight: 800, fontSize: 13, marginTop: 6, maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</div>
+                    <div style={{ fontSize: 11, color: pth.textSub, marginTop: 2, lineHeight: 1.35, maxHeight: 30, overflow: "hidden" }}>
+                      {hasTheme && pth.status ? pth.status : tr("尚未生成主題", "No theme yet", "テーマ未生成", "테마 미생성")}
+                    </div>
+                    <span aria-hidden="true" style={{ position: "absolute", bottom: 8, left: "50%", transform: "translateX(-50%)", width: 44, height: 3, borderRadius: 9, background: pth.textSub, opacity: .45 }} />
                   </button>
-                ))}
-              </div>
+                );
+              })}
             </div>
           )}
           {characters.length > 0 && selectedChar && phonePage === "desktop" && (() => {
             const th = sanitizePhoneTheme(phoneAppCache[selectedChar.id]?.theme?.data);
+            const hasTheme = !!phoneAppCache[selectedChar.id]?.theme;
             const homeMusic = phoneAppCache[selectedChar.id]?.music?.data?.nowPlaying || th.music;
-            const cardS = { background: th.card, border: `1px solid ${th.cardBorder}`, borderRadius: 16 };
+            const cardS = { background: th.card, border: `1px solid ${th.cardBorder}`, borderRadius: 18 };
             const openApp = (page) => (e) => { e.stopPropagation(); armAppClickSuppression(); setPhonePage(page); };
-            const appTile = (icon, label, page, locked) => (
-              <button key={label} className="mp-icon" disabled={locked} onClick={locked ? undefined : openApp(page)}
-                style={{ background: "transparent", border: "none", padding: 0, opacity: locked ? .45 : 1 }}>
+            // 角色手機裡的 App 一律用同一種圖示底（以前聊天／錢包是圖片、其他是 emoji，混在一起很亂）。
+            const appTile = (icon, page) => (
+              <button key={page} type="button" className="mp-icon" onClick={openApp(page)} style={{ background: "transparent", border: "none", padding: 0 }}>
                 <div className="mp-icon-c" style={{ fontSize: 26, background: th.card, borderColor: th.cardBorder }}>{icon}</div>
-                <span className="mp-icon-l" style={{ color: th.textSub }}>{locked ? "🔒" : label}</span>
+                <span className="mp-icon-l" style={{ color: th.text }}>{page === "chatlist" ? tr("訊息", "Messages", "メッセージ", "메시지") : page === "wallet" ? t("wallet") : phoneAppLabel(page, tr)}</span>
               </button>
             );
             return (
-              <div style={{ position: "relative", height: "100%", minHeight: 640, background: phoneWallpaperCss(th), padding: "14px 14px 24px", display: "flex", flexDirection: "column", gap: 12 }}>
-                <BackButton style={{ position: "absolute", left: 12, top: 12, zIndex: 5 }} onClick={openPicker} label={tr("返回", "Back", "戻る", "뒤로")} />
-                <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, color: th.textSub, fontSize: 13, padding: "2px 8px 0 56px" }}>
-                  <span>{phoneTime}</span><span>{phoneDate}</span>
+              <div style={{ position: "relative", minHeight: "100%", background: phoneWallpaperCss(th), padding: "12px 14px 26px", display: "flex", flexDirection: "column", gap: 12 }}>
+                {/* 頂列：左上返回角色列表（原本底部的「切換角色」），右邊日期；時間只在大時鐘出現一次 */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <BackButton onClick={openPicker} label={tr("返回角色列表", "Back to characters", "キャラクター一覧に戻る", "캐릭터 목록으로 돌아가기")} />
+                  <span style={{ flex: 1 }} />
+                  <span style={{ fontWeight: 700, color: th.textSub, fontSize: 13 }}>{phoneDate}</span>
                 </div>
 
-                {/* 時鐘小工具 */}
-                <div style={{ ...cardS, borderRadius: 18, padding: "12px 16px" }}>
-                  <div style={{ fontSize: 36, fontWeight: 900, color: th.text, fontFamily: "var(--mp-fontd)", letterSpacing: 1 }}>{phoneTime}</div>
-                  <div style={{ fontSize: 11, color: th.textSub, marginTop: 2 }}>
-                    {now.toLocaleDateString("zh-TW", { month: "long", day: "numeric", weekday: "long" })} · {selectedChar.name}的手機{th.themeName !== "預設" ? ` · ${th.themeName}` : ""}
+                {/* 時鐘＋狀態小工具 */}
+                <div style={{ ...cardS, borderRadius: 22, padding: "14px 16px" }}>
+                  <div style={{ fontSize: 42, fontWeight: 300, color: th.text, letterSpacing: 1, lineHeight: 1.1 }}>{phoneTime}</div>
+                  <div style={{ fontSize: 12, color: th.textSub, marginTop: 4 }}>
+                    {now.toLocaleDateString(uiLocale, { month: "long", day: "numeric", weekday: "long" })} · {tr(`${selectedChar.name}的手機`, `${selectedChar.name}'s phone`, `${selectedChar.name}のスマホ`, `${selectedChar.name}의 휴대폰`)}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 13, color: th.text, lineHeight: 1.5, marginTop: 10 }}>
+                    {statusAvatar(28, th)}
+                    <span style={{ minWidth: 0 }}>
+                      {hasTheme && th.status
+                        ? th.status
+                        : tr("還沒有主題：打開「主題」App 生成", "No theme yet — open the Theme app to generate one", "テーマ未生成：「テーマ」アプリで生成できます", "아직 테마가 없어요 — 「테마」 앱에서 생성하세요")}
+                    </span>
                   </div>
                 </div>
 
-                {/* 狀態一句話 */}
-                <div style={{ ...cardS, borderRadius: 14, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10 }}>
-                  <div className="mp-av" style={{ width: 30, height: 30, flex: "none", background: th.accent, color: "#fff", fontSize: 13, fontWeight: 700 }}>
-                    {sanitizeUserImageUrl(selectedChar.avatar) ? <img src={sanitizeUserImageUrl(selectedChar.avatar)} alt="" /> : <AvatarFallback name={selectedChar.name} />}
-                  </div>
-                  <div style={{ fontSize: 12, color: th.text, lineHeight: 1.5, flex: 1 }}>
-                    {th.status || tr("尚未生成主題", "Theme not generated yet", "テーマ未生成", "테마 미생성")}
-                  </div>
-                </div>
-
-                {/* 音樂 + 待辦（備忘錄） */}
+                {/* 音樂 + 待辦 */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                  <button style={{ ...cardS, padding: 12, textAlign: "left", cursor: "pointer", font: "inherit" }} onClick={openApp("music")}>
-                    <div style={{ fontSize: 10, color: th.accent, fontWeight: 700 }}>♪ {tr("正在播放", "Now playing", "再生中", "재생 중")}</div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: th.text, marginTop: 6 }}>{homeMusic?.title || "—"}</div>
-                    <div style={{ fontSize: 10, color: th.textSub }}>{homeMusic?.artist || ""}</div>
+                  <button type="button" style={{ ...cardS, padding: 12, textAlign: "left", cursor: "pointer", font: "inherit" }} onClick={openApp("music")}>
+                    <div style={{ fontSize: 11, color: th.accent, fontWeight: 800 }}>♪ {tr("正在播放", "Now playing", "再生中", "재생 중")}</div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: th.text, marginTop: 6 }}>{homeMusic?.title || "—"}</div>
+                    <div style={{ fontSize: 11, color: th.textSub }}>{homeMusic?.artist || ""}</div>
                     <div style={{ height: 3, borderRadius: 99, background: th.cardBorder, marginTop: 10 }}>
                       <div style={{ width: "38%", height: "100%", borderRadius: 99, background: th.accent }} />
                     </div>
                   </button>
                   <div style={{ ...cardS, padding: 12, display: "flex", flexDirection: "column", gap: 4 }}>
-                    <div style={{ fontSize: 10, color: th.accent, fontWeight: 700 }}>{tr("待辦", "To-do", "やること", "할 일")}</div>
-                    {th.todos.length === 0 && <div style={{ fontSize: 11, color: th.textSub }}>—</div>}
+                    <div style={{ fontSize: 11, color: th.accent, fontWeight: 800 }}>{tr("待辦", "To-do", "やること", "할 일")}</div>
+                    {th.todos.length === 0 && <div style={{ fontSize: 12, color: th.textSub }}>—</div>}
                     {th.todos.map((td, i) => (
-                      <div key={i} style={{ fontSize: 11, color: td.done ? th.textSub : th.text, textDecoration: td.done ? "line-through" : "none" }}>
-                        {td.done ? "☑" : "☐"} {td.text}
+                      <div key={i} style={{ fontSize: 12, color: td.done ? th.textSub : th.text, textDecoration: td.done ? "line-through" : "none" }}>
+                        {td.done ? "●" : "○"} {td.text}
                       </div>
                     ))}
                   </div>
                 </div>
 
-                {/* App 格：聊天/錢包 + AI App×7 + 鎖定 App */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10, marginTop: 2 }}>
-                  <button className="mp-icon" style={{ background: "transparent", border: "none", padding: 0 }} onClick={openApp("chatlist")}>
-                    <div className="mp-icon-c mp-icon-c-img" style={{ background: th.card, borderColor: th.cardBorder }}>{renderAppIcon({ id: "chat", name: "聊天", icon: "💬", iconUrl: "./app-icons/chat.webp?v=20260802" }, 44)}</div>
-                    <span className="mp-icon-l" style={{ color: th.textSub }}>{t("chat")}</span>
-                  </button>
-                  <button className="mp-icon" style={{ background: "transparent", border: "none", padding: 0 }} onClick={openApp("wallet")}>
-                    <div className="mp-icon-c mp-icon-c-img" style={{ background: th.card, borderColor: th.cardBorder }}>{renderAppIcon({ id: "wallet", name: "錢包", icon: "💳", iconUrl: "./app-icons/wallet.webp?v=20260802" }, 44)}</div>
-                    <span className="mp-icon-l" style={{ color: th.textSub }}>{t("wallet")}</span>
-                  </button>
-                  {appTile("🖼️", tr("相簿", "Gallery", "アルバム", "앨범"), "gallery", false)}
-                  {appTile("🎧", tr("音樂", "Music", "音楽", "음악"), "music", false)}
-                  {appTile("🗺️", tr("地圖", "Map", "マップ", "지도"), "map", false)}
-                  {appTile("🛍️", tr("商店", "Shop", "ショップ", "상점"), "shop", false)}
-                  {appTile("📔", tr("日記", "Diary", "日記", "일기"), "diary", false)}
-                  {appTile("🧭", tr("瀏覽器", "Browser", "ブラウザ", "브라우저"), "browser", false)}
-                  {appTile("⏱️", tr("使用紀錄", "Screen Time", "使用履歴", "사용 기록"), "usage", false)}
-                  {appTile("📷", tr("相機", "Camera", "カメラ", "카메라"), null, true)}
-                  {appTile("⚙️", t("settings"), null, true)}
+                {/* App 格（相機／設定等鎖住的空殼已拿掉；「主題」取代原本底部的生成主題按鈕） */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 12, marginTop: 2 }}>
+                  {appTile("🎧", "music")}
+                  {appTile("🗺️", "map")}
+                  {appTile("🛍️", "shop")}
+                  {appTile("🧭", "browser")}
+                  {appTile("⏱️", "usage")}
+                  {appTile("🎨", "theme")}
                 </div>
 
-                {/* 底部操作列 */}
-                <div style={{ marginTop: "auto", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                  <button className="mp-ibtn" onClick={openPicker}>{t("switchRole")}</button>
-                  <button className="mp-ibtn" disabled={phoneAppGenLoading === "theme"} onClick={() => generatePhoneApp(selectedChar, "theme")}>
-                    {phoneAppGenLoading === "theme" ? t("loading") : (phoneAppCache[selectedChar.id]?.theme ? tr("重新生成主題", "Refresh theme", "テーマ更新", "테마 새로고침") : tr("✦ 生成主題", "✦ Generate theme", "✦ テーマ生成", "✦ 테마 생성"))}
-                  </button>
+                {/* 底部 Dock：最常用的四個 */}
+                <div style={{ marginTop: "auto", display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, padding: "10px 6px", borderRadius: 26, background: th.card, border: `1px solid ${th.cardBorder}` }}>
+                  {appTile("💬", "chatlist")}
+                  {appTile("💳", "wallet")}
+                  {appTile("🖼️", "gallery")}
+                  {appTile("📔", "diary")}
                 </div>
-                <div style={{ position: "absolute", left: "50%", bottom: 10, transform: "translateX(-50%)", width: 120, height: 5, borderRadius: 999, background: "rgba(28,44,55,.3)" }} />
+                <div style={{ position: "absolute", left: "50%", bottom: 9, transform: "translateX(-50%)", width: 120, height: 5, borderRadius: 999, background: th.textSub, opacity: .4 }} />
+              </div>
+            );
+          })()}
+          {characters.length > 0 && selectedChar && phonePage === "theme" && (() => {
+            const charCache = phoneAppCache[selectedChar.id] || {};
+            const th = sanitizePhoneTheme(charCache.theme?.data);
+            const hasTheme = !!charCache.theme;
+            const busy = phoneAppGenLoading === "theme";
+            const favorites = normalizePhoneThemeFavorites(charCache.themeFavorites);
+            const current = pickPhoneThemePalette(th);
+            const cardS = { background: th.card, border: `1px solid ${th.cardBorder}` };
+            const isSaved = favorites.some((fav) => samePhoneThemePalette(fav, th));
+            const firstEmpty = favorites.findIndex((fav) => !fav);
+            const accentInk = getReadableTextColor(th.accent);
+            const paletteName = (palette) => (palette?.themeName && palette.themeName !== "預設" ? palette.themeName : tr("預設配色", "Default colors", "デフォルト配色", "기본 색상"));
+            const writeFavorites = (next) => setPhoneAppCache((prev) => ({
+              ...prev,
+              [selectedChar.id]: { ...(prev[selectedChar.id] || {}), themeFavorites: next },
+            }));
+            const applyPalette = (palette) => setPhoneAppCache((prev) => {
+              const characterCache = prev[selectedChar.id] || {};
+              const data = sanitizePhoneTheme({ ...(characterCache.theme?.data || {}), ...palette });
+              return { ...prev, [selectedChar.id]: { ...characterCache, theme: { ...(characterCache.theme || {}), updatedAt: Date.now(), data } } };
+            });
+            const toastLine = (text) => setThemeNotice(text);
+            const saveCurrent = () => {
+              if (isSaved) return toastLine(tr("這組配色已經收藏過了", "These colors are already saved", "この配色はすでに保存済みです", "이미 저장한 색상이에요"));
+              if (firstEmpty < 0) return toastLine(tr("收藏已滿，長按色塊可以取代", "Favorites are full — press and hold one to replace it", "保存がいっぱいです。長押しで置き換えできます", "저장이 가득 찼어요. 길게 눌러 바꿀 수 있어요"));
+              writeFavorites(favorites.map((fav, index) => (index === firstEmpty ? current : fav)));
+              toastLine(tr(`已收藏「${paletteName(current)}」`, `Saved “${paletteName(current)}”`, `「${paletteName(current)}」を保存しました`, `「${paletteName(current)}」을(를) 저장했어요`));
+            };
+            const startPress = (slot) => () => {
+              clearTimeout(longPressRef.current.timer);
+              longPressRef.current.fired = false;
+              longPressRef.current.timer = setTimeout(() => { longPressRef.current.fired = true; setThemeSheet({ slot }); }, 480);
+            };
+            const endPress = () => clearTimeout(longPressRef.current.timer);
+            const tapFavorite = (slot) => () => {
+              if (longPressRef.current.fired) { longPressRef.current.fired = false; return; }
+              const fav = favorites[slot];
+              if (samePhoneThemePalette(fav, th)) return toastLine(tr("目前就是這組配色", "Already using these colors", "すでにこの配色です", "이미 이 색상을 쓰고 있어요"));
+              applyPalette(fav);
+              toastLine(tr(`已套用「${paletteName(fav)}」`, `Applied “${paletteName(fav)}”`, `「${paletteName(fav)}」を適用しました`, `「${paletteName(fav)}」을(를) 적용했어요`));
+            };
+            const regenerate = (scope) => { setThemeSheet(null); generatePhoneApp(selectedChar, "theme", { themeScope: scope }); };
+            const sheetSlot = themeSheet && typeof themeSheet === "object" ? themeSheet.slot : null;
+            const sheetFav = sheetSlot !== null ? favorites[sheetSlot] : null;
+            const portalTarget = typeof document !== "undefined" ? (document.querySelector(".mp-phone") || document.body) : null;
+            const sheetOption = (icon, title, hint, onClick, danger = false) => (
+              <button type="button" onClick={onClick} style={{ display: "flex", gap: 12, alignItems: "center", width: "100%", padding: 12, border: 0, borderRadius: 14, background: "transparent", textAlign: "left", font: "inherit", cursor: "pointer", color: "var(--mp-txt)" }}>
+                <span style={{ width: 40, height: 40, borderRadius: 12, display: "grid", placeItems: "center", fontSize: 19, flex: "none", background: icon && icon.startsWith?.("linear-gradient") ? icon : "var(--mp-pink-lt)" }}>{icon && icon.startsWith?.("linear-gradient") ? "" : icon}</span>
+                <span style={{ minWidth: 0 }}>
+                  <b style={{ display: "block", fontSize: 14, color: danger ? "var(--mp-danger, #d93954)" : undefined }}>{title}</b>
+                  <small style={{ display: "block", fontSize: 12, color: "var(--mp-txt-l)", marginTop: 1, lineHeight: 1.45 }}>{hint}</small>
+                </span>
+              </button>
+            );
+            return (
+              <div style={{ position: "relative", minHeight: "100%", background: phoneWallpaperCss(th), padding: "14px 14px 26px", display: "flex", flexDirection: "column" }}>
+                {statusRow(th.textSub)}
+                {pageBar({ backTo: "desktop", backLabel: backToDesktopLabel, title: `🎨 ${phoneAppLabel("theme", tr)}`, color: th.text })}
+
+                <div style={{ fontSize: 12, fontWeight: 800, color: th.textSub, margin: "6px 4px 8px" }}>{tr("目前的樣子", "Current look", "いまの見た目", "현재 모습")}</div>
+                {/* 迷你桌面預覽：配色與內容一起看，才分得出「只換內容」「只換配色」的差別 */}
+                <div style={{ borderRadius: 22, padding: 14, background: phoneWallpaperCss(th), color: th.text, boxShadow: "0 8px 22px rgba(60,30,50,.16)", border: `1px solid ${th.cardBorder}` }}>
+                  <div style={{ fontSize: 32, fontWeight: 300, letterSpacing: 1, lineHeight: 1.1 }}>{phoneTime}</div>
+                  <div style={{ fontSize: 11, color: th.textSub }}>{now.toLocaleDateString(uiLocale, { month: "long", day: "numeric", weekday: "long" })}</div>
+                  <div style={{ ...cardS, borderRadius: 12, padding: "7px 10px", fontSize: 12, marginTop: 8, display: "flex", alignItems: "center", gap: 7 }}>
+                    {statusAvatar(22, th)}
+                    <span style={{ minWidth: 0 }}>{hasTheme && th.status ? th.status : tr("尚未生成主題", "No theme yet", "テーマ未生成", "테마 미생성")}</span>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
+                    <div style={{ ...cardS, borderRadius: 12, padding: "8px 10px", fontSize: 11 }}>
+                      <div style={{ color: th.accent, fontWeight: 800 }}>♪ {tr("正在播放", "Now playing", "再生中", "재생 중")}</div>
+                      <div style={{ fontWeight: 800, marginTop: 3 }}>{(charCache.music?.data?.nowPlaying || th.music)?.title || "—"}</div>
+                    </div>
+                    <div style={{ ...cardS, borderRadius: 12, padding: "8px 10px", fontSize: 11 }}>
+                      <div style={{ color: th.accent, fontWeight: 800 }}>{tr("待辦", "To-do", "やること", "할 일")}</div>
+                      {(th.todos.length ? th.todos.slice(0, 2) : [{ text: "—", done: false }]).map((td, i) => <div key={i} style={{ marginTop: 2, color: td.done ? th.textSub : th.text, textDecoration: td.done ? "line-through" : "none" }}>{td.done ? "●" : "○"} {td.text}</div>)}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "10px 4px 0", fontSize: 12.5, color: th.text }}>
+                  <span>{tr("配色：", "Colors: ", "配色：", "색상: ")}<b style={{ fontSize: 14 }}>{paletteName(th)}</b></span>
+                  {isSaved && <span style={{ fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, ...cardS }}>{tr("已收藏", "Saved", "保存済み", "저장됨")}</span>}
+                </div>
+
+                <div style={{ fontSize: 12, fontWeight: 800, color: th.textSub, margin: "18px 4px 8px" }}>{tr(`收藏的配色（${favorites.filter(Boolean).length}/3）`, `Saved colors (${favorites.filter(Boolean).length}/3)`, `保存した配色（${favorites.filter(Boolean).length}/3）`, `저장한 색상 (${favorites.filter(Boolean).length}/3)`)}</div>
+                <div style={{ display: "flex", gap: 16, padding: "0 4px" }}>
+                  {favorites.map((fav, slot) => {
+                    if (fav) {
+                      const favTheme = sanitizePhoneTheme(fav);
+                      const active = samePhoneThemePalette(fav, th);
+                      return (
+                        <button key={slot} type="button" onClick={tapFavorite(slot)} onPointerDown={startPress(slot)} onPointerUp={endPress} onPointerLeave={endPress} onPointerCancel={endPress}
+                          onContextMenu={(e) => { e.preventDefault(); endPress(); setThemeSheet({ slot }); }}
+                          aria-label={tr(`套用「${paletteName(fav)}」，長按可取代或刪除`, `Apply “${paletteName(fav)}” — press and hold to replace or delete`, `「${paletteName(fav)}」を適用（長押しで置換・削除）`, `「${paletteName(fav)}」 적용 — 길게 눌러 바꾸기·삭제`)}
+                          style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, width: 72, border: 0, background: "transparent", padding: 0, cursor: "pointer", font: "inherit", WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none" }}>
+                          <span style={{ position: "relative", width: 56, height: 56, borderRadius: "50%", background: phoneWallpaperCss(favTheme), boxShadow: active ? `0 0 0 3px ${th.card}, 0 0 0 6px ${th.accent}` : "0 4px 12px rgba(60,30,50,.18)" }}>
+                            <span style={{ position: "absolute", right: 2, bottom: 2, width: 16, height: 16, borderRadius: "50%", background: favTheme.accent, border: `2px solid ${th.card}` }} />
+                          </span>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: th.text, maxWidth: 72, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{paletteName(fav)}</span>
+                        </button>
+                      );
+                    }
+                    if (slot === firstEmpty) {
+                      return (
+                        <button key={slot} type="button" onClick={saveCurrent} aria-label={tr("收藏目前配色", "Save current colors", "今の配色を保存", "현재 색상 저장")}
+                          style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, width: 72, border: 0, background: "transparent", padding: 0, cursor: "pointer", font: "inherit" }}>
+                          <span style={{ width: 56, height: 56, borderRadius: "50%", display: "grid", placeItems: "center", fontSize: 24, color: th.text, border: `2px dashed ${th.textSub}`, background: th.card }}>＋</span>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: th.text }}>{tr("收藏目前", "Save current", "今のを保存", "현재 저장")}</span>
+                        </button>
+                      );
+                    }
+                    return <span key={slot} aria-hidden="true" style={{ width: 72, display: "flex", justifyContent: "center" }}><span style={{ width: 56, height: 56, borderRadius: "50%", border: `2px dotted ${th.cardBorder}`, opacity: .6 }} /></span>;
+                  })}
+                </div>
+                <div style={{ fontSize: 11, color: th.textSub, margin: "10px 4px 0", lineHeight: 1.6 }}>
+                  {firstEmpty < 0
+                    ? tr("收藏已滿：長按色塊可以用目前配色取代，或刪除。", "Favorites full: press and hold a swatch to replace or delete it.", "保存がいっぱい：色を長押しで置き換え・削除できます。", "저장이 가득 찼어요: 길게 눌러 바꾸거나 삭제하세요.")
+                    : tr("點色塊套用（不花 AI）・點「＋」收藏目前配色・長按色塊可取代或刪除", "Tap to apply (no AI) · ＋ saves current colors · press and hold to replace or delete", "タップで適用（AI不要）・＋で今の配色を保存・長押しで置換／削除", "눌러서 적용(AI 사용 안 함) · ＋로 현재 색상 저장 · 길게 눌러 바꾸기/삭제")}
+                </div>
+                {themeNotice && <div role="status" style={{ fontSize: 12, fontWeight: 700, color: th.text, margin: "10px 4px 0" }}>✓ {themeNotice}</div>}
+
+                <button type="button" disabled={busy} onClick={() => (hasTheme ? setThemeSheet("regen") : generatePhoneApp(selectedChar, "theme", { themeScope: "all" }))}
+                  style={{ marginTop: 22, padding: 13, border: 0, borderRadius: 16, fontWeight: 800, fontSize: 14.5, font: "inherit", background: `linear-gradient(135deg, ${th.accent}dd, ${th.accent})`, color: accentInk, cursor: busy ? "wait" : "pointer", opacity: busy ? .7 : 1, boxShadow: "0 6px 16px rgba(60,30,50,.2)" }}>
+                  {busy ? t("generating") : hasTheme ? tr("✦ 重新生成 ▾", "✦ Regenerate ▾", "✦ 作り直す ▾", "✦ 다시 생성 ▾") : tr("✦ 生成主題", "✦ Generate theme", "✦ テーマを生成", "✦ 테마 생성")}
+                </button>
+                <div style={{ textAlign: "center", fontSize: 11, color: th.textSub, marginTop: 7 }}>
+                  {hasTheme
+                    ? tr("會使用 AI 額度・點開後選擇要換什麼", "Uses AI quota · choose what to change", "AI を使います・何を変えるか選べます", "AI 사용량을 써요 · 무엇을 바꿀지 고르세요")
+                    : tr("會使用 AI 額度・第一次會生成配色和桌面內容", "Uses AI quota · first run creates both colors and home screen content", "AI を使います・初回は配色と内容をまとめて生成", "AI 사용량을 써요 · 처음엔 색상과 내용을 함께 생성해요")}
+                </div>
+
+                {themeSheet && portalTarget && createPortal(
+                  <div className="mp-overlay" style={{ alignItems: "flex-end", padding: 8 }} onClick={() => setThemeSheet(null)}>
+                    <div role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()} style={{ width: "100%", background: "var(--mp-surface)", borderRadius: 24, padding: "8px 8px 10px", boxShadow: "0 -8px 30px rgba(30,15,30,.2)" }}>
+                      <div style={{ width: 38, height: 5, borderRadius: 9, background: "var(--mp-line)", margin: "4px auto 8px" }} />
+                      {themeSheet === "regen" ? <>
+                        <div style={{ fontSize: 12.5, fontWeight: 800, color: "var(--mp-txt-l)", padding: "2px 12px 6px" }}>{tr("要換什麼？", "What to change?", "何を変える？", "무엇을 바꿀까요?")}</div>
+                        {sheetOption("📝", tr("只換內容", "Content only", "内容だけ", "내용만"), tr("狀態、正在播放、待辦換新・配色保留", "New status, music and to-dos · colors kept", "ステータス・再生中・やることを更新・配色はそのまま", "상태·재생 중·할 일을 새로 · 색상 유지"), () => regenerate("content"))}
+                        {sheetOption("🎨", tr("只換配色", "Colors only", "配色だけ", "색상만"), tr("換一組新配色・內容保留", "New colors · content kept", "新しい配色に・内容はそのまま", "새 색상 · 내용 유지"), () => regenerate("palette"))}
+                        {sheetOption("✨", tr("全部換新", "Everything", "すべて新しく", "전부 새로"), tr("配色和內容整組重新生成", "Regenerate colors and content together", "配色と内容をまとめて作り直す", "색상과 내용을 함께 다시 생성"), () => regenerate("all"))}
+                      </> : sheetFav && <>
+                        <div style={{ fontSize: 12.5, fontWeight: 800, color: "var(--mp-txt-l)", padding: "2px 12px 6px" }}>{tr(`收藏的「${paletteName(sheetFav)}」`, `Saved “${paletteName(sheetFav)}”`, `保存した「${paletteName(sheetFav)}」`, `저장한 「${paletteName(sheetFav)}」`)}</div>
+                        {sheetOption(phoneWallpaperCss(sanitizePhoneTheme(sheetFav)), tr("套用這組", "Apply", "適用する", "적용"), tr("換成這組配色，內容不變", "Switch to these colors, content unchanged", "この配色に切り替え・内容はそのまま", "이 색상으로 바꾸기 · 내용 유지"), () => {
+                          applyPalette(sheetFav); setThemeSheet(null);
+                          toastLine(tr(`已套用「${paletteName(sheetFav)}」`, `Applied “${paletteName(sheetFav)}”`, `「${paletteName(sheetFav)}」を適用しました`, `「${paletteName(sheetFav)}」을(를) 적용했어요`));
+                        })}
+                        {sheetOption(phoneWallpaperCss(th), tr("用目前配色取代", "Replace with current", "今の配色で置き換え", "현재 색상으로 바꾸기"), tr(`改存「${paletteName(th)}」`, `Save “${paletteName(th)}” here instead`, `「${paletteName(th)}」に置き換え`, `「${paletteName(th)}」로 바꿔 저장`), () => {
+                          setThemeSheet(null);
+                          if (favorites.some((fav, index) => index !== sheetSlot && samePhoneThemePalette(fav, th))) return toastLine(tr("目前配色已在其他格收藏", "Current colors are already saved in another slot", "今の配色は別の枠に保存済みです", "현재 색상은 다른 칸에 이미 저장돼 있어요"));
+                          writeFavorites(favorites.map((fav, index) => (index === sheetSlot ? current : fav)));
+                          toastLine(tr(`已改存「${paletteName(th)}」`, `Saved “${paletteName(th)}”`, `「${paletteName(th)}」に置き換えました`, `「${paletteName(th)}」로 바꿨어요`));
+                        })}
+                        {sheetOption("🗑", tr("刪除這組", "Delete", "削除", "삭제"), tr("只刪收藏，不影響目前配色", "Only removes the favorite", "保存だけ削除・今の配色はそのまま", "저장만 삭제 · 현재 색상은 그대로"), () => {
+                          setThemeSheet(null);
+                          writeFavorites(normalizePhoneThemeFavorites(favorites.filter((_, index) => index !== sheetSlot)));
+                          toastLine(tr(`已刪除「${paletteName(sheetFav)}」`, `Deleted “${paletteName(sheetFav)}”`, `「${paletteName(sheetFav)}」を削除しました`, `「${paletteName(sheetFav)}」을(를) 삭제했어요`));
+                        }, true)}
+                      </>}
+                      <button type="button" onClick={() => setThemeSheet(null)} style={{ display: "block", width: "100%", marginTop: 6, padding: 12, border: 0, borderRadius: 14, background: "var(--mp-pink-lt)", font: "inherit", fontWeight: 800, fontSize: 14, color: "var(--mp-txt)", cursor: "pointer" }}>{t("cancel")}</button>
+                    </div>
+                  </div>,
+                  portalTarget,
+                )}
               </div>
             );
           })()}
           {characters.length > 0 && selectedChar && phonePage === "wallet" && (
             <div style={{position:"relative",height:"100%",minHeight:640,background:phoneWallpaperCss(phTh),padding:"14px 12px 24px",boxSizing:"border-box",width:"100%",maxWidth:"100%",overflowX:"hidden"}}>
-              <BackButton style={{position:"absolute",left:12,top:12,zIndex:5}} onClick={closeApp} label={tr("返回首頁", "Back to Home", "ホームに戻る", "홈으로 돌아가기")} />
-              <div style={{padding:"2px 8px 0 56px",display:"flex",justifyContent:"space-between",fontWeight:700,color:phTh.textSub,fontSize:13}}>
-                <span>{phoneTime}</span><span>{phoneDate}</span>
-              </div>
-              <div className="mp-sc" style={{padding:10,marginTop:12,boxSizing:"border-box",width:"100%",maxWidth:"100%",background:phoneChatUi.panel,border:`1px solid ${phoneChatUi.panelBorder}`,color:phoneChatUi.text}}>
-                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                <button className="mp-ibtn" style={{...phBtn,background:phoneChatUi.incoming,color:phoneChatUi.text,border:`1px solid ${phoneChatUi.incomingBorder}`}} onClick={(e) => { e.stopPropagation(); armAppClickSuppression(); setPhonePage("desktop"); }}>{t("backToDesktop")}</button>
-                <div style={{fontWeight:700,fontSize:13,color:phTh.text}}>{selectedChar.name} {t("wallet")}</div>
-                </div>
+              {statusRow(phTh.textSub)}
+              {pageBar({ backTo: "desktop", backLabel: backToDesktopLabel, title: `${selectedChar.name} ${t("wallet")}`, color: phTh.text })}
+              <div className="mp-sc" style={{padding:10,boxSizing:"border-box",width:"100%",maxWidth:"100%",background:phoneChatUi.panel,border:`1px solid ${phoneChatUi.panelBorder}`,color:phoneChatUi.text}}>
                 {!phoneWallet ? (
                   <div>
                     <div style={{fontSize:12,color:phTh.textSub,lineHeight:1.7}}>{tr("尚未生成角色錢包。", "This character wallet hasn't been generated yet.", "まだキャラクターのウォレットが生成されていません。", "아직 캐릭터 지갑이 생성되지 않았습니다.")}</div>
@@ -232,7 +434,7 @@ export default function PhoneApp({
                         <div key={t.id} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:12,padding:"7px 9px",borderRadius:10,background:"rgba(255,255,255,.62)"}}>
                           <div>
                             <div>{displayWalletText(t.note)}</div>
-                            <div style={{fontSize:10,color:"var(--mp-txt-l)"}}>{new Date(t.time).toLocaleString("zh-TW")}</div>
+                            <div style={{fontSize:10,color:"var(--mp-txt-l)"}}>{new Date(t.time).toLocaleString(uiLocale)}</div>
                           </div>
                           <div style={{fontWeight:800,color:t.type==="expense"?"#e53935":"#2e7d32"}}>{t.type==="expense"?"-":"+"}{formatMoney(t.amount)}</div>
                         </div>
@@ -245,32 +447,38 @@ export default function PhoneApp({
           )}
           {characters.length > 0 && selectedChar && phonePage === "chatlist" && (
             <div style={{position:"relative",height:"100%",minHeight:640,background:phoneWallpaperCss(phTh),padding:"14px 12px 24px",boxSizing:"border-box",width:"100%",maxWidth:"100%",overflowX:"hidden"}}>
-              <BackButton style={{position:"absolute",left:12,top:12,zIndex:5}} onClick={closeApp} label={tr("返回首頁", "Back to Home", "ホームに戻る", "홈으로 돌아가기")} />
-              <div style={{padding:"2px 8px 0 56px",display:"flex",justifyContent:"space-between",fontWeight:700,color:phTh.textSub,fontSize:13}}>
-                <span>{phoneTime}</span><span>{phoneDate}</span>
-              </div>
-              <div className="mp-sc" style={{padding:10,marginTop:12,boxSizing:"border-box",width:"100%",maxWidth:"100%",background:phoneChatUi.panel,border:`1px solid ${phoneChatUi.panelBorder}`,color:phoneChatUi.text}}>
-              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                <button className="mp-ibtn" style={{...phBtn,background:phoneChatUi.incoming,color:phoneChatUi.text,border:`1px solid ${phoneChatUi.incomingBorder}`}} onClick={(e) => { e.stopPropagation(); armAppClickSuppression(); setPhonePage("desktop"); }}>{t("backToDesktop")}</button>
-                <div style={{fontSize:12,color:phoneChatUi.sub}}>{tr("只讀聊天列表", "Read-only chat list", "閲覧専用チャット一覧", "읽기 전용 채팅 목록")}</div>
-                <button className="mp-ibtn" style={{...phBtn,marginLeft:"auto",background:phoneChatUi.incoming,color:phoneChatUi.text,border:`1px solid ${phoneChatUi.incomingBorder}`}} disabled={phoneGenLoading} onClick={() => generatePhoneNpcChats(selectedChar)}>
-                  {phoneGenLoading ? t("loading") : t("refreshOtherChats")}
-                </button>
-                <button className="mp-ibtn" style={{...phBtn,background:phoneChatUi.incoming,color:phoneChatUi.text,border:`1px solid ${phoneChatUi.incomingBorder}`}} disabled={phonePlayerContactLoading} onClick={() => refreshPhonePlayerContact(selectedChar)}>
-                  {phonePlayerContactLoading ? t("loading") : tr("更新玩家聊天室", "Refresh player chat", "プレイヤーチャット更新", "플레이어 채팅 새로고침")}
-                </button>
-              </div>
-              <div style={{fontSize:10,color:phoneChatUi.sub,margin:"-2px 0 8px 2px"}}>
-                {tr("快取：", "Cache: ", "キャッシュ: ", "캐시: ")}{phoneInboxCache[selectedChar.id]?.updatedAt ? new Date(phoneInboxCache[selectedChar.id].updatedAt).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"}) : "--:--"}
-              </div>
+              {statusRow(phTh.textSub)}
+              {pageBar({
+                backTo: "desktop", backLabel: backToDesktopLabel, title: tr("訊息", "Messages", "メッセージ", "메시지"), color: phTh.text,
+                sub: tr("唯讀", "Read only", "閲覧専用", "읽기 전용"), subColor: phTh.textSub,
+                right: <>
+                  <button type="button" className="mp-ibtn" style={{...phBtn,background:phoneChatUi.incoming,color:phoneChatUi.text,border:`1px solid ${phoneChatUi.incomingBorder}`,flex:"none",minWidth:34}}
+                    aria-label={tr("更多操作", "More actions", "その他の操作", "더 보기")} aria-expanded={chatMenuOpen}
+                    onClick={(e) => { e.stopPropagation(); setChatMenuOpen((open) => !open); }}>⋯</button>
+                  {chatMenuOpen && (
+                    <div className="mp-popover" style={{position:"absolute",right:0,top:"calc(100% + 6px)",zIndex:20,minWidth:200,borderRadius:14,overflow:"hidden",background:phoneChatUi.panel,border:`1px solid ${phoneChatUi.panelBorder}`,boxShadow:"0 12px 28px rgba(20,10,30,.22)"}}>
+                      <button type="button" className="mp-ibtn" style={{display:"block",width:"100%",textAlign:"left",border:0,borderRadius:0,padding:"11px 14px",background:"transparent",color:phoneChatUi.text}} disabled={phoneGenLoading}
+                        onClick={(e) => { e.stopPropagation(); setChatMenuOpen(false); generatePhoneNpcChats(selectedChar); }}>
+                        {phoneGenLoading ? t("loading") : t("refreshOtherChats")}
+                      </button>
+                      <button type="button" className="mp-ibtn" style={{display:"block",width:"100%",textAlign:"left",border:0,borderTop:`1px solid ${phoneChatUi.panelBorder}`,borderRadius:0,padding:"11px 14px",background:"transparent",color:phoneChatUi.text}} disabled={phonePlayerContactLoading}
+                        onClick={(e) => { e.stopPropagation(); setChatMenuOpen(false); refreshPhonePlayerContact(selectedChar); }}>
+                        {phonePlayerContactLoading ? t("loading") : tr("更新和你的聊天", "Refresh chat with you", "あなたとのチャットを更新", "나와의 채팅 새로고침")}
+                      </button>
+                    </div>
+                  )}
+                </>,
+              })}
+              <div className="mp-sc" style={{padding:10,boxSizing:"border-box",width:"100%",maxWidth:"100%",background:phoneChatUi.panel,border:`1px solid ${phoneChatUi.panelBorder}`,color:phoneChatUi.text}}>
+              <div style={{fontSize:11,color:phoneChatUi.sub,margin:"0 0 8px 2px"}}>{updatedText(phoneInboxCache[selectedChar.id]?.updatedAt)}</div>
               <div style={{display:"grid",gap:8}}>
                 {allThreads.map((t) => {
                   const last = (t.messages || [])[t.messages.length - 1];
                   return (
-                    <button key={t.id} className="mp-cc" style={{textAlign:"left",background:phoneChatUi.incoming,color:phoneChatUi.text,border:`1px solid ${phoneChatUi.incomingBorder}`,boxSizing:"border-box",width:"100%",maxWidth:"100%",marginBottom:0,overflow:"hidden"}} onClick={() => { if (Date.now() > suppressAppClickUntilRef.current) { setPhoneActiveThreadId(t.id); setPhonePage("thread"); } }}>
+                    <button key={t.id} className="mp-cc" style={{textAlign:"left",background:phoneChatUi.incoming,color:phoneChatUi.text,border:`1px solid ${phoneChatUi.incomingBorder}`,boxSizing:"border-box",width:"100%",maxWidth:"100%",marginBottom:0,overflow:"hidden"}} onClick={() => { if (Date.now() > suppressAppClickUntilRef.current) { setChatMenuOpen(false); setPhoneActiveThreadId(t.id); setPhonePage("thread"); } }}>
                       <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
                         <div style={{fontWeight:700,fontSize:13}}>{t.name}</div>
-                        <div style={{fontSize:10,color:phoneChatUi.sub}}>{last?.time ? new Date(last.time).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"}) : ""}</div>
+                        <div style={{fontSize:10,color:phoneChatUi.sub}}>{last?.time ? clock(last.time) : ""}</div>
                       </div>
                       <div style={{fontSize:11,color:phoneChatUi.sub,marginTop:2}}>{t.relation || ""}</div>
                       <div style={{fontSize:11,color:phoneChatUi.text,marginTop:5,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{last?.text || (last?.pseudoImage ? tr("[照片]", "[Photo]", "[写真]", "[사진]") : last?.pseudoVoice ? tr("[語音訊息]", "[Voice message]", "[ボイスメッセージ]", "[음성 메시지]") : tr("目前無訊息", "No messages yet", "まだメッセージがありません", "아직 메시지가 없습니다"))}{last?.deliveryStatus && <span style={{display:"inline-grid",placeItems:"center",width:13,height:13,marginLeft:5,borderRadius:"50%",background:"#C92F4B",color:"#fff",fontSize:9,fontWeight:900}}>!</span>}</div>
@@ -283,20 +491,16 @@ export default function PhoneApp({
           )}
           {characters.length > 0 && selectedChar && phonePage === "thread" && (
             <div style={{position:"relative",height:"100%",minHeight:640,background:phoneWallpaperCss(phTh),padding:"14px 12px 24px",boxSizing:"border-box",width:"100%",maxWidth:"100%",overflowX:"hidden"}}>
-              <BackButton style={{position:"absolute",left:12,top:12,zIndex:5}} onClick={closeApp} label={tr("返回首頁", "Back to Home", "ホームに戻る", "홈으로 돌아가기")} />
-              <div style={{padding:"2px 8px 0 56px",display:"flex",justifyContent:"space-between",fontWeight:700,color:phTh.textSub,fontSize:13}}>
-                <span>{phoneTime}</span><span>{phoneDate}</span>
-              </div>
-              <div className="mp-sc" style={{padding:10,marginTop:12,boxSizing:"border-box",width:"100%",maxWidth:"100%",background:phoneChatUi.panel,border:`1px solid ${phoneChatUi.panelBorder}`,color:phoneChatUi.text}}>
-              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                <button className="mp-ibtn" style={{...phBtn,background:phoneChatUi.incoming,color:phoneChatUi.text,border:`1px solid ${phoneChatUi.incomingBorder}`}} onClick={(e) => { e.stopPropagation(); armAppClickSuppression(); setPhonePage("chatlist"); }}>{t("backToList")}</button>
-                <div style={{fontWeight:700,fontSize:13,color:phoneChatUi.text}}>{activeThread?.name || t("chatroom")}</div>
-                <span style={{fontSize:10,color:phoneChatUi.sub}}>{tr("唯讀", "Read only", "閲覧専用", "읽기 전용")}</span>
-              </div>
+              {statusRow(phTh.textSub)}
+              {pageBar({
+                backTo: "chatlist", backLabel: tr("返回訊息列表", "Back to messages", "メッセージ一覧に戻る", "메시지 목록으로 돌아가기"),
+                title: activeThread?.name || t("chatroom"), color: phTh.text, sub: tr("唯讀", "Read only", "閲覧専用", "읽기 전용"), subColor: phTh.textSub,
+              })}
+              <div className="mp-sc" style={{padding:10,boxSizing:"border-box",width:"100%",maxWidth:"100%",background:phoneChatUi.panel,border:`1px solid ${phoneChatUi.panelBorder}`,color:phoneChatUi.text}}>
               <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:430,overflowY:"auto",overflowX:"hidden",boxSizing:"border-box",width:"100%",border:`1px solid ${phoneChatUi.panelBorder}`,borderRadius:12,padding:"8px 10px",background:phTh.mode==="dark"?"rgba(0,0,0,.20)":"rgba(255,255,255,.48)"}}>
                 {(activeThread?.messages || []).map((m) => m.from === "system" ? (
                   <div key={m.id} style={{display:"flex",justifyContent:"center",padding:"3px 8px"}}>
-                    <div style={{maxWidth:"88%",padding:"5px 10px",borderRadius:12,background:phTh.mode==="dark"?"rgba(255,255,255,.10)":"rgba(255,255,255,.82)",border:`1px solid ${m.noticeType?.includes("block") ? "rgba(201,47,75,.28)" : phoneChatUi.incomingBorder}`,color:m.noticeType?.includes("block")?"#B91C3C":phoneChatUi.sub,fontSize:10,fontWeight:m.noticeType?700:500,textAlign:"center",lineHeight:1.45}}><div>{m.text}</div><div style={{marginTop:2,fontSize:8,fontWeight:500,opacity:.72}}>{new Date(m.time).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"})}</div></div>
+                    <div style={{maxWidth:"88%",padding:"5px 10px",borderRadius:12,background:phTh.mode==="dark"?"rgba(255,255,255,.10)":"rgba(255,255,255,.82)",border:`1px solid ${m.noticeType?.includes("block") ? "rgba(201,47,75,.28)" : phoneChatUi.incomingBorder}`,color:m.noticeType?.includes("block")?"#B91C3C":phoneChatUi.sub,fontSize:10,fontWeight:m.noticeType?700:500,textAlign:"center",lineHeight:1.45}}><div>{m.text}</div><div style={{marginTop:2,fontSize:8,fontWeight:500,opacity:.72}}>{clock(m.time)}</div></div>
                   </div>
                 ) : (
                   <div key={m.id} style={{display:"flex",justifyContent:m.from==="char"?"flex-end":"flex-start",padding:0}}>
@@ -305,7 +509,7 @@ export default function PhoneApp({
                         {m.pseudoImage && <div style={{...pseudoImageStyle(m.pseudoImage),width:104,height:78,borderRadius:8,opacity:.9,marginBottom:m.text?5:0}} />}
                         {m.pseudoVoice && <PseudoVoiceBubble pseudoVoice={m.pseudoVoice} compact tr={tr} />}
                         {m.text && <div>{m.text}</div>}
-                        <div style={{marginTop:3,fontSize:9,textAlign:m.from==="char"?"right":"left",color:m.from==="char"?phoneChatUi.outgoingText:phoneChatUi.sub,opacity:m.from==="char"?.72:.82}}>{new Date(m.time).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit"})}</div>
+                        <div style={{marginTop:3,fontSize:9,textAlign:m.from==="char"?"right":"left",color:m.from==="char"?phoneChatUi.outgoingText:phoneChatUi.sub,opacity:m.from==="char"?.72:.82}}>{clock(m.time)}</div>
                       </div>
                       {m.deliveryStatus && <div style={{marginTop:3,padding:"0 3px",fontSize:9,fontWeight:700,textAlign:m.from==="char"?"right":"left",color:"#B91C3C",lineHeight:1.35}}>{m.deliveryStatus === "outgoing_failed" ? tr("傳送失敗 · 無法確認送達", "Failed · delivery unconfirmed", "送信失敗", "전송 실패") : tr("已攔截的訊息", "Intercepted message", "遮断されたメッセージ", "차단된 메시지")}</div>}
                       {m.deliveryStatus && <span style={{position:"absolute",top:"calc(50% - 7px)",transform:"translateY(-50%)",[m.from==="char"?"left":"right"]:-21,display:"grid",placeItems:"center",width:16,height:16,borderRadius:"50%",background:"#C92F4B",border:"2px solid #FFFFFF",boxShadow:"0 2px 6px rgba(88,15,32,.28)",color:"#fff",fontSize:10,fontWeight:900,lineHeight:1}}>!</span>}
@@ -321,6 +525,7 @@ export default function PhoneApp({
             const appId = phonePage;
             const th = sanitizePhoneTheme(phoneAppCache[selectedChar.id]?.theme?.data);
             const meta = PHONE_APP_META[appId];
+            const appName = phoneAppLabel(appId, tr);
             const cache = phoneAppCache[selectedChar.id]?.[appId] || null;
             const data = cache?.data || null;
             const busy = phoneAppGenLoading === appId;
@@ -328,13 +533,17 @@ export default function PhoneApp({
 
             return (
               <div style={{ position: "relative", height: "100%", minHeight: 640, background: phoneWallpaperCss(th), padding: "14px 14px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
-                <BackButton style={{ position: "absolute", left: 12, top: 12, zIndex: 5 }} onClick={closeApp} label={tr("返回首頁", "Back to Home", "ホームに戻る", "홈으로 돌아가기")} />
-                <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, color: th.textSub, fontSize: 13, padding: "2px 8px 0 56px" }}>
-                  <span>{phoneTime}</span><span>{phoneDate}</span>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <button className="mp-ibtn" onClick={(e) => { e.stopPropagation(); armAppClickSuppression(); setPhonePage("desktop"); setDiaryPage(0); }}>{t("backToDesktop")}</button>
-                  <div style={{ fontSize: 14, fontWeight: 900, color: th.text }}>{meta.icon} {meta.name}</div>
+                {statusRow(th.textSub)}
+                <div style={{ margin: "-10px 0 -8px" }}>
+                  {pageBar({
+                    backTo: "desktop", backLabel: backToDesktopLabel, title: `${meta.icon} ${appName}`, color: th.text,
+                    right: data && appId !== "diary" && (
+                      <button type="button" className="mp-ibtn" style={{ flex: "none", color: th.accent, borderColor: `${th.accent}66` }} disabled={busy}
+                        aria-label={tr(`重新整理${appName}`, `Refresh ${appName}`, `${appName}を更新`, `${appName} 새로고침`)} onClick={() => generatePhoneApp(selectedChar, appId)}>
+                        {busy ? t("loading") : "↻"}
+                      </button>
+                    ),
+                  })}
                 </div>
 
                 {/* ===== 空狀態：無快取，等玩家按生成 ===== */}
@@ -343,10 +552,10 @@ export default function PhoneApp({
                     <div style={{ ...cardS, width: 76, height: 76, borderRadius: 22, display: "grid", placeItems: "center", fontSize: 36 }}>{meta.icon}</div>
                     <div style={{ fontSize: 14, fontWeight: 700, color: th.text }}>{tr("還沒有內容", "Nothing here yet", "まだ何もありません", "아직 내용이 없습니다")}</div>
                     <div style={{ fontSize: 11.5, color: th.textSub, lineHeight: 1.8 }}>
-                      {tr(`按下生成，讓 AI 依 ${selectedChar.name} 的人設佈置${meta.name}`, `Tap generate and AI will fill this app in ${selectedChar.name}'s style`, `生成を押すと ${selectedChar.name} らしく埋めます`, `생성을 누르면 ${selectedChar.name}답게 채워줍니다`)}
+                      {tr(`按下生成，讓 AI 依 ${selectedChar.name} 的人設佈置${appName}`, `Tap generate and AI will fill this app in ${selectedChar.name}'s style`, `生成を押すと ${selectedChar.name} らしく埋めます`, `생성을 누르면 ${selectedChar.name}답게 채워줍니다`)}
                     </div>
                     <button className="mp-save" style={{ background: th.accent, marginTop: 6 }} disabled={busy} onClick={() => generatePhoneApp(selectedChar, appId)}>
-                      {busy ? t("generating") : `✦ ${t("generate")}${meta.name}`}
+                      {busy ? t("generating") : `✦ ${tr(`生成${appName}`, `Generate ${appName}`, `${appName}を生成`, `${appName} 생성`)}`}
                     </button>
                     <div style={{ fontSize: 10, color: th.textSub, opacity: .8, lineHeight: 1.7 }}>
                       {tr("只在按下時呼叫 AI・生成後存快取，不會自動更新", "AI runs only when you tap · cached afterwards", "押した時だけAIを呼び、以後はキャッシュ表示", "누를 때만 AI 호출 · 이후 캐시 표시")}
@@ -471,14 +680,14 @@ export default function PhoneApp({
                     <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10, overflow: "hidden" }}>
                       <div style={{ flex: 1, overflowY: "auto", background: "#F3EEE2", borderRadius: 12, padding: "18px 16px", boxShadow: "inset 0 0 30px rgba(120,100,60,.12)", position: "relative" }}>
                         <div style={{ position: "absolute", top: 10, left: 14, fontSize: 16, transform: "rotate(-12deg)" }}>🖇️</div>
-                        <div style={{ fontSize: 10, color: "#A89A7E", textAlign: "right" }}>{new Date(cur.time).toLocaleString("zh-TW", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</div>
+                        <div style={{ fontSize: 10, color: "#A89A7E", textAlign: "right" }}>{new Date(cur.time).toLocaleString(uiLocale, { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</div>
                         <div style={{ fontSize: 13, fontWeight: 900, color: "#4A4336", marginTop: 8 }}>{cur.title}</div>
                         <div style={{ fontSize: 11.5, color: "#5C5546", lineHeight: 2.1, marginTop: 12, whiteSpace: "pre-wrap" }}>{cur.body}</div>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <button type="button" className="mp-ibtn" aria-label={tr("上一篇", "Previous entry", "前の日記", "이전 일기")}
                           disabled={diaryPage <= 0} onClick={() => setDiaryPage((page) => Math.max(0, page - 1))}>‹</button>
-                        <span style={{ minWidth: 48, textAlign: "center", fontSize: 10, color: th.textSub }}>{diaryPage + 1} / {entries.length} 篇</span>
+                        <span style={{ minWidth: 48, textAlign: "center", fontSize: 10, color: th.textSub }}>{diaryPage + 1} / {entries.length}</span>
                         <button type="button" className="mp-ibtn" aria-label={tr("下一篇", "Next entry", "次の日記", "다음 일기")}
                           disabled={diaryPage >= entries.length - 1} onClick={() => setDiaryPage((page) => Math.min(entries.length - 1, page + 1))}>›</button>
                         <button className="mp-ibtn" style={{ color: "#B76565", borderColor: "#B7656566" }} onClick={deleteCurrentEntry}>
@@ -543,16 +752,9 @@ export default function PhoneApp({
                   </div>
                 )}
 
-                {/* ===== 快取列 + 更新（日記除外——它有自己的「寫新的一篇」） ===== */}
+                {/* ===== 更新時間（重新整理在右上；日記有自己的「寫新的一篇」） ===== */}
                 {data && appId !== "diary" && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 10, color: th.textSub }}>
-                      {tr("快取 ", "Cache ", "キャッシュ ", "캐시 ")}{cache?.updatedAt ? new Date(cache.updatedAt).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" }) : "--:--"}
-                    </span>
-                    <button className="mp-ibtn" style={{ marginLeft: "auto", color: th.accent, borderColor: `${th.accent}66` }} disabled={busy} onClick={() => generatePhoneApp(selectedChar, appId)}>
-                      {busy ? t("loading") : `↻ ${t("refresh")}${meta.name}`}
-                    </button>
-                  </div>
+                  <div style={{ fontSize: 11, color: th.textSub, textAlign: "center" }}>{updatedText(cache?.updatedAt)}</div>
                 )}
               </div>
             );

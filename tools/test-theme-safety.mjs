@@ -112,7 +112,6 @@ const UI_LEGACY_ALLOWLIST = new Map([
   ["components/apps/PhoneApp.jsx", "角色手機模擬畫面（返回鍵已共用）"],
   ["components/chat/ChatScreenshotModal.jsx", "截圖用裝飾頂欄"],
   ["components/shell/AppRuntimeBoundary.jsx", "錯誤保護畫面（返回鍵已共用）"],
-  ["components/apps/DatingApp.jsx", "功能旗標關閉，重新開放前改用共用頁首"],
   ["components/gacha/GachaGame.jsx", "功能旗標關閉，重新開放前改用共用頁首"],
   ["components/gacha/RealityEpisodeRoom.jsx", "功能旗標關閉，重新開放前改用共用頁首"],
   ["components/gacha/EpisodeRoom.jsx", "特別篇房間（返回鍵已共用）"],

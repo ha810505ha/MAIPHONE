@@ -1,4 +1,5 @@
-import { applyCoupleInviteReply, applyCoupleTaskChatState, buildCoupleChatContext, extractCoupleDirectives } from "../couple/coupleDailyService";
+import { applyCoupleInviteReply, applyCoupleTaskChatState, buildCoupleChatContext, buildCouplePromiseContext, extractCoupleDirectives, hasAcceptedCoupleSpace, isCouplePromiseDuplicate } from "../couple/coupleDailyService";
+import { extractCouplePromiseDirective } from "../../utils/coupleSpace";
 import { CALENDAR_APPOINTMENT_RULE_CONTEXT, extractCalendarEventDirective } from "../calendar/calendarChatAppointments.js";
 import { PHOTO_RULE_CONTEXT, extractPhotoDirectives } from "../../utils/pseudoImage";
 import { VOICE_MESSAGE_RULE_CONTEXT, extractPseudoVoiceDirectives } from "../../utils/pseudoVoice";
@@ -25,7 +26,8 @@ export async function generateDirectAssistant({ cid, roomId, char, nextForDispla
       const picked = pickMemoriesForPrompt(cid, safeHist);
       const memoryContext = picked.map((m, i) => `- ${i + 1}. ${m.text}`).join("\n");
       const loreHits = pickLorebookEntriesForPrompt(cid, safeHist);
-      const coupleTaskContext = await buildCoupleChatContext(cid);
+      const coupleTaskContext = await buildCoupleChatContext(cid, { firstChatAt: nextForDisplay.find((message) => message?.time)?.time });
+      const couplePromiseContext = await buildCouplePromiseContext(cid);
       const calendarContext = getCalendarContext?.(text || safeHist.at(-1)?.content || "", cid) || "";
       const calendarReminderContext = um?.noticeType === "calendar_story_start" ? "" : (getCalendarReminderContext?.(cid) || "");
       const blockContext = buildCharacterBlockPromptContext?.({ state: characterBlockStates?.[cid], mode: selectedMode, now: Date.now() }) || "";
@@ -79,6 +81,7 @@ export async function generateDirectAssistant({ cid, roomId, char, nextForDispla
         { text: pinnedLoreContext ? `[強制條目 - 必須遵守]\n以下條目為目前對話的硬性規則，回覆時必須滿足：\n${pinnedLoreContext}` : "", keep: 95 },
         { text: memoryContext, keep: 60 },
         { text: coupleTaskContext, keep: 30 },
+        { text: couplePromiseContext, keep: 74 },
         { text: calendarContext, keep: 35 },
         { text: calendarReminderContext, keep: 75 },
         { text: CALENDAR_APPOINTMENT_RULE_CONTEXT, keep: 72 },
@@ -160,7 +163,17 @@ export async function generateDirectAssistant({ cid, roomId, char, nextForDispla
       const replyThinking = extractThinking(reply).thinking;
       const blockDirective = extractCharacterBlockDirective?.(reply) || { action: null, text: reply };
       const coupleDirective = extractCoupleDirectives(blockDirective.text);
-      const calendarDirective = extractCalendarEventDirective(coupleDirective.text);
+      // 情侶空間的約定：只在已開通、且不是重複約定時，才掛一張讓玩家確認的卡片。
+      // 角色只輸出了日曆約定、沒附約定標記時，也用日曆的標題和日期當作約定提示（同一張卡可順便加入日曆）。
+      const promiseDirective = extractCouplePromiseDirective(coupleDirective.text);
+      const calendarDirective = extractCalendarEventDirective(promiseDirective.text);
+      const promiseCandidate = promiseDirective.proposal
+        || (calendarDirective.proposal ? { text: calendarDirective.proposal.title, date: calendarDirective.proposal.date } : null);
+      const couplePromiseProposal = promiseCandidate
+        && await hasAcceptedCoupleSpace(cid)
+        && !(await isCouplePromiseDuplicate(cid, promiseCandidate.text))
+        ? { ...promiseCandidate, status: "pending" }
+        : null;
       const calendarProposalIsDuplicate = calendarDirective.proposal
         ? await isCalendarProposalDuplicate?.(calendarDirective.proposal, cid)
         : false;
@@ -240,6 +253,7 @@ export async function generateDirectAssistant({ cid, roomId, char, nextForDispla
         ...(calendarDirective.proposal && !calendarProposalIsDuplicate && index === bubbles.length - 1
           ? { calendarProposal: { ...calendarDirective.proposal, status: "pending" } }
           : {}),
+        ...(couplePromiseProposal && index === bubbles.length - 1 ? { couplePromiseProposal } : {}),
         // 思考鏈掛在整組回覆的第一則氣泡上，只顯示一次。
         ...(index === 0 && replyThinking ? { thinking: { content: replyThinking } } : {}),
       }));

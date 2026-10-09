@@ -15,6 +15,7 @@ export const DEFAULT_PHONE_THEME = {
   status: "",
   music: null,
   todos: [],
+  // 桌面 App 已固定，不再請 AI 生成假 App（省 token）；欄位留著讀舊快取用。
   fakeApps: [{ icon: "🖼️", name: "相簿" }, { icon: "🎧", name: "音樂" }],
 };
 
@@ -81,6 +82,28 @@ export const sanitizePhoneTheme = (raw) => {
   return theme;
 };
 
+// 主題資料分兩半（MP-015）：配色可固定／收藏，內容（狀態、正在播放、待辦）可單獨刷新。
+export const PHONE_THEME_PALETTE_KEYS = ["themeName", "mode", "wallpaper", "accent", "text", "textSub", "card", "cardBorder"];
+export const PHONE_THEME_CONTENT_KEYS = ["status", "music", "todos", "fakeApps"];
+export const PHONE_THEME_FAVORITE_LIMIT = 3;
+const pickKeys = (source, keys) => Object.fromEntries(keys.filter((key) => source?.[key] !== undefined).map((key) => [key, source[key]]));
+export const pickPhoneThemePalette = (theme) => pickKeys(sanitizePhoneTheme(theme), PHONE_THEME_PALETTE_KEYS);
+export const samePhoneThemePalette = (a, b) => !!a && !!b
+  && JSON.stringify(pickPhoneThemePalette(a)) === JSON.stringify(pickPhoneThemePalette(b));
+/** 依範圍合併：content 只採用新內容、palette 只採用新配色，其餘沿用目前主題。all 整組採用新的。 */
+export const mergePhoneThemeScope = (current, generated, scope = "all") => {
+  if (scope === "content") return { ...(current || {}), ...pickKeys(generated, PHONE_THEME_CONTENT_KEYS) };
+  if (scope === "palette") return { ...(current || {}), ...pickKeys(generated, PHONE_THEME_PALETTE_KEYS) };
+  return generated;
+};
+/** 收藏固定 3 格（空格為 null），舊存檔或壞資料一律整理成這個形狀。 */
+export const normalizePhoneThemeFavorites = (list) => {
+  const items = (Array.isArray(list) ? list : []).slice(0, PHONE_THEME_FAVORITE_LIMIT)
+    .map((item) => (item && typeof item === "object" ? pickPhoneThemePalette(item) : null));
+  while (items.length < PHONE_THEME_FAVORITE_LIMIT) items.push(null);
+  return items;
+};
+
 export const phoneWallpaperCss = (th) =>
   `linear-gradient(${th.wallpaper.angle}deg, ${th.wallpaper.from} 0%, ${th.wallpaper.via} 50%, ${th.wallpaper.to} 100%)`;
 
@@ -95,6 +118,18 @@ export const PHONE_APP_META = {
   usage:   { name: "使用紀錄", icon: "⏱️" },
 };
 
+// PHONE_APP_META.name 仍給 prompt 用（中文）；介面顯示一律走這裡的翻譯。
+export const phoneAppLabel = (appId, tr) => ({
+  theme: tr("主題", "Theme", "テーマ", "테마"),
+  gallery: tr("相簿", "Gallery", "アルバム", "앨범"),
+  music: tr("音樂", "Music", "音楽", "음악"),
+  map: tr("地圖", "Map", "マップ", "지도"),
+  shop: tr("商店", "Shop", "ショップ", "상점"),
+  diary: tr("日記", "Diary", "日記", "일기"),
+  browser: tr("瀏覽器", "Browser", "ブラウザ", "브라우저"),
+  usage: tr("使用紀錄", "Screen Time", "使用履歴", "사용 기록"),
+}[appId] || PHONE_APP_META[appId]?.name || appId);
+
 // 共用上下文（角色資料 + 最近 10 句對話）
 export const buildPhonePromptContext = (char, chatHistory, playerName) => {
   const player = sanitizeText(playerName || "", 40) || "玩家";
@@ -106,18 +141,38 @@ export const buildPhonePromptContext = (char, chatHistory, playerName) => {
 
 // G = 輸出語言指令；ctx = buildPhonePromptContext 結果
 export const buildPhoneAppPrompt = (appId, G, ctx, extra = {}) => {
+  if (appId === "theme" && extra.themeScope === "content") return `${G}
+
+請為角色刷新手機桌面內容 JSON（配色維持「${extra.currentThemeName || "目前"}」不變，所以不要輸出任何顏色欄位），輸出 JSON 且只能輸出 JSON。
+格式：
+{"status":"20字內","music":{"title":"歌名","artist":"演出者"},"todos":[{"text":"14字內","done":false}]}
+規則：
+1) status 像真的手機狀態，口語、對外可見，不要內心獨白；要跟上一版不同。
+2) music 是角色此刻會聽的歌，可虛構。
+3) todos 2~6 項符合人設與近期劇情；每項依角色當下情況自然決定 done，完成比例每次要有變化。
+
+${ctx}`;
+  if (appId === "theme" && extra.themeScope === "palette") return `${G}
+
+請為角色換一組新的手機配色 JSON（只要配色，不要狀態、音樂、待辦），輸出 JSON 且只能輸出 JSON。
+格式：
+{"themeName":"2~6字","mode":"light或dark","wallpaper":{"from":"#RRGGBB","via":"#RRGGBB","to":"#RRGGBB","angle":170},"accent":"#RRGGBB","text":"#RRGGBB","textSub":"#RRGGBB","card":"rgba(255,255,255,.07)","cardBorder":"rgba(255,255,255,.1)"}
+規則：
+1) 要跟目前的「${extra.currentThemeName || "目前配色"}」明顯不同，但仍符合角色氣質；mode 可依氣質選 light 或 dark。
+2) wallpaper 三色同色系和諧漸層；text 要在桌布上清楚可讀；accent 對比明顯。
+
+${ctx}`;
   if (appId === "theme") return `${G}
 
 請為角色生成手機主題 JSON，輸出 JSON 且只能輸出 JSON。
 格式：
-{"themeName":"2~6字","mode":"light或dark","wallpaper":{"from":"#RRGGBB","via":"#RRGGBB","to":"#RRGGBB","angle":170},"accent":"#RRGGBB","text":"#RRGGBB","textSub":"#RRGGBB","card":"rgba(255,255,255,.07)","cardBorder":"rgba(255,255,255,.1)","status":"20字內","music":{"title":"歌名","artist":"演出者"},"todos":[{"text":"14字內","done":false}],"fakeApps":[{"icon":"emoji","name":"2字"}]}
+{"themeName":"2~6字","mode":"light或dark","wallpaper":{"from":"#RRGGBB","via":"#RRGGBB","to":"#RRGGBB","angle":170},"accent":"#RRGGBB","text":"#RRGGBB","textSub":"#RRGGBB","card":"rgba(255,255,255,.07)","cardBorder":"rgba(255,255,255,.1)","status":"20字內","music":{"title":"歌名","artist":"演出者"},"todos":[{"text":"14字內","done":false}]}
 規則：
 1) mode 依角色氣質選 light 或 dark。
 2) wallpaper 三色同色系和諧漸層；text 要在桌布上清楚可讀；accent 對比明顯。
 3) status 像真的手機狀態，口語、對外可見，不要內心獨白。
 4) music 是角色此刻會聽的歌，可虛構。
 5) todos 2~6 項符合人設與近期劇情；每項依角色當下情況自然決定 done，可以全部完成、全部未完成或完成與未完成混合。不同次生成的完成比例要有變化，不要固定只有一項完成，也不要寫死任一方至少一項。
-6) fakeApps 2~4 個，符合角色生活。
 
 ${ctx}`;
   if (appId === "gallery") return `${G}

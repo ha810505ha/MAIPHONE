@@ -3,7 +3,8 @@ import { createPortal } from "react-dom";
 import { useGacha } from "../../contexts/GachaContext";
 import { claimMailAttachments, countUnreadMails, loadMailbox, markMailRead } from "../../services/mailbox/mailboxService";
 
-export default function SystemMailboxSettings({ tr, locale = "zh-TW" }) {
+// refreshKey：外部偵測到信箱變動（例如新信寄達）時改變，讓設定頁頂端這張卡的未讀數即時更新。
+export default function SystemMailboxSettings({ tr, locale = "zh-TW", refreshKey = 0 }) {
   const { changeCrystals } = useGacha();
   const [open, setOpen] = useState(false);
   const [mails, setMails] = useState([]);
@@ -16,7 +17,7 @@ export default function SystemMailboxSettings({ tr, locale = "zh-TW" }) {
     setMails(result.mails);
     setLoading(false);
   };
-  useEffect(() => { refresh().catch(() => setLoading(false)); }, [locale]);
+  useEffect(() => { refresh().catch(() => setLoading(false)); }, [locale, refreshKey]);
   const selected = mails.find((mail) => mail.id === selectedId) || null;
   const unreadCount = useMemo(() => countUnreadMails(mails), [mails]);
   const claimableCount = useMemo(() => mails.filter((mail) => !mail.claimed && mail.attachments?.length).length, [mails]);

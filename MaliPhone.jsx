@@ -15,6 +15,7 @@ import { callAI, isAiConfigReady } from "./services/aiService";
 import { loadAppState, saveAppState, loadFeatureEntity } from "./utils/indexedDbStorage";
 import { buildCalendarPromptContext, takeCalendarChatReminder } from "./services/calendar/calendarPromptContext";
 import { addChatCalendarEvent, updateCalendarEvent } from "./services/calendar/calendarEventStore";
+import { saveCouplePromiseFromChat } from "./services/couple/coupleDailyService";
 import { FEATURE_DATA_CHANGED_EVENT, featureDataEventIncludes } from "./services/featureDataLifecycle";
 import { syncOnBoot, schedulePush } from "./services/syncService";
 import { createDefaultVoiceSettings, normalizeCharacterVoiceSettings } from "./utils/voiceSettings";
@@ -221,7 +222,7 @@ export default function MaliPhone() {
   const [transfers, setTransfers] = useState(defaultAppState.transfers);
   const [walletGenLoading, setWalletGenLoading] = useState(false);
   const [apiPresets, setApiPresets] = useState(defaultAppState.apiPresets);
-  const { themeName, setThemeName, fontName, setFontName, fontSizeScale, setFontSizeScale, customFontName, setCustomFontName, uiLanguage, setUiLanguage, themeEffectsEnabled, setThemeEffectsEnabled, customCssEnabled, setCustomCssEnabled, customCss, setCustomCss, customCssDraft, setCustomCssDraft, customCssNotice, setCustomCssNotice, customCssGuideOpen, setCustomCssGuideOpen, settingsAppearanceOpen, setSettingsAppearanceOpen, scopedCustomCss } = useAppearanceSettings(defaultAppState);
+  const { themeName, setThemeName, fontName, setFontName, fontSizeScale, setFontSizeScale, customFontName, setCustomFontName, uiLanguage, setUiLanguage, themeEffectsEnabled, setThemeEffectsEnabled, customCssEnabled, setCustomCssEnabled, customCss, setCustomCss, customCssDraft, setCustomCssDraft, customCssNotice, setCustomCssNotice, customCssGuideOpen, setCustomCssGuideOpen, scopedCustomCss } = useAppearanceSettings(defaultAppState);
   useDocumentLocale(uiLanguage);
   const [screenLockTimeout, setScreenLockTimeout] = useState(defaultAppState.screenLockTimeout);
   const [customPrompts, setCustomPrompts] = useState(defaultAppState.customPrompts);
@@ -229,7 +230,6 @@ export default function MaliPhone() {
   const [phonePage, setPhonePage] = useState("picker");
   const [phoneActiveThreadId, setPhoneActiveThreadId] = useState("player");
   const [phoneGenLoading, setPhoneGenLoading] = useState(false);
-  const [activeMemoryId, setActiveMemoryId] = useState(null);
   const [apiConfig, setApiConfig] = useState(defaultAppState.apiConfig);
   const [ttsConfig, setTtsConfig] = useState(defaultAppState.ttsConfig);
   const [modelBadgeOpen, setModelBadgeOpen] = useState(false);
@@ -238,7 +238,6 @@ export default function MaliPhone() {
   const [updateNoticeOpen, setUpdateNoticeOpen] = useState(false);
   const [editingCharacter, setEditingCharacter] = useState(null);
   const [statusExpandedCharId, setStatusExpandedCharId] = useState(null);
-  const [statusMemoryExpandedCharId, setStatusMemoryExpandedCharId] = useState(null);
   const [statusMemoryPages, setStatusMemoryPages] = useState({});
   const [statusRefreshingIds, setStatusRefreshingIds] = useState({});
   const [settingsTab, setSettingsTab] = useState("appearance");
@@ -550,7 +549,11 @@ export default function MaliPhone() {
     },
   });
 
-  const dating = useDatingApp({ apiConfig, playerName: playerProfile?.name, onError: (message) => showToast(message) });
+  const dating = useDatingApp({
+    apiConfig,
+    playerName: playerProfile?.name,
+    onError: (message) => showToast(message || tr("訊息傳送失敗", "Message failed to send", "メッセージを送信できませんでした", "메시지를 보내지 못했어요")),
+  });
   const notificationCenter = useNotificationCenter({
     characters, chatHistory, proactiveUnread, locked, currentApp,
     datingState: DATING_ENABLED ? dating.state : null,
@@ -1145,6 +1148,42 @@ export default function MaliPhone() {
       )),
     }));
   };
+  // 聊天中的約定提示：玩家按了才收進情侶空間；可順便把同一則訊息的日曆提案一起加入。
+  const setCouplePromiseStatus = (characterId, messageId, patch) => setChatHistory((history) => ({
+    ...history,
+    [characterId]: (history[characterId] || []).map((item) => (
+      item.id === messageId && item.couplePromiseProposal ? { ...item, couplePromiseProposal: { ...item.couplePromiseProposal, ...patch } } : item
+    )),
+  }));
+  const addCouplePromiseFromChat = async (message, proposal, { calendar = false } = {}) => {
+    const character = currentChatChar;
+    if (!character?.id || !message?.id) return;
+    try {
+      const result = await saveCouplePromiseFromChat(character.id, proposal, message.id);
+      if (result.status === "added" || result.status === "duplicate") {
+        setCouplePromiseStatus(character.id, message.id, { status: "added", text: proposal.text });
+        showToast(result.status === "duplicate"
+          ? tr("約定清單裡已經有這個約定", "This promise is already on your list", "この約束はすでにリストにあります", "이 약속은 이미 목록에 있어요")
+          : tr("已收進情侶空間的約定", "Saved to your Couple Space promises", "カップルスペースの約束に追加しました", "커플 공간 약속에 저장했어요"));
+      } else if (result.status === "full") {
+        showToast(tr("進行中的約定已滿 20 個，先完成或刪掉一些吧", "You have 20 open promises. Complete or remove some first.", "進行中の約束が20件あります。先に完了か削除をしてください", "진행 중인 약속이 20개예요. 먼저 완료하거나 삭제해 주세요"));
+        return;
+      } else {
+        showToast(tr("情侶空間還沒開通，無法收進約定", "Couple Space isn't open yet, so the promise can't be saved", "カップルスペースが未開通のため保存できません", "커플 공간이 아직 열리지 않아 저장할 수 없어요"));
+        return;
+      }
+      if (calendar && message.calendarProposal?.status === "pending") await addCalendarProposal(message, message.calendarProposal);
+    } catch (error) {
+      showToast(tr("無法收進約定", "Could not save the promise", "約束に追加できませんでした", "약속을 저장하지 못했어요"));
+      console.warn("[couple promise]", error);
+    }
+  };
+  const dismissCouplePromiseFromChat = (message, { calendar = false } = {}) => {
+    const characterId = currentChatChar?.id;
+    if (!characterId || !message?.id) return;
+    setCouplePromiseStatus(characterId, message.id, { status: "dismissed" });
+    if (calendar) dismissCalendarProposal(message);
+  };
   const startDueCalendarStory = async (event) => {
     if (!event?.id || isTyping) return;
     try {
@@ -1472,6 +1511,8 @@ export default function MaliPhone() {
 
   useEffect(() => {
     if (currentApp !== "social") setSocialSettingsOpen(false);
+    // 離開狀態 App 後回到總覽，下次打開不會直接停在上次看的角色頁。
+    if (currentApp !== "status") setStatusExpandedCharId(null);
     setActivePostMenuId(null);
   }, [currentApp]);
 
@@ -1608,10 +1649,10 @@ export default function MaliPhone() {
   // ---- Status (RPG) ----
   const renderStatus = () => <MaliPhoneStatusSurface
     core={{ closeApp, t, tr, sanitizeUserImageUrl }}
-    data={{ characters, chatHistory, memories, posts, playerProfile }}
+    data={{ characters, chatHistory, memories, posts, playerProfile, activeCharId }}
     state={{
-      statusExpandedCharId, setStatusExpandedCharId, statusMemoryExpandedCharId, setStatusMemoryExpandedCharId,
-      statusMemoryPages, setStatusMemoryPages, statusRefreshingIds, activeMemoryId, setActiveMemoryId, genLoading,
+      statusExpandedCharId, setStatusExpandedCharId,
+      statusMemoryPages, setStatusMemoryPages, statusRefreshingIds, genLoading,
     }}
     actions={{ refreshCharacterStatus, setMemoryEditor, togglePinMemory, deleteMemory, generateMemory, archiveMemory, restoreMemory, compressMemories, revertMemorySummary, applyUserPlaceholder }}
     memoryPrompt={{ value: customPrompts?.memoryCompress || "", onChange: (text) => setCustomPrompts((prev) => ({ ...prev, memoryCompress: text })) }}
@@ -1665,6 +1706,7 @@ export default function MaliPhone() {
     activeRoomIds,
     activateCharacterRoom,
     addCalendarProposal,
+    addCouplePromise: addCouplePromiseFromChat,
     applyUserPlaceholder,
     armAppClickSuppression,
     calendarEvents,
@@ -1706,6 +1748,7 @@ export default function MaliPhone() {
     deleteChatroomForCharacter,
     directPendingRequest,
     dismissCalendarProposal,
+    dismissCouplePromise: dismissCouplePromiseFromChat,
     exportChatroomForCharacter,
     fileInputRef,
     formatMoney,
@@ -1842,7 +1885,7 @@ export default function MaliPhone() {
     data={{ characters, setCharacters, activeCharId }}
     actions={{
       onAdd: () => { setAddCharacterModalSession((session) => session + 1); setEditingCharacter(null); setModal("addChar"); },
-      onSetActive: (character) => { setActiveCharId(character.id); showToast(`${character.name} ${t("setAsMainCharacter")}`); },
+      onSetActive: (character) => { setActiveCharId(character.id); showToast(tr(`${character.name} 現在陪伴著你`, `${character.name} is now your companion`, `${character.name}がパートナーになりました`, `이제 ${character.name}와(과) 함께해요`)); },
       onChat: (character) => { openApp("chat"); openCharacterChat(character); },
       onView: (character) => { setAddCharacterModalSession((session) => session + 1); setEditingCharacter(character); setModal("addChar"); },
     }}
@@ -1867,8 +1910,6 @@ export default function MaliPhone() {
         setPresets: setApiPresets,
       }}
       appearance={{
-        open: settingsAppearanceOpen,
-        setOpen: setSettingsAppearanceOpen,
         theme: {
           themeName,
           setThemeName,

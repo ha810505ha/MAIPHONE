@@ -459,6 +459,7 @@ const [themeParticles, appLaunchMotion, devicePerformance, mainEntry] = await Pr
 const INFINITE_ANIMATION_ALLOWLIST = new Set([
   "mpTail", "mpInsertPulse", "mpThoughtPulse", "mpVoiceSpin", "mpDot", "dtTyping", "mpManualReplySpin",
   "mpFxRise", "mpFxFlutter", "mpFxTwinkle", "mpFxShoot",
+  "dtmFloat", // 信風配對成功畫面開著時的少量背景愛心，關閉即卸載
 ]);
 for (const [name, text] of [["maliPhone.css", phoneCss], ["themeCss.js", themeCss]]) {
   for (const match of text.matchAll(/animation(?:-name)?\s*:\s*([A-Za-z][\w-]*)[^;}`]*\binfinite\b/g)) {

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { FONT_PRESETS, THEME_PRESETS } from "../../styles/themePresets";
 import { buildThemeCss } from "../../styles/themeCss";
 import { buildFontStack } from "../../utils/fontName";
@@ -28,6 +28,14 @@ export default function useThemeRuntime({ themeName, fontName, fontSizeScale, cu
     normalizedThemeName,
     scopedCustomCss,
   }), [activeTheme, activeFontStack, fontSizeScale, isNightTheme, hasPeachEffects, themeEffectsEnabled, showThemeEffects, normalizedThemeName, scopedCustomCss]);
+
+  // 瀏覽器網址列／加到主畫面後的頂端狀態列顏色（index.html 的 theme-color）原本固定莓果粉，改成跟著主題。
+  // 淺色主題用主題主色（莓果仍是原本的 #f48fb1）；夜色用深底，避免深色畫面上方一條亮粉。
+  const statusBarColor = isNightTheme ? "#1A1625" : (activeTheme.vars?.["--mp-pink"] || "#f48fb1");
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", statusBarColor);
+  }, [statusBarColor]);
 
   return { normalizedThemeName, activeTheme, isNightTheme, isPeachTheme, hasPeachEffects, showThemeEffects, activeFontStack, themeCss };
 }

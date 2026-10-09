@@ -1,6 +1,6 @@
 import {
   CONTACT_PACE_THRESHOLDS, MATCH_BASE_RATE, MATCH_DISLIKE_WEIGHT, MATCH_LIKE_WEIGHT,
-  MATCH_RATE_MAX, MATCH_RATE_MIN, PASS_COOLDOWN_MS, RESPONSE_DELAY_RANGES,
+  LIKE_RETRY_COOLDOWN_MS, MATCH_RATE_MAX, MATCH_RATE_MIN, PASS_COOLDOWN_MS, RESPONSE_DELAY_RANGES,
   SUPER_LIKE_INITIAL, SUPER_LIKE_RATE_FLOOR,
 } from "../../constants/dating.js";
 import { dayKey, isEffectiveMessage } from "./datingChat.js";
@@ -120,28 +120,54 @@ export function decideSwipe(entry, playerTags, superLike, now = Date.now()) {
   return { profileId: entry.id, superLike, rate, decidedAt: now, matchAt: now + pickDelay(entry.responseStyle, superLike) };
 }
 
-/** 跳過的人隔一天回鍋；配對過、Super Like 過、封鎖過與檢舉成立的不再出現。 */
+/**
+ * 滑過的人什麼時候可以回到牌堆：跳過的隔一天，喜歡／Super Like 沒配到的冷卻較久。
+ * 已配對或配對還在熟成中的人不經過這裡（呼叫端先排除）。
+ */
+export const swipeReturnAt = (swipe) => (swipe?.at || 0)
+  + (swipe?.action === "pass" ? PASS_COOLDOWN_MS : LIKE_RETRY_COOLDOWN_MS);
+
+/** 依「角色 × 日期」算出的固定洗牌序（FNV-1a）。同一天內不變，換日才重排。 */
+export function dailyDeckRank(profileId, day) {
+  const seed = `${day}:${profileId}`;
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash ^= seed.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash;
+}
+
+/**
+ * 除了已配對、熟成中、封鎖與檢舉成立的人，其餘滑過的人冷卻後都會回鍋。
+ * 牌堆每天洗一次：卡池順序固定的話，前幾個角色永遠最先出現、回鍋的人也照原順序排。
+ */
 export function availableProfiles(state, now = Date.now()) {
   const matchedIds = new Set(state.matches.map((item) => item.profileId));
   const pendingIds = new Set(state.pending.map((item) => item.profileId));
   // 檢舉成立的帳號永久消失，獎勵總量因此天然封頂，不會變成農法。
   const removed = new Set((state.reports || []).filter((item) => item.status === "confirmed").map((item) => item.profileId));
+  const day = dayKey(now);
   return DATING_PROFILES.filter((entry) => {
     if (matchedIds.has(entry.id) || pendingIds.has(entry.id)) return false;
     if (state.blocked?.[entry.id] || removed.has(entry.id)) return false;
     const swipe = state.swiped[entry.id];
     if (!swipe) return true;
-    if (swipe.action !== "pass") return false;
-    return now - (swipe.at || 0) >= PASS_COOLDOWN_MS;
-  });
+    return now >= swipeReturnAt(swipe);
+  }).map((entry) => ({ entry, rank: dailyDeckRank(entry.id, day) }))
+    .sort((a, b) => a.rank - b.rank || a.entry.id.localeCompare(b.entry.id))
+    .map((item) => item.entry);
 }
 
 /** 全部滑完時，算出最快什麼時候會有人回鍋，好在空狀態給玩家一個時間。 */
 export function nextRefreshAt(state, now = Date.now()) {
+  const matchedIds = new Set(state.matches.map((item) => item.profileId));
+  const pendingIds = new Set(state.pending.map((item) => item.profileId));
   const times = DATING_PROFILES
+    .filter((entry) => !matchedIds.has(entry.id) && !pendingIds.has(entry.id) && !state.blocked?.[entry.id])
     .map((entry) => state.swiped[entry.id])
-    .filter((swipe) => swipe?.action === "pass")
-    .map((swipe) => (swipe.at || 0) + PASS_COOLDOWN_MS)
+    .filter(Boolean)
+    .map(swipeReturnAt)
     .filter((at) => at > now);
   return times.length ? Math.min(...times) : 0;
 }

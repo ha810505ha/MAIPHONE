@@ -1,4 +1,4 @@
-import { DEFAULT_ONLINE_HOURS } from "../../constants/dating";
+import { DEFAULT_ONLINE_HOURS } from "../../constants/dating.js";
 
 const CLOCK = /^([01]?\d|2[0-4]):([0-5]\d)$/;
 
@@ -64,14 +64,18 @@ export function lastOnlineAt(entry, time = Date.now()) {
   return candidate.getTime() - jitterMinutes(entry, candidate) * 60000;
 }
 
-function relativeLabel(at, now) {
+// 沒傳翻譯函式（例如測試）時退回繁中。
+const zhOnly = (zhTW) => zhTW;
+
+function relativeLabel(at, now, tr = zhOnly) {
   const minutes = Math.floor((now - at) / 60000);
-  if (minutes < 5) return "剛剛還在線上";
-  if (minutes < 60) return `最後上線 ${minutes} 分鐘前`;
+  if (minutes < 5) return tr("剛剛還在線上", "Active just now", "さっきまでオンライン", "방금 전까지 온라인");
+  if (minutes < 60) return tr(`最後上線 ${minutes} 分鐘前`, `Active ${minutes}m ago`, `${minutes}分前にオンライン`, `${minutes}분 전 접속`);
   const hoursAgo = Math.floor(minutes / 60);
-  if (hoursAgo < 24) return `最後上線 ${hoursAgo} 小時前`;
+  if (hoursAgo < 24) return tr(`最後上線 ${hoursAgo} 小時前`, `Active ${hoursAgo}h ago`, `${hoursAgo}時間前にオンライン`, `${hoursAgo}시간 전 접속`);
   const date = new Date(at);
-  return `最後上線 ${date.getMonth() + 1}/${date.getDate()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const stamp = `${date.getMonth() + 1}/${date.getDate()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return tr(`最後上線 ${stamp}`, `Last active ${stamp}`, `最終オンライン ${stamp}`, `마지막 접속 ${stamp}`);
 }
 
 /**
@@ -82,10 +86,10 @@ function relativeLabel(at, now) {
  *
  * lastActivityAt 傳入對方最後一則訊息的時間，比推算出來的時段結束更準。
  */
-export function presenceLabel(entry, time = Date.now(), lastActivityAt = 0) {
-  if (isOnline(entry, time)) return { online: true, text: "線上" };
+export function presenceLabel(entry, time = Date.now(), lastActivityAt = 0, tr = zhOnly) {
+  if (isOnline(entry, time)) return { online: true, text: tr("線上", "Online", "オンライン", "온라인") };
   const at = Math.min(time, Math.max(lastOnlineAt(entry, time), lastActivityAt || 0));
-  return { online: false, text: relativeLabel(at, time) };
+  return { online: false, text: relativeLabel(at, time, tr) };
 }
 
 /** 對方離線期間玩家傳的訊息，上線後要一次回完，不是回五次。 */
