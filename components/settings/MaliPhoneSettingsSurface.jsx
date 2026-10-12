@@ -462,6 +462,7 @@ export default function MaliPhoneSettingsSurface({
           onExport: data.onExport,
           onImport: data.onImport,
           cloudBackupProps: data.cloudBackupProps,
+          snapshotProps: data.snapshotProps,
         },
       }}
       about={{

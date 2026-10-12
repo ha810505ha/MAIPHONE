@@ -1,11 +1,16 @@
 import { loadFeatureEntity, saveFeatureEntity } from "../../utils/indexedDbStorage";
 import { normalizeHomeState } from "../home/homeState";
 import { cropById } from "./farm.js";
+import { normalizeNpcField } from "./npcFields.js";
+import { OUTDOOR_MARGIN } from "../data/maps/mapLayout.js";
 
 // 存檔：永遠不存進度百分比，只存時間戳＋參數，開場用公式回算離線進度。
 const KEY = "mali_yunyin_save_v1";
 const DB_KEY = "ent_yunyinSave";
 export const SAVE_VERSION = 2;
+// 地圖版型版本：2 = 戶外三張圖四周加樹林外框、內容整體往內移 OUTDOOR_MARGIN 格（MP-029）
+export const MAP_LAYOUT_VERSION = 2;
+const FRAMED_OUTDOOR_MAPS = new Set(["gate", "farm", "residence"]);
 
 export const defaultSave = () => ({
   ver: SAVE_VERSION,
@@ -14,7 +19,8 @@ export const defaultSave = () => ({
   coins: 100, // 開局盤纏，夠買幾把青靈草種子
   cultivation: { realmIdx: 0, exp: 0, expUpdatedAt: Date.now(), breakthroughCdUntil: 0 },
   farm: {
-    plots: Array.from({ length: 9 }, (_, id) => ({ id, cropId: null, plantedAt: null })),
+    // 18 格＝第一塊田 9 格＋第二塊田 9 格（MP-045）；舊存檔只有 9 格，載入時用這份預設補齊，既有田格不動
+    plots: Array.from({ length: 18 }, (_, id) => ({ id, cropId: null, plantedAt: null })),
     npcFields: {}, // characterId → 角色田地狀態（獨立於玩家田）
   },
   shop: {
@@ -28,7 +34,8 @@ export const defaultSave = () => ({
   hall: { lastMeditateDay: "" }, // 修煉堂每日打坐
   blueprints: {}, // furnitureId → true（稀有家具購買資格）
   inventory: {},
-  player: { pos: { map: "gate", x: 10, y: 9 }, appearance: null },
+  player: { pos: { map: "gate", x: 13, y: 12 }, appearance: null },
+  mapLayoutVersion: MAP_LAYOUT_VERSION,
   npcs: [], // 漫遊 NPC 的 seed + 名字（外觀由 seed 重建）
   settings: {
     // 觸發點開關（想不想被搭話）；台詞來源全自動：有個人句庫用角色的，沒有用通用的
@@ -50,7 +57,9 @@ const normalizeSave = (raw) => {
       cultivation: { ...d.cultivation, ...(raw.cultivation || {}) },
       farm: {
         plots: d.farm.plots.map((p, i) => ({ ...p, ...(raw.farm?.plots?.[i] || {}) })),
-        npcFields: { ...(raw.farm?.npcFields || {}) },
+        // 住客角色田（MP-030）：characterId → 田地狀態；壞掉的欄位補預設、作物不存在就清空
+        npcFields: Object.fromEntries(Object.entries(raw.farm?.npcFields && typeof raw.farm.npcFields === "object" ? raw.farm.npcFields : {})
+          .map(([characterId, field]) => [characterId, normalizeNpcField(field)])),
       },
       shop: {
         // 舊檔單爐 furnace → 遷移成 furnaces[0]
@@ -89,6 +98,15 @@ const normalizeSave = (raw) => {
     }
   }
   normalized.ver = SAVE_VERSION;
+  // 舊版型存檔：玩家站在戶外三張圖時，座標跟著地圖內容一起往內移；只轉換一次
+  if ((Number(raw.mapLayoutVersion) || 1) < 2 && raw.player?.pos && FRAMED_OUTDOOR_MAPS.has(normalized.player.pos.map)) {
+    normalized.player.pos = {
+      ...normalized.player.pos,
+      x: (Number(normalized.player.pos.x) || 0) + OUTDOOR_MARGIN,
+      y: (Number(normalized.player.pos.y) || 0) + OUTDOOR_MARGIN,
+    };
+  }
+  normalized.mapLayoutVersion = MAP_LAYOUT_VERSION;
   normalized.farm.plots.forEach((plot) => {
     const plantedAt = Number(plot.plantedAt);
     if (plot.cropId === "test_sprout" || (plot.cropId && (!cropById(plot.cropId) || !Number.isFinite(plantedAt) || plantedAt <= 0))) {
@@ -104,20 +122,36 @@ const normalizeSave = (raw) => {
   return normalized;
 };
 
-export async function loadSave() {
-  try {
-    const stored = await loadFeatureEntity(DB_KEY, null);
-    if (stored) return normalizeSave(stored);
-    let legacy = null;
-    try { legacy = JSON.parse(localStorage.getItem(KEY) || "null"); } catch (_) {}
-    const migrated = normalizeSave(legacy);
-    await saveFeatureEntity(DB_KEY, migrated);
-    try { localStorage.removeItem(KEY); } catch (_) {}
-    return migrated;
-  } catch (error) {
-    console.warn("[yunyin] 存檔載入失敗，使用新存檔", error);
-    return defaultSave();
+export async function loadSave({ isCurrent = () => true } = {}) {
+  const assertCurrent = () => {
+    if (!isCurrent()) throw new DOMException("Villa loading cancelled", "AbortError");
+  };
+  const assertSave = (value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new DOMException("Invalid villa save", "DataError");
+    }
+    return value;
+  };
+  // A failed read is never evidence of a first visit. Let the caller stop loading.
+  const stored = await loadFeatureEntity(DB_KEY, null);
+  assertCurrent();
+  if (stored != null) return normalizeSave(assertSave(stored));
+  const legacyText = localStorage.getItem(KEY);
+  let legacy = null;
+  if (legacyText !== null) {
+    try { legacy = JSON.parse(legacyText); }
+    catch { throw new DOMException("Invalid legacy villa save", "DataError"); }
+    assertSave(legacy);
   }
+  const migrated = normalizeSave(legacy);
+  assertCurrent();
+  await saveFeatureEntity(DB_KEY, migrated);
+  assertCurrent();
+  // Keep the legacy copy if migration could not commit, or the caller left.
+  if (legacyText !== null) {
+    try { localStorage.removeItem(KEY); } catch (_) {}
+  }
+  return migrated;
 }
 
 export function persistSave(s) {

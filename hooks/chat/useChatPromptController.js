@@ -1,4 +1,5 @@
 import { buildSystemPrompt } from "../../utils/characterParser";
+import { isConnectionErrorText } from "../../utils/chatMessageUtils";
 import { buildCalendarStoryStartPrompt } from "../../services/calendar/calendarChatAppointments";
 import {
   getModeLabel as localizeChatModeLabel,
@@ -37,16 +38,7 @@ export default function useChatPromptController({
       : localizeChatModeLabel(mode, tr)
   );
   const formatMoney = (value) => Math.round(Number(value) || 0).toLocaleString("en-US");
-  const isConnectionErrorNotice = (content) => {
-    const text = String(content || "");
-    const localizedPrefix = tr(
-      "連線錯誤：",
-      "Connection error: ",
-      "接続エラー：",
-      "연결 오류: ",
-    );
-    return text.startsWith(localizedPrefix) || text.startsWith("Connection error: ");
-  };
+  const isConnectionErrorNotice = isConnectionErrorText;
   const getActiveRouteContext = (charId) => {
     const rooms = Array.isArray(chatRooms?.[charId]) ? chatRooms[charId] : [];
     const room = rooms.find((item) => item.id === activeRoomIds?.[charId]);

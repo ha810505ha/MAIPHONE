@@ -1,30 +1,7 @@
 import { loadFeatureEntity, loadPersonaFeatureEntity, saveFeatureEntities, savePersonaFeatureEntities } from "../utils/indexedDbStorage.js";
 import { compactGachaEpisodeImages } from "../utils/persistedMediaCleanup.js";
 import { dispatchFeatureDataChanged } from "./featureDataLifecycle.js";
-
-const FEATURE_EXPORTS = {
-  gachaInventory: ["ent_gachaInventory", []],
-  gachaEpisodes: ["ent_gachaEpisodes", []],
-  gachaCurrency: ["ent_gachaCurrency", null],
-  gachaCrystalLedger: ["ent_gachaCrystalLedger", null],
-  gachaProgress: ["ent_gachaProgress", { totalDrawCount: 0, drawsSinceLastSSR: 0 }],
-  gachaSpecialMemories: ["ent_gachaSpecialMemories", []],
-  coupleDaily: ["ent_coupleDaily", null],
-  calendar: ["ent_calendar", null],
-  musicPlayer: ["ent_musicPlayer", null],
-  notes: ["ent_notes", []],
-  loginReward: ["ent_loginReward", null],
-  petHome: ["ent_petHome", null],
-  petSettings: ["ent_petSettings", null],
-  yunyinSave: ["ent_yunyinSave", null],
-  systemMailbox: ["ent_systemMailbox", null],
-  dating: ["ent_dating", null],
-};
-
-const PERSONA_FEATURE_EXPORTS = {
-  coupleDaily: ["ent_coupleDaily", null],
-  dating: ["ent_dating", null],
-};
+import { FEATURE_EXPORTS, PERSONA_FEATURE_EXPORTS } from "../constants/featureStoreKeys.js";
 
 export async function loadFeatureBackup(characters = [], { compactImages = true, personaIds = [] } = {}) {
   const entries = await Promise.all(Object.entries(FEATURE_EXPORTS).map(async ([name, [key, fallback]]) => [name, await loadFeatureEntity(key, fallback)]));

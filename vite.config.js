@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { fileURLToPath } from "node:url";
 
 function resolveBase() {
   const repo = process.env.GITHUB_REPOSITORY?.split("/")[1];
@@ -14,6 +15,11 @@ export default defineConfig({
   plugins: [react()],
   build: {
     rollupOptions: {
+      // viewer.html：唯讀檢視備份／救援檔的獨立頁面，不載入小手機主程式。
+      input: {
+        main: fileURLToPath(new URL("./index.html", import.meta.url)),
+        viewer: fileURLToPath(new URL("./viewer.html", import.meta.url)),
+      },
       output: {
         manualChunks(id) {
           const normalized = id.replaceAll("\\", "/");
@@ -22,6 +28,15 @@ export default defineConfig({
           if (normalized.includes("/data/dating/profileGroups/localOne.")) return "dating-local-one";
           if (normalized.includes("/data/dating/profileGroups/localTwo.")) return "dating-local-two";
           if (normalized.includes("/data/dating/profileGroups/international.")) return "dating-international";
+          // 唯讀檢視頁（viewer.html）會用到的共用工具獨立成小區塊，
+          // 避免被併進 mali-runtime，讓檢視頁連帶載入存檔與聊天執行期程式。
+          if ([
+            "/utils/i18n.js",
+            "/utils/backupInspect.js",
+            "/utils/backupMediaAssets.js",
+            "/utils/imagePayload.js",
+            "/constants/featureStoreKeys.js",
+          ].some((path) => normalized.endsWith(path))) return "backup-inspect";
           if (normalized.includes("/node_modules/react/") || normalized.includes("/node_modules/react-dom/") || normalized.includes("/node_modules/scheduler/")) {
             return "react-vendor";
           }

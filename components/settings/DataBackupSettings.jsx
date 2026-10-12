@@ -1,7 +1,9 @@
 import React from "react";
 import CloudBackupSettings from "./CloudBackupSettings";
+import LocalSnapshotSettings from "./LocalSnapshotSettings";
+import { openBackupViewer } from "../../utils/openBackupViewer";
 
-export default function DataBackupSettings({ tr, dataImporting, dataImportRef, onExport, onImport, cloudBackupProps }) {
+export default function DataBackupSettings({ tr, dataImporting, dataImportRef, onExport, onImport, cloudBackupProps, snapshotProps }) {
   return <>
     <div className="mp-sg">
       <div className="mp-sg-t">{tr("全域資料備份", "Global data backup", "全体データバックアップ", "전체 데이터 백업")}</div>
@@ -12,8 +14,13 @@ export default function DataBackupSettings({ tr, dataImporting, dataImportRef, o
         <button className="mp-save" style={{ background: "linear-gradient(135deg,#90caf9,#42a5f5)" }} onClick={onExport}>{tr("匯出全域資料", "Export global data", "全体データを書き出す", "전체 데이터 내보내기")}</button>
         <button type="button" className="mp-save" style={{ background: "linear-gradient(135deg,#b0bec5,#78909c)" }} onClick={() => dataImportRef.current?.click()}>{dataImporting ? tr("等待選擇檔案…", "Waiting for file selection…", "ファイル選択待ち…", "파일 선택 대기 중…") : tr("匯入全域資料", "Import global data", "全体データを取り込む", "전체 데이터 가져오기")}</button>
         <input ref={dataImportRef} type="file" accept=".json,application/json" style={{ display: "none" }} onChange={onImport} />
+        <button type="button" className="mp-ibtn" onClick={openBackupViewer}>{tr("唯讀檢視備份檔／救援檔", "View a backup or rescue file (read-only)", "バックアップ／救出ファイルを閲覧（読み取り専用）", "백업/복구 파일 보기 (읽기 전용)")}</button>
+      </div>
+      <div style={{ fontSize: 11, color: "var(--mp-txt-l)", lineHeight: 1.6, marginTop: 6 }}>
+        {tr("唯讀檢視會開啟另一個頁面，可以逛聊天室、社群、筆記等內容，確認檔案是不是你的；不會讀取或修改這台小手機的資料。", "The read-only viewer opens a separate page where you can browse chats, social posts, notes and more to check the file. It never reads or changes the data on this phone.", "読み取り専用ビューアは別ページで開き、チャットやSNS、ノートなどを見てファイルを確認できます。このスマホのデータは読み込みも変更もしません。", "읽기 전용 뷰어는 별도 페이지에서 열리며 채팅, 소셜, 노트 등을 둘러보며 파일을 확인할 수 있습니다. 이 휴대폰의 데이터는 읽거나 바꾸지 않습니다.")}
       </div>
     </div>
+    {snapshotProps && <LocalSnapshotSettings tr={tr} {...snapshotProps} />}
     {cloudBackupProps && <CloudBackupSettings tr={tr} {...cloudBackupProps} />}
     <div className="mp-sg">
       <div className="mp-sg-t">{tr("使用提醒", "Usage notes", "使用上の注意", "사용 안내")}</div>

@@ -23,6 +23,9 @@ export const YUNYIN_WORLD_TEXT = {
   "world.shelf": ["貨架", "Shelves", "商品棚", "진열대"],
   "world.orders": ["行商訂單", "Merchant Orders", "行商の注文", "행상 주문"],
   "world.dungeon": ["秘境", "Mystic Realm", "秘境", "비경"],
+  "world.town": ["主城", "Town", "街", "마을"],
+  "world.myHome": ["我的家", "My Home", "わが家", "우리 집"],
+  "world.dungeonFerry": ["秘境渡口", "Mystic Realm Ferry", "秘境の渡し場", "비경 나루터"],
 
   // Interaction labels
   "action.sleep": ["睡覺", "Sleep", "眠る", "잠자기"],
@@ -108,4 +111,16 @@ export const YUNYIN_WORLD_TEXT = {
   "comp.home4": ["夜深了，早點歇著。", "It's late. Get some rest.", "夜も更けました。早めに休んで。", "밤이 깊었어요. 일찍 쉬어요."],
   "comp.home5": ["這屋子住久了，還真有點家的樣子。", "After living here a while, it really is starting to feel like home.", "長く住んでいると、本当に我が家らしくなってきますね。", "여기 오래 살다 보니 정말 집처럼 느껴져요."],
   "comp.home6": ["你不在的時候，我把院子繞了一圈。", "While you were away, I took a walk around the courtyard.", "あなたがいない間、庭を一周してきました。", "당신이 없는 동안 마당을 한 바퀴 돌았어요."],
+  "comp.fieldThanks1": ["謝謝你來幫忙，田裡的苗都精神多了。", "Thanks for helping. The sprouts look much livelier now.", "手伝ってくれてありがとう。苗がずいぶん元気になりました。", "도와줘서 고마워요. 새싹들이 훨씬 생기 있어졌어요."],
+  "comp.fieldThanks2": ["有你搭把手，今年收成應該不錯。", "With your help, this harvest should turn out well.", "あなたが手伝ってくれたから、今年の収穫はきっといいですね。", "당신이 거들어 줬으니 이번 수확은 괜찮을 거예요."],
+  "comp.fieldThanks3": ["辛苦了，等收成分你一份。", "Thanks for the hard work. I'll save you a share of the harvest.", "お疲れさま。収穫したら分けてあげますね。", "수고했어요. 수확하면 당신 몫도 챙겨 둘게요."],
+  "comp.fieldThanks4": ["手上沾了泥也沒關係，我幫你擦。", "Don't worry about the mud on your hands. I'll wipe it off.", "手に泥がついても大丈夫。拭いてあげます。", "손에 흙이 묻어도 괜찮아요. 제가 닦아 줄게요."],
+  "comp.stealCaught1": ["欸！被我抓到了～這次就算了，下次要先跟我說喔。", "Hey! Caught you~ I'll let it slide this time, but ask me first next time.", "あっ！見つけた～今回は見逃すけど、次は先に言ってね。", "앗! 딱 걸렸네요~ 이번엔 봐줄게요. 다음엔 먼저 말해 줘요."],
+  "comp.stealCaught2": ["想吃就說嘛，偷偷摸摸的做什麼。", "If you wanted some, you could've just asked. Why sneak around?", "食べたいなら言ってくれればいいのに。こそこそしなくても。", "먹고 싶으면 말하지, 뭘 그렇게 몰래 해요."],
+  "comp.stealCaught3": ["抓到你了！⋯⋯好啦，拿去吧。", "Got you! …Fine, take it.", "見つけた！……もう、持っていっていいですよ。", "잡았다! ……알았어요, 가져가요."],
+  "comp.stealCaught4": ["我都看到囉，嘴角還沾著葉子呢。", "I saw everything. There's still a leaf at the corner of your mouth.", "全部見てましたよ。口の端に葉っぱがついてます。", "다 봤어요. 입가에 아직 잎사귀가 붙어 있네요."],
+  "comp.stealHint1": ["最近田裡的菜好像少了幾株呢⋯⋯大概是被鳥叼走了吧？", "A few plants seem to be missing from the field lately… Birds, maybe?", "最近、畑の作物が少し減った気がします……鳥にでも取られたのかな？", "요즘 밭의 작물이 몇 포기 줄어든 것 같아요…… 새가 물어 갔나?"],
+  "comp.stealHint2": ["田邊有個腳印，不知道是誰的呢。", "There's a footprint by the field. I wonder whose it is.", "畑のそばに足跡がありました。誰のでしょうね。", "밭가에 발자국이 있던데, 누구 건지 모르겠네요."],
+  "comp.stealHint3": ["昨天數過的菜，今天怎麼對不上了⋯⋯", "I counted the crops yesterday, but today the numbers don't add up…", "昨日数えた作物、今日は数が合わないんです……", "어제 세어 둔 작물이 오늘은 수가 안 맞네요……"],
+  "comp.stealHint4": ["要是有小偷來，我大概也會假裝沒看到吧。", "If a thief ever came by, I'd probably pretend not to notice.", "もし泥棒が来ても、たぶん見なかったふりをしますね。", "도둑이 와도 아마 못 본 척할 것 같아요."],
 };

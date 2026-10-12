@@ -72,6 +72,7 @@ import { MaliPhonePhoneSurface, MaliPhoneWalletSurface } from "./components/apps
 import MaliPhoneSettingsSurface from "./components/settings/MaliPhoneSettingsSurface";
 import MaliPhoneShell from "./components/shell/MaliPhoneShell";
 import MaliPhoneOverlays from "./components/shell/MaliPhoneOverlays";
+import StorageLoadFailureScreen from "./components/shell/StorageLoadFailureScreen";
 import usePhoneNavigation from "./hooks/navigation/usePhoneNavigation";
 import { playAppClose } from "./utils/appLaunchMotion.js";
 import useNotificationCenter from "./hooks/notifications/useNotificationCenter";
@@ -640,15 +641,31 @@ export default function MaliPhone() {
     tr,
     sanitizeText,
   });
-  const { hydrated } = useAppPersistence({
+  const { hydrated, loadFailed: appStateLoadFailed, loadError: appStateLoadError } = useAppPersistence({
     defaults: defaultAppState,
     snapshot: dataController.persistenceSnapshot,
+    paused: dataController.persistencePaused,
+    writeGuard: dataController.persistenceWriteGuard,
     loadState: loadAppState,
     saveState: saveAppState,
     syncOnBoot,
     schedulePush,
     onLoad: applyLoadedAppState,
   });
+  // 每日本機快照：開機穩定後檢查一次，App 長時間開著時每小時再檢查；距離上次滿 20 小時才存。
+  const dataControllerRef = useRef(dataController);
+  dataControllerRef.current = dataController;
+  useEffect(() => {
+    if (!hydrated) return undefined;
+    // 向瀏覽器申請「不要自動清掉這個網站的資料」；不支援或被拒絕都不影響使用。
+    navigator.storage?.persisted?.()
+      .then((persisted) => (persisted ? true : navigator.storage.persist?.()))
+      .catch(() => null);
+    const check = () => { dataControllerRef.current.takeDailySnapshotIfDue(); };
+    const bootTimer = setTimeout(check, 15_000);
+    const hourly = setInterval(check, 60 * 60 * 1000);
+    return () => { clearTimeout(bootTimer); clearInterval(hourly); };
+  }, [hydrated]);
   // 主資料與信風各自從不同儲存實體 hydration；兩邊都完成後才校正聯絡人，
   // 避免啟動途中把其實仍存在的舊版角色誤判成已刪除。
   useEffect(() => {
@@ -1091,7 +1108,7 @@ export default function MaliPhone() {
 
   const addChatErrorNotice = (cid, err, roomId = activeRoomIds[cid] || null) => {
     const detail = sanitizeText(err?.message || tr("未知錯誤", "Unknown error", "不明なエラー", "알 수 없는 오류"), 500);
-    updateCharacterRoomMessages(cid, roomId, (messages) => [...messages, { id: gid(), role: "system_notice", content: `${getConnectionErrorPrefix()}${detail}`, time: Date.now() }]);
+    updateCharacterRoomMessages(cid, roomId, (messages) => [...messages, { id: gid(), role: "system_notice", content: `${getConnectionErrorPrefix()}${detail}`, time: Date.now(), ...(Number(err?.status) > 0 ? { errorStatus: Number(err.status) } : {}) }]);
   };
 
   const {
@@ -1334,16 +1351,16 @@ export default function MaliPhone() {
   const {
     applyLocalAppDataSnapshot,
     getExportableAppState,
-    getRollbackAppState,
     getTextSyncDocument,
     validateImportedAppState,
     summarizeImportedData,
     applyImportedAppState,
     applyTextSyncDocument,
+    takeLocalSnapshotSafely,
+    restoreLocalSnapshot,
   } = dataController;
   const { importRef: dataImportRef, importing: dataImporting, preview: dataImportPreview, exportAllData, importAllData, confirmImport: confirmImportPreview, cancelImport: cancelDataImport } = useDataImportExport({
     getExportableState: getExportableAppState,
-    getRollbackState: getRollbackAppState,
     downloadJsonFile,
     summarizeImportedData,
     validateImportedState: validateImportedAppState,
@@ -1358,6 +1375,7 @@ export default function MaliPhone() {
     personaController,
     resetChatroomImport: cancelChatroomImport,
     resetDataImport: cancelDataImport,
+    beforeReset: () => takeLocalSnapshotSafely("before-reset"),
     clearRooms,
     clearVoicePlaybackCache,
     armAppClickSuppression,
@@ -1964,7 +1982,6 @@ export default function MaliPhone() {
         onImport: importAllData,
         cloudBackupProps: {
           getExportableState: getExportableAppState,
-          getRollbackState: getRollbackAppState,
           validateImportedState: validateImportedAppState,
           summarizeImportedData,
           applyImportedState: applyImportedAppState,
@@ -1973,6 +1990,11 @@ export default function MaliPhone() {
         textSyncProps: {
           getTextSyncDocument,
           applyTextSyncDocument,
+        },
+        snapshotProps: {
+          takeSnapshot: takeLocalSnapshotSafely,
+          restoreSnapshot: restoreLocalSnapshot,
+          showToast,
         },
       }}
       release={{
@@ -2074,6 +2096,9 @@ export default function MaliPhone() {
       }}
     />
   );
+  // 存檔讀取失敗：停在這裡、不渲染任何會存檔的畫面，避免空資料蓋掉玩家資料。
+  if (appStateLoadFailed) return <StorageLoadFailureScreen error={appStateLoadError} tr={tr} themeCss={themeCss} />;
+  if (dataController.restoreRecovery) return <StorageLoadFailureScreen error={dataController.restoreRecovery.error} beforeRestoreBackup={dataController.restoreRecovery.backup} tr={tr} themeCss={themeCss} />;
   return (
     <MaliPhoneShell
       themeCss={themeCss}

@@ -2,9 +2,9 @@ import React, { useState } from "react";
 import { PLAYER_HOME_ID } from "../home/homeState";
 import { guestBedCount, inviteResident, dismissResident } from "../home/homeResidents";
 import { isRoomUnlocked } from "../home/homeExpansion";
-import { refreshDailyRequest, requestById, requestSatisfied, claimRequest } from "../home/residentRequests";
+import { ScrollText } from "lucide-react";
+import { refreshDailyRequest, requestById } from "../home/residentRequests";
 import { MAX_PACK_VERSIONS, residentPackOf, setActiveResidentPackVersion } from "../systems/ai";
-import { itemMeta } from "../systems/shop";
 import { useYunyinLocale } from "../i18n/YunyinLocale.jsx";
 
 const rowStyle = { display: "flex", alignItems: "center", gap: 8, border: "1px solid #e2d6c6", borderRadius: 12, padding: "8px 10px", marginBottom: 7, background: "#fff" };
@@ -42,36 +42,11 @@ export default function ResidentPanel({ save, characters = [], onDirty, onToast,
       <div style={{ fontSize: 12, color: "#8a7a6a", marginBottom: 10 }}>
         {guestRoomOpen ? yt("resident.capacity", { beds, residents: residents.length }) : yt("resident.roomRequired")}
       </div>
-      {template && (() => {
-        const speaker = characters.find((item) => item.id === request.characterId);
-        const ok = requestSatisfied(save, request);
-        const rewardText = template.reward.coins ? `🪙${template.reward.coins}`
-          : template.reward.crystals ? `💎${template.reward.crystals}`
-          : `${itemMeta(template.reward.materials.id).icon}×${template.reward.materials.n}`;
-        const hint = template.kind === "item" ? yt("resident.itemRequest", { icon: itemMeta(template.itemId).icon, name: yv(itemMeta(template.itemId).name), count: template.count, owned: save.inventory[template.itemId] || 0 })
-          : template.kind === "decor" ? yt("resident.decorRequest")
-          : yt("resident.activityRequest");
-        return (
-          <div style={{ border: "1px solid #e0d2c0", borderRadius: 12, padding: "10px 11px", marginBottom: 10, background: "#fdf7ef" }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#7d5a6e", marginBottom: 4 }}>{yt("resident.dailyRequest", { name: speaker?.name || yt("resident.guest") })}</div>
-            <div style={{ fontSize: 13, marginBottom: 4 }}>「{yv(template.text)}」</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ flex: 1, fontSize: 11, color: "#8a7a6a" }}>{request.done ? yt("resident.completed") : yt("resident.reward", { hint, reward: rewardText })}</span>
-              {!request.done && (
-                <button disabled={!ok} style={{ ...btnStyle(), opacity: ok ? 1 : 0.5, cursor: ok ? "pointer" : "default" }} onClick={() => {
-                  const result = claimRequest(save);
-                  if (result.error) { onToast(ym(result.error)); return; }
-                  if (result.reward.crystals) onCrystals?.(result.reward.crystals, {
-                    note: yt("resident.requestNote", { name: speaker?.name || yt("resident.guest") }),
-                  });
-                  onDirty(); setTick((t) => t + 1);
-                  onToast(yt("resident.claimed", { reward: rewardText, affinity: result.affinityGain }));
-                }}>{yt("resident.claim")}</button>
-              )}
-            </div>
-          </div>
-        );
-      })()}
+      {template && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 10px", marginBottom: 10, borderRadius: 10, background: "#fdf7ef", border: "1px solid #e0d2c0", fontSize: 12, color: "#8a7a6a" }}>
+          <ScrollText size={14} color="#7d5a6e" aria-hidden="true" />{yt("resident.requestMoved")}
+        </div>
+      )}
       {residents.length > 0 && (
         <>
           <div style={{ fontSize: 13, fontWeight: 800, color: "#4a4038", marginBottom: 2 }}>{yt("resident.lineLibrary")}</div>

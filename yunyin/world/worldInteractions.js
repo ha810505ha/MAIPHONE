@@ -75,16 +75,24 @@ function candidateApproaches(slot) {
 function plansForTarget(actor, map, target, reservedSlots) {
   const plans = [];
   for (const interaction of target?.interactions || []) {
+    // fallback 席位只在同一互動的一般席位都用不了時才開放（例如收納櫃兩側被擋才站櫃子前）
+    const primaryPlans = [];
+    const fallbackPlans = [];
     for (const slot of interaction.slots || []) {
       const slotKey = `${target.sourceId}:${interaction.id}:${slot.id}`;
       if (reservedSlots?.has(slotKey)) continue;
-      for (const candidate of candidateApproaches(slot)) {
+      const bucket = slot.fallback ? fallbackPlans : primaryPlans;
+      // exact：只能站在設計的那一格（站姿動作貼著家具側邊，不能從旁邊格「偏移」進被擋住的位置）
+      const candidates = slot.exact
+        ? [{ approach: slot.approach, renderOffset: [0, 0] }]
+        : candidateApproaches(slot);
+      for (const candidate of candidates) {
         const x = target.x + candidate.approach[0];
         const y = target.y + candidate.approach[1];
         if (map.isBlocked(x, y)) continue;
         const path = astar(actor.x, actor.y, x, y, map.w, map.h, map.isBlocked);
         if (!path) continue;
-        plans.push({
+        bucket.push({
           action: interaction.action,
           label: interaction.label,
           sourceId: target.sourceId,
@@ -103,6 +111,7 @@ function plansForTarget(actor, map, target, reservedSlots) {
         });
       }
     }
+    plans.push(...(primaryPlans.length ? primaryPlans : fallbackPlans));
   }
   return plans;
 }
@@ -117,3 +126,23 @@ export function findInteractionPlan(actor, map, target = null, reservedSlots = n
   return nearby[Math.floor(random() * nearby.length)];
 }
 
+
+// 只找指定動作（例如 read）的席位：先試指定家具，沒位子再找地圖上其他提供同動作的家具。
+// 用在陪伴請求——書桌、書櫃的閱讀只有一個席位，住客常要改去別件家具陪玩家。
+export function targetWithAction(target, action) {
+  const interactions = (target?.interactions || []).filter((item) => item.action === action);
+  return interactions.length ? { ...target, interactions } : null;
+}
+
+export function findActionPlan(actor, map, action, preferTarget = null, reservedSlots = new Set()) {
+  const onlyAction = (target) => targetWithAction(target, action);
+  const preferred = onlyAction(preferTarget);
+  const fromPreferred = preferred ? findInteractionPlan(actor, map, preferred, reservedSlots) : null;
+  if (fromPreferred) return fromPreferred;
+  const plans = collectWorldInteractions(map)
+    .map(onlyAction)
+    .filter(Boolean)
+    .flatMap((target) => plansForTarget(actor, map, target, reservedSlots));
+  plans.sort((a, b) => a.path.length - b.path.length);
+  return plans[0] || null;
+}

@@ -218,6 +218,9 @@ const ignoredDirectories = new Set([
   "node_modules",
   "public",
 ]);
+// 專案根目錄下的本機暫存：tmp/（AI 測試用的打包產物、QA 腳本）與 .claude/（AI 工作樹副本）。
+// 只排除根目錄這一層，程式裡若有同名子資料夾仍會檢查。
+const ignoredRootDirectories = new Set([".claude", "tmp"]);
 const allowedRawFetchFile = path.join(root, "utils", "networkRequest.js");
 const offenders = [];
 
@@ -226,6 +229,7 @@ async function scan(directory) {
     const fullPath = path.join(directory, entry.name);
     if (entry.isDirectory()) {
       if (ignoredDirectories.has(entry.name)) continue;
+      if (directory === root && ignoredRootDirectories.has(entry.name)) continue;
       await scan(fullPath);
       continue;
     }

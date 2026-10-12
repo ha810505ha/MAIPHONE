@@ -33,7 +33,7 @@ export default function useGroupChatAI({ currentGroup, isTyping, input, image, p
       }
     } catch (error) {
       if (isRequestCancelled(error)) return;
-      const notice = { id: createId(), role: "system_notice", content: `${connectionErrorPrefix()}${sanitizeText(error?.message || tr("未知錯誤", "Unknown error", "不明なエラー", "알 수 없는 오류"), 500)}`, time: Date.now() };
+      const notice = { id: createId(), role: "system_notice", content: `${connectionErrorPrefix()}${sanitizeText(error?.message || tr("未知錯誤", "Unknown error", "不明なエラー", "알 수 없는 오류"), 500)}`, time: Date.now(), ...(Number(error?.status) > 0 ? { errorStatus: Number(error.status) } : {}) };
       setGroups((groups) => appendGroupMessages(groups, group.id, [notice]));
     }
   }, [getMembers, generateReplies, appendReplies, sanitizeText, setGroups, createId, connectionErrorPrefix, tr]);

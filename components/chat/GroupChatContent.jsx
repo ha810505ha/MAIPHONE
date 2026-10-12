@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { ArrowDown } from "lucide-react";
 import PseudoImageBubble from "./PseudoImageBubble";
+import ConnectionErrorBody from "./ConnectionErrorBody";
 import PseudoImagePicker from "./PseudoImagePicker";
 import PhotoSourceChooser from "./PhotoSourceChooser";
 import { pseudoImageStyle } from "../../utils/pseudoImage";
@@ -18,7 +19,7 @@ export default function GroupChatContent({ messages, isTyping, activeMessageId, 
       <div className="mp-cr" style={{ flex: 1, minHeight: 0 }}>
         <div className="mp-msgs" ref={chatMsgsRef} style={{ flex: 1, minHeight: 0, paddingBottom: 12 }} onScroll={(event) => onScroll(event.currentTarget)}>
           {messages.map((message) => {
-            if (message.role === "system_notice") return <div key={message.id} className="mp-msg-note-wrap"><div className="mp-msg-note"><div>{message.content}</div>{isConnectionErrorNotice(message.content) && <button className="mp-retry-btn" disabled={isTyping} onClick={(event) => { event.stopPropagation(); onRetry(message.id); }}>{tr("重新生成", "Regenerate", "再生成", "다시 생성")}</button>}</div></div>;
+            if (message.role === "system_notice") return <div key={message.id} className="mp-msg-note-wrap"><div className="mp-msg-note">{isConnectionErrorNotice(message.content) ? <ConnectionErrorBody message={message} isTyping={isTyping} onRetry={() => onRetry(message.id)} tr={tr} /> : <div>{message.content}</div>}</div></div>;
             const speakerAvatar = message.role === "user" ? playerAvatar : resolveSpeakerAvatar?.(message);
             return <div key={message.id} className={`mp-msg-wrap ${message.role === "user" ? "mp-msg-wrap-user mp-group-msg-wrap-user" : "mp-msg-wrap-ai mp-group-msg-wrap-ai"}`}>
               <div className="mp-group-msg-meta"><div className="mp-group-msg-avatar">{speakerAvatar ? <img src={speakerAvatar} alt="" /> : (message.role === "user" ? null : <AvatarFallback name={message.speakerName} icon="users" />)}</div>{message.role !== "user" && <div className="mp-group-msg-name">{message.speakerName || tr("群組", "Group", "グループ", "그룹")}</div>}</div>

@@ -1,5 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import BackButton from "../common/BackButton";
+import Icon from "../common/Icon";
 import { HOME_GESTURE, resolveLibrarySwipe, rubberBand } from "../../utils/homeGesture.js";
 import MotionPresence from "../motion/MotionPresence.jsx";
 
@@ -247,10 +248,10 @@ export function AllAppsDrawer({ open, apps, placedIds, renderAppIcon, tr, onClos
       }}
     >
       <div className="mp-library-head">
-        <BackButton className="mp-library-close" onClick={selectionMode ? cancelSelection : onClose} label={tr("返回", "Back", "戻る", "뒤로")} />
+        <BackButton onClick={selectionMode ? cancelSelection : onClose} label={tr("返回", "Back", "戻る", "뒤로")} />
         <strong>{selectionMode ? tr("選擇 App", "Select apps", "アプリを選択", "앱 선택") : tr("全部 App", "All apps", "すべてのアプリ", "모든 앱")}</strong>
-        {!selectionMode && <button className="mp-library-settings" onClick={() => setSettingsOpen((value) => !value)} aria-label={tr("設定", "Settings", "設定", "설정")}>⚙</button>}
-        {selectionMode && <button className="mp-library-select-all" onClick={toggleSelectAll}>
+        {!selectionMode && <button type="button" className="mp-hdr-action" onClick={() => setSettingsOpen((value) => !value)} aria-expanded={settingsOpen}>{tr("設定", "Settings", "設定", "설정")}</button>}
+        {selectionMode && <button type="button" className="mp-hdr-action" onClick={toggleSelectAll}>
           {allSelected ? tr("取消全選", "Clear", "全解除", "전체 해제") : tr("全選", "Select all", "全選択", "전체 선택")}
         </button>}
       </div>
@@ -258,7 +259,7 @@ export function AllAppsDrawer({ open, apps, placedIds, renderAppIcon, tr, onClos
       {settingsOpen && (
         <div className="mp-library-settings-menu mp-popover">
           <button onClick={() => { setSettingsOpen(false); setSelectionMode(true); setSelectedIds(new Set(placedIds)); }}>
-            <span>✓</span>{tr("管理主畫面 App", "Manage Home Screen", "ホーム画面を管理", "홈 화면 관리")}
+            <span><Icon name="grid" size={15} /></span>{tr("管理主畫面 App", "Manage Home Screen", "ホーム画面を管理", "홈 화면 관리")}
           </button>
         </div>
       )}

@@ -5,21 +5,24 @@ import { createPlayerRuntime, placeActor, updateActorMovement } from "./engine/a
 import { centerCameraOnActor, clampCamera, createCamera, followActor } from "./engine/camera";
 import { createInput } from "./engine/input";
 import { actorReservedSlot, beginActorAction, stopActorAction } from "./engine/actorActions";
-import { createMapRuntime, hasMap } from "./world/mapRegistry";
+import { createMapRuntime, getMapDefinition, hasMap } from "./world/mapRegistry";
 import { routeWorldTap } from "./world/interactionRouter";
 import { mergedPortalVisuals } from "./world/portalVisuals.js";
-import { findInteractionPlan } from "./world/worldInteractions";
+import { findActionPlan, findInteractionPlan, targetWithAction } from "./world/worldInteractions";
 import { loadSave, persistSave } from "./systems/save";
 import { settleExp, meditateDaily } from "./systems/cultivation";
 import { HARVEST_REPLANT_GUARD_MS, plotStage, harvestPlot, remainMin, replantPromptBlocked, ripenedDuring, cropById } from "./systems/farm";
 import { settleShelves, refreshOrders, furnaceDone, itemMeta, recipeById } from "./systems/shop";
 import { resetDungeonDaily } from "./systems/dungeon";
 import { spawnNpcs, updateNpcs } from "./systems/npc";
-import { companionReact } from "./systems/ai";
+import { companionReact, residentFieldLine } from "./systems/ai";
+import { actedToday, npcFieldStage, settleNpcFields } from "./systems/npcFields.js";
 import {
   drawBuilding as renderBuilding,
   drawCharacter as renderCharacter,
   drawFarmPlot,
+  drawNpcFieldCrops,
+  drawNpcFieldSoil,
   drawFurniture,
   drawNpcLabel,
   drawPortal as renderPortal,
@@ -28,18 +31,22 @@ import {
 } from "./engine/worldRenderer";
 import { useGacha } from "../contexts/GachaContext";
 import YunyinPanelHost from "./ui/YunyinPanelHost";
-import { CameraZoomControl, CompanionNotice, HomeEditorOverlay, OfflineSummary, YunyinHud, YunyinToast, yunyinCameraControlTop } from "./ui/YunyinOverlays";
+import { CompanionNotice, HomeEditorOverlay, OfflineSummary, YunyinHud, YunyinToast, YUNYIN_HUD_SAFE_TOP } from "./ui/YunyinOverlays";
+import { todayPending } from "./ui/dailyActions";
 import { FURNITURE_CATALOG, furnitureById, furnitureMaxCount } from "./home/furnitureCatalog";
 import { canAddFurnitureInstance } from "./home/furnitureOwnership";
 import { coSleepBonus, choreWorker, markChoreDone, choreBoost, dailyGift } from "./home/homeResidents";
-import { markCompanyAction } from "./home/residentRequests";
-import { createFurnitureInstance } from "./home/homeState";
+import { markCompanyAction, refreshDailyRequest, requestById } from "./home/residentRequests";
+import { PLAYER_HOME_ID, createFurnitureInstance } from "./home/homeState";
 import { canPlaceHomeFurniture, furnitureInstanceAt } from "./home/homeEditorRuntime";
 import { furnitureTiles } from "./home/furniturePlacement";
 import { useYunyinLocale, YunyinLocaleProvider } from "./i18n/YunyinLocale.jsx";
+import { translate } from "../utils/i18n.js";
+import { recordRuntimeDiagnostic } from "../services/diagnostics/runtimeDiagnostics";
+import StorageLoadFailureScreen from "../components/shell/StorageLoadFailureScreen";
 
 const SCALE = 2;            // 邏輯 32px tile、顯示 64px
-const STEP_MS = 150;        // 玩家在大型地圖上的逐格移動速度；NPC 維持各自原有設定
+const STEP_MS = 130;        // 玩家逐格移動速度（2026-10-10：地圖加大後從 150 調快約 15%）；NPC 維持各自原有設定
 const CAMERA_SCALES = [0.5, 1, 1.5, 2];
 const LOCAL_RESIDENT_TEST_BED_UID = "local-resident-test-guest-bed";
 
@@ -64,6 +71,9 @@ const prepareLocalResidentTestSave = (save) => {
 
   return save;
 };
+
+// 住客角色田（MP-030）的田區：不在靈田時也要能結算（離線收成、重種）
+const FARM_CHARACTER_FIELDS = (getMapDefinition("farm").fieldZones || []).filter((zone) => zone.type === "character");
 
 const fmtDuration = (mins, yt) => {
   const h = Math.floor(mins / 60), m = Math.round(mins % 60);
@@ -110,6 +120,8 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
     const shopRes = settleShelves(gameSave, now);      // 貨架離線照賣
     const crafted = gameSave.shop.furnaces.reduce((sum, f) => sum + furnaceDone(f, now), 0); // 兩爐已煉好待收數（不自動收）
     refreshOrders(gameSave, now);                      // 跨日更新行商訂單
+    refreshDailyRequest(gameSave.home, now);           // 跨日更新住客請求（今日頁紅點與陪伴邀請都靠它）
+    settleNpcFields(gameSave, FARM_CHARACTER_FIELDS, now); // 住客角色田：離線期間的收成與重種
     resetDungeonDaily(gameSave, now);                  // 跨日重置秘境次數
     if (offlineMin >= 1 && (expGained >= 1 || ripened > 0 || shopRes.sold > 0 || crafted > 0)) {
       return { mins: offlineMin, expGained: Math.floor(expGained), ripened, ...shopRes, crafted };
@@ -126,6 +138,7 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
   const homePreviewControlsRef = useRef(null);
   const cameraZoomActionsRef = useRef({});
   const farmAssistActionsRef = useRef({});
+  const fieldActionsRef = useRef({});
   const playerActionRef = useRef(() => {});
   homeEditorRef.current = homeEditor;
   const markDirty = () => { setCoins(gameSave.coins); persistSave(gameSave); };
@@ -238,7 +251,7 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
     const ro = new ResizeObserver(resize);
     ro.observe(wrap);
 
-    const clampCam = () => clampCamera(cam, map, { width: viewW, height: viewH }, viewScale);
+    const clampCam = () => clampCamera(cam, map, { width: viewW, height: viewH }, viewScale, YUNYIN_HUD_SAFE_TOP);
 
     cameraZoomActionsRef.current = {
       set: (nextScale) => {
@@ -294,8 +307,52 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
       return reserved;
     };
 
+    // 今天還沒達成的陪伴請求（用餐／閱讀／睡覺）
+    const pendingCompanyRequest = () => {
+      const request = gameSave.home?.homes?.[PLAYER_HOME_ID]?.request;
+      const template = requestById(request?.templateId);
+      if (!request || request.done || request.companyDone || template?.kind !== "company") return null;
+      return { request, template };
+    };
+
+    // 陪伴邀請：發出請求的住客放下手邊的事，到同一件（沒位子就找最近同功能的）家具陪玩家；
+    // 都沒位子就走到玩家旁邊。請求住客自己提的，所以一律答應。
+    const inviteCompanion = (npc, plan, target) => {
+      if (npc.helper) return;
+      npc.interactionPlan = null;
+      npc.path = [];
+      stopActorAction(npc);
+      const companionPlan = findActionPlan(npc, map, plan.action, target, reservedInteractionSlots());
+      if (companionPlan) {
+        npc.path = companionPlan.path;
+        npc.stepT = 0;
+        npc.interactionPlan = companionPlan;
+        npc.waitUntil = performance.now() + 8000;
+        if (!npc.path.length) {
+          npc.interactionPlan = null;
+          beginActorAction(npc, companionPlan, performance.now(), companionPlan.maxDurationMs);
+        }
+        return;
+      }
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const x = player.x + dx;
+        const y = player.y + dy;
+        if (map.isBlocked(x, y)) continue;
+        const path = astar(npc.x, npc.y, x, y, map.w, map.h, map.isBlocked);
+        if (!path) continue;
+        npc.path = path;
+        npc.stepT = 0;
+        npc.waitUntil = performance.now() + 8000;
+        return;
+      }
+    };
+
     const onWorldInteraction = (target) => {
-      const plan = findInteractionPlan(player, map, target, reservedInteractionSlots());
+      const company = pendingCompanyRequest();
+      // 有陪伴請求時，點到能做該動作的家具就優先做那個動作（家具同時有多種動作時不會分到別的）
+      const focusedTarget = company ? targetWithAction(target, company.template.action) : null;
+      const plan = (focusedTarget && findInteractionPlan(player, map, focusedTarget, reservedInteractionSlots()))
+        || findInteractionPlan(player, map, target, reservedInteractionSlots());
       if (!plan) {
         toastRef.current(yt("world.noInteractionSlot"));
         return;
@@ -311,6 +368,21 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
           if (markCompanyAction(gameSave.home, npc.charId, plan.action)) {
             markDirtyRef.current();
             toastRef.current(yt("world.requestReady", { name: npc.name }));
+          }
+        }
+        const companyNow = pendingCompanyRequest();
+        if (companyNow && companyNow.template.action === plan.action && plan.action !== "sleep") {
+          const requester = npcs.find((npc) => npc.charId === companyNow.request.characterId);
+          const requesterName = requester?.name || characters.find((item) => item.id === companyNow.request.characterId)?.name || yv("住客");
+          if (!requester) {
+            toastRef.current(yt("world.requestAway", { name: requesterName }));
+          } else {
+            inviteCompanion(requester, plan, target);
+            if (markCompanyAction(gameSave.home, requester.charId, plan.action)) {
+              markDirtyRef.current();
+              toastRef.current(yt("world.requestInvite", { name: requester.name }));
+              setTimeout(() => toastRef.current(yt("world.requestReady", { name: requester.name })), 2400);
+            }
           }
         }
         // 雙人床：玩家躺下時，邀在場住客睡另一側（每日首次同床 +2 好感）
@@ -401,6 +473,9 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
       }
 
       if (currentMap.id === "farm") {
+        settleFields();
+        markDirtyRef.current();
+        openNextFieldReward();
         const waterer = choreWorker(homeState, "water");
         const planted = gameSave.farm.plots.filter((plot) => plot.cropId);
         if (waterer && planted.length) {
@@ -553,6 +628,44 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
       },
     };
 
+    // ---- 住客角色田（MP-030）----
+    // fieldOwners：田區 id → 住客 id，只在結算時更新（畫面每幀直接讀，不在繪製時改存檔）
+    let fieldOwners = {};
+    const settleFields = () => {
+      settleNpcFields(gameSave, FARM_CHARACTER_FIELDS, Date.now());
+      fieldOwners = {};
+      for (const [characterId, field] of Object.entries(gameSave.farm.npcFields || {})) {
+        if (field?.zoneId && gameSave.home?.homes?.[PLAYER_HOME_ID]?.residents?.includes(characterId)) fieldOwners[field.zoneId] = characterId;
+      }
+    };
+    // 收成回禮：一次跳一位，收下後再跳下一位
+    const openNextFieldReward = () => {
+      const characterId = Object.values(fieldOwners).find((id) => gameSave.farm.npcFields[id]?.pendingReward);
+      if (!characterId) return false;
+      panelRef.current({ type: "npcFieldReward", titleKey: "npcField.rewardTitle", titleVariables: { name: characterName(characterId) }, characterId });
+      return true;
+    };
+    fieldActionsRef.current = { nextReward: openNextFieldReward };
+    // plotIndex 有值＝走進田裡點了作物格，才給幫忙／偷菜；沒有＝點圍欄或木牌，只看資訊
+    const onNpcField = (zone, { plotIndex = null } = {}) => {
+      settleFields();
+      markDirtyRef.current();
+      const characterId = fieldOwners[zone.id] || null;
+      if (characterId && gameSave.farm.npcFields[characterId]?.pendingReward) { openNextFieldReward(); return; }
+      panelRef.current(characterId
+        ? { type: "npcField", titleKey: "npcField.title", titleVariables: { name: characterName(characterId) }, characterId, cropCount: zone.plots.length, fromPlot: plotIndex !== null }
+        : { type: "npcField", titleKey: "npcField.emptyTitle", characterId: null });
+    };
+    const fieldSignText = (zoneId) => {
+      const characterId = fieldOwners[zoneId];
+      const field = characterId ? gameSave.farm.npcFields[characterId] : null;
+      if (!field) return { label: yt("npcField.emptyTitle"), subLabel: yt("npcField.statusEmpty") };
+      const acted = actedToday(field);
+      const status = acted === "help" ? "npcField.statusHelped" : acted ? "npcField.statusActed"
+        : npcFieldStage(field) === 3 ? "npcField.statusRipe" : "npcField.statusGrowing";
+      return { label: yt("npcField.title", { name: characterName(characterId) }), subLabel: yt(status) };
+    };
+
     // 靈田地塊：抵達後依狀態種植/收成/查看
     const onPlotArrive = (plotIdx) => {
       const plot = gameSave.farm.plots[plotIdx];
@@ -611,7 +724,7 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
         const point = routeWorldTap({
           screenX: sx, screenY: sy, camera: cam, scale: viewScale, map, player, npcs,
           save: gameSave, hasMap, walkTo, switchMap, openPanel: panelRef.current,
-          showToast: toastRef.current, onPlotArrive, onWorldInteraction, translateText: yt, localizeValue: yv,
+          showToast: toastRef.current, onPlotArrive, onNpcField, onWorldInteraction, translateText: yt, localizeValue: yv,
         });
         ripple = { wx: point.worldX, wy: point.worldY, t0: performance.now() };
       },
@@ -643,7 +756,16 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
     };
 
     const updatePlayer = (dt) => updateActorMovement(player, dt, STEP_MS, () => {
-      if (!pendingAction) return;
+      if (!pendingAction) {
+        // 走到戶外路口（地圖邊緣那一格）就直接換圖；換圖不做淡入淡出（除了人物不做動畫）
+        const inZone = (portal) => portal.zone
+          ? player.x >= portal.zone.x0 && player.x <= portal.zone.x1 && player.y >= portal.zone.y0 && player.y <= portal.zone.y1
+          : portal.x === player.x && portal.y === player.y;
+        const exit = (map.portals || []).find((portal) => portal.edge && inZone(portal));
+        if (exit && hasMap(exit.to)) switchMap(exit.to, exit.spawn, { instanceId: exit.instanceId });
+        else if (exit?.to === "dungeon") panelRef.current?.({ type: "dungeon", titleKey: "panel.dungeon" });
+        return;
+      }
       const action = pendingAction;
       pendingAction = null;
       action();
@@ -676,6 +798,11 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
       ctx.fillRect(0, 0, viewW, viewH);
       drawMap(ctx, map, cam, viewScale, viewW, viewH);
       map.plots.forEach((pl, idx) => drawFarmPlot(ctx, pl, idx, now, { camera: cam, scale: viewScale, save: gameSave }));
+      for (const zone of map.fieldZones) {
+        if (zone.type !== "character") continue;
+        drawNpcFieldSoil(ctx, zone, { camera: cam, scale: viewScale });
+        if (fieldOwners[zone.id]) drawNpcFieldCrops(ctx, zone, gameSave.farm.npcFields[fieldOwners[zone.id]], Date.now(), { camera: cam, scale: viewScale });
+      }
       const editorState = homeEditorRef.current;
       const previewedUid = editorState.active && editorState.preview ? editorState.selectedUid : null;
       for (const item of map.home?.furniture || []) {
@@ -692,7 +819,7 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
           // 丹房貨架：畫出玩家實際上架的商品，遠遠一看就知道還有沒有貨、賣完了沒
           if (b.id === "danfang_shelf") drawShelfStock(ctx, b, cam, viewScale);
         } })),
-        ...map.decorations.filter((d) => !d.flat).map((d) => ({ y: (d.y + (d.h || 1)) * TILE, draw: () => drawWorldDecoration(ctx, d, cam, viewScale) })),
+        ...map.decorations.filter((d) => !d.flat).map((d) => ({ y: (d.y + (d.h || 1)) * TILE, draw: () => drawWorldDecoration(ctx, d.fieldSign ? { ...d, ...fieldSignText(d.fieldSign) } : d.label ? { ...d, label: yv(d.label) } : d, cam, viewScale) })),
         ...map.trees.map((t) => ({ y: (t.y + 1) * TILE, draw: () => drawTree(ctx, t, cam, viewScale) })),
         ...(map.home?.furniture || []).filter((item) => item.uid !== previewedUid && furnitureById(item.furnitureId)?.placement !== "rug").map((item) => ({ y: (item.y + (furnitureById(item.furnitureId)?.footprint?.h || 1)) * TILE, draw: () => drawFurniture(ctx, item, cam, viewScale, homeEditorRef.current.selectedUid === item.uid) })),
         ...npcs.map((n) => ({ y: n.py + (n.action?.renderOffset?.y || 0) * TILE + TILE, draw: () => {
@@ -807,8 +934,7 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
       {/* touchAction 要直接放在 canvas 上（不會繼承）：否則手機瀏覽器會把拖曳當成捲動手勢
           搶走 pointer 事件（pointercancel），玩起來就是「點了沒反應、卡住」 */}
       <canvas ref={canvasRef} style={{ display: "block", imageRendering: "pixelated", touchAction: "none" }} />
-      <YunyinHud onBack={onBack} mapTitle={mapTitle} coins={coins} crystals={crystals} onOpenSettings={() => setPanel({ type: "settings", titleKey: "panel.settings" })} onOpenInventory={() => setPanel({ type: "inventory", titleKey: "panel.inventory" })} canDecorate={!!homeContext} decorating={homeEditor.active} onToggleDecorating={() => homeEditorActionsRef.current.toggle?.()} />
-      <CameraZoomControl value={cameraScale} top={yunyinCameraControlTop(!!homeContext)} onChange={(scale) => cameraZoomActionsRef.current.set?.(scale)} />
+      <YunyinHud onBack={onBack} mapTitle={mapTitle} coins={coins} crystals={crystals} onOpenSettings={() => setPanel({ type: "settings", titleKey: "panel.settings" })} onOpenInventory={() => setPanel({ type: "inventory", titleKey: "panel.inventory" })} onOpenToday={() => setPanel({ type: "today", titleKey: "panel.today" })} onOpenResidents={() => setPanel({ type: "homeResidents", titleKey: "panel.residents" })} todayPending={!panel && todayPending(gameSave).any} cameraScale={cameraScale} onZoom={(scale) => cameraZoomActionsRef.current.set?.(scale)} canDecorate={!!homeContext} decorating={homeEditor.active} onToggleDecorating={() => homeEditorActionsRef.current.toggle?.()} />
       <YunyinPanelHost
         panel={panel} setPanel={setPanel} gameSave={gameSave} markDirty={markDirty}
         onCompanion={onCompanion} showToast={showToast} addCrystals={addCrystals} crystals={crystals}
@@ -816,9 +942,15 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
         onHomeRefresh={() => homeEditorActionsRef.current.refreshHome?.()}
         onFarmAssist={(helper) => farmAssistActionsRef.current.finish?.(helper)}
         onPlayerAction={(durationMs) => playerActionRef.current?.(durationMs)}
+        onResidentLine={(charId, poolKey) => {
+          const text = residentFieldLine(gameSave, charId, poolKey);
+          const name = characters.find((item) => item.id === charId)?.name || yt("resident.guest");
+          if (text) showCompanionNotice({ charId, name, text: yv(text) });
+        }}
+        onPanelClosed={(closed) => { if (closed.type === "npcFieldReward") fieldActionsRef.current.nextReward?.(); }}
       />
       <YunyinToast message={toast} />
-      <HomeEditorOverlay editor={homeEditor} catalog={Object.values(FURNITURE_CATALOG).filter((item) => gameSave.home.furnitureUnlocks[item.id])} previewControlsRef={homePreviewControlsRef} onSelect={(id) => homeEditorActionsRef.current.select?.(id)} onConfirmPreview={() => homeEditorActionsRef.current.confirmPreview?.()} onCancelPreview={() => homeEditorActionsRef.current.cancelPreview?.()} onClose={() => homeEditorActionsRef.current.close?.()} onExpand={() => setPanel({ type: "homeExpand", titleKey: "panel.homeExpand" })} onResidents={() => setPanel({ type: "homeResidents", titleKey: "panel.residents" })} />
+      <HomeEditorOverlay editor={homeEditor} catalog={Object.values(FURNITURE_CATALOG).filter((item) => gameSave.home.furnitureUnlocks[item.id])} previewControlsRef={homePreviewControlsRef} onSelect={(id) => homeEditorActionsRef.current.select?.(id)} onConfirmPreview={() => homeEditorActionsRef.current.confirmPreview?.()} onCancelPreview={() => homeEditorActionsRef.current.cancelPreview?.()} onClose={() => homeEditorActionsRef.current.close?.()} onExpand={() => setPanel({ type: "homeExpand", titleKey: "panel.homeExpand" })} />
       <CompanionNotice notice={companionNotice} />
       <OfflineSummary summary={summary} formatDuration={(mins) => fmtDuration(mins, yt)} onCollect={() => { setSummary(null); markDirty(); }} />
     </div>
@@ -826,22 +958,28 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
 }
 
 function YunyinGameContent(props) {
-  const { yt } = useYunyinLocale();
+  const { yt, locale } = useYunyinLocale();
+  const tr = (...text) => translate(locale, ...text);
   const [initialSave, setInitialSave] = useState(null);
-  const [loadError, setLoadError] = useState("");
+  const [loadError, setLoadError] = useState(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   useEffect(() => {
     let mounted = true;
-    loadSave().then((save) => {
+    setInitialSave(null);
+    setLoadError(null);
+    loadSave({ isCurrent: () => mounted }).then((save) => {
+      if (!mounted) return;
       const preparedSave = prepareLocalResidentTestSave(save);
       if (import.meta.env.DEV) void persistSave(preparedSave);
-      if (mounted) setInitialSave(preparedSave);
+      setInitialSave(preparedSave);
     }).catch((error) => {
       if (!mounted) return;
-      setLoadError(error?.message || yt("save.loadFailed"));
+      recordRuntimeDiagnostic({ kind: "storage-load", appId: "yunyin", message: "Villa save could not be loaded", details: { name: error?.name || "Error" } });
+      setLoadError(error);
     });
     return () => { mounted = false; };
-  }, [yt]);
-  if (loadError) return <div className="mp-page" style={{ display: "grid", placeItems: "center", background: "#1c2733", color: "#fff", padding: 24, textAlign: "center" }}><div><div>{yt("save.villaLoadFailed")}</div><small>{loadError}</small><br/><button onClick={props.onBack} style={{ marginTop: 15 }}>{yt("common.back")}</button></div></div>;
+  }, [loadAttempt]);
+  if (loadError) return <StorageLoadFailureScreen error={loadError} tr={tr} featureTitle={tr("雲隱山莊", "Cloudveil Villa", "雲隠山荘", "운은산장")} onRetry={() => setLoadAttempt((value) => value + 1)} onBack={props.onBack} />;
   if (!initialSave) return <div className="mp-page" style={{ display: "grid", placeItems: "center", background: "#1c2733", color: "#fff" }}>{yt("save.loading")}</div>;
   return <YunyinRuntime {...props} initialSave={initialSave} />;
 }

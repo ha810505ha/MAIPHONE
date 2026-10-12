@@ -8,10 +8,30 @@ import residentModernHomeImg from "../assets/buildings/home_resident_modern.png"
 import residentJapaneseHomeImg from "../assets/buildings/home_resident_japanese.png";
 import residentOneStoryHomeImg from "../assets/buildings/home_resident_one_story.png";
 import soilImg from "../assets/tiles/soil.png";
+// 田格用的淺色土：soil.png 亮度 ×1.35 預先做好（2026-10-11 選定 B1：田格比周圍耕地淺、不加框）
+import soilLightImg from "../assets/tiles/soil_light.png";
 import terrainSheetImg from "../assets/tiles/terrain-sheet.png";
 import oakGreenImg from "../assets/trees/oak_green.png";
 import oakGreenSmallImg from "../assets/trees/oak_green_small.png";
 import pineGreenImg from "../assets/trees/pine_green.png";
+// 樹林（Modern Farm Trees，原尺寸繪製）：大樹給北緣與樹林深處，中小樹給會擋到活動區的邊
+import pineGreenBigImg from "../assets/trees/pine_green_big.png";
+import pineDarkBigImg from "../assets/trees/pine_dark_big.png";
+import oakGreenBigImg from "../assets/trees/oak_green_big.png";
+import oakBlueGreenBigImg from "../assets/trees/oak_bluegreen_big.png";
+import birchGreenMediumImg from "../assets/trees/birch_green_medium.png";
+import pineDarkMediumImg from "../assets/trees/pine_dark_medium.png";
+import pineGreenSmallImg from "../assets/trees/pine_green_small.png";
+// 耕地九宮格（Modern Farm Topsoil_Arable_Big_Modular）
+import arableUpperLeft from "../assets/tiles/arable/upper_left.png";
+import arableUpperMiddle from "../assets/tiles/arable/upper_middle.png";
+import arableUpperRight from "../assets/tiles/arable/upper_right.png";
+import arableMiddleLeft from "../assets/tiles/arable/middle_left.png";
+import arableMiddleCentral from "../assets/tiles/arable/middle_central.png";
+import arableMiddleRight from "../assets/tiles/arable/middle_right.png";
+import arableBottomLeft from "../assets/tiles/arable/bottom_left.png";
+import arableBottomMiddle from "../assets/tiles/arable/bottom_middle.png";
+import arableBottomRight from "../assets/tiles/arable/bottom_right.png";
 import tuft1 from "../assets/decor/tuft_1.png";
 import tuft2 from "../assets/decor/tuft_2.png";
 import tuft3 from "../assets/decor/tuft_3.png";
@@ -46,6 +66,27 @@ import farmMushroomAImg from "../assets/decor/farm_mushroom_a.png";
 import farmMushroomBImg from "../assets/decor/farm_mushroom_b.png";
 import farmWoodpileImg from "../assets/decor/farm_woodpile.png";
 import farmLanternImg from "../assets/decor/farm_lantern.png";
+// 農場點綴（Modern Farm Props／Trees／Fences）
+import farmStumpImg from "../assets/decor/farm_stump.png";
+import farmWellImg from "../assets/decor/farm_well.png";
+import farmRockMediumImg from "../assets/decor/farm_rock_medium.png";
+import farmRockSmallImg from "../assets/decor/farm_rock_small.png";
+import farmScarecrowImg from "../assets/decor/farm_scarecrow.png";
+import signWoodImg from "../assets/decor/sign_wood.png";
+import fenceHImg from "../assets/decor/fence_h.png";
+import fenceVImg from "../assets/decor/fence_v.png";
+// 花草點綴（Modern Exteriors Garden，1 格寬；高的花圖片 32×64 往上長）
+import floraBush1Img from "../assets/flora/bush_1.png";
+import floraBush2Img from "../assets/flora/bush_2.png";
+import floraBush4Img from "../assets/flora/bush_4.png";
+import floraBush5Img from "../assets/flora/bush_5.png";
+import floraBigPinkFlowerImg from "../assets/flora/big_pink_flower.png";
+import floraBigRedFlowerImg from "../assets/flora/big_red_flower.png";
+import floraBigYellowFlowerImg from "../assets/flora/big_yellow_flower.png";
+import floraBigWhiteFlowerImg from "../assets/flora/big_white_flower.png";
+import floraBigLightBlueFlowerImg from "../assets/flora/big_light_blue_flower.png";
+import floraBigSprout1Img from "../assets/flora/big_sprout_1.png";
+import floraBigSprout6Img from "../assets/flora/big_sprout_6.png";
 import hallPillarImg from "../assets/decor/hall_pillar.png";
 import hallIncenseImg from "../assets/decor/hall_incense.png";
 import roomWallsSheet from "../assets/tiles/room_walls.png";
@@ -149,7 +190,7 @@ export const BUILDING_IMAGES = {
   stationStall: stationStallImg,
   hallAltar: hallAltarImg,
 };
-export const TILE_IMAGES = { soil: soilImg };
+export const TILE_IMAGES = { soil: soilImg, soilLight: soilLightImg };
 // 室內牆/地板圖集（Room_Builder）：rect = [sx, sy, w, h]
 export const INTERIOR_SHEETS = { walls: roomWallsSheet, floors: roomFloorsSheet };
 export const INTERIOR_RECTS = {
@@ -178,7 +219,30 @@ export const WORLD_DECOR_IMAGES = {
   farmMushroomB: farmMushroomBImg,
   farmWoodpile: farmWoodpileImg,
   farmLantern: farmLanternImg,
+  farmStump: farmStumpImg,
+  farmWell: farmWellImg,
+  farmRockMedium: farmRockMediumImg,
+  farmRockSmall: farmRockSmallImg,
+  farmScarecrow: farmScarecrowImg,
+  signWood: signWoodImg,
+  fenceH: fenceHImg,
+  fenceV: fenceVImg,
+  floraBush1: floraBush1Img,
+  floraBush2: floraBush2Img,
+  floraBush4: floraBush4Img,
+  floraBush5: floraBush5Img,
+  floraBigPinkFlower: floraBigPinkFlowerImg,
+  floraBigRedFlower: floraBigRedFlowerImg,
+  floraBigYellowFlower: floraBigYellowFlowerImg,
+  floraBigWhiteFlower: floraBigWhiteFlowerImg,
+  floraBigLightBlueFlower: floraBigLightBlueFlowerImg,
+  floraBigSprout1: floraBigSprout1Img,
+  floraBigSprout6: floraBigSprout6Img,
 };
+
+// 自動撒在樹林邊、路邊的花草（地圖產生時依座標雜湊挑選，見 tilemap.scatterFlora）
+export const FLORA_BUSHES = ["floraBush1", "floraBush2", "floraBush4", "floraBush5"];
+export const FLORA_FLOWERS = ["floraBigPinkFlower", "floraBigRedFlower", "floraBigYellowFlower", "floraBigWhiteFlower", "floraBigLightBlueFlower", "floraBigSprout1", "floraBigSprout6"];
 
 // 家具圖片：key 對應 furnitureCatalog 的 furniture id（沒登記的家具走色塊 fallback）。
 export const FURNITURE_IMAGES = {
@@ -266,7 +330,26 @@ export const PATH_BLOB = {
   BL: [0, 64, 32, 32], B: [32, 64, 32, 32], BR: [64, 64, 32, 32],
 };
 
+// 水的河岸九宮格：同一張 terrain-sheet 右上的圓角水塘（x 512 起 3×3 格），規則同 PATH_BLOB
+export const WATER_BLOB = {
+  TL: [512, 0, 32, 32], T: [544, 0, 32, 32], TR: [576, 0, 32, 32],
+  L: [512, 32, 32, 32], C: [544, 32, 32, 32], R: [576, 32, 32, 32],
+  BL: [512, 64, 32, 32], B: [544, 64, 32, 32], BR: [576, 64, 32, 32],
+};
+
+export const ARABLE_PIECES = {
+  TL: arableUpperLeft, T: arableUpperMiddle, TR: arableUpperRight,
+  L: arableMiddleLeft, C: arableMiddleCentral, R: arableMiddleRight,
+  BL: arableBottomLeft, B: arableBottomMiddle, BR: arableBottomRight,
+};
+
+// 樹以原尺寸繪製（原本縮成 1.8 格寬，像素被壓碎）。依大小分組，地圖依位置挑組。
 export const TREE_IMAGES = [oakGreenImg, oakGreenSmallImg, pineGreenImg];
+export const FOREST_TREES = {
+  big: [pineGreenBigImg, pineDarkBigImg, oakGreenBigImg, oakBlueGreenBigImg],
+  medium: [oakGreenImg, pineGreenImg, birchGreenMediumImg, pineDarkMediumImg],
+  small: [oakGreenSmallImg, pineGreenSmallImg],
+};
 
 // 草地是純平塗底色，紋理感要靠這些草叢/小花裝飾疏疏落落蓋上去（草地本身沒有花紋）
 export const GRASS_TUFTS = [tuft1, tuft2, tuft3, tuft4, tuft5, tuft6, tuft7, tuft8, tuft9, tuft10, tuft11];

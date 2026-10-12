@@ -1,7 +1,7 @@
 // 秘境（無限流）：一輪 run 的狀態機。
 // 所有隨機都從 runSeed 推導（seed + salt → 確定性亂數）：
 // 同一輪的事件順序與擲骰結果可重現，關 app 重開、重讀存檔都無法重骰。
-import { EVENTS, BOSS_EVENT, MODIFIERS } from "../data/events";
+import { EVENTS, BOSS_EVENT, CRYSTAL_VEIN_EVENT, MODIFIERS } from "../data/events";
 import { hasUnlock } from "./cultivation";
 import { REALMS } from "../data/realms";
 import { BLUEPRINT_FURNITURE_IDS, furnitureById } from "../home/furnitureCatalog";
@@ -13,7 +13,7 @@ const BASE_HP = 10;
 const BASE_FLOORS = 5;
 const BASE_RUNS_PER_DAY = 2;
 
-export const eventById = (id) => (id === "boss" ? BOSS_EVENT : EVENTS.find((e) => e.id === id));
+export const eventById = (id) => (id === "boss" ? BOSS_EVENT : id === CRYSTAL_VEIN_EVENT.id ? CRYSTAL_VEIN_EVENT : EVENTS.find((e) => e.id === id));
 
 // ---- 難度分級：境界解鎖，越深掉落越好（材料/金幣/結晶/圖紙率）----
 export const DIFFICULTIES = [
@@ -26,7 +26,16 @@ export const DIFFICULTIES = [
   { id: 3, name: "霧核秘窟", icon: "🕳️", desc: "掉落×2・圖紙率最高", unlock: "dungeon_depth_3",
     floorPlus: 4, lootMul: 2, coinMul: 2, riskPlus: 0.1, crystalBonus: 10, blueprintChance: 0.5,
     clearMaterials: [{ id: "qingshi", n: 4 }, { id: "lingmu", n: 2 }] },
+  // MP-045：元嬰期／煉虛期。通關結晶只比霧核秘窟多一點（約 30／33），
+  // 另有機率在途中遇到結晶礦脈（每輪最多 1 次，1～3 顆）當小驚喜
+  { id: 4, name: "靈淵", icon: "🌀", desc: "掉落×2.5・可能遇到結晶礦脈", unlock: "dungeon_depth_4",
+    floorPlus: 6, lootMul: 2.5, coinMul: 2.5, riskPlus: 0.15, crystalBonus: 15, blueprintChance: 0.55, veinChance: 0.25,
+    clearMaterials: [{ id: "qingshi", n: 5 }, { id: "lingmu", n: 3 }] },
+  { id: 5, name: "歸墟", icon: "🌌", desc: "掉落×3・結晶礦脈更常見", unlock: "dungeon_depth_5",
+    floorPlus: 8, lootMul: 3, coinMul: 3, riskPlus: 0.2, crystalBonus: 18, blueprintChance: 0.6, veinChance: 0.35,
+    clearMaterials: [{ id: "qingshi", n: 6 }, { id: "lingmu", n: 4 }] },
 ];
+export const CRYSTAL_VEIN_MAX = 3;
 export const difficultyById = (id) => DIFFICULTIES.find((d) => d.id === id) || DIFFICULTIES[0];
 export const difficultyUnlocked = (d, cultivation) => !d.unlock || hasUnlock(cultivation, d.unlock);
 
@@ -63,7 +72,10 @@ export function resetDungeonDaily(save, now = Date.now()) {
 // ---- 抽事件：同輪不重複，最後一層固定 Boss ----
 function drawEvent(run) {
   if (run.floor >= run.totalFloors) return "boss";
-  const pool = EVENTS.filter((e) => !run.usedEvents.includes(e.id));
+  if (run.veinFloor && run.floor === run.veinFloor) return CRYSTAL_VEIN_EVENT.id;
+  // 高難度層數多：事件抽完就整池重來，避免沒有事件可抽
+  const unused = EVENTS.filter((e) => !run.usedEvents.includes(e.id));
+  const pool = unused.length ? unused : EVENTS;
   const total = pool.reduce((s, e) => s + e.weight, 0);
   let r = roll(run.seed, `evt${run.floor}`) * total;
   for (const e of pool) { r -= e.weight; if (r <= 0) return e.id; }
@@ -101,6 +113,11 @@ export function startRun(save, difficultyId = 1) {
   run.totalFloors = Math.max(3, BASE_FLOORS + difficulty.floorPlus + Math.floor(roll(seed, "floors") * 2) - eff.floorMinus);
   run.hpMax = BASE_HP + eff.hpPlus;
   run.hp = run.hpMax;
+  // 結晶礦脈：開局就決定這輪有沒有、在第幾層（第 2 層到 Boss 前一層），重讀存檔不會重骰
+  run.veinFloor = difficulty.veinChance && run.totalFloors > 2 && roll(seed, "vein") < difficulty.veinChance
+    ? 2 + Math.floor(roll(seed, "veinFloor") * (run.totalFloors - 2))
+    : null;
+  run.crystals = 0;
   run.eventId = drawEvent(run);
   d.activeRun = run;
   return null;
@@ -127,9 +144,11 @@ export function chooseOption(save, choiceIdx) {
   if (fx.exp) run.exp += Math.round(fx.exp * eff.expMul);
   if (fx.coins) run.coins += Math.round(fx.coins * difficultyById(run.difficulty).coinMul);
   if (fx.item) run.loot[fx.item.id] = (run.loot[fx.item.id] || 0) + fx.item.n * eff.dropMul;
+  const veinCrystals = fx.crystalVein ? 1 + Math.floor(roll(run.seed, "veinAmount") * CRYSTAL_VEIN_MAX) : 0;
+  if (veinCrystals) run.crystals = (run.crystals || 0) + veinCrystals;
 
   run.usedEvents.push(ev.id);
-  run.outcome = { ok, text: ok ? (ch.goodText || "順利通過。") : (ch.badText || "事與願違。"), fx: { ...fx, exp: fx.exp ? Math.round(fx.exp * eff.expMul) : 0, itemN: fx.item ? fx.item.n * eff.dropMul : 0 } };
+  run.outcome = { ok, text: ok ? (ch.goodText || "順利通過。") : (ch.badText || "事與願違。"), fx: { ...fx, exp: fx.exp ? Math.round(fx.exp * eff.expMul) : 0, itemN: fx.item ? fx.item.n * eff.dropMul : 0, crystals: veinCrystals } };
   run.state = run.hp <= 0 ? "dead" : run.floor >= run.totalFloors ? "cleared" : "outcome";
   return run.outcome;
 }
@@ -156,7 +175,9 @@ export function finishRun(save, mode /* "cleared" | "retreat" | "dead" */) {
     floor: run.floor, totalFloors: run.totalFloors,
     exp: Math.floor(run.exp * keep),
     coins: Math.floor(run.coins * keep),
-    crystals: (mode === "cleared" ? Math.min(15, 10 + Math.floor(run.totalFloors / 2)) + difficulty.crystalBonus : mode === "retreat" ? Math.min(10, 5 + Math.floor(run.floor / 2)) : 3),
+    // 礦脈結晶跟袋中戰利品一樣：通關／撤退全拿，出局掉一半
+    crystals: (mode === "cleared" ? Math.min(15, 10 + Math.floor(run.totalFloors / 2)) + difficulty.crystalBonus : mode === "retreat" ? Math.min(10, 5 + Math.floor(run.floor / 2)) : 3)
+      + Math.floor((run.crystals || 0) * keep),
     items: Object.entries(run.loot)
       .map(([id, n]) => ({ id, n: Math.floor(n * keep) }))
       .filter((it) => it.n > 0),

@@ -11,7 +11,10 @@ export const buildingAt = (map, x, y) => (map.buildings || []).find((building) =
 export const portalAt = (map, x, y, radius = 1) => {
   let best = null, bestDist = Infinity;
   for (const portal of map.portals || []) {
-    const dist = Math.max(Math.abs(portal.x - x), Math.abs(portal.y - y));
+    const toExit = Math.max(Math.abs(portal.x - x), Math.abs(portal.y - y));
+    // 戶外路口另有木牌（portal.sign）：點木牌附近也算點到出口
+    const toSign = portal.sign ? Math.max(Math.abs(portal.sign[0] - x), Math.abs(portal.sign[1] - y)) : Infinity;
+    const dist = Math.min(toExit, toSign);
     if (dist <= radius && dist < bestDist) { best = portal; bestDist = dist; }
   }
   return best;
@@ -40,4 +43,35 @@ export const plotIndexNearPoint = (map, tilePointX, tilePointY, scale = 1, minHi
     }
   });
   return bestIndex;
+};
+
+// 建築／互動站實際畫出來的範圍（格座標）：圖片依 renderScale 放大、底部對齊占地底線，
+// 常比占地高很多（例如丹爐只占 1 格、圖卻高出一截）。aspect = 圖高 / 圖寬，圖還沒載入就退回占地高度。
+export const buildingVisualRect = (building, aspect = null) => {
+  const renderScale = Math.max(0.1, Number(building.renderScale) || 1);
+  const width = building.w * renderScale;
+  const height = aspect > 0 ? width * aspect : building.h;
+  const bottom = building.y + building.h;
+  return { left: building.x + (building.w - width) / 2, right: building.x + (building.w + width) / 2, top: bottom - height, bottom };
+};
+
+// 以「畫面上看到的圖」判定點擊，並保證最小觸控尺寸（預設 56px）：
+// 0.5× 鏡頭時 1 格只剩 16px，只認占地格的話丹爐這類小站幾乎點不到。範圍重疊時取最近的。
+export const buildingAtPoint = (map, pointX, pointY, { scale = 1, aspectOf = () => null, minHitSizePx = 56, slackTiles = 0, filter = () => true } = {}) => {
+  const safeScale = Number(scale) > 0 ? Number(scale) : 1;
+  const minTiles = minHitSizePx / (32 * safeScale);
+  let best = null;
+  let bestDistance = Infinity;
+  for (const building of map.buildings || []) {
+    if (!filter(building)) continue;
+    const rect = buildingVisualRect(building, aspectOf(building));
+    const padX = Math.max(slackTiles, (minTiles - (rect.right - rect.left)) / 2);
+    const padY = Math.max(slackTiles, (minTiles - (rect.bottom - rect.top)) / 2);
+    if (pointX < rect.left - padX || pointX > rect.right + padX || pointY < rect.top - padY || pointY > rect.bottom + padY) continue;
+    const dx = pointX - (rect.left + rect.right) / 2;
+    const dy = pointY - (rect.top + rect.bottom) / 2;
+    const distance = dx * dx + dy * dy;
+    if (distance < bestDistance) { best = building; bestDistance = distance; }
+  }
+  return best;
 };

@@ -1,35 +1,28 @@
-import { drawRoadPath } from "./mapLayout.js";
+import { drawRoadPath, frameOutdoorMap } from "./mapLayout.js";
 
 const WIDTH = 36;
 const HEIGHT = 28;
-const grid = Array.from({ length: HEIGHT }, (_, y) => Array.from({ length: WIDTH }, (_, x) => (
-  x === 0 || y === 0 || x === WIDTH - 1 || y === HEIGHT - 1 ? "~" : "."
-)));
+// 內圈只放內容；四周樹林、河與出口路口由 frameOutdoorMap 包上去（見 mapLayout.js）
+const grid = Array.from({ length: HEIGHT }, () => Array.from({ length: WIDTH }, () => "."));
 
-for (let x = 1; x < WIDTH - 1; x += 1) {
-  grid[1][x] = "T";
-  grid[HEIGHT - 2][x] = "T";
-}
-for (let y = 1; y < HEIGHT - 1; y += 1) {
-  grid[y][1] = "T";
-  grid[y][WIDTH - 2] = "T";
-}
 
 const pave = (x, y) => {
-  if (x > 0 && y > 0 && x < WIDTH - 1 && y < HEIGHT - 1) grid[y][x] = "=";
+  if (x >= 0 && y >= 0 && x < WIDTH && y < HEIGHT) grid[y][x] = "=";
 };
 const plaza = (x, y, w, h) => {
   for (let dy = 0; dy < h; dy += 1) for (let dx = 0; dx < w; dx += 1) pave(x + dx, y + dy);
 };
 
-// Winding main avenue, civic street, central square, and branching map exits.
-drawRoadPath(pave, [[17, 1], [16, 5], [18, 10], [17, 15], [19, 20], [17, 26]]);
+// 山莊方位（2026-10-10 定案，三角形）：北邊過河是秘境渡口；南邊兩個路口，左往住宅區、右往靈田。
+// 主大道從北岸渡口往南穿過廣場，在 y≈20 接上東西向街道，再分兩路出南邊。
+drawRoadPath(pave, [[17, 0], [16, 5], [18, 10], [17, 15], [19, 20]]);
 drawRoadPath(pave, [[5, 9], [9, 8], [14, 9], [18, 10], [22, 9], [27, 8], [30, 9]]);
 plaza(12, 10, 12, 8);
-drawRoadPath(pave, [[1, 20], [6, 19], [11, 21], [17, 20], [23, 19], [29, 21], [34, 20]]);
-drawRoadPath(pave, [[22, 13], [25, 12], [29, 13], [32, 11], [34, 11]]);
+drawRoadPath(pave, [[5, 20], [8, 19], [12, 21], [17, 20], [23, 19], [28, 21], [31, 20]]);
+drawRoadPath(pave, [[12, 21], [12, 27]]);
+drawRoadPath(pave, [[23, 19], [23, 27]]);
 
-export default {
+export default frameOutdoorMap({
   id: "gate",
   name: "山門",
   kind: "town",
@@ -65,10 +58,13 @@ export default {
     { id: "city_lot_3", x: 5, y: 22, w: 5, h: 4 },
     { id: "city_lot_4", x: 25, y: 22, w: 5, h: 4 },
   ],
-  portals: [
-    { x: 34, y: 20, to: "farm", spawn: [17, 2], label: "靈田", icon: "🌿" },
-    { x: 1, y: 20, to: "residence", spawn: [17, 2], label: "住宅區", icon: "🏡" },
-    { x: 34, y: 11, to: "dungeon", label: "秘境", icon: "🌫️" },
-  ],
   plots: [],
-};
+}, {
+  riverRows: 2, // 北邊是河（山莊北界）＋一排樹（維持原本的樣子）；秘境渡口在河岸、兩側有樹
+  exits: [
+    // keepTrees：渡口兩側照樣種滿樹（維持原本的樣子），只空出光圈與木牌那幾格
+    { side: "north", at: 17, to: "dungeon", label: "秘境渡口", icon: "🌫️", keepTrees: true },
+    { side: "south", at: 12, to: "residence", label: "住宅區", icon: "🏡" },
+    { side: "south", at: 23, to: "farm", label: "靈田", icon: "🌿" },
+  ],
+});

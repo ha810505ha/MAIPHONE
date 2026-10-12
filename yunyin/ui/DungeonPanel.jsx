@@ -20,6 +20,7 @@ const fxText = (fx, yt, yv) => {
   if (fx.coins) parts.push(`🪙${fx.coins > 0 ? "+" : ""}${fx.coins}`);
   if (fx.hp) parts.push(`🩸${fx.hp > 0 ? "+" : ""}${fx.hp}`);
   if (fx.item) parts.push(`${itemMeta(fx.item.id).icon}${yv(itemMeta(fx.item.id).name)} ×${fx.itemN || fx.item.n}`);
+  if (fx.crystals) parts.push(`💎+${fx.crystals}`);
   return parts.join("・");
 };
 

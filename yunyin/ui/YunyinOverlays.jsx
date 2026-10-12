@@ -1,12 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
 import { FURNITURE_IMAGES } from "../data/assetUrls";
 import { useYunyinLocale } from "../i18n/YunyinLocale.jsx";
+import { Backpack, ChevronLeft, Coins, Gem, Menu, ScrollText, Settings, Sofa, Users, X, ZoomIn } from "lucide-react";
 import { formatResourceNumber } from "./resourceNumber.js";
 
 export const YUNYIN_HUD_ACTION_TOP = 82;
-export const yunyinCameraControlTop = (canDecorate) => (
-  YUNYIN_HUD_ACTION_TOP + (canDecorate ? 144 : 96)
-);
+// 上方 HUD 列（返回鍵、地名、金幣結晶兩行）約佔的高度；鏡頭可往上多捲這段，避免地圖上緣被擋住
+export const YUNYIN_HUD_SAFE_TOP = 76;
+const CAMERA_SCALES = [0.5, 1, 1.5, 2];
+const HUD_MENU_STYLES = "@keyframes yunyinHudIn{from{opacity:0;transform:translateY(-8px) scale(.92)}to{opacity:1;transform:none}}@media (prefers-reduced-motion: reduce){[data-yunyin-hud-item]{animation:none!important}}";
 
 // 佈置選單的縮圖：秀真實素材貼圖而非 emoji，玩家才看得出不同顏色/款式家具的實際長相。
 function FurnitureThumb({ item, size = 32 }) {
@@ -16,9 +18,13 @@ function FurnitureThumb({ item, size = 32 }) {
   return <img src={src} alt={yv(item.name)} style={{ maxWidth: size, maxHeight: size, objectFit: "contain", imageRendering: "pixelated" }} />;
 }
 
-export function YunyinHud({ onBack, mapTitle, coins, crystals, onOpenSettings, onOpenInventory, canDecorate = false, decorating = false, onToggleDecorating }) {
+// 右側工具列可收合：平常只剩「選單」，有未完成的今日事項時亮紅點；
+// 點開後依序滑出各功能，點任一功能或畫面空白處就收起，避免一整排擋住地圖。
+export function YunyinHud({ onBack, mapTitle, coins, crystals, onOpenSettings, onOpenInventory, onOpenToday, onOpenResidents, todayPending = false, cameraScale = 1, onZoom, canDecorate = false, decorating = false, onToggleDecorating }) {
   const { locale, yt } = useYunyinLocale();
   const [showBalances, setShowBalances] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [zoomOpen, setZoomOpen] = useState(false);
   const balanceCloseRef = useRef(null);
   useEffect(() => {
     if (!showBalances) return undefined;
@@ -32,11 +38,12 @@ export function YunyinHud({ onBack, mapTitle, coins, crystals, onOpenSettings, o
     justifyContent: "space-between",
     gap: 6,
     minWidth: 0,
-    padding: "5px 8px",
+    minHeight: 30,
+    padding: "5px 9px",
     borderRadius: 12,
     background: "rgba(0,0,0,.45)",
     color: "#fff",
-    fontSize: 11,
+    fontSize: 12,
     fontVariantNumeric: "tabular-nums",
     border: 0,
     fontFamily: "inherit",
@@ -44,23 +51,41 @@ export function YunyinHud({ onBack, mapTitle, coins, crystals, onOpenSettings, o
     cursor: "pointer",
     whiteSpace: "nowrap",
   };
-  const actionStyle = { width: 40, height: 40, borderRadius: 14, border: 0, padding: 0, background: "rgba(0,0,0,.45)", color: "#fff", fontSize: 18 };
-  const resourceLabelStyle = { flexShrink: 0 };
+  const resourceLabelStyle = { flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 5 };
   const resourceValueStyle = { flexShrink: 0, whiteSpace: "nowrap", marginLeft: "auto" };
   const formatResource = (value) => formatResourceNumber(value, locale, true);
-  return <><div data-yunyin-hud="1" style={{ position: "absolute", zIndex: 3, inset: 0, pointerEvents: "none" }}>
+  const closeMenu = () => { setMenuOpen(false); setZoomOpen(false); };
+  const pick = (action) => () => { closeMenu(); action?.(); };
+  const tileStyle = (highlight) => ({ position: "relative", width: 52, height: 52, border: 0, borderRadius: 16, padding: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, background: highlight ? "#f0c75e" : "rgba(0,0,0,.5)", color: highlight ? "#4e3826" : "#fff", fontFamily: "inherit", cursor: "pointer" });
+  const tileLabelStyle = { fontSize: 10, fontWeight: 700, lineHeight: 1.1, maxWidth: 48, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+  const redDot = <span aria-hidden="true" style={{ position: "absolute", top: 5, right: 5, width: 9, height: 9, borderRadius: 9, background: "#e5534b", border: "2px solid #fff", boxSizing: "border-box" }} />;
+  const menuItems = [
+    { id: "today", Icon: ScrollText, label: yt("hud.today"), aria: todayPending ? `${yt("hud.today")}・${yt("hud.todayPending")}` : yt("hud.today"), onClick: pick(onOpenToday), dot: todayPending },
+    { id: "inventory", Icon: Backpack, label: yt("hud.inventoryShort"), aria: yt("hud.inventory"), onClick: pick(onOpenInventory) },
+    canDecorate && { id: "decorate", Icon: Sofa, label: yt("hud.decorateShort"), aria: yt("hud.decorate"), onClick: pick(onToggleDecorating), highlight: decorating },
+    canDecorate && onOpenResidents && { id: "residents", Icon: Users, label: yt("hud.residents"), aria: yt("panel.residents"), onClick: pick(onOpenResidents) },
+    { id: "settings", Icon: Settings, label: yt("hud.settingsShort"), aria: yt("hud.settings"), onClick: pick(onOpenSettings) },
+    { id: "zoom", Icon: ZoomIn, label: yt("hud.zoom"), aria: yt("camera.adjust"), onClick: () => setZoomOpen((current) => !current), highlight: zoomOpen, expanded: zoomOpen },
+  ].filter(Boolean);
+  return <><style>{HUD_MENU_STYLES}</style><div data-yunyin-hud="1" style={{ position: "absolute", zIndex: 3, inset: 0, pointerEvents: "none" }}>
     <div data-yunyin-hud-title-row="1" style={{ position: "absolute", top: 10, left: 12, right: 180, display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-      <button onClick={onBack} style={{ pointerEvents: "auto", flexShrink: 0, border: 0, borderRadius: 12, padding: "6px 12px", background: "rgba(0,0,0,.45)", color: "#fff", fontSize: 15 }}>←</button>
-      <div style={{ color: "#fff", fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{yt("hud.title", { map: mapTitle })}</div>
+      <button type="button" aria-label={yt("common.back")} onClick={onBack} style={{ pointerEvents: "auto", flexShrink: 0, width: 44, height: 44, border: 0, borderRadius: 14, padding: 0, display: "grid", placeItems: "center", background: "rgba(0,0,0,.45)", color: "#fff" }}><ChevronLeft size={24} aria-hidden="true" /></button>
+      <div style={{ color: "#fff", fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textShadow: "0 1px 3px rgba(0,0,0,.45)" }}>{mapTitle}</div>
     </div>
     <div data-yunyin-hud-resource-stack="1" style={{ position: "absolute", top: 10, right: 12, width: 160, display: "grid", gap: 5 }}>
-      <button type="button" aria-label={`${yt("hud.coins")} ${coins}`} aria-haspopup="dialog" onClick={() => setShowBalances(true)} style={resourceStyle}><span style={resourceLabelStyle}>🪙 {yt("hud.coins")}</span><b style={resourceValueStyle}>{formatResource(coins)}</b></button>
-      <button type="button" aria-label={`${yt("hud.crystals")} ${crystals}`} aria-haspopup="dialog" onClick={() => setShowBalances(true)} style={resourceStyle}><span style={resourceLabelStyle}>💎 {yt("hud.crystals")}</span><b style={resourceValueStyle}>{formatResource(crystals)}</b></button>
+      <button type="button" aria-label={`${yt("hud.coins")} ${coins}`} aria-haspopup="dialog" onClick={() => setShowBalances(true)} style={resourceStyle}><span style={resourceLabelStyle}><Coins size={14} color="#f0c75e" aria-hidden="true" />{yt("hud.coins")}</span><b style={resourceValueStyle}>{formatResource(coins)}</b></button>
+      <button type="button" aria-label={`${yt("hud.crystals")} ${crystals}`} aria-haspopup="dialog" onClick={() => setShowBalances(true)} style={resourceStyle}><span style={resourceLabelStyle}><Gem size={14} color="#9fd6ff" aria-hidden="true" />{yt("hud.crystals")}</span><b style={resourceValueStyle}>{formatResource(crystals)}</b></button>
     </div>
-  </div><div data-yunyin-action-stack="1" style={{ position: "absolute", zIndex: 3, top: YUNYIN_HUD_ACTION_TOP, right: 12, display: "grid", gap: 8 }}>
-    <button type="button" aria-label={yt("hud.settings")} title={yt("hud.settings")} onClick={onOpenSettings} style={actionStyle}>⚙️</button>
-    <button type="button" aria-label={yt("hud.inventory")} title={yt("hud.inventory")} onClick={onOpenInventory} style={actionStyle}>🎒</button>
-    {canDecorate && <button type="button" aria-label={yt("hud.decorate")} title={yt("hud.decorate")} onClick={onToggleDecorating} style={{ ...actionStyle, background: decorating ? "#f0c75e" : actionStyle.background, color: decorating ? "#4e3826" : "#fff" }}>🛋️</button>}
+  </div>{menuOpen && <div aria-hidden="true" onClick={closeMenu} onPointerDown={(event) => event.stopPropagation()} style={{ position: "absolute", inset: 0, zIndex: 3 }} />}<div data-yunyin-action-stack="1" style={{ position: "absolute", zIndex: 3, top: YUNYIN_HUD_ACTION_TOP, right: 12, display: "grid", justifyItems: "end", gap: 8 }}>
+    <button type="button" aria-label={menuOpen ? yt("hud.menuClose") : (todayPending ? `${yt("hud.menu")}・${yt("hud.todayPending")}` : yt("hud.menu"))} aria-expanded={menuOpen} onClick={() => (menuOpen ? closeMenu() : setMenuOpen(true))} style={tileStyle(menuOpen)}>
+      {menuOpen ? <X size={20} aria-hidden="true" /> : <Menu size={20} aria-hidden="true" />}<span style={tileLabelStyle}>{menuOpen ? yt("hud.menuClose") : yt("hud.menu")}</span>{!menuOpen && todayPending && redDot}
+    </button>
+    {menuOpen && menuItems.map(({ id, Icon, label, aria, onClick, dot, highlight, expanded }, index) => <div key={id} data-yunyin-hud-item={id} style={{ position: "relative", animation: `yunyinHudIn .18s ease-out ${index * 0.035}s both` }}>
+      <button type="button" aria-label={aria} title={aria} aria-expanded={expanded} onClick={onClick} style={tileStyle(highlight)}><Icon size={20} strokeWidth={1.9} aria-hidden="true" /><span style={tileLabelStyle}>{label}</span>{dot && redDot}</button>
+      {id === "zoom" && zoomOpen && <div aria-label={yt("camera.zoom")} style={{ position: "absolute", top: 0, right: 60, display: "flex", gap: 5, padding: 5, borderRadius: 14, background: "rgba(0,0,0,.55)", boxShadow: "0 4px 14px rgba(0,0,0,.22)" }}>
+        {CAMERA_SCALES.map((scale) => <button key={scale} type="button" aria-pressed={cameraScale === scale} title={yt("camera.option", { value: scale })} onClick={() => { onZoom?.(scale); closeMenu(); }} style={{ width: 44, height: 42, border: 0, borderRadius: 10, padding: 0, background: cameraScale === scale ? "#f0c75e" : "rgba(255,255,255,.16)", color: cameraScale === scale ? "#4e3826" : "#fff", fontSize: 12, fontWeight: 800 }}>{scale}×</button>)}
+      </div>}
+    </div>)}
   </div>{showBalances && <dialog open aria-modal="true" data-yunyin-panel="1" aria-label={yt("hud.balances")} onKeyDown={(event) => { event.stopPropagation(); if (event.key === "Escape") { event.preventDefault(); setShowBalances(false); } if (event.key === "Tab") { event.preventDefault(); balanceCloseRef.current?.focus(); } }} style={{ position: "absolute", inset: 0, margin: 0, width: "100%", height: "100%", maxWidth: "none", maxHeight: "none", boxSizing: "border-box", border: 0, padding: 24, zIndex: 8, background: "rgba(20,14,26,.6)", display: "grid", placeItems: "center" }} onClick={() => setShowBalances(false)}>
     <div style={{ width: "min(100%, 300px)", boxSizing: "border-box", padding: 20, borderRadius: 18, background: "#fffaf3", color: "#4e3826" }} onClick={(event) => event.stopPropagation()}>
       <b>{yt("hud.balances")}</b>
@@ -68,19 +93,6 @@ export function YunyinHud({ onBack, mapTitle, coins, crystals, onOpenSettings, o
       <button type="button" ref={balanceCloseRef} onClick={() => setShowBalances(false)} style={{ marginTop: 20, width: "100%", border: 0, borderRadius: 12, padding: 10, background: "#7d5a6e", color: "#fff" }}>{yt("common.close")}</button>
     </div>
   </dialog>}</>;
-}
-
-// 順序：右上資源 > 設定 > 背包 >（家園才顯示佈置）> 放大鏡。
-// 放大鏡固定放最後——它展開的倍率清單只會往下長，不會把其他按鈕往下推。
-export function CameraZoomControl({ value, onChange, top = 178 }) {
-  const { yt, yv } = useYunyinLocale();
-  const [open, setOpen] = useState(false);
-  return <div aria-label={yt("camera.zoom")} style={{ position: "absolute", top, right: 12, zIndex: 3, display: "grid", justifyItems: "end", gap: 8 }}>
-    <button type="button" aria-label={yt("camera.adjust")} aria-expanded={open} title={yt("camera.current", { value })} onClick={() => setOpen((current) => !current)} style={{ width: 40, height: 40, border: 0, borderRadius: 14, padding: 0, background: open ? "#f0c75e" : "rgba(0,0,0,.45)", color: open ? "#4e3826" : "#fff", fontSize: 18 }}>🔍</button>
-    {open && <div style={{ display: "grid", gap: 5, padding: 5, borderRadius: 13, background: "rgba(0,0,0,.48)", boxShadow: "0 4px 14px rgba(0,0,0,.22)" }}>
-      {[0.5, 1, 1.5, 2].map((scale) => <button key={scale} type="button" title={yt("camera.option", { value: scale })} onClick={() => { onChange(scale); setOpen(false); }} style={{ width: 40, height: 29, border: 0, borderRadius: 9, padding: 0, background: value === scale ? "#f0c75e" : "rgba(255,255,255,.14)", color: value === scale ? "#4e3826" : "#fff", fontSize: 11, fontWeight: 800 }}>{scale}×</button>)}
-    </div>}
-  </div>;
 }
 
 export function HomeEditorOverlay({ editor, catalog, previewControlsRef, onSelect, onConfirmPreview, onCancelPreview, onClose, onExpand, onResidents }) {

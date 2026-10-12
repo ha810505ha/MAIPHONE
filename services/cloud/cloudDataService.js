@@ -14,6 +14,19 @@ export class CloudDataUnavailableError extends Error {
   }
 }
 
+export class CloudDataRequestError extends Error {
+  constructor(message, status, code) {
+    super(message);
+    this.name = "CloudDataRequestError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
+export function isCloudDocumentNotFound(error) {
+  return error?.status === 404 && error?.code === "DOCUMENT_NOT_FOUND";
+}
+
 async function getResponsePayload(response) {
   const contentType = response.headers.get("Content-Type") || "";
   return contentType.includes("application/json") ? response.json() : response.text();
@@ -35,7 +48,13 @@ export async function requestCloudData(path, { session, method = "GET", body, en
   const payload = await getResponsePayload(response);
   if (!response.ok) {
     const detail = typeof payload === "object" ? payload?.error : payload;
-    throw new Error(detail || `Cloud database request failed (${response.status})`);
+    const documentMissing = method === "GET" && path.startsWith("/v1/documents/")
+      && response.status === 404 && payload?.error === "Document not found";
+    throw new CloudDataRequestError(
+      detail || `Cloud database request failed (${response.status})`,
+      response.status,
+      documentMissing ? "DOCUMENT_NOT_FOUND" : undefined,
+    );
   }
   return payload;
 }

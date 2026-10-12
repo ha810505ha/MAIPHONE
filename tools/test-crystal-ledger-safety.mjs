@@ -36,18 +36,21 @@ assert.equal(spent.transaction.type, "expense");
 assert.equal(spent.transaction.balanceAfter, 0);
 
 const source = async (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
-const [context, wallet, storage, backup, couple, login, mailbox, yunyin, dungeon, shop, resident, furniture] = await Promise.all([
+const [context, wallet, storage, backup, couple, login, mailbox, yunyin, dungeon, shop, today, dailyActions, furniture] = await Promise.all([
   source("contexts/GachaContext.jsx"),
   source("components/wallet/WalletLedgerView.jsx"),
   source("utils/indexedDbStorage.js"),
-  source("services/featureBackupService.js"),
+  // 功能存檔 key 表由備份與救援檔轉換共用（MP-035 從 featureBackupService 抽出）。
+  source("constants/featureStoreKeys.js"),
   source("components/apps/CoupleApp.jsx"),
   source("components/apps/LoginRewardApp.jsx"),
   source("components/settings/SystemMailboxSettings.jsx"),
   source("yunyin/YunyinGame.jsx"),
   source("yunyin/ui/DungeonPanel.jsx"),
   source("yunyin/ui/ShopPanel.jsx"),
-  source("yunyin/ui/ResidentPanel.jsx"),
+  source("yunyin/ui/TodayPanel.jsx"),
+  // 交付訂單與領取住客請求的入帳在共用動作檔（MP-028），商店／今日頁只呼叫它。
+  source("yunyin/ui/dailyActions.js"),
   source("yunyin/ui/FurnitureShopPanel.jsx"),
 ]);
 
@@ -74,12 +77,14 @@ assert(
   "Yunyin dungeon must identify localized crystal transactions",
 );
 assert(
-  shop.includes("onCrystals(r.rewardCrystals") && shop.includes('yt("shop.orderNote"'),
+  dailyActions.includes("onCrystals(result.rewardCrystals") && dailyActions.includes('yt("shop.orderNote"'),
   "Yunyin orders must identify localized crystal transactions",
 );
 assert(
-  resident.includes("onCrystals?.(result.reward.crystals") && resident.includes('yt("resident.requestNote"'),
+  dailyActions.includes("onCrystals?.(result.reward.crystals") && dailyActions.includes('yt("resident.requestNote"'),
   "Yunyin resident requests must identify localized crystal transactions",
 );
+assert(shop.includes("deliverShopOrder({") && shop.includes("onCrystals"), "the shop must deliver orders through the shared crystal-noting action");
+assert(today.includes("claimResidentRequest({") && today.includes("onCrystals"), "the Today panel must claim requests through the shared crystal-noting action");
 
 console.log("ok: crystal balance migration, 30-entry cap, wallet history, and all reward sources stay connected");

@@ -425,7 +425,8 @@ assert(
   yunyinSettings.includes('data-yunyin-player-appearance="1"') && yunyinSettings.includes("onEditAppearance()"),
   "player appearance must remain available from Yunyin settings",
 );
-assert(yunyinGame.includes("yunyinCameraControlTop(!!homeContext)"), "Yunyin camera control must follow the right-side action stack");
+assert(yunyinOverlays.includes('id: "zoom"') && yunyinGame.includes("onZoom={(scale) => cameraZoomActionsRef.current.set?.(scale)}"), "Yunyin camera zoom must live in the collapsible right-side menu");
+assert(yunyinOverlays.includes("prefers-reduced-motion"), "Yunyin HUD menu animation must respect reduced motion");
 assert(featurePreload.includes("connection?.saveData"), "idle preload must respect data-saver mode");
 assert(featurePreload.includes('"slow-2g", "2g"'), "idle preload must skip slow connections");
 assert(featurePreload.includes("requestIdleCallback"), "likely features must warm during browser idle time");

@@ -615,4 +615,60 @@ function saveFeatureEntities(entries) {
   return enqueueMutation(() => saveResolvedFeatureEntitiesUnlocked(normalized));
 }
 
+// === 救援讀取（開機讀取失敗時用，只讀不寫） ===
+// 不指定版本開啟，避免版本不符時打不開；資料庫不存在時中止建立。
+// 每筆各開一個交易讀取，一筆壞掉只跳過那筆。裝置金鑰不匯出。
+const RESCUE_SKIP_KEYS = new Set([DEVICE_SECRETS_KEY, OUTBOX_KEY]);
+const isRescueKey = (key) => typeof key === "string"
+  && !RESCUE_SKIP_KEYS.has(key)
+  && (key.startsWith(ENT_PREFIX) || key.startsWith("part_") || key === APP_STATE_KEY);
+
+function openDbForRescue() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME);
+    req.onupgradeneeded = () => {
+      req.transaction?.abort();
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error || new Error("IndexedDB open failed"));
+    req.onblocked = () => reject(new Error("IndexedDB open blocked"));
+  });
+}
+
+function rescueRequest(db, run) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readonly");
+    const req = run(tx.objectStore(STORE_NAME));
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = (event) => {
+      event.preventDefault?.();
+      reject(req.error || new Error("IndexedDB read failed"));
+    };
+    tx.onabort = () => reject(tx.error || req.error || new Error("IndexedDB transaction aborted"));
+  });
+}
+
+async function readRescueEntries() {
+  const db = await openDbForRescue();
+  try {
+    if (!db.objectStoreNames.contains(STORE_NAME)) return { entries: {}, skipped: [] };
+    const keys = (await rescueRequest(db, (store) => store.getAllKeys())).filter(isRescueKey);
+    const entries = {};
+    const skipped = [];
+    for (const key of keys) {
+      try {
+        const value = await rescueRequest(db, (store) => store.get(key));
+        if (key.startsWith(ENT_PREFIX)) entries[key] = sanitizeWrappedEntity(key, value);
+        else entries[key] = value && typeof value === "object" && !Array.isArray(value) ? stripDeviceSecrets(value) : value;
+      } catch (error) {
+        skipped.push({ key, error: String(error?.name || error?.message || error).slice(0, 120) });
+      }
+    }
+    return { entries, skipped };
+  } finally {
+    db.close();
+  }
+}
+
+export { readRescueEntries };
 export { loadAppState, saveAppState, getSyncOutbox, readEntity, ackSynced, applyRemoteEntities, clearSyncOutbox, resetLocalEntities, clearDeviceSecrets, getDeviceId, loadFeatureEntity, saveFeatureEntity, saveFeatureEntities, loadPersonaFeatureEntity, savePersonaFeatureEntities };

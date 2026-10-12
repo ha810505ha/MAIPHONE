@@ -4,8 +4,8 @@ import {
   itemMeta, recipeById, recipeUnlocked, maxBatch,
   startCraft, furnaceDone, collectFurnace, furnaceCount,
   stockShelfQuantity, unstockShelf, settleShelves, SELL_INTERVAL_SEC,
-  deliverOrder,
 } from "../systems/shop";
+import { deliverShopOrder } from "./dailyActions";
 import { useYunyinLocale } from "../i18n/YunyinLocale.jsx";
 
 const btnStyle = (primary, enabled = true) => ({
@@ -269,13 +269,7 @@ export default function ShopPanel({ save, onDirty, onToast, onCrystals, onClose,
               <span style={{ fontSize: 12, fontWeight: 700, color: "#3d7a5c" }}>{yt("shop.delivered")}</span>
             ) : (
               <button style={btnStyle(true, enough)} disabled={!enough} onClick={() => {
-                const r = deliverOrder(save, o.id);
-                if (typeof r === "string") { onToast(ym(r)); return; }
-                onCrystals(r.rewardCrystals, { note: yt("shop.orderNote", { name: yv(m.name) }) });
-                const extras = `${r.blueprintName ? yt("shop.gainedBlueprint", { name: yv(r.blueprintName) }) : ""}${r.materials ? yt("shop.gainedMaterial", { icon: itemMeta(r.materials.id).icon, name: yv(itemMeta(r.materials.id).name), count: r.materials.n }) : ""}`;
-                onToast(yt("shop.deliveryComplete", { coins: r.rewardCoins, crystals: r.rewardCrystals, extras }));
-                onDirty();
-                setTick((t) => t + 1);
+                if (deliverShopOrder({ save, order: o, yt, yv, ym, onCrystals, onToast, onDirty })) setTick((t) => t + 1);
               }}>{yt("shop.deliver")}</button>
             )}
           </div>

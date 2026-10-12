@@ -9,6 +9,8 @@ import {
 import { FEATURE_DATA_CHANGED_EVENT, featureDataEventIncludes } from "../../services/featureDataLifecycle";
 import { NOTES_ENTITY_KEY, upsertNoteDraft } from "../../utils/notesPersistence";
 import { AppHeader, LargeTitle, LargeTitleHeader, SUB_PAGE_CLASS, useLargeTitle } from "../shell/LargeTitle";
+import StorageLoadFailureScreen from "../shell/StorageLoadFailureScreen";
+import { recordRuntimeDiagnostic } from "../../services/diagnostics/runtimeDiagnostics";
 
 const KEY = NOTES_ENTITY_KEY;
 const NOTE_UI_TEXT = {
@@ -92,6 +94,8 @@ export default function NotesApp({ onBack, tr }) {
   const largeTitle = useLargeTitle();
   const notesTitle = tr("筆記", "Notes", "ノート", "노트");
   const [notes, setNotes] = useState(null),
+    [loading, setLoading] = useState(true),
+    [loadError, setLoadError] = useState(null),
     [query, setQuery] = useState(""),
     [filter, setFilter] = useState("all"),
     [draft, setDraft] = useState(null),
@@ -103,7 +107,11 @@ export default function NotesApp({ onBack, tr }) {
     rootRef = useRef(null),
     notesRef = useRef(notes),
     draftRef = useRef(draft),
-    latestContentRef = useRef(null);
+    latestContentRef = useRef(null),
+    readyRef = useRef(false),
+    loadEpochRef = useRef(0),
+    reloadRef = useRef(null),
+    pendingWriteRef = useRef(Promise.resolve());
   notesRef.current = notes;
   draftRef.current = draft;
   const localizeNoteUi = (value) => {
@@ -118,28 +126,37 @@ export default function NotesApp({ onBack, tr }) {
       : value;
   };
   useLocalizedStaticText(rootRef, localizeNoteUi);
+  const trackWrite = (data) => {
+    const pending = saveFeatureEntity(KEY, data);
+    // IndexedDB serializes mutations; draining the last one also drains earlier writes.
+    pendingWriteRef.current = pending.catch(() => {});
+    return pending;
+  };
   const write = async (next) => {
+    if (!readyRef.current) return;
     notesRef.current = next;
     setNotes(next);
-    await saveFeatureEntity(KEY, next);
+    await trackWrite(next);
   };
   const persistCurrentDraft = ({ updateState = true } = {}) => {
     const activeDraft = draftRef.current;
-    if (!activeDraft) return Promise.resolve(null);
+    if (!readyRef.current || !activeDraft) return Promise.resolve(null);
     const content = latestContentRef.current
       ?? editorRef.current?.innerHTML
       ?? activeDraft.content;
     const result = upsertNoteDraft(notesRef.current, activeDraft, content);
     notesRef.current = result.notes;
     if (updateState) setNotes(result.notes);
-    return saveFeatureEntity(KEY, result.notes).then(() => result.item);
+    return trackWrite(result.notes).then(() => result.item);
   };
   const saveDraft = (content = null) => {
-    if (!draftRef.current) return;
+    if (!readyRef.current || !draftRef.current) return;
     if (content !== null) latestContentRef.current = content;
     clearTimeout(timerRef.current);
+    const epoch = loadEpochRef.current;
     timerRef.current = setTimeout(() => {
       timerRef.current = null;
+      if (!readyRef.current || epoch !== loadEpochRef.current) return;
       persistCurrentDraft().catch((error) => console.error("[notes] 自動儲存失敗", error));
     }, 450);
   };
@@ -149,24 +166,35 @@ export default function NotesApp({ onBack, tr }) {
   useEffect(() => {
     let live = true;
     const reload = () => {
+      const epoch = ++loadEpochRef.current;
+      readyRef.current = false;
+      setLoading(true);
+      setLoadError(null);
       clearTimeout(timerRef.current);
       timerRef.current = null;
       latestContentRef.current = null;
       draftRef.current = null;
       setDraft(null);
-      loadFeatureEntity(KEY, [])
+      pendingWriteRef.current.then(() => {
+        if (!live || epoch !== loadEpochRef.current) return;
+        return loadFeatureEntity(KEY, []);
+      })
         .then((data) => {
-          if (!live) return;
-          const next = Array.isArray(data) ? data : [];
-          notesRef.current = next;
-          setNotes(next);
+          if (!live || epoch !== loadEpochRef.current) return;
+          if (!Array.isArray(data)) throw new DOMException("Invalid notes data", "DataError");
+          notesRef.current = data;
+          setNotes(data);
+          readyRef.current = true;
+          setLoading(false);
         })
-        .catch(() => {
-          if (!live) return;
-          notesRef.current = [];
-          setNotes([]);
+        .catch((error) => {
+          if (!live || epoch !== loadEpochRef.current) return;
+          recordRuntimeDiagnostic({ kind: "storage-load", appId: "notes", message: "Notes could not be loaded", details: { name: error?.name || "Error" } });
+          setLoadError(error);
+          setLoading(false);
         });
     };
+    reloadRef.current = reload;
     const onFeatureDataChanged = (event) => {
       if (featureDataEventIncludes(event, KEY)) reload();
     };
@@ -180,6 +208,9 @@ export default function NotesApp({ onBack, tr }) {
       if (draftRef.current) {
         void persistCurrentDraft({ updateState: false }).catch((error) => console.error("[notes] 離開前儲存失敗", error));
       }
+      readyRef.current = false;
+      ++loadEpochRef.current;
+      reloadRef.current = null;
     };
   }, []);
   useEffect(() => {
@@ -267,14 +298,15 @@ export default function NotesApp({ onBack, tr }) {
         ),
     [notes, filter, query],
   );
-  if (notes === null)
+  if (loadError) return <StorageLoadFailureScreen error={loadError} tr={tr} featureTitle={notesTitle} onRetry={() => reloadRef.current?.()} onBack={onBack} />;
+  if (loading || notes === null)
     return (
       <div
       className="mp-page"
       ref={rootRef}
         style={{ display: "grid", placeItems: "center" }}
       >
-        正在讀取筆記⋯
+        {tr("正在讀取筆記⋯", "Loading notes…", "ノートを読み込み中…", "노트를 불러오는 중…")}
       </div>
     );
   if (draft)

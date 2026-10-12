@@ -1,7 +1,8 @@
+import { useRef, useState } from "react";
 import { DOCK_APPS, VERSION } from "../../constants/appConstants";
 import { HOME_SLOT_COUNT } from "../../utils/homeLayout";
 import { normalizeUiLanguage } from "../../utils/i18n";
-import { preserveMissingDeviceSecrets } from "../../utils/deviceSecrets";
+import { preserveMissingDeviceSecrets, stripDeviceSecrets } from "../../utils/deviceSecrets";
 import { sanitizeCustomCss } from "../../utils/customCss";
 import { sanitizeFontName } from "../../utils/fontName";
 import { FONT_PRESETS } from "../../styles/themePresets";
@@ -29,10 +30,20 @@ import {
 import {
   createTextSyncDocument,
   preserveLocalMedia,
+  stripTextSyncMedia,
   validateTextSyncDocument,
 } from "../../utils/textSyncDocument";
+import {
+  SNAPSHOT_REASONS,
+  getLocalSnapshot,
+  isDailySnapshotDue,
+  saveLocalSnapshot,
+} from "../../services/backup/localSnapshotService";
+import { recordRuntimeDiagnostic } from "../../services/diagnostics/runtimeDiagnostics";
 import { mergeWalletSyncData } from "../../utils/walletSync";
+import { summarizeBackupContent } from "../../utils/backupInspect";
 import { mergeGameProgressSyncData } from "../../utils/gameProgressSync";
+import { runDataRestoreTransaction } from "../../services/backup/dataRestoreTransaction";
 
 export const LOCAL_APP_DATA_KEYS = [
   "maliphone-pet-home",
@@ -54,6 +65,9 @@ export default function useGlobalDataSnapshot({
   tr,
   sanitizeText,
 }) {
+  const persistenceWriteGuard = useRef({ active: false, blocked: false, pending: null, epoch: 0 }).current;
+  const [persistencePaused, setPersistencePaused] = useState(false);
+  const [restoreRecovery, setRestoreRecovery] = useState(null);
   const {
     characters,
     activeCharId,
@@ -82,6 +96,7 @@ export default function useGlobalDataSnapshot({
     transfers,
     characterBlockStates,
     screenLockTimeout,
+    customPrompts,
     apiPresets,
     playerProfile,
     apiConfig,
@@ -200,6 +215,7 @@ export default function useGlobalDataSnapshot({
     transfers,
     characterBlockStates,
     screenLockTimeout,
+    customPrompts,
     apiPresets,
     playerProfile,
     apiConfig,
@@ -223,6 +239,7 @@ export default function useGlobalDataSnapshot({
     includeSecrets = false,
     compactMedia = true,
     includeMissingLocalData = false,
+    packMedia = true,
   } = {}) => {
     const exportCharacters = compactMedia ? compactCharacterImages(characters) : characters;
     const exportGroupChats = compactMedia
@@ -249,10 +266,11 @@ export default function useGlobalDataSnapshot({
       compactImages: compactMedia,
       personaIds: Object.keys(personaController.personas || {}),
     });
-    const localAppData = compactLegacyLocalData(
-      getLocalAppDataSnapshot({ includeMissing: includeMissingLocalData }),
-      featureData,
-    );
+    const rawLocalAppData = getLocalAppDataSnapshot({ includeMissing: includeMissingLocalData });
+    // Rollback needs the exact local values, including duplicated legacy entries.
+    const localAppData = includeMissingLocalData
+      ? rawLocalAppData
+      : compactLegacyLocalData(rawLocalAppData, featureData);
     const backupState = {
       characters: exportCharacters,
       activeCharId,
@@ -281,6 +299,7 @@ export default function useGlobalDataSnapshot({
       transfers,
       characterBlockStates,
       screenLockTimeout,
+      customPrompts,
       apiPresets: exportApiPresets,
       playerProfile,
       apiConfig: exportApiConfig,
@@ -309,6 +328,8 @@ export default function useGlobalDataSnapshot({
       // until its product rules and media sync model are finalized.
       featureData,
     };
+    // 快照只要文字，跳過替每張圖片算雜湊的打包步驟，直接回傳未打包的狀態。
+    if (!packMedia) return { state: backupState };
     const packed = await packBackupMedia(backupState);
     return {
       version: VERSION,
@@ -326,6 +347,82 @@ export default function useGlobalDataSnapshot({
     compactMedia: false,
     includeMissingLocalData: true,
   });
+
+  // 本機快照：文字資料（去掉圖片，不含金鑰），還原時保留這台裝置現有的圖片。
+  const takeLocalSnapshot = async (reason) => {
+    const { state: rawState } = await getAppStateSnapshot({ packMedia: false });
+    const state = stripTextSyncMedia(rawState);
+    return saveLocalSnapshot({ reason, state, version: VERSION });
+  };
+
+  // 快照失敗不擋住玩家已確認的操作，但要留下診斷。
+  const takeLocalSnapshotSafely = async (reason) => {
+    try {
+      return await takeLocalSnapshot(reason);
+    } catch (error) {
+      recordRuntimeDiagnostic({ kind: "local-snapshot", error, source: `localSnapshot:${reason}` });
+      return null;
+    }
+  };
+
+  const takeDailySnapshotIfDue = async () => {
+    if (persistenceWriteGuard.active || persistenceWriteGuard.blocked) return null;
+    try {
+      if (!(await isDailySnapshotDue())) return null;
+    } catch (error) {
+      recordRuntimeDiagnostic({ kind: "local-snapshot", error, source: "localSnapshot:daily-check" });
+      return null;
+    }
+    if (persistenceWriteGuard.active || persistenceWriteGuard.blocked) return null;
+    return takeLocalSnapshotSafely(SNAPSHOT_REASONS.daily);
+  };
+
+  const runProtectedRestore = async (prepare, { source = "import" } = {}) => {
+    if (persistenceWriteGuard.active || persistenceWriteGuard.blocked) {
+      const error = new Error("Restore is already active or blocked");
+      error.restoreStatus = persistenceWriteGuard.blocked ? "blocked" : "busy";
+      throw error;
+    }
+    persistenceWriteGuard.active = true;
+    persistenceWriteGuard.epoch += 1;
+    setPersistencePaused(true);
+    let localBackup;
+    try {
+      // Drain any save already in flight before capturing the rollback state.
+      await persistenceWriteGuard.pending;
+      localBackup = await getRollbackAppState();
+      const appState = await prepare(localBackup);
+      validateImportedAppState(appState);
+      return await runDataRestoreTransaction({
+        apply: () => applyAppState(appState),
+        rollback: () => applyAppState(localBackup, { rollback: true }),
+      });
+    } catch (error) {
+      if (error.restoreStatus === "rollback-failed") {
+        persistenceWriteGuard.blocked = true;
+        // Only the sanitized backup is exposed to the recovery export UI.
+        setRestoreRecovery({ error, backup: { ...localBackup, state: stripDeviceSecrets(localBackup.state) } });
+        recordRuntimeDiagnostic({ kind: "storage-restore", error: error.rollbackError, source: `restore:${source}:rollback` });
+      }
+      if (!error.restoreStatus) error.restoreStatus = "not-started";
+      throw error;
+    } finally {
+      persistenceWriteGuard.active = false;
+      if (!persistenceWriteGuard.blocked) setPersistencePaused(false);
+    }
+  };
+
+  const restoreLocalSnapshot = (id) => runProtectedRestore(async (localBackup) => {
+    const snapshot = await getLocalSnapshot(id);
+    if (!snapshot?.state || typeof snapshot.state !== "object") {
+      throw new Error(tr("找不到這份快照", "This snapshot could not be found", "このスナップショットが見つかりません", "이 스냅샷을 찾을 수 없습니다"));
+    }
+    return {
+      format: "maliphone-app-state",
+      formatVersion: 1,
+      state: preserveLocalMedia(snapshot.state, unpackBackupMedia(localBackup.state, localBackup.assets)),
+    };
+  }, { source: "snapshot" });
 
   const getTextSyncDocument = async () => {
     const backup = await getAppStateSnapshot();
@@ -423,7 +520,10 @@ export default function useGlobalDataSnapshot({
       : incoming;
     return {
       format: incoming?.format === "maliphone-app-state" ? "maliphone-app-state" : "legacy",
+      isRescue: incoming?.source === "maliphone-rescue",
       exportedAt: incoming?.exportedAt || null,
+      // 摘要只看名字與時間，圖片仍是打包後的參照也不影響。
+      content: summarizeBackupContent(src),
       characters: Array.isArray(src?.characters) ? src.characters.length : 0,
       chatThreads: src?.chatHistory && typeof src.chatHistory === "object"
         ? Object.keys(src.chatHistory).length
@@ -449,7 +549,8 @@ export default function useGlobalDataSnapshot({
     };
   };
 
-  const applyImportedAppState = async (incoming, { rollback = false } = {}) => {
+  // Private writer: only the protected transaction may apply or roll back data.
+  const applyAppState = async (incoming, { rollback = false } = {}) => {
     const packedSrc = incoming?.state && incoming?.format === "maliphone-app-state"
       ? incoming.state
       : incoming;
@@ -464,6 +565,8 @@ export default function useGlobalDataSnapshot({
         "파일 내용이 올바르지 않습니다",
       ));
     }
+    // 任何覆蓋（匯入、雲端下載、雲端備份還原、快照還原）前，先替目前資料留一份快照。
+    const safetySnapshot = !rollback ? await takeLocalSnapshotSafely(SNAPSHOT_REASONS.beforeOverwrite) : null;
 
     let nextState = {
       ...defaultAppState,
@@ -601,13 +704,15 @@ export default function useGlobalDataSnapshot({
     setChatroomManageOpen(false);
     setChatSettingsExpandedBooks({});
     await saveAppState(nextState);
+    return { snapshotCreated: Boolean(safetySnapshot) };
   };
 
-  const applyTextSyncDocument = async (incoming) => {
+  const applyImportedAppState = (incoming, options) => runProtectedRestore(() => incoming, options);
+
+  const applyTextSyncDocument = (incoming) => runProtectedRestore((localBackup) => {
     const document = validateTextSyncDocument(incoming);
     // Keep media, feature stores, local-only data, and device secrets on this
     // device. The remote document only becomes authoritative for text state.
-    const localBackup = await getRollbackAppState();
     const localState = unpackBackupMedia(localBackup.state, localBackup.assets);
     const mergedState = preserveLocalMedia(document.state, localState);
     // Merge shared progress explicitly. Media-related and unsupported feature
@@ -635,12 +740,14 @@ export default function useGlobalDataSnapshot({
       formatVersion: 1,
       state: mergedState,
     };
-    validateImportedAppState(appState);
-    await applyImportedAppState(appState);
-  };
+    return appState;
+  }, { source: "text-sync" });
 
   return {
     persistenceSnapshot,
+    persistenceWriteGuard,
+    persistencePaused,
+    restoreRecovery,
     getLocalAppDataSnapshot,
     applyLocalAppDataSnapshot,
     getExportableAppState,
@@ -650,5 +757,8 @@ export default function useGlobalDataSnapshot({
     summarizeImportedData,
     applyImportedAppState,
     applyTextSyncDocument,
+    takeLocalSnapshotSafely,
+    takeDailySnapshotIfDue,
+    restoreLocalSnapshot,
   };
 }

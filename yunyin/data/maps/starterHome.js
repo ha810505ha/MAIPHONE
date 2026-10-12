@@ -43,7 +43,8 @@ function build(home) {
 
   // 出口：庭院開通後，大廳南門打通進院子、離開點移到院子南緣；否則出口就在大廳南門。
   const yardOpen = unlocked.has("yard");
-  const portalSpec = { to: "residence", spawn: [17, 16], label: "離開小屋", icon: "🚪" };
+  // 住宅區外框往內移 3 格：玩家小屋門口 [17, 16] → [20, 19]
+  const portalSpec = { to: "residence", spawn: [20, 19], label: "離開小屋", icon: "🚪" };
   let portals;
   if (yardOpen) {
     for (const [x, y] of EXIT_TILES) grid[y][x] = "f";

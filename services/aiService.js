@@ -5,6 +5,15 @@ import { runMaliTextGeneration } from "./cloud/maliTestService.js";
 import { isLocalProvider } from "../constants/appConstants.js";
 import { getRealityThinkingBudget } from "../utils/realityOutputSettings.js";
 import { normalizeImagePayload } from "../utils/imagePayload.js";
+import { translate } from "../utils/i18n.js";
+
+// 帶 HTTP 狀態碼的錯誤，錯誤診斷靠它判斷原因（例如 401 金鑰錯、429 太頻繁）。
+const httpError = (message, status) => {
+  const error = new Error(message);
+  const code = Number(status);
+  if (Number.isFinite(code) && code > 0) error.status = code;
+  return error;
+};
 
 const NVIDIA_PROXY_BASE_URL = "https://maliphone-ai-proxy.d778105.workers.dev/nvidia";
 const OLLAMA_PROXY_BASE_URL = "https://maliphone-ai-proxy.d778105.workers.dev/ollama";
@@ -141,7 +150,7 @@ async function callAIRequest(messages, apiConfig, sysPrompt, options = {}) {
       }),
     });
     const data = await res.json();
-    if (data.error) throw new Error(data.error.message);
+    if (data.error) throw httpError(data.error.message, res.status);
     return data.content?.[0]?.text || "";
   }
 
@@ -185,7 +194,7 @@ async function callAIRequest(messages, apiConfig, sysPrompt, options = {}) {
       body: JSON.stringify(buildGeminiBody()),
     });
     const data = await res.json().catch(() => null);
-    if (!res.ok || data?.error) throw new Error(data?.error?.message || `HTTP ${res.status}`);
+    if (!res.ok || data?.error) throw httpError(data?.error?.message || `HTTP ${res.status}`, res.status);
     const out = (data?.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("");
     return out || "";
   }
@@ -203,9 +212,9 @@ async function callAIRequest(messages, apiConfig, sysPrompt, options = {}) {
       const data = await res.json().catch(() => null);
       const errMsg = data?.error?.message || `HTTP ${res.status}`;
       if (res.status === 404) {
-        throw new Error(`Vertex 404：請確認模型名稱或快捷模式 region/設定是否正確（目前模型：${model || "-"}）`);
+        throw httpError(`Vertex 404：請確認模型名稱或快捷模式 region/設定是否正確（目前模型：${model || "-"}）`, 404);
       }
-      throw new Error(errMsg);
+      throw httpError(errMsg, res.status);
     }
     const text = await res.text();
     const tryExtractText = (obj) =>
@@ -307,14 +316,25 @@ async function callAIRequest(messages, apiConfig, sysPrompt, options = {}) {
   }
   if (!res.ok) {
     const errMsg = data?.error?.message || data?.message || `HTTP ${res.status}`;
-    throw new Error(`[${provider}/${model}] ${errMsg}`);
+    // OpenRouter 免費模型常被下架或改成付費，原始英文訊息玩家看不懂，改成白話提示。
+    if (provider === "openrouter" && res.status === 404 && /:free$/i.test(String(model || ""))) {
+      const lang = typeof document === "undefined" ? "zh-TW" : document.documentElement.lang;
+      throw httpError(translate(
+        lang,
+        `免費模型「${model}」已經停用了（可能下架或改成付費）。請到設定的 AI 模型重新整理清單，換一個名稱結尾是 :free 的模型。`,
+        `The free model "${model}" is no longer available (it may have been removed or made paid). Refresh the model list in AI settings and pick another model ending in :free.`,
+        `無料モデル「${model}」は利用できなくなりました（終了または有料化の可能性）。AI 設定でモデル一覧を更新し、末尾が :free の別モデルを選んでください。`,
+        `무료 모델 "${model}"을(를) 더 이상 사용할 수 없습니다(종료 또는 유료 전환 가능). AI 설정에서 모델 목록을 새로고침하고 이름이 :free로 끝나는 다른 모델을 선택해 주세요.`,
+      ), 404);
+    }
+    throw httpError(`[${provider}/${model}] ${errMsg}`, res.status);
   }
   if (data?.error) {
     const rawMsg = data.error.message || JSON.stringify(data.error);
     if (/support image input|image input|vision|multimodal/i.test(rawMsg)) {
       throw new Error("目前選用模型不支援圖片輸入，請改成支援視覺的模型後再試。");
     }
-    throw new Error(`[${provider}/${model}] ${rawMsg}`);
+    throw httpError(`[${provider}/${model}] ${rawMsg}`, data.error.code ?? res.status);
   }
   return data?.choices?.[0]?.message?.content || "";
 }
@@ -327,7 +347,7 @@ async function callAI(messages, apiConfig, sysPrompt, options = {}) {
       kind: "ai-error",
       error,
       source: `aiService:${isHostedTestMode(apiConfig) ? "hosted_test" : String(apiConfig?.provider || "unknown")}`,
-      details: error?.details,
+      details: error?.status ? { ...(error.details || {}), status: error.status } : error?.details,
     });
     throw error;
   }

@@ -14,6 +14,7 @@ export default function useAppReset({
   personaController,
   resetChatroomImport,
   resetDataImport,
+  beforeReset,
   clearRooms,
   clearVoicePlaybackCache,
   armAppClickSuppression,
@@ -92,6 +93,8 @@ export default function useAppReset({
       "정말 모든 데이터를 삭제할까요?",
     ))) return;
 
+    // 清空前留一份本機快照，誤按時可以從設定的「自動快照」救回文字資料。
+    await beforeReset?.();
     try {
       await resetFeatureData();
       await clearDeviceSecrets();

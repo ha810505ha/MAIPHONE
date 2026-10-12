@@ -5,6 +5,7 @@ import {
   copyRuntimeDiagnostics,
   getRuntimeDiagnostics,
 } from "../../services/diagnostics/runtimeDiagnostics.js";
+import { explainError } from "../../services/diagnostics/errorExplain.js";
 
 export default function AboutInfoSettings({ tr, version, currentChangelogTitle, currentChangelog, versionOpen, setVersionOpen, disclaimerOpen, setDisclaimerOpen }) {
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
@@ -48,10 +49,10 @@ export default function AboutInfoSettings({ tr, version, currentChangelogTitle, 
                 <div className="mp-sg-t">{tr("錯誤診斷", "Error diagnostics", "エラー診断", "오류 진단")}</div>
                 <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.7,marginBottom:8}}>
                   {tr(
-                    "發生空白畫面或 App 異常時，技術紀錄會保留在這台裝置。只包含版本、App 路徑與錯誤資訊，不包含聊天內容或 API Key。",
-                    "Technical logs are kept on this device after blank screens or app errors. They include version, app route, and error details—not chats or API keys.",
-                    "白い画面やアプリ異常が発生した場合、技術ログはこの端末に保存されます。バージョン、アプリ経路、エラー情報のみで、会話やAPIキーは含みません。",
-                    "빈 화면이나 앱 오류가 발생하면 기술 기록이 이 기기에 보관됩니다. 버전, 앱 경로, 오류 정보만 포함하며 채팅 내용이나 API 키는 포함하지 않습니다.",
+                    "發生錯誤時，這裡會先說明原因與處理方式；看不出原因的，請按「複製全部錯誤」回報。紀錄只存在這台裝置，只包含版本、App 路徑與錯誤資訊，不包含聊天內容或 API Key。",
+                    "When something goes wrong, this explains the cause and what to do. If the cause is unclear, tap \"Copy all errors\" to report it. Logs stay on this device and include only version, app route, and error details—not chats or API keys.",
+                    "エラーが起きると、ここで原因と対処法を説明します。原因が分からない場合は「すべてコピー」で報告してください。記録はこの端末にのみ保存され、バージョン、アプリ経路、エラー情報だけを含み、会話や API キーは含みません。",
+                    "오류가 발생하면 여기에서 원인과 해결 방법을 먼저 알려 드립니다. 원인을 알 수 없으면 \"모든 오류 복사\"로 알려 주세요. 기록은 이 기기에만 저장되며 버전, 앱 경로, 오류 정보만 포함하고 채팅 내용이나 API 키는 포함하지 않습니다.",
                   )}
                 </div>
                 <div className="mp-version-row" onClick={() => {
@@ -66,19 +67,29 @@ export default function AboutInfoSettings({ tr, version, currentChangelogTitle, 
                   <div style={{padding:"10px 2px 2px"}}>
                     {diagnostics.length === 0 ? (
                       <div style={{fontSize:11,color:"var(--mp-txt-l)",padding:"4px 2px 10px"}}>{tr("目前沒有錯誤紀錄。", "No error records yet.", "エラー記録はありません。", "오류 기록이 없습니다.")}</div>
-                    ) : diagnostics.map((record) => (
-                      <details key={record.id} style={{border:"1px solid var(--mp-line)",borderRadius:12,padding:"9px 10px",marginBottom:7,background:"var(--mp-surface)",fontSize:10,color:"var(--mp-txt-l)"}}>
-                        <summary style={{cursor:"pointer",fontWeight:800,color:"var(--mp-txt)"}}>
-                          {new Date(record.at).toLocaleString()} · {record.appId || "unknown"}
-                        </summary>
-                        <div style={{marginTop:7,lineHeight:1.6,overflowWrap:"anywhere",whiteSpace:"pre-wrap"}}>
-                          <b>{record.kind || "runtime"}</b><br />
-                          {record.message || "Unknown error"}
-                          {record.recentApps?.length ? <><br />{tr("操作路徑", "App path", "アプリ経路", "앱 경로")}：{record.recentApps.join(" → ")}</> : null}
-                          {record.stack ? <><br /><br />{record.stack}</> : null}
+                    ) : diagnostics.map((record) => {
+                      const explained = explainError(record, tr);
+                      const tone = explained?.tone || "unknown";
+                      return (
+                        <div key={record.id} className="mp-diag-rec">
+                          <div className="mp-diag-meta">
+                            <span className={`mp-diag-tag mp-diag-tag--${tone}`}>{explained?.tag || tr("未分類", "Unclassified", "未分類", "미분류")}</span>
+                            <span>{new Date(record.at).toLocaleString()} · {record.appId || "unknown"}</span>
+                          </div>
+                          <div className="mp-diag-title">{explained?.title || tr("看不出原因的錯誤", "Unrecognized error", "原因不明のエラー", "원인을 알 수 없는 오류")}</div>
+                          <div className="mp-diag-hint">{explained?.hint || tr("偶爾一次可以先不用理會；一直發生的話，請按「複製全部錯誤」回報。", "If it happened once, you can ignore it. If it keeps happening, tap \"Copy all errors\" to report it.", "一度だけなら気にしなくて大丈夫です。繰り返す場合は「すべてコピー」で報告してください。", "한 번이면 무시해도 됩니다. 계속되면 \"모든 오류 복사\"로 알려 주세요.")}</div>
+                          <details className="mp-diag-details">
+                            <summary>{tr("技術細節", "Technical details", "技術的な詳細", "기술 세부 정보")}</summary>
+                            <div className="mp-diag-raw">
+                              <b>{record.kind || "runtime"}{record.details?.status ? ` · ${record.details.status}` : ""}</b><br />
+                              {record.message || "Unknown error"}
+                              {record.recentApps?.length ? <><br />{tr("操作路徑", "App path", "アプリ経路", "앱 경로")}：{record.recentApps.join(" → ")}</> : null}
+                              {record.stack ? <><br /><br />{record.stack}</> : null}
+                            </div>
+                          </details>
                         </div>
-                      </details>
-                    ))}
+                      );
+                    })}
                     <div style={{display:"flex",gap:8,marginTop:8}}>
                       <button type="button" className="mp-save" style={{flex:1}} disabled={!diagnostics.length} onClick={copyDiagnostics}>
                         {copyState === "copied"

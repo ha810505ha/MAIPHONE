@@ -3,11 +3,14 @@ import { Eye, EyeOff, KeyRound, LogIn, LogOut, Mail, UserPlus } from "lucide-rea
 import {
   getCloudDataConfig,
   getCloudDocument,
+  isCloudDocumentNotFound,
   putCloudDocument,
   runCloudDatabaseConnectionTest,
 } from "../../services/cloud/cloudDataService.js";
 import { mergeWalletSyncData } from "../../utils/walletSync.js";
 import { mergeGameProgressSyncData } from "../../utils/gameProgressSync.js";
+import { validateTextSyncDocument } from "../../utils/textSyncDocument.js";
+import { dataRestoreFailureMessage } from "../../services/backup/dataRestoreTransaction.js";
 
 const inputStyle = {
   width: "100%",
@@ -96,6 +99,7 @@ export default function AccountSettingsSection({ auth, tr, notify, textSyncProps
   const [cloudTestStatus, setCloudTestStatus] = useState("");
   const [textSyncBusy, setTextSyncBusy] = useState(false);
   const [textSyncStatus, setTextSyncStatus] = useState("");
+  const [textSyncFailed, setTextSyncFailed] = useState(false);
   const [textSyncMeta, setTextSyncMeta] = useState(null);
   const [remoteTextSyncMeta, setRemoteTextSyncMeta] = useState(null);
   const user = auth?.user;
@@ -229,12 +233,28 @@ export default function AccountSettingsSection({ auth, tr, notify, textSyncProps
     if (!proceed) return;
     setTextSyncBusy(true);
     setTextSyncStatus("");
+    setTextSyncFailed(false);
     try {
+      let existing;
+      try {
+        existing = await getCloudDocument(auth.session, TEXT_SYNC_DOCUMENT_KEY);
+        if (existing?.key !== TEXT_SYNC_DOCUMENT_KEY) throw new Error("Unexpected cloud document");
+        validateTextSyncDocument(existing.data);
+      } catch (error) {
+        if (!isCloudDocumentNotFound(error)) {
+          throw new Error(text(
+            "無法讀取雲端原資料，已停止上傳。請確認連線與登入狀態後重試。",
+            "Could not read the existing cloud data. Upload stopped. Check your connection and sign-in status, then retry.",
+            "クラウドの元データを読み取れないため、アップロードを停止しました。接続とログイン状態を確認して再試行してください。",
+            "기존 클라우드 데이터를 읽을 수 없어 업로드를 중지했습니다. 연결과 로그인 상태를 확인한 후 다시 시도하세요.",
+          ));
+        }
+        existing = null;
+      }
       const document = await textSyncProps.getTextSyncDocument();
       // Text state intentionally uses manual overwrite. Wallet entries are an
       // exception: merge the current cloud ledger before replacing the document
       // so a second device cannot erase transactions it has not downloaded yet.
-      const existing = await getCloudDocument(auth.session, TEXT_SYNC_DOCUMENT_KEY).catch(() => null);
       if (existing?.data?.state?.walletData) {
         document.state.walletData = mergeWalletSyncData(
           document.state.walletData,
@@ -266,6 +286,7 @@ export default function AccountSettingsSection({ auth, tr, notify, textSyncProps
       setRemoteTextSyncMeta({ revision: meta.revision, updatedAt: meta.remoteUpdatedAt });
       notify?.(success);
     } catch (error) {
+      setTextSyncFailed(true);
       setTextSyncStatus(error?.message || text("文字同步上傳失敗。", "Text sync upload failed.", "テキスト同期のアップロードに失敗しました。", "텍스트 동기화 업로드에 실패했습니다."));
     } finally {
       setTextSyncBusy(false);
@@ -283,6 +304,7 @@ export default function AccountSettingsSection({ auth, tr, notify, textSyncProps
     if (!proceed) return;
     setTextSyncBusy(true);
     setTextSyncStatus("");
+    setTextSyncFailed(false);
     try {
       const remote = await getCloudDocument(auth.session, TEXT_SYNC_DOCUMENT_KEY);
       await textSyncProps.applyTextSyncDocument(remote?.data);
@@ -304,7 +326,8 @@ export default function AccountSettingsSection({ auth, tr, notify, textSyncProps
       setRemoteTextSyncMeta({ revision: meta.revision, updatedAt: meta.remoteUpdatedAt });
       notify?.(success);
     } catch (error) {
-      setTextSyncStatus(error?.message || text("文字同步下載失敗。", "Text sync download failed.", "テキスト同期のダウンロードに失敗しました。", "텍스트 동기화 다운로드에 실패했습니다."));
+      setTextSyncFailed(true);
+      setTextSyncStatus(error?.restoreStatus ? dataRestoreFailureMessage(error, text) : error?.message || text("文字同步下載失敗。", "Text sync download failed.", "テキスト同期のダウンロードに失敗しました。", "텍스트 동기화 다운로드에 실패했습니다."));
     } finally {
       setTextSyncBusy(false);
     }
@@ -344,7 +367,7 @@ export default function AccountSettingsSection({ auth, tr, notify, textSyncProps
             <button type="button" style={secondaryButton} disabled={auth.busy || textSyncBusy || !cloudDataConfigured} onClick={uploadTextSync}>{textSyncBusy ? text("處理中…", "Working…", "処理中…", "처리 중…") : text("上傳此裝置文字", "Upload this device", "この端末をアップロード", "이 기기 업로드")}</button>
             <button type="button" style={secondaryButton} disabled={auth.busy || textSyncBusy || !cloudDataConfigured} onClick={downloadTextSync}>{textSyncBusy ? text("處理中…", "Working…", "処理中…", "처리 중…") : text("下載雲端文字", "Download cloud text", "クラウドからダウンロード", "클라우드에서 다운로드")}</button>
           </div>
-          {textSyncStatus && <div role="status" style={{ marginTop: 7, fontSize: 11, color: textSyncStatus.includes("失敗") || textSyncStatus.includes("failed") ? "var(--mp-danger)" : "var(--mp-success)" }}>{textSyncStatus}</div>}
+          {textSyncStatus && <div role="status" style={{ marginTop: 7, fontSize: 11, color: textSyncFailed ? "var(--mp-danger)" : "var(--mp-success)" }}>{textSyncStatus}</div>}
         </div>
         <button type="button" style={secondaryButton} disabled={auth.busy} onClick={confirmSignOut}><LogOut size={16} style={{ verticalAlign: "-3px", marginRight: 6 }} />{text("登出", "Sign out")}</button>
         <div style={{ ...cloudTestCard, lineHeight: 1.65 }}>

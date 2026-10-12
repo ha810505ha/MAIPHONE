@@ -5,10 +5,13 @@ import starterHomeDef from "../data/maps/starterHome";
 import residenceDef from "../data/maps/residence";
 import danfangInteriorDef from "../data/maps/danfangInterior";
 import hallInteriorDef from "../data/maps/hallInterior";
+import { linkOutdoorExits } from "../data/maps/mapLayout";
 import { furnitureById } from "../home/furnitureCatalog";
 import { buildDynamicCollision, withDynamicCollision } from "../engine/dynamicCollision";
 
 const MAP_DEFINITIONS = { gate: gateDef, farm: farmDef, residence: residenceDef, starter_home: starterHomeDef, danfang_interior: danfangInteriorDef, hall_interior: hallInteriorDef };
+// 戶外出口的進場位置依「對面出口」自動對應（見 mapLayout.linkOutdoorExits）
+linkOutdoorExits(MAP_DEFINITIONS);
 
 export const DEFAULT_MAP_ID = "gate";
 

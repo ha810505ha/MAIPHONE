@@ -155,7 +155,7 @@ export function installRootBlankScreenWatchdog({ delayMs = 3_500 } = {}) {
     const root = globalThis.document.getElementById?.("root");
     if (!root) return;
     const phone = root.querySelector?.("[data-runtime-phone]");
-    const visibleFallback = Array.from(root.querySelectorAll?.(".mp-page, .mp-lock, .mp-desk") || [])
+    const visibleFallback = Array.from(root.querySelectorAll?.(".mp-page, .mp-lock, .mp-desk, [data-runtime-fallback]") || [])
       .some(isVisibleSurface);
     if (phone || visibleFallback) return;
     recordRuntimeDiagnostic({

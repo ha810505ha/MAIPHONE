@@ -1,6 +1,7 @@
 import React, { useRef } from "react";
 import PseudoImageBubble from "./PseudoImageBubble";
 import PseudoVoiceBubble from "./PseudoVoiceBubble";
+import ConnectionErrorBody from "./ConnectionErrorBody";
 import { toImageDataUrl } from "../../utils/imagePayload.js";
 
 export function SystemNoticeMessage({ message, share, connectionError, active, isTyping, onLongPressStart, onLongPressEnd, onToggle, onRetry, onDelete, applyUserPlaceholder, tr }) {
@@ -15,7 +16,7 @@ export function SystemNoticeMessage({ message, share, connectionError, active, i
       pointerDownAtRef.current = 0;
       if (heldFor < 400) onToggle?.();
     }}
-  >{share ? <div style={{ textAlign: "left" }}><div style={{ fontWeight: 700, marginBottom: 4 }}>{tr("社群分享", "Social share", "SNS共有", "소셜 공유")}</div><div style={{ fontSize: 11, color: "var(--mp-txt-l)", marginBottom: 6 }}>{tr("來源：", "Source: ", "出典: ", "출처: ")}{share.meta.source || "-"}</div><div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5, maxHeight: 180, overflowY: "auto", paddingRight: 2 }}>{applyUserPlaceholder(share.body)}</div></div> : <div><div>{message.content}</div>{connectionError && <button className="mp-retry-btn" disabled={isTyping} onClick={(event) => { event.stopPropagation(); onRetry(); }}>重新生成</button>}</div>}</div>{active && <button className="mp-msg-editbtn" onClick={onDelete}>🗑</button>}</div>;
+  >{share ? <div style={{ textAlign: "left" }}><div style={{ fontWeight: 700, marginBottom: 4 }}>{tr("社群分享", "Social share", "SNS共有", "소셜 공유")}</div><div style={{ fontSize: 11, color: "var(--mp-txt-l)", marginBottom: 6 }}>{tr("來源：", "Source: ", "出典: ", "출처: ")}{share.meta.source || "-"}</div><div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5, maxHeight: 180, overflowY: "auto", paddingRight: 2 }}>{applyUserPlaceholder(share.body)}</div></div> : (connectionError ? <ConnectionErrorBody message={message} isTyping={isTyping} onRetry={onRetry} tr={tr} /> : <div><div>{message.content}</div></div>)}</div>{active && <button className="mp-msg-editbtn" onClick={onDelete}>🗑</button>}</div>;
 }
 
 export function TransferMessage({ message, transfer, active, onToggle, onDelete, onAccept, onReturn, formatMoney, tr }) {

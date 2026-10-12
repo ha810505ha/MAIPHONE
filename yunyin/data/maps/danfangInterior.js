@@ -43,7 +43,8 @@ export default {
   ],
   plots: [],
   portals: [
-    { x: 7, y: 9, to: "gate", spawn: [27, 9], label: "離開丹房", icon: "🚪" },
-    { x: 8, y: 9, to: "gate", spawn: [27, 9], label: "離開丹房", icon: "🚪" },
+    // 山門外框往內移 3 格（OUTDOOR_MARGIN），回到丹房門口 [27, 9] → [30, 12]
+    { x: 7, y: 9, to: "gate", spawn: [30, 12], label: "離開丹房", icon: "🚪" },
+    { x: 8, y: 9, to: "gate", spawn: [30, 12], label: "離開丹房", icon: "🚪" },
   ],
 };

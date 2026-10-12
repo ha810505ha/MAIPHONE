@@ -1,6 +1,15 @@
 import { toSimplifiedChinese } from "../utils/i18n.js";
 
 const ZH_CHANGELOG = {
+  "1.4.5": [
+    "10/12 更新",
+    "資料保護｜讀取失敗時不會再蓋掉你的資料，還可以匯出救援檔，之後再匯入找回來。",
+    "錯誤提示｜AI 連不上時，會直接告訴你原因和處理方式。",
+    "雲隱山莊｜新增「今日」頁，每日任務和住客請求一次看；地圖改用道路相連，景色更豐富。",
+    "雲隱山莊｜新增住客的田，可以走進去幫忙照顧，成熟時也能偷偷摘一點。",
+    "雲隱山莊｜新增兩個境界和第二塊靈田；秘境新增兩個高難度區域，有機會挖到結晶。",
+    "修正｜修正部分手機打開「全部 App」時畫面重疊的問題。",
+  ],
   "1.4.0": [
     "10/10 更新",
     "情侶空間｜新增約定、紀念日與回憶時間軸，換上新的抽籤動畫；關係溫度升高可以解鎖小獎勵。",
@@ -166,6 +175,35 @@ const ZH_CHANGELOG = {
 };
 
 const TRANSLATED_CHANGELOG = {
+  "1.4.5": {
+    en: [
+      "10/12 Update",
+      "Data protection | If your data fails to load, it will no longer be overwritten. You can export a rescue file and import it later to get everything back.",
+      "Error messages | When the AI can't connect, you'll see what went wrong and how to fix it.",
+      "Cloudveil Villa | New Today page shows daily tasks and resident requests in one place. Maps are now linked by roads, with richer scenery.",
+      "Cloudveil Villa | Residents now have their own fields. Walk in to help tend their crops, or sneak a bite when they're ripe.",
+      "Cloudveil Villa | Two new cultivation realms and a second farm field. The Mystic Realm adds two harder areas where you may dig up crystals.",
+      "Fixes | Fixed the All Apps screen overlapping the home screen on some phones.",
+    ],
+    ja: [
+      "10/12 アップデート",
+      "データ保護｜読み込みに失敗してもデータが上書きされなくなりました。救援ファイルを書き出して、あとで読み込めば元に戻せます。",
+      "エラー表示｜AI につながらないとき、原因と対処方法をそのまま表示します。",
+      "雲隠山荘｜「今日」ページを追加し、毎日のタスクと住人のお願いをまとめて確認できます。マップは道でつながり、景色も豊かになりました。",
+      "雲隠山荘｜住人の畑を追加しました。中に入って世話を手伝ったり、実ったらこっそり摘んだりできます。",
+      "雲隠山荘｜境界が 2 つ増え、2 つ目の霊田が開けるようになりました。秘境に高難度エリアが 2 つ追加され、結晶を掘り当てられることもあります。",
+      "修正｜一部のスマホで「すべてのアプリ」画面がホーム画面と重なる問題を修正しました。",
+    ],
+    ko: [
+      "10/12 업데이트",
+      "데이터 보호 | 불러오기에 실패해도 데이터를 덮어쓰지 않습니다. 구조 파일을 내보내 두었다가 나중에 가져오면 되찾을 수 있습니다.",
+      "오류 안내 | AI 연결이 안 될 때 원인과 해결 방법을 바로 알려 줍니다.",
+      "운은산장 | '오늘' 페이지가 추가되어 일일 할 일과 주민 요청을 한 번에 볼 수 있습니다. 지도가 길로 이어지고 풍경도 더 풍성해졌습니다.",
+      "운은산장 | 주민의 밭이 생겼습니다. 안에 들어가 돌봐 주거나, 다 자라면 몰래 조금 따 갈 수도 있습니다.",
+      "운은산장 | 새 경지 2개와 두 번째 영전이 추가되었습니다. 비경에 고난도 지역 2곳이 생겼고, 결정을 캐낼 수도 있습니다.",
+      "수정 | 일부 휴대폰에서 '모든 앱' 화면이 홈 화면과 겹치던 문제를 수정했습니다.",
+    ],
+  },
   "1.4.0": {
     en: [
       "10/10 Update",

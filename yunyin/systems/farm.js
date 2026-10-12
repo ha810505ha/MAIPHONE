@@ -33,7 +33,7 @@ export const remainMin = (plot, now = Date.now()) => {
   return at ? Math.max(0, Math.ceil((at - now) / 60000)) : 0;
 };
 
-// 前 3 塊免費；第 4~9 塊掛在境界解鎖樹的 plot_4~plot_9（第 8、9 塊同在金丹期開）
+// 前 3 塊免費；第 4~18 塊掛在境界解鎖樹的 plot_4~plot_18（第 10~18 塊在第二塊田，MP-045）
 export function plotUnlocked(idx, cultivation) {
   if (!Number.isInteger(idx) || idx < 0) return false;
   if (idx < 3) return true;

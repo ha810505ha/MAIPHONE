@@ -49,7 +49,8 @@ export default {
   ],
   plots: [],
   portals: [
-    { x: 6, y: 9, to: "gate", spawn: [9, 9], label: "離開修煉堂", icon: "🚪" },
-    { x: 7, y: 9, to: "gate", spawn: [9, 9], label: "離開修煉堂", icon: "🚪" },
+    // 山門外框往內移 3 格：修煉堂門口 [9, 9] → [12, 12]
+    { x: 6, y: 9, to: "gate", spawn: [12, 12], label: "離開修煉堂", icon: "🚪" },
+    { x: 7, y: 9, to: "gate", spawn: [12, 12], label: "離開修煉堂", icon: "🚪" },
   ],
 };

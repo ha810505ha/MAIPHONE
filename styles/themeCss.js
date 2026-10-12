@@ -170,7 +170,7 @@ export function buildThemeCss({
       .mp-chat-list-line .mp-chat-row-top{align-items:center;}
       .mp-chat-list-line .mp-chat-row-name{font-size:14px;color:var(--mp-txt);}
       .mp-chat-list-line .mp-chat-row-name>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-      .mp-chat-list-line .mp-chat-row-pin{order:2;color:#ec5f8a;font-size:11px;} /* 釘選愛心固定粉紅，不跟主題（小舞 2026-10-09） */
+      .mp-chat-list-line .mp-chat-row-pin{order:2;color:#ec5f8a;font-size:11px;} /* 釘選愛心固定粉紅，不跟主題（2026-10-09） */
       .mp-chat-list-line .mp-chat-row-time{font-family:var(--mp-hand);font-size:9px;color:var(--mp-txt-l);padding:0;}
       .mp-chat-list-line .mp-chat-row-preview{min-width:0;max-width:100%;margin-top:4px;font-size:12px;color:var(--mp-txt-l);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
       .mp-chat-list-line .mp-chat-row-bottom{align-items:center;}

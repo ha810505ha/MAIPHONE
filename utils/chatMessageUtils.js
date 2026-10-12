@@ -1,5 +1,9 @@
 import { sanitizeText } from "./coreUtils.js";
 
+// AI 失敗提示的前綴：任一介面語言存下的都要認得（簡中由 tr 自動轉成「连线错误：」）。
+export const CONNECTION_ERROR_PREFIX_RE = /^(連線錯誤：|连线错误：|Connection error: |接続エラー[:：] ?|연결 오류: )/;
+export const isConnectionErrorText = (content) => CONNECTION_ERROR_PREFIX_RE.test(String(content || ""));
+
 export const ONLINE_CHAT_TEXT_LIMIT = 800;
 export const REALITY_CHAT_TEXT_LIMIT = 4000;
 

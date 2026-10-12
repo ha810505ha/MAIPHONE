@@ -1,4 +1,5 @@
 import { messagePlainText } from "../../utils/pseudoImage";
+import { isConnectionErrorText } from "../../utils/chatMessageUtils";
 import { stripSocialPostCountMetadata } from "./characterInteraction";
 
 export function createSocialFeedHelpers({
@@ -112,10 +113,7 @@ ${recentPosts || "（無）"}`;
     ? getPlayerAvatar()
     : (sanitizeUserImageUrl(characters.find((character) => String(character.id) === String(post?.charId))?.avatar) || post?.authorAvatar || post?.charAvatar || null);
   const getConnectionErrorPrefix = () => tr("連線錯誤：", "Connection error: ", "接続エラー: ", "연결 오류: ");
-  const isConnectionErrorNotice = (content) => {
-    const text = String(content || "");
-    return text.startsWith("連線錯誤：") || text.startsWith("Connection error: ") || text.startsWith("接続エラー: ") || text.startsWith("연결 오류: ");
-  };
+  const isConnectionErrorNotice = isConnectionErrorText;
   const formatSocialCount = (value) => {
     const n = Math.max(0, Math.round(Number(value) || 0));
     if (n >= 10000) return `${(n / 10000).toFixed(n >= 100000 ? 0 : 1).replace(/\.0$/, "")}萬`;

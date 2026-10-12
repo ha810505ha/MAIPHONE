@@ -26,7 +26,8 @@ export const PACK_POOLS = {
   harvest: 4, rareHarvest: 4,
   chat: 6,
 };
-export const RESIDENT_PACK_POOLS = { home: 6 };
+// fieldThanks／stealCaught／stealHint：角色田（MP-030）的幫忙道謝、偷菜被抓、隱約透露
+export const RESIDENT_PACK_POOLS = { home: 6, fieldThanks: 4, stealCaught: 4, stealHint: 4 };
 export const MAX_PACK_VERSIONS = 3;
 
 // ---- 句庫存取（key 永遠是角色 id，跟 NPC 綁定無關）----
@@ -95,6 +96,13 @@ export function addResidentPackVersion(save, charId, lines, now = Date.now()) {
 export function setActiveResidentPackVersion(save, charId, index) {
   const pack = residentPackOf(save, charId);
   if (pack && index >= 0 && index < pack.versions.length) pack.active = index;
+}
+
+// 角色田台詞（幫忙道謝／偷菜被抓／隱約透露）：有入住句庫用角色的，沒有（或舊句庫缺這個池）用通用句
+export function residentFieldLine(save, charId, poolKey, random = Math.random) {
+  const personal = activeResidentPackLines(save, charId)?.[poolKey];
+  const pool = personal?.length ? personal : COMPANION_LINES[poolKey] || [];
+  return pool.length ? pool[Math.floor(random() * pool.length)] : null;
 }
 
 // 有個人句庫就抽角色的，否則抽通用句庫

@@ -153,6 +153,18 @@ export const EVENTS = [
 ];
 
 // Boss 層（每輪最後一層固定）
+// 結晶礦脈（MP-045）：只在靈淵／歸墟，開局擲骰決定這輪有沒有、在哪一層；不進一般卡池。
+// 結晶數量由 dungeon.js 依本輪種子擲 1～3 顆（crystalVein 是旗標，不是數量）
+export const CRYSTAL_VEIN_EVENT = {
+  id: "crystal_vein", icon: "💎",
+  text: "岩壁裂縫透出淡紫色的光，是一小段靈魂結晶礦脈。",
+  choices: [
+    { label: "小心開採", hint: "靈魂結晶 1～3 顆",
+      good: { crystalVein: true }, goodText: "你屏住呼吸，敲下了幾顆結晶。" },
+    { label: "記下位置離開", hint: "安全前進", good: {}, goodText: "你在心裡記下這道光，繼續往深處走。" },
+  ],
+};
+
 export const BOSS_EVENT = {
   id: "boss", icon: "👹",
   text: "濃霧翻湧成牆，霧主的身影自其中緩緩凝聚——這一層的主人來了。",

@@ -4,7 +4,8 @@ import { astar, nearestWalkable } from "../engine/pathfind";
 import { randomAppearance, sanitizeAppearance } from "../engine/sprite";
 import { roll, rngOf } from "../engine/rng";
 import { NPC_NAMES, pickLine, COMPANION_LINES } from "../data/lines";
-import { activeResidentPackLines } from "./ai";
+import { activeResidentPackLines, residentFieldLine } from "./ai";
+import { inCharacterField } from "./npcFields.js";
 import { TILE } from "../engine/tilemap";
 import { actorReservedSlot, beginActorAction, stopActorAction } from "../engine/actorActions";
 import { findInteractionPlan } from "../world/worldInteractions";
@@ -18,7 +19,8 @@ const STEP_MS = 260; // NPC 走得比玩家慢一點
 // 傳送點要保持清空，避免 NPC 站在入口上阻擋玩家互動。
 const npcBlocked = (map, x, y) => map.isBlocked(x, y)
   || (map.portals || []).some((portal) => portal.x === x && portal.y === y)
-  || (map.id === "farm" && (map.plots || []).some((plot) => plot.x === x && plot.y === y));
+  || (map.id === "farm" && (map.plots || []).some((plot) => plot.x === x && plot.y === y))
+  || inCharacterField(map, x, y);
 
 // 存檔裡只放 seeds；第一次進遊戲時生成
 export function ensureNpcSeeds(save) {
@@ -83,6 +85,10 @@ export function spawnNpcs(save, map, characters = []) {
       const spot = nearestWalkable(start.x, start.y, map.w, map.h, (x, y) => npcBlocked(map, x, y)) || { x: map.spawn[0], y: map.spawn[1] };
       // 好感 close(60) 以上才會自己開口說話；低於此只有玩家點擊才回應
       const affinity = save.home.relationships?.[charId]?.affinity || 0;
+      // 角色田被偷摘又假裝沒看到的住客：回家後過一會兒隱約透露一句（只說一次）。
+      // 旗標等泡泡真的冒出來才清，避免重建 NPC（例如開發模式的重複掛載）時還沒說就被吃掉。
+      const field = save.farm?.npcFields?.[charId];
+      const hintText = field?.stealHint ? residentFieldLine(save, charId, "stealHint", rand) : null;
       return {
         seed: `resident-${charId}`, charId, name: character?.name || def?.name || "住客",
         appearance: def?.appearance ? sanitizeAppearance(def.appearance) : randomAppearance(boundSeed || `resident-${charId}`),
@@ -93,6 +99,9 @@ export function spawnNpcs(save, map, characters = []) {
         chatty: affinity >= 60,                       // 主動說話開關
         homeLines: activeResidentPackLines(save, charId)?.home || null, // 獨立入住句庫（沒有就用通用）
         nextIdleTalkAt: performance.now() + 20000 + rand() * 40000,
+        hintText,
+        hintField: hintText ? field : null,
+        hintAt: performance.now() + 2500 + rand() * 2500,
       };
     });
   }
@@ -135,6 +144,11 @@ function pickWanderTarget(npc, map) {
 export function updateNpcs(npcs, map, dt, now, options = {}) {
   for (const npc of npcs) {
     if (npc.bubble && now > npc.bubble.until) npc.bubble = null;
+    if (npc.hintText && !npc.bubble && !npc.action && now >= npc.hintAt) {
+      npc.bubble = { text: npc.hintText, until: now + Math.min(6500, 3500 + npc.hintText.length * 55) };
+      npc.hintText = null;
+      if (npc.hintField) npc.hintField.stealHint = false;
+    }
     // 親近以上的住客會自己找話說（20~60 秒挑一次，不打斷正在進行的動作）
     if (npc.chatty && !npc.bubble && !npc.action && now >= npc.nextIdleTalkAt) {
       const pool = npc.homeLines?.length ? npc.homeLines : COMPANION_LINES.home;

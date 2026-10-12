@@ -41,6 +41,9 @@ export async function yunyinGenerateLinePack(charId, poolSpec, apiConfig, charac
     rareHarvest: "玩家收成稀有作物（星露籽）時的驚嘆",
     chat: "玩家在莊園裡點你打招呼時的日常閒聊",
     home: "角色已正式入住玩家家中後的居家日常台詞，要有共同生活與熟悉感，不要寫成普通路人寒暄",
+    fieldThanks: "玩家來你在雲隱山莊靈田的那塊田幫忙澆水除草後，你向玩家道謝的話",
+    stealCaught: "你抓到玩家偷摘你田裡成熟作物時說的話，語氣是溫和、帶點調侃地放過對方，不生氣",
+    stealHint: "你其實發現田裡的作物被偷摘過，但假裝不知道，只在閒聊時若有似無地隱約透露的話，不能直接指認玩家",
   };
   const user = `輸出這個結構的 JSON：\n{${Object.entries(poolSpec)
     .map(([k, n]) => `"${k}": [${n} 句「${poolDesc[k] || k}」]`)

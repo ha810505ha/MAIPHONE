@@ -4,6 +4,7 @@ import { actorRenderPos } from "./actorActions";
 import { getImage, isReady } from "./assets";
 import { BUILDING_IMAGES, WORLD_DECOR_IMAGES, TILE_IMAGES, CROP_IMAGES, FURNITURE_IMAGES } from "../data/assetUrls";
 import { cropById, plotStage, plotUnlocked } from "../systems/farm";
+import { npcFieldStage } from "../systems/npcFields.js";
 import { furnitureById } from "../home/furnitureCatalog";
 
 export function drawBuilding(ctx, building, camera, scale) {
@@ -62,16 +63,114 @@ export function drawWorldDecoration(ctx, decoration, camera, scale) {
     const drawHeight = drawWidth * (image.naturalHeight / image.naturalWidth);
     const drawX = sx + (width - drawWidth) / 2;
     ctx.drawImage(image, drawX, sy + footprintHeight - drawHeight, drawWidth, drawHeight);
+    if (decoration.label) drawSignLabel(ctx, decoration.label, sx + width / 2, sy + footprintHeight - drawHeight, scale);
+    if (decoration.subLabel) drawSignSubLabel(ctx, decoration.subLabel, sx + width / 2, sy + footprintHeight, scale);
   } else {
     ctx.fillStyle = decoration.color || "#777";
     ctx.fillRect(sx, sy, width, footprintHeight);
   }
 }
 
+// 木牌上方的字牌（路口木牌、「我的家」共用同一個樣式）
+function drawSignLabel(ctx, text, centerX, topY, scale) {
+  ctx.font = `bold ${13 * scale}px sans-serif`;
+  ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+  const labelWidth = ctx.measureText(text).width;
+  const padX = 7 * scale, padY = 5 * scale;
+  const labelY = topY - 5 * scale;
+  ctx.fillStyle = "rgba(58, 40, 28, .82)";
+  ctx.beginPath();
+  ctx.roundRect(centerX - labelWidth / 2 - padX, labelY - 13 * scale - padY / 2, labelWidth + padX * 2, 16.5 * scale + padY, 7 * scale);
+  ctx.fill();
+  ctx.fillStyle = "rgba(255, 246, 228, .98)";
+  ctx.fillText(text, centerX, labelY);
+}
+
+// 角色田木牌下方的小標（今天的狀態）：比字牌小、淡一點，畫在木牌腳下
+function drawSignSubLabel(ctx, text, centerX, topY, scale) {
+  ctx.font = `${10 * scale}px sans-serif`;
+  ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+  const labelWidth = ctx.measureText(text).width;
+  const padX = 5 * scale;
+  const top = topY + 2 * scale;
+  ctx.fillStyle = "rgba(255, 250, 238, .9)";
+  ctx.beginPath();
+  ctx.roundRect(centerX - labelWidth / 2 - padX, top, labelWidth + padX * 2, 15 * scale, 7 * scale);
+  ctx.fill();
+  ctx.fillStyle = "rgba(78, 58, 40, .95)";
+  ctx.fillText(text, centerX, top + 11 * scale);
+}
+
+// 住客角色田的作物格：跟玩家田格一樣每格鋪淺色土，疊在整片耕地上，看得出哪裡能點
+export function drawNpcFieldSoil(ctx, zone, { camera, scale }) {
+  if (!zone?.plots) return;
+  const soil = getImage(TILE_IMAGES.soilLight);
+  const tileSize = TILE * scale;
+  for (const [x, y] of zone.plots) {
+    const sx = (x * TILE - camera.x) * scale;
+    const sy = (y * TILE - camera.y) * scale;
+    if (isReady(soil)) ctx.drawImage(soil, sx, sy, tileSize, tileSize);
+    else { ctx.fillStyle = "#6e5137"; ctx.fillRect(sx + tileSize * 0.06, sy + tileSize * 0.06, tileSize * 0.88, tileSize * 0.88); }
+  }
+}
+
+// 住客角色田（MP-030）：田裡每一格都種同一種作物；被偷摘的份數從最後幾格扣掉不畫
+export function drawNpcFieldCrops(ctx, zone, field, now, { camera, scale }) {
+  if (!zone?.plots || !field?.cropId) return;
+  const stage = npcFieldStage(field, now);
+  if (stage === null) return;
+  const crop = cropById(field.cropId);
+  if (!crop) return;
+  const tileSize = TILE * scale;
+  const plots = zone.plots || [];
+  const total = plots.length;
+  const shown = stage === 3 ? Math.max(0, total - (field.stolen || 0)) : total;
+  const cropImage = CROP_IMAGES[crop.id] && getImage(CROP_IMAGES[crop.id][stage]);
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  for (let i = 0; i < shown; i += 1) {
+    const sx = (plots[i][0] * TILE - camera.x) * scale;
+    const sy = (plots[i][1] * TILE - camera.y) * scale;
+    if (cropImage && isReady(cropImage)) {
+      const drawWidth = tileSize * 0.9;
+      const drawHeight = drawWidth * (cropImage.naturalHeight / cropImage.naturalWidth);
+      ctx.drawImage(cropImage, sx + tileSize * 0.05, sy + tileSize * 0.95 - drawHeight, drawWidth, drawHeight);
+    } else {
+      ctx.font = `${(stage <= 1 ? 9 : stage === 2 ? 11 : 14) * scale}px sans-serif`;
+      ctx.fillText(stage <= 1 ? "🌱" : crop.icon, sx + tileSize / 2, sy + tileSize * 0.5);
+    }
+  }
+  ctx.textBaseline = "alphabetic";
+}
+
+const EXIT_ARROWS = { north: "↑", south: "↓", west: "←", east: "→" };
+
+// 戶外路口：路一路通到地圖邊緣，旁邊立木牌＋地名（不畫發光圈；除了人物畫面不做動畫）
+function drawExitSign(ctx, portal, camera, scale) {
+  const [signX, signY] = portal.sign;
+  const sx = (signX * TILE + TILE / 2 - camera.x) * scale;
+  const footY = ((signY + 1) * TILE - camera.y) * scale;
+  const image = getImage(WORLD_DECOR_IMAGES.signWood);
+  let topY = footY - TILE * scale;
+  if (isReady(image)) {
+    const drawW = image.naturalWidth * scale, drawH = image.naturalHeight * scale;
+    topY = footY - drawH;
+    ctx.drawImage(image, sx - drawW / 2, topY, drawW, drawH);
+  }
+  // 2026-10-11：木牌字再大一點（10 → 13）
+  drawSignLabel(ctx, `${EXIT_ARROWS[portal.side] || ""} ${portal.label}`.trim(), sx, topY, scale);
+}
+
 export function drawPortal(ctx, portal, camera, scale, now) {
+  // 戶外路口：光圈（只放圖示）＋木牌（方向＋地名）
+  if (portal.edge && portal.sign) {
+    drawPortal(ctx, { ...portal, edge: false, sign: null, label: "" }, camera, scale, now);
+    drawExitSign(ctx, portal, camera, scale);
+    return;
+  }
   const sx = (portal.x * TILE + TILE / 2 - camera.x) * scale;
   const sy = (portal.y * TILE + TILE / 2 - camera.y) * scale;
-  const pulse = 1 + Math.sin(now / 400) * 0.1;
+  // 2026-10-10：除了人物，畫面一律不做動畫——光圈固定大小
+  const pulse = 1;
   // 外圈光暈 + 內圈亮盤，在樹叢/草地上都醒目（整體再放大一輪，遠遠就能看清是傳送點）
   const glow = ctx.createRadialGradient(sx, sy, 2, sx, sy, TILE * scale * 0.95 * pulse);
   glow.addColorStop(0, "rgba(255, 232, 150, .55)");
@@ -86,6 +185,7 @@ export function drawPortal(ctx, portal, camera, scale, now) {
   ctx.font = `${21 * scale}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
   ctx.fillText(portal.icon, sx, sy - 2);
   ctx.textBaseline = "alphabetic";
+  if (!portal.label) return;
   // 標籤加底板，避免糊在地形上看不清
   const labelY = sy + TILE * scale * 0.72;
   ctx.font = `${9.5 * scale}px sans-serif`;
@@ -157,7 +257,8 @@ export function drawFarmPlot(ctx, plotDefinition, index, now, { camera, scale, s
   const sx = (plotDefinition.x * TILE - camera.x) * scale;
   const sy = (plotDefinition.y * TILE - camera.y) * scale;
   const unlocked = plotUnlocked(index, save.cultivation);
-  const soil = getImage(TILE_IMAGES.soil);
+  // 田格用淺色土，跟周圍整片耕地分得出來（不加框）
+  const soil = getImage(TILE_IMAGES.soilLight);
   if (isReady(soil)) {
     ctx.drawImage(soil, sx, sy, tileSize, tileSize);
     if (!unlocked) { ctx.fillStyle = "rgba(20,18,15,.55)"; ctx.fillRect(sx, sy, tileSize, tileSize); }
@@ -175,7 +276,7 @@ export function drawFarmPlot(ctx, plotDefinition, index, now, { camera, scale, s
       const crop = cropById(plot.cropId);
       const cropImage = CROP_IMAGES[crop.id] && getImage(CROP_IMAGES[crop.id][stage]);
       if (stage === 3) {
-        const pulse = 1 + Math.sin(now / 300) * 0.1;
+        const pulse = 1; // 成熟提示圈維持靜止（不閃動）
         ctx.strokeStyle = "rgba(255, 205, 90, .9)"; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(sx + tileSize / 2, sy + tileSize / 2, tileSize * 0.4 * pulse, 0, Math.PI * 2); ctx.stroke();
       }

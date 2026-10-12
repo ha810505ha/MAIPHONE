@@ -36,6 +36,12 @@ export const FURNITURE_CATALOG = Object.freeze({
     id: "starter_cabinet", name: "收納櫃", icon: "▤", category: "storage",
     placement: FURNITURE_PLACEMENT.FLOOR, footprint: { w: 2, h: 1 }, collision: [[0, 0], [1, 0]],
     maxCount: 4,
+    // 滑手機動畫是站姿：站在櫃子左右兩側、面向櫃子，像靠著櫃子滑手機；兩側都被擋才站櫃子前
+    interactions: [{ id: "phone", action: "phone", label: "滑手機", minDurationMs: 4000, maxDurationMs: 8000, slots: [
+      { id: "side_right", approach: [2, 0], facing: "left", renderOffset: [0, 0], exact: true },
+      { id: "side_left", approach: [-1, 0], facing: "right", renderOffset: [0, 0], exact: true },
+      { id: "front", approach: [0, 1], facing: "right", renderOffset: [0, 0], fallback: true },
+    ] }],
     fallback: { color: "#6f5949", accent: "#ad9178" },
   }),
   starter_rug: Object.freeze({
@@ -62,10 +68,11 @@ export const FURNITURE_CATALOG = Object.freeze({
     placement: FURNITURE_PLACEMENT.FLOOR, footprint: { w: 2, h: 1 }, collision: [[0, 0], [1, 0]],
     price: { coins: 300 }, maxCount: 3,
     interactions: [
-      { id: "read", action: "read", label: "閱讀", minDurationMs: 5000, maxDurationMs: 10000, slots: [{ id: "left", approach: [0, 1], facing: "right", renderOffset: [0, 0] }] },
-      { id: "phone", action: "phone", label: "滑手機", minDurationMs: 4000, maxDurationMs: 8000, slots: [
-        { id: "right", approach: [2, 1], facing: "left", renderOffset: [0, 0] },
-        { id: "left", approach: [-1, 1], facing: "right", renderOffset: [0, 0] },
+      // 書桌只做閱讀（原本兩側是滑手機席位，點書桌常被分到滑手機）；三個席位讓玩家與住客能一起讀
+      { id: "read", action: "read", label: "閱讀", minDurationMs: 5000, maxDurationMs: 10000, slots: [
+        { id: "left", approach: [0, 1], facing: "right", renderOffset: [0, 0] },
+        { id: "side_right", approach: [2, 1], facing: "left", renderOffset: [0, 0] },
+        { id: "side_left", approach: [-1, 1], facing: "right", renderOffset: [0, 0] },
       ] },
     ],
     fallback: { color: "#9b7448", accent: "#d3a86d" },

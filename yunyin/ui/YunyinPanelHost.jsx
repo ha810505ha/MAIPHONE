@@ -8,6 +8,8 @@ import ShopPanel from "./ShopPanel";
 import FurnitureShopPanel from "./FurnitureShopPanel";
 import HomeExpandPanel from "./HomeExpandPanel";
 import ResidentPanel from "./ResidentPanel";
+import TodayPanel from "./TodayPanel";
+import { NpcFieldPanel, NpcFieldRewardPanel } from "./NpcFieldPanel";
 import InventoryPanel from "./InventoryPanel";
 import DungeonPanel from "./DungeonPanel";
 import CharacterPanel from "./CharacterPanel";
@@ -54,7 +56,7 @@ function FarmAssistPanel({ panel, gameSave, markDirty, showToast, setPanel, onFa
   );
 }
 
-export default function YunyinPanelHost({ panel, setPanel, gameSave, markDirty, onCompanion, showToast, addCrystals, crystals = 0, characters, onAiGenerate, npcAppearanceRef, onHomeRefresh, onFarmAssist, onPlayerAction }) {
+export default function YunyinPanelHost({ panel, setPanel, gameSave, markDirty, onCompanion, showToast, addCrystals, crystals = 0, characters, onAiGenerate, npcAppearanceRef, onHomeRefresh, onFarmAssist, onPlayerAction, onResidentLine, onPanelClosed }) {
   const { yt, yv, ym } = useYunyinLocale();
   if (!panel) return null;
   const closeFromBackdrop = () => {
@@ -75,6 +77,14 @@ export default function YunyinPanelHost({ panel, setPanel, gameSave, markDirty, 
               <HomeExpandPanel save={gameSave} onDirty={markDirty} onToast={showToast} onClose={() => setPanel(null)} onHomeRefresh={onHomeRefresh} />
             ) : panel.type === "inventory" ? (
               <InventoryPanel save={gameSave} onClose={() => setPanel(null)} />
+            ) : panel.type === "npcField" ? (
+              <NpcFieldPanel panel={panel} save={gameSave} characters={characters} onDirty={markDirty} onToast={showToast} onResidentLine={onResidentLine}
+                onOpenResidents={() => setPanel({ type: "homeResidents", titleKey: "panel.residents" })} onClose={() => setPanel(null)} />
+            ) : panel.type === "npcFieldReward" ? (
+              <NpcFieldRewardPanel panel={panel} save={gameSave} characters={characters} onDirty={markDirty} onToast={showToast} onCrystals={addCrystals}
+                onClose={() => { setPanel(null); onPanelClosed?.(panel); }} />
+            ) : panel.type === "today" ? (
+              <TodayPanel save={gameSave} characters={characters} onDirty={markDirty} onToast={showToast} onCrystals={addCrystals} />
             ) : panel.type === "homeResidents" ? (
               <ResidentPanel
                 save={gameSave} characters={characters} onDirty={markDirty} onToast={showToast} onCrystals={addCrystals}

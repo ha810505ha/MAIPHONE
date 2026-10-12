@@ -24,6 +24,7 @@ const PATHS = {
   doll: <><circle cx="12" cy="6" r="2.6" /><path d="M8 20l1.5-6.5L7 10.5h10l-2.5 3L16 20M12 8.6v4" /></>,
   share: <path d="M21 3 10 14M21 3l-7 18-4-7-7-4z" />,
   search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></>,
+  grid: <><rect x="4" y="4" width="6.5" height="6.5" rx="1.8" /><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.8" /><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.8" /><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.8" /></>,
 };
 
 export default function Icon({ name, size = 24, className = "", strokeWidth = 1.8, title }) {

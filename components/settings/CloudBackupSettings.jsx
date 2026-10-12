@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { dataRestoreFailureMessage } from "../../services/backup/dataRestoreTransaction";
 import {
   createGitHubPrivateRepository,
   getGitHubBackupConfig,
@@ -33,7 +34,7 @@ function messageOf(error) {
   return String(error?.message || "Unknown error").slice(0, 160);
 }
 
-export default function CloudBackupSettings({ tr, getExportableState, getRollbackState, validateImportedState, summarizeImportedData, applyImportedState, showToast }) {
+export default function CloudBackupSettings({ tr, getExportableState, validateImportedState, summarizeImportedData, applyImportedState, showToast }) {
   const [open, setOpen] = useState(false);
   const [provider, setProvider] = useState("");
   const [busy, setBusy] = useState(false);
@@ -103,13 +104,16 @@ export default function CloudBackupSettings({ tr, getExportableState, getRollbac
       const payload = JSON.parse(file.content);
       validateImportedState(payload);
       if (!window.confirm(tr("即將以 Google Drive 備份覆蓋此手機的全域資料。目前資料會先建立還原點。確定繼續嗎？", "This will overwrite this phone's global data with the Google Drive backup. A rollback point will be created first. Continue?", "Google Drive バックアップでこの端末の全体データを上書きします。現在のデータは先に復元用として保存します。続けますか？", "Google Drive 백업으로 이 휴대폰의 전체 데이터를 덮어씁니다. 현재 데이터는 먼저 복원 지점으로 저장됩니다. 계속할까요?"))) return;
-      const rollback = await getRollbackState();
-      try { await applyImportedState(payload); } catch (error) { try { await applyImportedState(rollback, { rollback: true }); } catch {} throw error; }
+      await applyImportedState(payload, { source: "google-drive" });
       setNotice(tr("Google Drive 備份已還原到此手機。", "Google Drive backup restored to this phone.", "Google Drive バックアップをこの端末に復元しました。", "Google Drive 백업을このスマホに復元しました。"));
       showToast(tr("雲端備份已還原", "Cloud backup restored", "クラウドバックアップを復元しました", "클라우드 백업을 복원했습니다"));
     } catch (error) { showError(error); } finally { setBusy(false); }
   };
   const showError = (error) => {
+    if (error?.restoreStatus) {
+      setNotice(dataRestoreFailureMessage(error, tr));
+      return;
+    }
     const message = messageOf(error);
     setNotice(`${tr("操作失敗", "Action failed", "操作に失敗しました", "작업에 실패했습니다")}：${message}`);
   };
@@ -199,13 +203,7 @@ export default function CloudBackupSettings({ tr, getExportableState, getRollbac
       const summary = summarizeImportedData(payload);
       const counts = [summary?.characters != null ? `${summary.characters} ${tr("位角色", "characters", "キャラクター", "명의 캐릭터")}` : "", summary?.memories != null ? `${summary.memories} ${tr("筆記憶", "memories", "件の記憶", "개의 기억")}` : ""].filter(Boolean).join("、");
       if (!window.confirm(tr(`即將以 GitHub 備份覆蓋此手機的全域資料${counts ? `（${counts}）` : ""}。目前資料會先建立還原點。確定繼續嗎？`, `This will overwrite this phone's global data with the GitHub backup${counts ? ` (${counts})` : ""}. A rollback point will be created first. Continue?`, `GitHub バックアップでこの端末の全体データを上書きします${counts ? `（${counts}）` : ""}。現在のデータは先に復元用として保存します。続けますか？`, `GitHub 백업으로 이 휴대폰의 전체 데이터를 덮어씁니다${counts ? ` (${counts})` : ""}. 현재 데이터는 먼저 복원 지점으로 저장됩니다. 계속할까요?`))) return;
-      const rollback = await getRollbackState();
-      try {
-        await applyImportedState(payload);
-      } catch (error) {
-        try { await applyImportedState(rollback, { rollback: true }); } catch {}
-        throw error;
-      }
+      await applyImportedState(payload, { source: "github" });
       setNotice(tr("GitHub 備份已還原到此手機。", "GitHub backup restored to this phone.", "GitHub バックアップをこの端末に復元しました。", "GitHub 백업을 이 휴대폰에 복원했습니다."));
       showToast(tr("雲端備份已還原", "Cloud backup restored", "クラウドバックアップを復元しました", "클라우드 백업을 복원했습니다"));
     } catch (error) { showError(error); } finally { setBusy(false); }
