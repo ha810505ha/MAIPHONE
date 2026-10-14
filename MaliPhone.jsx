@@ -804,6 +804,19 @@ export default function MaliPhone() {
   useEffect(() => {
     if (!(typeof import.meta !== "undefined" && import.meta.env && import.meta.env.PROD)) return;
     if (!("serviceWorker" in navigator)) return;
+    // Android App 的程式本來就裝在手機裡，不需要離線快取；
+    // 舊版可能已註冊過並存了雲端存檔，這裡註銷並清掉 SW 快取。
+    if (window.Capacitor?.isNativePlatform?.()) {
+      navigator.serviceWorker.getRegistrations()
+        .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+        .catch(() => {});
+      if (typeof caches !== "undefined") {
+        caches.keys()
+          .then((keys) => Promise.all(keys.filter((key) => key.startsWith("maliphone-shell-")).map((key) => caches.delete(key))))
+          .catch(() => {});
+      }
+      return;
+    }
     const base = (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.BASE_URL) ? import.meta.env.BASE_URL : "/";
     serviceWorkerHadControllerRef.current = !!navigator.serviceWorker.controller;
     const onControllerChange = () => {

@@ -1,6 +1,11 @@
 import { toSimplifiedChinese } from "../utils/i18n.js";
 
 const ZH_CHANGELOG = {
+  "1.4.6": [
+    "10/14 修正更新",
+    "雲端同步｜修正下載雲端資料時可能拿到舊版本，以及上傳時可能蓋掉其他裝置較新進度的問題。",
+    "雲端同步｜修正同一台裝置切換帳號後，可能讀到前一個帳號資料的問題。",
+  ],
   "1.4.5": [
     "10/12 更新",
     "資料保護｜讀取失敗時不會再蓋掉你的資料，還可以匯出救援檔，之後再匯入找回來。",
@@ -175,6 +180,23 @@ const ZH_CHANGELOG = {
 };
 
 const TRANSLATED_CHANGELOG = {
+  "1.4.6": {
+    en: [
+      "10/14 Fix Update",
+      "Cloud sync | Fixed downloads sometimes returning an older copy of your data, and uploads possibly overwriting newer progress from another device.",
+      "Cloud sync | Fixed switching accounts on the same device possibly loading the previous account's data.",
+    ],
+    ja: [
+      "10/14 修正アップデート",
+      "クラウド同期｜ダウンロード時に古いデータが返されることがある問題と、アップロード時に他の端末の新しい進行状況を上書きしてしまうことがある問題を修正しました。",
+      "クラウド同期｜同じ端末でアカウントを切り替えたとき、前のアカウントのデータが読み込まれることがある問題を修正しました。",
+    ],
+    ko: [
+      "10/14 수정 업데이트",
+      "클라우드 동기화 | 다운로드할 때 예전 데이터를 받아 오거나, 업로드할 때 다른 기기의 최신 진행 상황을 덮어쓸 수 있던 문제를 수정했습니다.",
+      "클라우드 동기화 | 같은 기기에서 계정을 바꾸면 이전 계정의 데이터가 불러와질 수 있던 문제를 수정했습니다.",
+    ],
+  },
   "1.4.5": {
     en: [
       "10/12 Update",

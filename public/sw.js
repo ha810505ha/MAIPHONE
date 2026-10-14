@@ -1,4 +1,6 @@
-const CACHE_NAME = "maliphone-shell-v1.2.13";
+const CACHE_PREFIX = "maliphone-shell-";
+// 改版號會讓 activate 清掉舊快取；1.4.6 起舊版可能存過雲端存檔，必須清掉。
+const CACHE_NAME = `${CACHE_PREFIX}v1.4.6`;
 const BASE_PATH = new URL(self.registration.scope).pathname;
 const APP_SHELL = [BASE_PATH, `${BASE_PATH}manifest.webmanifest`, `${BASE_PATH}pwa/icon-192.png`, `${BASE_PATH}pwa/icon-512.png`];
 
@@ -11,7 +13,7 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) => Promise.all(
-      keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+      keys.filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME).map((key) => caches.delete(key))
     )).then(() => self.clients.claim())
   );
 });
@@ -19,6 +21,12 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
+  // 帶登入身分、雲端資料 API、其他網域的請求一律交給瀏覽器直接連網：
+  // 快取只看網址不看帳號，存下來會讓下載拿到舊存檔或別的帳號的資料。
+  const url = new URL(request.url);
+  if (request.headers.has("Authorization")) return;
+  if (url.origin !== self.location.origin) return;
+  if (url.pathname.includes("/v1/")) return;
   if (request.mode === "navigate" || request.destination === "document") {
     event.respondWith(fetch(request).catch(() => caches.match(BASE_PATH)));
     return;

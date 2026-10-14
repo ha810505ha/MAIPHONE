@@ -39,6 +39,8 @@ export async function requestCloudData(path, { session, method = "GET", body, en
 
   const response = await fetchWithTimeout(`${url}${path}`, {
     method,
+    // 雲端存檔每次都要讀到最新版，不能讓瀏覽器或 Service Worker 給舊回應。
+    cache: "no-store",
     headers: {
       Authorization: `Bearer ${session.access_token}`,
       ...(body ? { "Content-Type": "application/json" } : {}),

@@ -31,6 +31,7 @@ try {
     call += 1;
     assert.equal(String(input), "https://worker.example/v1/documents/d1-connection-test");
     assert.equal(init.headers.Authorization, "Bearer test-access-token");
+    assert.equal(init.cache, "no-store");
     if (call === 1) {
       assert.equal(init.method, "PUT");
       testedAt = JSON.parse(init.body).testedAt;
