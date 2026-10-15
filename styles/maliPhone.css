@@ -91,12 +91,16 @@ body{position:fixed;inset:0;}
 .mp-folder-icon{display:grid;grid-template-columns:repeat(2,22px);grid-template-rows:repeat(2,22px);gap:3px;padding:4px;background:color-mix(in srgb,var(--mp-glass) 88%,var(--mp-pink-lt));overflow:hidden;}
 .mp-folder-icon span{width:22px;height:22px;border-radius:7px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:rgba(255,255,255,.42);font-size:12px;}
 .mp-folder-icon img{width:22px!important;height:22px!important;border-radius:7px;}
-.mp-all-apps-handle{position:absolute;left:50%;bottom:113px;transform:translateX(-50%);z-index:32;min-width:96px;min-height:44px;border:0;border-radius:18px;background:transparent;color:var(--mp-txt-l);font:inherit;font-size:9px;font-weight:700;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;cursor:pointer;padding:4px 14px;touch-action:manipulation;}
-.mp-all-apps-handle span{font-size:14px;line-height:10px;}
-@media (hover:hover) and (pointer:fine){.mp-all-apps-handle:hover{background:color-mix(in srgb,var(--mp-glass) 58%,transparent);}}
+/* 全部 App 入口：只顯示小箭頭＋頁面點點（像實體手機），整塊都可點。不可用 transform 置中，否則按下時的 scale 會蓋掉 translateX，按鈕跳位導致點擊落空。 */
+.mp-all-apps-handle{position:absolute;left:0;right:0;margin:0 auto;width:150px;bottom:88px;z-index:32;height:52px;min-width:96px;min-height:44px;border:0;border-radius:18px;background:transparent;color:var(--mp-txt-l);font:inherit;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;cursor:pointer;padding:6px 0 0;touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
+.mp-all-apps-chevron{display:block;width:22px;height:6px;margin-top:4px;opacity:.72;animation:mpAllAppsHint 2.6s ease-in-out 1s 3;}
+@keyframes mpAllAppsHint{0%,70%,100%{transform:translateY(0)}82%{transform:translateY(-3px)}}
+@media (prefers-reduced-motion:reduce){.mp-all-apps-chevron{animation:none;}}
+@media (hover:hover) and (pointer:fine){.mp-all-apps-handle:hover{background:color-mix(in srgb,var(--mp-glass) 58%,transparent);}.mp-all-apps-handle:hover .mp-all-apps-chevron{opacity:1;}}
 .mp-page-dots{position:absolute;left:0;right:0;bottom:98px;display:flex;align-items:center;justify-content:center;gap:7px;z-index:31;}
-.mp-page-dot{width:7px;height:7px;border-radius:50%;background:color-mix(in srgb,var(--mp-txt) 30%,transparent);transition:background var(--mp-motion-fast) ease,transform var(--mp-motion-fast) var(--mp-ease-out);transform:scaleX(1);}
-.mp-page-dot.active{background:color-mix(in srgb,var(--mp-txt) 68%,transparent);transform:scaleX(2.55);}
+.mp-all-apps-handle .mp-page-dots{position:static;margin-top:auto;margin-bottom:10px;pointer-events:none;}
+.mp-page-dot{width:7px;height:7px;border-radius:50%;background:color-mix(in srgb,var(--mp-txt) 30%,transparent);transition:background var(--mp-motion-fast) ease;}
+.mp-page-dot.active{background:color-mix(in srgb,var(--mp-txt) 72%,transparent);}
 .mp-grid-empty{grid-column:1 / -1;text-align:center;padding:28px 6px;font-size:12px;color:var(--mp-page-text-muted,var(--mp-txt-l));background:rgba(255,255,255,.18);border-radius:14px;border:1px dashed rgba(255,255,255,.35);}
 .mp-dock{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);width:calc(100% - 40px);max-width:328px;min-height:82px;background:var(--mp-glass);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);border:1px solid var(--mp-glass-b);border-radius:28px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 12px 34px rgba(0,0,0,.08);z-index:30;}
 .mp-dock-i{width:56px;height:56px;border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:24px;cursor:pointer;background:var(--mp-glass);border:1px solid var(--mp-glass-b);transition:transform .14s ease,background .15s,box-shadow .18s;touch-action:none;}
@@ -287,7 +291,7 @@ body{position:fixed;inset:0;}
 .mp-phone .mp-sec-t{color:var(--mp-accent-ink);}
 .mp-phone .mp-active-badge{color:color-mix(in srgb,var(--mp-success) 55%,var(--mp-txt));background:color-mix(in srgb,var(--mp-success) 16%,transparent);}
 .mp-clock-ds{color:var(--mp-txt);}
-.mp-all-apps-handle{color:var(--mp-txt);font-size:var(--mp-fs-caption);}
+.mp-all-apps-handle{color:var(--mp-txt);}
 .mp-phone .mp-bank-edit{background:rgba(255,252,248,.88);}
 /* 層級與字級（MP-009）：先套在聊天列表與設定頁（.mp-page--large），其他 App 之後逐頁接上。 */
 :root{--mp-primary-gradient:linear-gradient(135deg,var(--mp-save-1,var(--mp-pink)),var(--mp-save-2,var(--mp-pink-dk)));--mp-fs-large:28px;--mp-fs-title:17px;--mp-fs-name:15px;--mp-fs-body:14px;--mp-fs-sub:13px;--mp-fs-caption:11px;--mp-lv0:color-mix(in srgb,var(--mp-pink-lt) 26%,#fff);--mp-lv1:var(--mp-surface);--mp-lv2:var(--mp-surface);}

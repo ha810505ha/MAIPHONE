@@ -178,6 +178,7 @@ export default function HomeScreen({ ft, fd, activeCharacter, peachTheme, tr, cu
             type="button"
             className="mp-all-apps-handle"
             aria-label={tr("全部 App", "All apps", "すべてのアプリ", "모든 앱")}
+            title={tr("全部 App（點這裡或往上滑）", "All apps (tap here or swipe up)", "すべてのアプリ（タップまたは上にスワイプ）", "모든 앱 (탭하거나 위로 스와이프)")}
             onPointerDown={stopHomeGesture}
             onPointerUp={stopHomeGesture}
             onTouchStart={stopHomeGesture}
@@ -187,10 +188,10 @@ export default function HomeScreen({ ft, fd, activeCharacter, peachTheme, tr, cu
               onOpenAllApps();
             }}
           >
-            <span>⌃</span>{tr("全部 App", "All apps", "すべてのアプリ", "모든 앱")}
+            <svg className="mp-all-apps-chevron" viewBox="0 0 22 6" aria-hidden="true"><path d="M2 5 11 1.4 20 5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            <span className="mp-page-dots" aria-hidden="true">{pages.map((_, index) => <span key={index} className={`mp-page-dot ${page === index ? "active" : ""}`} />)}</span>
           </button>
         )}
-        {!currentApp && <div className="mp-page-dots">{pages.map((_, index) => <span key={index} className={`mp-page-dot ${page === index ? "active" : ""}`} />)}</div>}
         <Dock apps={dockApps} badges={badges} dragging={dragging} renderAppIcon={renderAppIcon} onDropContainer={onDropDockContainer} onDropApp={onDropDockApp} onOpenApp={onOpenApp} onOpenFromTouch={onOpenFromTouch} onPointerDragStart={onPointerDragStart} onPreloadApp={onPreloadApp} />
       </div>
       {pointerDrag?.moved && (
