@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef } from "react";
 import { exportToastMessage } from "../../utils/exportFile";
 import { AppHeader, LargeTitle, LargeTitleHeader, SUB_PAGE_CLASS, useLargeTitle } from "../shell/LargeTitle";
 import Icon from "../common/Icon";
@@ -10,6 +10,22 @@ export default function LorebookApp({
   lorebookImportInputRef, closeApp, t, tr, sanitizeText, downloadJsonFile, showToast, gid, notify, ask,
 }) {
   const largeTitle = useLargeTitle();
+  // 編輯視窗打開時記下原始內容；點遮罩或按 Android 返回（會模擬點遮罩）時，有改過就先確認，避免輸入整段消失。
+  const bookBaselineRef = useRef(null);
+  const entryBaselineRef = useRef(null);
+  if (!editingLorebookBook) bookBaselineRef.current = null;
+  else if (bookBaselineRef.current === null) bookBaselineRef.current = JSON.stringify(editingLorebookBook);
+  if (!editingLorebookEntry) entryBaselineRef.current = null;
+  else if (entryBaselineRef.current === null) entryBaselineRef.current = JSON.stringify(editingLorebookEntry);
+  const confirmDiscardEdits = () => window.confirm(tr("要捨棄尚未儲存的修改嗎？", "Discard unsaved changes?", "保存していない変更を破棄しますか？", "저장하지 않은 변경 사항을 버릴까요?"));
+  const dismissBookEditor = () => {
+    if (editingLorebookBook && JSON.stringify(editingLorebookBook) !== bookBaselineRef.current && !confirmDiscardEdits()) return;
+    setEditingLorebookBook(null);
+  };
+  const dismissEntryEditor = () => {
+    if (editingLorebookEntry && JSON.stringify(editingLorebookEntry) !== entryBaselineRef.current && !confirmDiscardEdits()) return;
+    setEditingLorebookEntry(null);
+  };
     const activeBook = lorebooks.find((b) => b.id === activeLorebookId) || null;
     const entries = activeBook?.entries || [];
     const sortedEntries = [...entries].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
@@ -235,7 +251,7 @@ export default function LorebookApp({
                 {tr("條目", "Entries", "項目", "항목")}：{(pendingLorebookExport.entries || []).length}
               </div>
               <div style={{display:"flex",gap:8,marginTop:16}}>
-                <button className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#b0bec5,#90a4ae)"}} onClick={() => setPendingLorebookExport(null)}>{t("cancel")}</button>
+                <button type="button" className="mp-save mp-save--ghost" style={{flex:1}} onClick={() => setPendingLorebookExport(null)}>{t("cancel")}</button>
                 <button className="mp-save" style={{flex:1}} onClick={() => { exportLorebook(pendingLorebookExport); setPendingLorebookExport(null); }}>{tr("確認匯出", "Confirm export", "書き出す", "내보내기 확인")}</button>
               </div>
             </div>
@@ -245,30 +261,30 @@ export default function LorebookApp({
           <div className="mp-overlay" onClick={() => setViewingLorebookEntry(null)}>
             <div className="mp-modal" onClick={(ev) => ev.stopPropagation()}>
               <div className="mp-modal-t">{viewingLorebookEntry.title || t("title")}</div>
-              <div className="mp-row"><div className="mp-lbl">{t("keywords")}</div><div style={{fontSize:12,color:"var(--mp-txt-l)"}}>{(viewingLorebookEntry.keywords || []).join("、") || "無"}</div></div>
+              <div className="mp-row"><div className="mp-lbl">{t("keywords")}</div><div style={{fontSize:12,color:"var(--mp-txt-l)"}}>{(viewingLorebookEntry.keywords || []).join(tr("、", ", ", "、", ", ")) || tr("無", "None", "なし", "없음")}</div></div>
               <div className="mp-row"><div className="mp-lbl">{t("content")}</div><div className="mp-lorebook-content">{viewingLorebookEntry.content || ""}</div></div>
               <div style={{display:"flex",gap:8,marginTop:8}}>
-                <button className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#b0bec5,#90a4ae)"}} onClick={() => setViewingLorebookEntry(null)}>{t("close")}</button>
+                <button type="button" className="mp-save mp-save--ghost" style={{flex:1}} onClick={() => setViewingLorebookEntry(null)}>{t("close")}</button>
                 <button className="mp-save" style={{flex:1}} onClick={() => { setViewingLorebookEntry(null); setEditingLorebookEntry({ id: viewingLorebookEntry.id, title: viewingLorebookEntry.title || "", keywords: (viewingLorebookEntry.keywords || []).join(", "), content: viewingLorebookEntry.content || "", enabled: true }); }}>{t("edit")}</button>
               </div>
             </div>
           </div>
         )}
         {editingLorebookBook && (
-          <div className="mp-overlay" onClick={() => setEditingLorebookBook(null)}>
+          <div className="mp-overlay" onClick={dismissBookEditor}>
             <div className="mp-modal" onClick={(ev) => ev.stopPropagation()}>
               <div className="mp-modal-t">{editingLorebookBook.id ? tr("編輯世界書", "Edit lorebook", "世界観を編集", "월드북 편집") : tr("新增世界書", "Add lorebook", "世界観を追加", "월드북 추가")}</div>
               <div className="mp-row"><div className="mp-lbl">{tr("名稱", "Name", "名前", "이름")} *</div><input className="mp-sinp" value={editingLorebookBook.name} onChange={(ev)=>setEditingLorebookBook((s)=>({ ...s, name: ev.target.value }))} placeholder={tr("例如：學園設定、組織規範", "e.g. school rules, organization rules", "例: 学園設定、組織規範", "예: 학교 설정, 조직 규정")} /></div>
               <div className="mp-row"><div className="mp-lbl">{tr("描述", "Description", "説明", "설명")}</div><textarea className="mp-ta" value={editingLorebookBook.description} onChange={(ev)=>setEditingLorebookBook((s)=>({ ...s, description: ev.target.value }))} style={{minHeight:100,resize:"vertical"}} /></div>
                 <div style={{display:"flex",gap:8,marginTop:8}}>
-                <button className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#b0bec5,#90a4ae)"}} onClick={() => setEditingLorebookBook(null)}>{tr("取消", "Cancel", "キャンセル", "취소")}</button>
+                <button type="button" className="mp-save mp-save--ghost" style={{flex:1}} onClick={() => setEditingLorebookBook(null)}>{tr("取消", "Cancel", "キャンセル", "취소")}</button>
                 <button className="mp-save" style={{flex:1}} onClick={saveBook}>{tr("儲存", "Save", "保存", "저장")}</button>
               </div>
             </div>
           </div>
         )}
         {editingLorebookEntry && (
-          <div className="mp-overlay" onClick={() => setEditingLorebookEntry(null)}>
+          <div className="mp-overlay" onClick={dismissEntryEditor}>
             <div className="mp-modal" onClick={(ev) => ev.stopPropagation()}>
               <div className="mp-modal-t">{editingLorebookEntry.id ? tr("編輯條目", "Edit entry", "項目を編集", "항목 편집") : tr("新增條目", "Add entry", "項目を追加", "항목 추가")}</div>
               <div className="mp-lorebook-editor-help">
@@ -283,7 +299,7 @@ export default function LorebookApp({
               <div className="mp-row"><div className="mp-lbl">{tr("觸發關鍵字", "Trigger keywords", "トリガーキーワード", "트리거 키워드")} ({tr("逗號分隔", "Comma-separated", "カンマ区切り", "쉼표로 구분")})</div><div className="mp-lorebook-field-help">{tr("聊天出現其中任一詞語，就會啟用下方設定。", "Any matching term in chat activates the setting below.", "チャットにいずれかの語句が登場すると、下の設定が有効になります。", "채팅에 단어 중 하나가 나오면 아래 설정이 활성화됩니다.")}</div><input className="mp-sinp" value={editingLorebookEntry.keywords} onChange={(ev)=>setEditingLorebookEntry((s)=>({ ...s, keywords: ev.target.value }))} placeholder={tr("例如：十支局, 受訓, 規範", "e.g. ten squads, training, rules", "例: 十支局、訓練、規範", "예: 10부서, 훈련, 규정")} /></div>
               <div className="mp-row"><div className="mp-lbl">{tr("提供給 AI 的設定內容", "Setting provided to AI", "AIに渡す設定内容", "AI에 제공할 설정 내용")}</div><div className="mp-lorebook-field-help">{tr("寫下 AI 需要知道的背景、規則或人物關係，不會直接顯示在聊天訊息中。", "Write the background, rules, or relationships the AI should know. This is not shown directly in chat.", "AIに知らせたい背景・ルール・人物関係を書きます。チャットには直接表示されません。", "AI가 알아야 할 배경, 규칙, 인물 관계를 작성하세요. 채팅 메시지에는 직접 표시되지 않습니다.")}</div><textarea className="mp-ta" value={editingLorebookEntry.content} onChange={(ev)=>setEditingLorebookEntry((s)=>({ ...s, content: ev.target.value }))} placeholder={tr("例如：十支局位於市中心，成員進出時必須出示識別證。", "e.g. The Tenth Bureau is downtown, and members must show ID to enter.", "例: 十支局は市中心部にあり、出入りには身分証の提示が必要。", "예: 제10지부는 도심에 있으며 출입 시 신분증을 제시해야 한다.")} style={{minHeight:160,resize:"vertical"}} /></div>
               <div style={{display:"flex",gap:8,marginTop:8}}>
-                <button className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#b0bec5,#90a4ae)"}} onClick={() => setEditingLorebookEntry(null)}>{tr("取消", "Cancel", "キャンセル", "취소")}</button>
+                <button type="button" className="mp-save mp-save--ghost" style={{flex:1}} onClick={() => setEditingLorebookEntry(null)}>{tr("取消", "Cancel", "キャンセル", "취소")}</button>
                 <button className="mp-save" style={{flex:1}} onClick={saveEntry}>{tr("儲存", "Save", "保存", "저장")}</button>
               </div>
             </div>

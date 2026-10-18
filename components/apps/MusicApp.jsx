@@ -4,6 +4,7 @@ import { generateMusicReaction, generateSongPick } from "../../services/music/mu
 import { sanitizeUserImageUrl } from "../../utils/coreUtils";
 import { AppHeader, LargeTitle, LargeTitleHeader, SUB_PAGE_CLASS, useLargeTitle } from "../shell/LargeTitle";
 import { AvatarFallback } from "../common/Avatar";
+import EmptyState from "../common/EmptyState";
 
 const GLASS = { background: "var(--mp-card-bg)", border: "1px solid var(--mp-card-border)" };
 const SOURCE_LABELS = { sp: "Spotify", yt: "YouTube" };
@@ -113,12 +114,10 @@ export default function MusicApp({ closeApp, apiConfig, characters = [], playerP
 
       {/* 預設自己聽；選中的角色展開成膠囊，其他只留頭像 */}
       {
-        <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 12, overflowX: "auto", scrollbarWidth: "none", padding: "3px 2px" }}
+        <div className="mp-chip-row" style={{ flexWrap: "nowrap", alignItems: "center", gap: 7, marginTop: 12, overflowX: "auto", scrollbarWidth: "none", padding: "3px 2px" }}
           onWheel={(event) => { if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) event.currentTarget.scrollLeft += event.deltaY; }}>
-          <button type="button" title={tr("不和角色一起聽", "Listen without a character", "キャラと一緒に聴かない", "캐릭터 없이 듣기")} onClick={() => chooseListener(null)}
-            style={!activeChar
-              ? { flex: "0 0 auto", border: 0, borderRadius: 99, padding: "7px 12px", background: "var(--mp-primary-gradient)", color: "var(--mp-on-accent)", fontSize: 11, fontWeight: 800, boxShadow: "var(--mp-shadow)" }
-              : { flex: "0 0 auto", border: "1px solid var(--mp-card-border)", borderRadius: 99, padding: "7px 12px", background: "var(--mp-glass)", color: "var(--mp-muted)", fontSize: 11, fontWeight: 800 }}>
+          <button type="button" className={`mp-chip ${!activeChar ? "active" : ""}`} title={tr("不和角色一起聽", "Listen without a character", "キャラと一緒に聴かない", "캐릭터 없이 듣기")} onClick={() => chooseListener(null)}
+            style={{ flex: "0 0 auto" }}>
             🎧 {tr("自己聽", "Listen alone", "ひとりで聴く", "혼자 듣기")}
           </button>
           {characters.length > 0 && <span style={{ flex: "0 0 auto", fontSize: 10, fontWeight: 800, color: "var(--mp-muted)", letterSpacing: ".06em" }}>{tr("或和", "or with", "または", "또는")}</span>}
@@ -133,9 +132,9 @@ export default function MusicApp({ closeApp, apiConfig, characters = [], playerP
               </span>
             );
             return (
-              <button key={c.id} type="button" title={c.name} onClick={() => chooseListener(c.id)}
+              <button key={c.id} type="button" className={selected ? "mp-chip active" : ""} title={c.name} onClick={() => chooseListener(c.id)}
                 style={selected
-                  ? { flex: "0 0 auto", display: "flex", alignItems: "center", gap: 6, background: "var(--mp-primary-gradient)", color: "var(--mp-on-accent)", border: 0, borderRadius: 99, padding: "3px 12px 3px 4px", fontSize: 11, fontWeight: 800, boxShadow: "var(--mp-shadow)", transition: "all .18s" }
+                  ? { flex: "0 0 auto", display: "flex", alignItems: "center", gap: 6, padding: "3px 12px 3px 4px", transition: "all .18s" }
                   : { flex: "0 0 auto", display: "grid", placeItems: "center", background: "transparent", border: 0, padding: 0, opacity: .78, transition: "all .18s" }}>
                 {face}
                 {selected && <span style={{ whiteSpace: "nowrap" }}>{c.name}</span>}
@@ -157,11 +156,20 @@ export default function MusicApp({ closeApp, apiConfig, characters = [], playerP
 
       {/* 正在播放 */}
       <div style={{ ...GLASS, borderRadius: 18, padding: 16, textAlign: "center", marginTop: 10 }}>
-        <div className="music-app-artwork" style={{ width: 120, height: 120, margin: "0 auto", borderRadius: 14, overflow: "hidden", background: "linear-gradient(150deg,color-mix(in srgb,var(--music-accent) 28%,transparent),color-mix(in srgb,var(--music-accent) 7%,transparent))", display: "grid", placeItems: "center", fontSize: 40 }}>
-          {mp.track?.artworkUrl ? <img src={mp.track.artworkUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : "🎵"}
-        </div>
-        <div className="music-app-track-title" style={{ fontSize: 16, fontWeight: 900, color: "var(--mp-txt)", marginTop: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{mp.track?.title || tr("還沒放歌", "Nothing playing yet", "まだ再生していません", "아직 재생 중인 노래가 없습니다")}</div>
-        <div style={{ fontSize: 11, color: "var(--mp-muted)", marginTop: 2 }}>{mp.track ? [mp.track.artist, SOURCE_LABELS[mp.track.source]].filter(Boolean).join(" · ") : activeChar ? tr(`貼個連結播放；也能請 ${activeChar.name} 推薦歌曲`, `Paste a link to play, or ask ${activeChar.name} for a recommendation.`, `リンクを貼って再生するか、${activeChar.name}におすすめを頼めます。`, `링크를 붙여넣어 재생하거나 ${activeChar.name}에게 추천을 받을 수 있습니다.`) : tr("貼個連結播放；選擇角色後也能請對方推薦歌曲", "Paste a link to play. Choose a character to ask for recommendations.", "リンクを貼って再生できます。キャラを選ぶとおすすめも頼めます。", "링크를 붙여넣어 재생하세요. 캐릭터를 선택하면 추천도 받을 수 있습니다.")}</div>
+        {mp.track ? <>
+          <div className="music-app-artwork" style={{ width: 120, height: 120, margin: "0 auto", borderRadius: 14, overflow: "hidden", background: "linear-gradient(150deg,color-mix(in srgb,var(--music-accent) 28%,transparent),color-mix(in srgb,var(--music-accent) 7%,transparent))", display: "grid", placeItems: "center", fontSize: 40 }}>
+            {mp.track.artworkUrl ? <img src={mp.track.artworkUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : "🎵"}
+          </div>
+          <div className="music-app-track-title" style={{ fontSize: 16, fontWeight: 900, color: "var(--mp-txt)", marginTop: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{mp.track.title}</div>
+          <div style={{ fontSize: "var(--mp-fs-caption)", color: "var(--mp-muted)", marginTop: 2 }}>{[mp.track.artist, SOURCE_LABELS[mp.track.source]].filter(Boolean).join(" · ")}</div>
+        </> : (
+          <EmptyState
+            compact
+            icon="sparkle"
+            title={tr("還沒放歌", "Nothing playing yet", "まだ再生していません", "아직 재생 중인 노래가 없습니다")}
+            text={activeChar ? tr(`貼個連結播放；也能請 ${activeChar.name} 推薦歌曲`, `Paste a link to play, or ask ${activeChar.name} for a recommendation.`, `リンクを貼って再生するか、${activeChar.name}におすすめを頼めます。`, `링크를 붙여넣어 재생하거나 ${activeChar.name}에게 추천을 받을 수 있습니다.`) : tr("貼個連結播放；選擇角色後也能請對方推薦歌曲", "Paste a link to play. Choose a character to ask for recommendations.", "リンクを貼って再生できます。キャラを選ぶとおすすめも頼めます。", "링크를 붙여넣어 재생하세요. 캐릭터를 선택하면 추천도 받을 수 있습니다.")}
+          />
+        )}
         <div className="music-app-progress" style={{ height: 3, borderRadius: 99, background: "var(--mp-line)", marginTop: 14, cursor: "pointer" }} onClick={seekFromEvent}>
           <div style={{ width: `${Math.round(mp.progress * 100)}%`, height: "100%", borderRadius: 99, background: "var(--music-accent)" }} />
         </div>

@@ -44,6 +44,7 @@ jobs:
           test -f data/dating/profileGroups/localOne.js || printf 'export const LOCAL_ONE_PROFILES = Object.freeze([]);\n' > data/dating/profileGroups/localOne.js
           test -f data/dating/profileGroups/localTwo.js || printf 'export const LOCAL_TWO_PROFILES = Object.freeze([]);\n' > data/dating/profileGroups/localTwo.js
           test -f data/dating/profileGroups/international.js || printf 'export const INTERNATIONAL_PROFILES = Object.freeze([]);\n' > data/dating/profileGroups/international.js
+          test -f data/dating/profileGroups/community.js || printf 'export const COMMUNITY_PROFILES = Object.freeze([]);\n' > data/dating/profileGroups/community.js
 
       # Gate the deploy on the regression suite. Runs before the private-asset fetch
       # because no test reads yunyin/assets, dist/, or any secret - so a failure here

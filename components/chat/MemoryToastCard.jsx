@@ -11,7 +11,7 @@ export default function MemoryToastCard({ card, onClose, applyUserPlaceholder, t
     : card.status === "duplicate"
       ? tr("這次沒有新增，內容太接近既有記憶", "Nothing added — too close to an existing memory", "追加なし：既存の記憶に近すぎます", "추가 안 됨 — 기존 기억과 너무 유사")
       : card.message || tr("記憶生成失敗", "Failed to generate memory", "記憶の生成に失敗しました", "기억 생성 실패");
-  return <div className="mp-mem-card-mask" onClick={onClose}>
+  return <div className="mp-mem-card-mask" data-back-dismiss onClick={onClose}>
     <div className="mp-mem-card" onClick={(event) => event.stopPropagation()}>
       {added ? <>
         <div className="mp-mem-card-title">✦ {tr("已存入長期記憶", "Saved to long-term memory", "長期記憶に保存しました", "장기 기억에 저장됨")}</div>

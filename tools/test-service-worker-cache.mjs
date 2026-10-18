@@ -121,6 +121,19 @@ const offlinePage = await sw.dispatchFetch({ url: SCOPE, mode: "navigate", desti
 assert.ok(offlinePage, "navigation must fall back to the cached app shell when offline");
 console.log("ok: same-origin static assets and the app shell still work offline");
 
+// Pages 對不存在的檔案回 200 首頁 HTML：不得存成圖片快取，舊快取裡的 HTML 也不拿來用。
+const htmlFallback = () => new Response("<!doctype html>", { headers: { "content-type": "text/html; charset=utf-8" } });
+sw.setNetwork(htmlFallback);
+await sw.dispatchFetch({ url: `${ORIGIN}/MAIPHONE/dating-photos/new.jpg`, destination: "image" });
+sw.setNetwork(() => new Response("photo-bytes", { headers: { "content-type": "image/jpeg" } }));
+const realPhoto = await sw.dispatchFetch({ url: `${ORIGIN}/MAIPHONE/dating-photos/new.jpg`, destination: "image" });
+assert.equal(await realPhoto.text(), "photo-bytes", "HTML fallback must not be cached for image requests");
+const shellName = [...sw.stores.keys()].find((name) => name.startsWith("maliphone-shell-"));
+sw.stores.get(shellName).set(`${ORIGIN}/MAIPHONE/dating-photos/old.jpg`, htmlFallback());
+const healedPhoto = await sw.dispatchFetch({ url: `${ORIGIN}/MAIPHONE/dating-photos/old.jpg`, destination: "image" });
+assert.equal(await healedPhoto.text(), "photo-bytes", "cached HTML must be ignored and refetched");
+console.log("ok: HTML fallbacks are never cached or served for static files");
+
 // Android App：不註冊 SW，註銷舊的並清掉 MaliPhone 快取。
 const appSource = await readFile(new URL("../MaliPhone.jsx", import.meta.url), "utf8");
 const registerAt = appSource.indexOf("navigator.serviceWorker.register(");

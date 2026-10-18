@@ -3,6 +3,7 @@ import { gid, sanitizeText } from "../../utils/coreUtils";
 import { categoriesFor, findCategory, categoryLabel } from "../../constants/ledgerCategories";
 import { AppHeader, SUB_PAGE_CLASS } from "../shell/LargeTitle";
 import Icon from "../common/Icon";
+import SegmentedControl from "../common/SegmentedControl";
 
 // 生活記帳：玩家自己的真實收支，與劇情錢包（wallet.balance / wallet.transactions）完全隔離。
 // 這裡的收支永遠不影響角色轉帳、商店等劇情扣款，只在錢包首頁的總資產做顯示層加總。
@@ -172,10 +173,7 @@ export default function LifeLedgerView({ wallet, setWallet, onBack, tr, formatMo
         <button className="mp-life-add income" onClick={() => openEntry("income")}>＋ {tr("記一筆收入", "Add income", "収入を記録", "수입 기록")}</button>
       </div>
 
-      <div className="mp-wtabs" style={{ margin: "11px 0 8px" }}>
-        <button className={`mp-wtab ${tab === "ledger" ? "active" : ""}`} onClick={() => setTab("ledger")}>{tr("明細", "Entries", "明細", "내역")}</button>
-        <button className={`mp-wtab ${tab === "stats" ? "active" : ""}`} onClick={() => setTab("stats")}>{tr("統計", "Stats", "統計", "통계")}</button>
-      </div>
+      <SegmentedControl className="mp-wallet-seg" ariaLabel={tr("生活記帳分頁", "Life ledger tabs", "生活家計簿のタブ", "생활 가계부 탭")} value={tab} onChange={setTab} items={[{ id: "ledger", label: tr("明細", "Entries", "明細", "내역") }, { id: "stats", label: tr("統計", "Stats", "統計", "통계") }]} />
 
       {tab === "stats" ? <div className="mp-wallet-month-body">
         <div className="mp-wmonth-nav">

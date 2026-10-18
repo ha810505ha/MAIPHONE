@@ -1,4 +1,5 @@
 import { SYSTEM_MAILS } from "../../data/systemMails";
+import { TEST_GRANTS_ENABLED } from "../../config/featureFlags";
 import { loadFeatureEntity, saveFeatureEntity } from "../../utils/indexedDbStorage";
 export { countUnreadMails } from "../../utils/mailboxUnread";
 
@@ -6,6 +7,9 @@ const MAILBOX_KEY = "ent_systemMailbox";
 export const MAILBOX_CHANGED_EVENT = "maliphone:mailbox-changed";
 const EMPTY_STATE = Object.freeze({ readMailIds: [], claimedGrantIds: [] });
 const MAIL_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
+
+// testOnly 信件只在測試建置存在；正式建置看不到也領不到。
+const getAvailableMails = () => SYSTEM_MAILS.filter((mail) => !mail.testOnly || TEST_GRANTS_ENABLED);
 
 const normalizeState = (value) => ({
   readMailIds: Array.isArray(value?.readMailIds) ? [...new Set(value.readMailIds.map(String))] : [],
@@ -15,7 +19,7 @@ const normalizeState = (value) => ({
 export async function loadMailbox(locale = "zh-TW") {
   const state = normalizeState(await loadFeatureEntity(MAILBOX_KEY, EMPTY_STATE));
   const now = Date.now();
-  const mails = SYSTEM_MAILS
+  const mails = getAvailableMails()
     .map((mail) => {
       const translation = mail.translations?.[locale];
       const attachments = (mail.attachments || []).map((item, index) => ({
@@ -57,7 +61,7 @@ export async function markMailRead(mailId) {
 }
 
 export async function claimMailAttachments(mailId) {
-  const mail = SYSTEM_MAILS.find((item) => item.id === mailId);
+  const mail = getAvailableMails().find((item) => item.id === mailId);
   if (!mail) throw new Error("找不到這封系統信件");
   const createdAt = new Date(mail.createdAt).getTime();
   const expiresAt = mail.expiresAt ? new Date(mail.expiresAt).getTime() : createdAt + MAIL_RETENTION_MS;

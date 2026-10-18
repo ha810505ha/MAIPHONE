@@ -3,14 +3,56 @@ import { parseChangelogItem } from "../../utils/changelog.js";
 import {
   clearRuntimeDiagnostics,
   copyRuntimeDiagnostics,
+  copyTextForDiagnostics,
   getRuntimeDiagnostics,
 } from "../../services/diagnostics/runtimeDiagnostics.js";
 import { explainError } from "../../services/diagnostics/errorExplain.js";
+import { normalizeUiLanguage } from "../../utils/i18n.js";
+import { getPrivacyUrl, getTermsUrl } from "../../utils/privacyUrl.js";
+import { BUILD_ID } from "../../utils/buildVersion";
+
+export const SUPPORT_EMAIL = "support@maliphone.com";
+
+const detectPlatform = () => {
+  try {
+    const capacitor = globalThis.Capacitor;
+    if (capacitor?.isNativePlatform?.()) return capacitor.getPlatform?.() || "native";
+  } catch {
+    // 取不到平台時視為網頁版。
+  }
+  return "web";
+};
+
+// 主旨與內文預先帶入版本、語系、平台，方便玩家回報、客服辨識；不帶任何聊天內容或帳號資料。
+export function buildSupportMailto({ tr, version, locale, platform }) {
+  const subject = tr("MaliPhone 問題回報", "MaliPhone support request", "MaliPhone お問い合わせ", "MaliPhone 문의");
+  const body = [
+    tr("請描述遇到的問題（可附截圖或貼上「複製全部錯誤」的內容）：", "Please describe the issue (screenshots or pasted \"Copy all errors\" output are welcome):", "発生した問題を記入してください（スクリーンショットや「すべてコピー」の内容を貼り付けても構いません）：", "겪은 문제를 적어 주세요 (스크린샷이나 \"모든 오류 복사\" 내용을 붙여 넣어도 됩니다):"),
+    "",
+    "",
+    "----",
+    `${tr("版本", "Version", "バージョン", "버전")}: ${version}`,
+    `${tr("語系", "Language", "言語", "언어")}: ${locale}`,
+    `${tr("平台", "Platform", "プラットフォーム", "플랫폼")}: ${platform}`,
+  ].join("\n");
+  return `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
 
 export default function AboutInfoSettings({ tr, version, currentChangelogTitle, currentChangelog, versionOpen, setVersionOpen, disclaimerOpen, setDisclaimerOpen }) {
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [diagnostics, setDiagnostics] = useState(() => getRuntimeDiagnostics());
   const [copyState, setCopyState] = useState("idle");
+  const [emailCopyState, setEmailCopyState] = useState("idle");
+  const supportMailto = buildSupportMailto({
+    tr,
+    version,
+    locale: normalizeUiLanguage(typeof document !== "undefined" ? document.documentElement.lang : ""),
+    platform: detectPlatform(),
+  });
+  const copySupportEmail = async () => {
+    const copied = await copyTextForDiagnostics(SUPPORT_EMAIL);
+    setEmailCopyState(copied ? "copied" : "failed");
+  };
   const refreshDiagnostics = () => {
     const records = getRuntimeDiagnostics();
     setDiagnostics(records);
@@ -30,7 +72,7 @@ export default function AboutInfoSettings({ tr, version, currentChangelogTitle, 
               <div className="mp-sg">
                 <div className="mp-sg-t">{tr("版本資訊", "Version info", "バージョン情報", "버전 정보")}</div>
                 <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.7,marginBottom:8}}>
-                  <strong>MaliPhone</strong> v{version}<br/>{tr("AI 角色互動小手機介面", "AI character companion phone", "AIキャラクターと交流するスマホ", "AI 캐릭터 교류 스마트폰")}
+                  <strong>MaliPhone</strong> v{version} <span style={{ opacity: .6, fontSize: "0.85em" }}>({BUILD_ID})</span><br/>{tr("AI 角色互動小手機介面", "AI character companion phone", "AIキャラクターと交流するスマホ", "AI 캐릭터 교류 스마트폰")}
                 </div>
                 <div className="mp-version-row" onClick={() => setVersionOpen((v) => !v)}>
                   <span>{currentChangelogTitle}　{tr("版本", "Version", "バージョン", "버전")}：{version}</span>
@@ -104,31 +146,54 @@ export default function AboutInfoSettings({ tr, version, currentChangelogTitle, 
                 )}
               </div>
               <div className="mp-sg">
+                <div className="mp-sg-t">{tr("聯絡客服", "Contact support", "お問い合わせ", "고객 지원")}</div>
+                <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.7,marginBottom:8}}>
+                  {tr(
+                    "遇到問題或有建議，歡迎寫信給我們。點下方按鈕會開啟郵件 App，並自動附上版本與語系；若沒有反應，請複製信箱自行寄信。",
+                    "Questions or suggestions are welcome. The button below opens your mail app with the version and language filled in. If nothing happens, copy the address and send an email yourself.",
+                    "問題やご意見があればお気軽にご連絡ください。下のボタンでメールアプリが開き、バージョンと言語が自動で入ります。反応がない場合はアドレスをコピーしてご自身で送信してください。",
+                    "문제나 의견이 있으면 메일을 보내 주세요. 아래 버튼을 누르면 메일 앱이 열리고 버전과 언어가 자동으로 입력됩니다. 반응이 없으면 주소를 복사해 직접 보내 주세요.",
+                  )}
+                </div>
+                <div style={{fontSize:13,color:"var(--mp-txt)",fontWeight:600,marginBottom:8,wordBreak:"break-all"}}>{SUPPORT_EMAIL}</div>
+                <div style={{display:"flex",gap:8}}>
+                  <a className="mp-save" style={{flex:1,textAlign:"center",textDecoration:"none"}} href={supportMailto}>
+                    {tr("寫信給客服", "Email support", "メールで問い合わせ", "메일 보내기")}
+                  </a>
+                  <button type="button" className="mp-ibtn" style={{flex:1}} onClick={copySupportEmail}>
+                    {emailCopyState === "copied"
+                      ? tr("✓ 已複製", "✓ Copied", "✓ コピー済み", "✓ 복사됨")
+                      : emailCopyState === "failed"
+                        ? tr("複製失敗", "Copy failed", "コピー失敗", "복사 실패")
+                        : tr("複製信箱", "Copy address", "アドレスをコピー", "주소 복사")}
+                  </button>
+                </div>
+              </div>
+              <div className="mp-sg">
                 <div className="mp-sg-t">{tr("服務條款與免責聲明", "Terms and disclaimer", "利用規約と免責事項", "이용약관 및 면책")}</div>
                 <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.7,marginBottom:8}}>
                   {tr("最後更新：2026年6月2日", "Last updated: June 2, 2026", "最終更新: 2026年6月2日", "마지막 업데이트: 2026년 6월 2일")}
                 </div>
-                <div className="mp-version-row" onClick={() => setDisclaimerOpen((v) => !v)}>
+                <a className="mp-version-row" href={getTermsUrl()} target="_blank" rel="noopener noreferrer" style={{textDecoration:"none",color:"inherit"}}>
                   <span>{tr("查看完整條款", "View full terms", "利用規約を表示", "전체 약관 보기")}</span>
-                  <span>{disclaimerOpen ? tr("收合", "Collapse", "折りたたむ", "접기") : tr("展開", "Expand", "展開", "펼치기")}</span>
-                </div>
-                {disclaimerOpen && (
-                  <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.8,padding:"10px 4px 2px"}}>
-                    <div style={{fontWeight:700,color:"var(--mp-txt)"}}>{tr("歡迎使用 MaliPhone", "Welcome to MaliPhone", "MaliPhoneへようこそ", "MaliPhone에 오신 것을 환영합니다")}</div>
-                    <div style={{marginTop:8}}>{tr("本應用程式是一個提供給玩家自由遊玩的 AI 角色互動平台。玩家可以依照自己的方式建立、設定與使用內容，所有玩法都由玩家自行決定，開發者不會介入、限制或替玩家做出遊玩選擇。", "This app is an AI character interaction platform for free-form play. Players create, configure, and use content in their own way; all play choices are made by the player, and the developer does not intervene, restrict, or decide how users play.", "本アプリは、プレイヤーが自由に遊べるAIキャラクター交流プラットフォームです。コンテンツの作成、設定、利用方法はプレイヤー自身が決めるもので、開発者が遊び方に介入、制限、または選択を代行することはありません。", "이 앱은 플레이어가 자유롭게 즐길 수 있는 AI 캐릭터 상호작용 플랫폼입니다. 콘텐츠의 생성, 설정, 사용 방식은 플레이어가 직접 결정하며 개발자는 플레이 방식에 개입하거나 제한하거나 대신 선택하지 않습니다.")}</div>
-                    <div style={{marginTop:8}}>{tr("本應用程式不會主動取得玩家的個人設定、遊玩偏好或私人操作內容，也無法控制玩家如何使用本服務。所有角色、對話、情節、觀點與回應皆可能為演算法生成內容，僅供娛樂、創作與測試用途，不代表真實人物、事件或事實。", "This app does not proactively collect personal settings, play preferences, or private actions, and cannot control how players use the service. Characters, conversations, plots, opinions, and replies may be algorithmically generated and are for entertainment, creative, and testing purposes only; they do not represent real people, events, or facts.", "本アプリは、個人設定、遊び方の好み、私的な操作内容を能動的に取得せず、プレイヤーによる本サービスの利用方法を制御することもできません。キャラクター、会話、展開、意見、返答はアルゴリズム生成である場合があり、娯楽、創作、テスト目的に限られ、実在の人物、出来事、事実を表すものではありません。", "이 앱은 개인 설정, 플레이 선호도, 사적인 조작 내용을 능동적으로 수집하지 않으며, 플레이어가 서비스를 어떻게 사용하는지 통제할 수 없습니다. 모든 캐릭터, 대화, 전개, 관점, 응답은 알고리즘으로 생성될 수 있으며 오락, 창작, 테스트 목적일 뿐 실제 인물, 사건 또는 사실을 의미하지 않습니다.")}</div>
-                    <div style={{marginTop:8}}>{tr("請勿將本應用程式產出的內容視為專業建議。若涉及醫療、法律、財務、心理健康或其他重大決策，請自行判斷並諮詢合格專業人士。", "Do not treat content generated by this app as professional advice. For medical, legal, financial, mental health, or other major decisions, use your own judgment and consult qualified professionals.", "本アプリが生成した内容を専門的助言として扱わないでください。医療、法律、財務、メンタルヘルス、その他重大な判断に関わる場合は、ご自身で判断し、資格を持つ専門家に相談してください。", "이 앱에서 생성된 내용을 전문적인 조언으로 간주하지 마세요. 의료, 법률, 재정, 정신건강 또는 기타 중대한 결정과 관련된 경우 스스로 판단하고 자격을 갖춘 전문가와 상담하세요.")}</div>
-                    <div style={{marginTop:8}}>{tr("使用者應對自己在本應用程式中的操作、輸入與產出內容負責，並遵守所在地法律、平台規範與公共秩序。請勿利用本服務製作、散播或引導任何非法、侵害他人權益、仇恨、騷擾、暴力、自殘或其他高風險內容。", "Users are responsible for their actions, inputs, and outputs in this app and must follow local laws, platform rules, and public order. Do not use this service to create, distribute, or encourage illegal content, rights violations, hate, harassment, violence, self-harm, or other high-risk content.", "ユーザーは、本アプリでの操作、入力、出力内容について責任を負い、所在地の法律、プラットフォーム規約、公序良俗を遵守する必要があります。違法行為、他者の権利侵害、憎悪、嫌がらせ、暴力、自傷、その他高リスクな内容の作成、拡散、誘導に本サービスを利用しないでください。", "사용자는 이 앱에서의 조작, 입력, 출력 내용에 책임을 지며, 거주 지역의 법률, 플랫폼 규정, 공공질서를 준수해야 합니다. 불법, 타인 권리 침해, 혐오, 괴롭힘, 폭력, 자해 또는 기타 고위험 콘텐츠를 제작, 유포, 유도하는 데 이 서비스를 사용하지 마세요.")}</div>
-                    <div style={{marginTop:8}}>{tr("本應用程式不保證服務永遠可用、完全正確、完全安全或完全無誤。AI 生成內容可能出現不準確、過時、偏差、重複或不完整的情況，開發者不對因此造成的任何直接或間接損失負責。", "This app does not guarantee that the service will always be available, fully accurate, fully secure, or error-free. AI-generated content may be inaccurate, outdated, biased, repetitive, or incomplete, and the developer is not responsible for any direct or indirect losses caused by it.", "本アプリは、サービスが常に利用可能であること、完全に正確、安全、または無誤であることを保証しません。AI生成内容には不正確、古い情報、偏り、重複、不完全さが含まれる場合があり、それにより生じたいかなる直接的または間接的損失についても開発者は責任を負いません。", "이 앱은 서비스가 항상 이용 가능하거나 완전히 정확하거나 완전히 안전하거나 오류가 없음을 보장하지 않습니다. AI 생성 콘텐츠는 부정확하거나 오래되었거나 편향되었거나 반복적이거나 불완전할 수 있으며, 이로 인한 직접 또는 간접 손실에 대해 개발자는 책임지지 않습니다.")}</div>
-                    <div style={{marginTop:8}}>{tr("若您不同意上述內容，請停止使用本應用程式。開發者保留在必要時調整、暫停或終止服務的權利，並可依實際情況更新本條款，更新後於應用程式內公告時即生效。", "If you do not agree with the above, stop using this app. The developer reserves the right to adjust, suspend, or terminate the service when necessary and may update these terms as circumstances require. Updates take effect when announced in the app.", "上記に同意しない場合は、本アプリの利用を停止してください。開発者は必要に応じてサービスを調整、一時停止、または終了する権利を有し、状況に応じて本規約を更新できます。更新内容はアプリ内で告知された時点で有効になります。", "위 내용에 동의하지 않는 경우 이 앱 사용을 중단하세요. 개발자는 필요한 경우 서비스를 조정, 일시 중단 또는 종료할 권리를 가지며, 실제 상황에 따라 본 약관을 업데이트할 수 있습니다. 업데이트는 앱 내 공지 시점부터 효력이 발생합니다.")}</div>
-                  </div>
-                )}
+                  <span>{tr("開啟", "Open", "開く", "열기")}</span>
+                </a>
+                <a className="mp-version-row" href={getPrivacyUrl()} target="_blank" rel="noopener noreferrer" style={{textDecoration:"none",color:"inherit",marginTop:10}}>
+                  <span>{tr("隱私權政策", "Privacy Policy", "プライバシーポリシー", "개인정보 처리방침")}</span>
+                  <span>{tr("開啟", "Open", "開く", "열기")}</span>
+                </a>
               </div>
               <div className="mp-sg">
                 <div className="mp-sg-t">{tr("素材授權與致謝", "Asset credits and licenses", "素材ライセンスとクレジット", "소재 라이선스 및 크레딧")}</div>
                 <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.8}}>
-                  <div>{tr("部分雲隱山莊視覺素材使用 Modern Farm by limezu。", "Some Yunyin Villa visual assets use Modern Farm by limezu.", "雲隠山荘の一部ビジュアル素材には limezu の Modern Farm を使用しています。", "운은산장의 일부 시각 소재는 limezu의 Modern Farm을 사용합니다.")}</div>
-                  <div>{tr("授權摘要：可用於商業與非商業專案；不可轉售或散佈素材本體。", "License summary: allowed for commercial and non-commercial projects; asset files may not be resold or redistributed.", "ライセンス概要：商用・非商用プロジェクトで使用可能。素材ファイル自体の再販売・再配布は禁止です。", "라이선스 요약: 상업 및 비상업 프로젝트에 사용 가능하며, 소재 파일 자체의 재판매 또는 재배포는 금지됩니다.")}</div>
+                  <div>{tr("雲隱山莊的像素美術素材來自 LimeZu（limezu.itch.io），使用以下素材包：", "Yunyin Villa pixel art assets are by LimeZu (limezu.itch.io), from these packs:", "雲隠山荘のピクセルアート素材は LimeZu（limezu.itch.io）の以下の素材パックを使用しています：", "운은산장의 픽셀 아트 소재는 LimeZu(limezu.itch.io)의 다음 소재 팩을 사용합니다:")}</div>
+                  <ul style={{margin:"4px 0 6px",paddingLeft:18}}>
+                    <li>Modern Interiors</li>
+                    <li>Modern Exteriors</li>
+                    <li>Modern Farm</li>
+                    <li>{tr("Character Generator 2.0（隨 Modern Interiors 附贈）", "Character Generator 2.0 (bundled with Modern Interiors)", "Character Generator 2.0（Modern Interiors 付属）", "Character Generator 2.0 (Modern Interiors 포함)")}</li>
+                  </ul>
+                  <div>{tr("授權摘要：已購買正式授權，可用於商業與非商業專案；不可轉售或散佈素材本體，素材著作權歸原作者所有。", "License summary: used under purchased licenses for commercial and non-commercial projects; asset files may not be resold or redistributed, and copyright remains with the original author.", "ライセンス概要：購入済みの正式ライセンスに基づき商用・非商用で使用しています。素材ファイル自体の再販売・再配布は禁止で、著作権は原作者に帰属します。", "라이선스 요약: 구매한 정식 라이선스에 따라 상업 및 비상업 프로젝트에 사용하며, 소재 파일 자체의 재판매 또는 재배포는 금지되고 저작권은 원작자에게 있습니다.")}</div>
                   <div><a href="https://limezu.itch.io/" target="_blank" rel="noreferrer">limezu.itch.io</a></div>
                 </div>
               </div>

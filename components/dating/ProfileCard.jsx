@@ -27,7 +27,7 @@ function usePhotoRotation(count, paused) {
   };
 }
 
-export default function ProfileCard({ entry, paused, dragX, dragY, onOpenDetail, tr }) {
+export default function ProfileCard({ entry, paused, dragX, dragY, superLiked = false, onOpenDetail, tr }) {
   const photos = (entry.profile.photos || []).map(sanitizeUserImageUrl).filter(Boolean);
   const { index, auto, step } = usePhotoRotation(photos.length, paused);
   const likeOpacity = Math.min(1, Math.max(0, dragX / 70));
@@ -51,11 +51,13 @@ export default function ProfileCard({ entry, paused, dragX, dragY, onOpenDetail,
         </>}
         <div className="dt-stamp like" style={{ opacity: likeOpacity }}>LIKE</div>
         <div className="dt-stamp nope" style={{ opacity: nopeOpacity }}>NOPE</div>
-        {dragY < -30 && <div className="dt-stamp info" style={{ opacity: Math.min(1, -dragY / 70) }}>{tr("資料", "INFO", "詳細", "정보")}</div>}
+        {superLiked && <div className="dt-stamp super">SUPER LIKE</div>}
+        {dragY < -30 && !superLiked && <div className="dt-stamp info" style={{ opacity: Math.min(1, -dragY / 70) }}>{tr("資料", "INFO", "詳細", "정보")}</div>}
       </div>
       <div className="dt-card-info" onClick={onOpenDetail}>
-        <div className="dt-card-name">{entry.profile.name}<span>{entry.profile.age}</span></div>
-        <div className="dt-card-meta">{entry.profile.job}・{distanceLabel(entry.profile.distance, tr)}</div>
+        <div className="dt-card-name">{entry.profile.name}{entry.profile.age ? <span>{entry.profile.age}</span> : null}</div>
+        {/* 個人資料頁的「預覽別人看到的我」沒有年齡／距離，這些欄位缺時不顯示佔位文字 */}
+        <div className="dt-card-meta">{[entry.profile.job, entry.profile.distance > 0 ? distanceLabel(entry.profile.distance, tr) : ""].filter(Boolean).join("・")}</div>
         <div className="dt-card-tags">
           {(entry.profile.tags || []).slice(0, 4).map((tag) => <span key={tag} className="dt-tag">{tagLabel(tag, tr)}</span>)}
           {(entry.profile.tags || []).length > 4 && <span className="dt-tag ghost">+{entry.profile.tags.length - 4}</span>}

@@ -8,16 +8,12 @@ MaliPhone 是一款以 AI 角色互動為核心的手機模擬器。
 
 ## 授權
 
-Copyright (C) 2026 ha14hiho
+Copyright (c) 2026 ha14hiho. All rights reserved.
 
-本專案採用 [GNU Affero General Public License v3.0（AGPL-3.0）](./LICENSE) 授權。
-
-依 AGPL-3.0 第 7 條，散布本專案或其修改版本時，須保留以下作者署名：
-
-「MaliPhone — 原作者：ha14hiho」
+本專案保留所有權利，不提供開源授權。自 2026 年 10 月 16 日起的版本，未經作者事前書面同意，不得複製、修改、散布或製作衍生作品。
 
 玩家的聊天紀錄、角色資料與 API Key 等個人資料不在公開範圍內。
-完整條款請見 [LICENSE](./LICENSE)。
+完整說明請見 [LICENSE](./LICENSE)，授權洽詢：support@maliphone.com。
 
 ## 主要特色
 

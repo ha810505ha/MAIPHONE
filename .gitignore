@@ -85,6 +85,8 @@ private-assets/
 /output/imagegen/
 /tmp/imagegen/
 /public/gacha/
+# 信風角色照片：第三方創作者素材，只留本機
+/public/dating-photos/
 /assets/card-frames/
 /assets/cards/preview/
 
@@ -102,3 +104,12 @@ backend/docs/plan.md
 
 # 付費素材原始檔：授權禁止散布，repo 是 public 的所以不能進 git（build 產物 dist/ 已排除，不受影響）
 yunyin/assets/
+
+# 只在本機／正式站使用、不進公開 repo（小舞 2026-10-19）
+# 法律頁只部署到正式站 maliphone.com
+/public/privacy.html
+/public/terms.html
+/public/legal/
+# 自測 APK 打包卡圖影音用；未接進回歸測試的卡圖檢查
+/tools/bundle-gacha-assets.mjs
+/tools/test-gacha-art.mjs

@@ -284,7 +284,7 @@ assert.match(socialAppSource, /getVisibleComments/);
 assert.match(socialAppSource, /characterInteractionChance/);
 assert.match(socialAppSource, /characterPostRefreshing/);
 assert.match(socialAppSource, /frequency: event\.target\.value/);
-assert.match(socialAppSource, /mp-social-notification-bell/);
+assert.match(socialAppSource, /mp-social-head-actions[\s\S]*mp-hdr-action[\s\S]*mp-social-notification-badge/, "social header keeps a shared header-action button with the unread badge");
 assert.match(socialAppSource, /markSocialReadThrough/);
 assert.match(socialAppSource, /c\.role === "assistant" && c\.charId/);
 assert.match(socialAppSource, /editPlayerComment\(p\.id, c\.id/);

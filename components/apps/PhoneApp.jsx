@@ -500,7 +500,7 @@ export default function PhoneApp({
               <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:430,overflowY:"auto",overflowX:"hidden",boxSizing:"border-box",width:"100%",border:`1px solid ${phoneChatUi.panelBorder}`,borderRadius:12,padding:"8px 10px",background:phTh.mode==="dark"?"rgba(0,0,0,.20)":"rgba(255,255,255,.48)"}}>
                 {(activeThread?.messages || []).map((m) => m.from === "system" ? (
                   <div key={m.id} style={{display:"flex",justifyContent:"center",padding:"3px 8px"}}>
-                    <div style={{maxWidth:"88%",padding:"5px 10px",borderRadius:12,background:phTh.mode==="dark"?"rgba(255,255,255,.10)":"rgba(255,255,255,.82)",border:`1px solid ${m.noticeType?.includes("block") ? "rgba(201,47,75,.28)" : phoneChatUi.incomingBorder}`,color:m.noticeType?.includes("block")?"#B91C3C":phoneChatUi.sub,fontSize:10,fontWeight:m.noticeType?700:500,textAlign:"center",lineHeight:1.45}}><div>{m.text}</div><div style={{marginTop:2,fontSize:8,fontWeight:500,opacity:.72}}>{clock(m.time)}</div></div>
+                    <div style={{maxWidth:"88%",padding:"5px 10px",borderRadius:12,background:phTh.mode==="dark"?"rgba(255,255,255,.10)":"rgba(255,255,255,.82)",border:`1px solid ${m.noticeType?.includes("block") ? "rgba(201,47,75,.28)" : phoneChatUi.incomingBorder}`,color:m.noticeType?.includes("block")?"#B91C3C":phoneChatUi.sub,fontSize:"var(--mp-fs-caption)",fontWeight:m.noticeType?700:500,textAlign:"center",lineHeight:1.45}}><div>{m.text}</div><div style={{marginTop:2,fontSize:"var(--mp-fs-caption)",fontWeight:500,opacity:.72}}>{clock(m.time)}</div></div>
                   </div>
                 ) : (
                   <div key={m.id} style={{display:"flex",justifyContent:m.from==="char"?"flex-end":"flex-start",padding:0}}>
@@ -509,10 +509,10 @@ export default function PhoneApp({
                         {m.pseudoImage && <div style={{...pseudoImageStyle(m.pseudoImage),width:104,height:78,borderRadius:8,opacity:.9,marginBottom:m.text?5:0}} />}
                         {m.pseudoVoice && <PseudoVoiceBubble pseudoVoice={m.pseudoVoice} compact tr={tr} />}
                         {m.text && <div>{m.text}</div>}
-                        <div style={{marginTop:3,fontSize:9,textAlign:m.from==="char"?"right":"left",color:m.from==="char"?phoneChatUi.outgoingText:phoneChatUi.sub,opacity:m.from==="char"?.72:.82}}>{clock(m.time)}</div>
+                        <div style={{marginTop:3,fontSize:"var(--mp-fs-caption)",textAlign:m.from==="char"?"right":"left",color:m.from==="char"?phoneChatUi.outgoingText:phoneChatUi.sub,opacity:m.from==="char"?.72:.82}}>{clock(m.time)}</div>
                       </div>
-                      {m.deliveryStatus && <div style={{marginTop:3,padding:"0 3px",fontSize:9,fontWeight:700,textAlign:m.from==="char"?"right":"left",color:"#B91C3C",lineHeight:1.35}}>{m.deliveryStatus === "outgoing_failed" ? tr("傳送失敗 · 無法確認送達", "Failed · delivery unconfirmed", "送信失敗", "전송 실패") : tr("已攔截的訊息", "Intercepted message", "遮断されたメッセージ", "차단된 메시지")}</div>}
-                      {m.deliveryStatus && <span style={{position:"absolute",top:"calc(50% - 7px)",transform:"translateY(-50%)",[m.from==="char"?"left":"right"]:-21,display:"grid",placeItems:"center",width:16,height:16,borderRadius:"50%",background:"#C92F4B",border:"2px solid #FFFFFF",boxShadow:"0 2px 6px rgba(88,15,32,.28)",color:"#fff",fontSize:10,fontWeight:900,lineHeight:1}}>!</span>}
+                      {m.deliveryStatus && <div style={{marginTop:3,padding:"0 3px",fontSize:"var(--mp-fs-caption)",fontWeight:700,textAlign:m.from==="char"?"right":"left",color:"#B91C3C",lineHeight:1.35}}>{m.deliveryStatus === "outgoing_failed" ? tr("傳送失敗 · 無法確認送達", "Failed · delivery unconfirmed", "送信失敗", "전송 실패") : tr("已攔截的訊息", "Intercepted message", "遮断されたメッセージ", "차단된 메시지")}</div>}
+                      {m.deliveryStatus && <span style={{position:"absolute",top:"calc(50% - 7px)",transform:"translateY(-50%)",[m.from==="char"?"left":"right"]:-21,display:"grid",placeItems:"center",width:16,height:16,borderRadius:"50%",background:"#C92F4B",border:"2px solid #FFFFFF",boxShadow:"0 2px 6px rgba(88,15,32,.28)",color:"#fff",fontSize:"var(--mp-fs-caption)",fontWeight:900,lineHeight:1}}>!</span>}
                     </div>
                   </div>
                 ))}
@@ -570,7 +570,7 @@ export default function PhoneApp({
                       <div key={i} style={{ ...cardS, borderRadius: 10, padding: 6 }}>
                         <div style={{ height: 88, borderRadius: 6, background: `linear-gradient(150deg, ${p.tone}, ${mixHex(p.tone, th.mode === "dark" ? "#000000" : "#ffffff")})` }} />
                         <div style={{ fontSize: 10, color: th.text, marginTop: 6, lineHeight: 1.35, overflowWrap: "anywhere" }}>{p.caption}</div>
-                        <div style={{ fontSize: 9, color: th.textSub }}>{p.time}</div>
+                        <div style={{ fontSize: "var(--mp-fs-caption)", color: th.textSub }}>{p.time}</div>
                       </div>
                     ))}
                   </div>
@@ -645,7 +645,7 @@ export default function PhoneApp({
                         <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 11.5, color: th.text, fontWeight: 700, lineHeight: 1.35, overflowWrap: "anywhere" }}>{o.item}</div><div style={{ fontSize: 9.5, color: th.textSub }}>{o.date}</div></div>
                         <div style={{ textAlign: "right", flex: "none" }}>
                           <div style={{ fontSize: 11.5, color: th.text, fontWeight: 700 }}>${formatMoney(o.price)}</div>
-                          <div style={{ fontSize: 9, color: o.status === "shipping" ? "#E6B45A" : "#6FBF8E" }}>{o.status === "shipping" ? tr("配送中", "Shipping", "配送中", "배송 중") : tr("已送達", "Delivered", "配達済み", "배송 완료")}</div>
+                          <div style={{ fontSize: "var(--mp-fs-caption)", color: o.status === "shipping" ? "#E6B45A" : "#6FBF8E" }}>{o.status === "shipping" ? tr("配送中", "Shipping", "配送中", "배송 중") : tr("已送達", "Delivered", "配達済み", "배송 완료")}</div>
                         </div>
                       </div>
                     ))}

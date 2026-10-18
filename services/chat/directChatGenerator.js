@@ -5,6 +5,8 @@ import { PHOTO_RULE_CONTEXT, extractPhotoDirectives } from "../../utils/pseudoIm
 import { VOICE_MESSAGE_RULE_CONTEXT, extractPseudoVoiceDirectives } from "../../utils/pseudoVoice";
 import { appendAssistantSwipeGroup } from "../../utils/assistantSwipeGroups.js";
 import { extractThinking } from "../../utils/chatMessageUtils";
+import { chatScamContext, extractScamGroupLink } from "../dating/scamScript.js";
+import { findProfile } from "../dating/datingMatching.js";
 
 export async function generateDirectAssistant({ cid, roomId, char, nextForDisplay, selectedMode, um, text, includeRealTime = true, swipeTargetId = null, signal }, context) {
   const { formatMessagesForPrompt, pickMemoriesForPrompt, pickLorebookEntriesForPrompt, characterWallets, formatMoney, tr, getPlayerContextBlock, getCalendarContext, getCalendarReminderContext, isCalendarProposalDuplicate, estimateTokens, totalContextTokenLimit, apiConfig, applyUserPlaceholder, buildChatSystemPrompt, callAI, sanitizeText, normalizeRealityReply, realityChatTextLimit, normalizeAssistantReply, extractTransferDirective, extractTransferResponseDirective, stripModeLabel, stripInternalBlocks, splitAssistantBubbles, createId, wait, updateChatMessages, applyCharacterTransferToPlayer, transfers, handleCharacterTransferDecision, characterBlockStates, buildCharacterBlockPromptContext, buildCharacterBlockCapabilityContext, extractCharacterBlockDirective, applyCharacterBlockDirective, isInnerThoughtAutoEnabled, generateInnerThought, getRealityMaxTokens } = context;
@@ -74,9 +76,13 @@ export async function generateDirectAssistant({ cid, roomId, char, nextForDispla
           ].filter(Boolean).join("\n");
         }
       }
+      // 信風詐騙角色（卡池 isScam）加入聯絡人後，線上模式繼續演群組詐騙的防詐教學劇本。
+      const scamProfile = selectedMode === "online" && char?.datingProfileId ? findProfile(char.datingProfileId) : null;
+      const scamContext = scamProfile?.isScam === true ? chatScamContext(char) : "";
       // 陣列順序＝送進 prompt 的順序；keep 值＝爆 token 時的保留優先度（越低越先被丟）。
       const contextBlocks = [
         { text: getPlayerContextBlock(), keep: 100 },
+        { text: scamContext, keep: 96 },
         { text: nowContext, keep: 90 },
         { text: pinnedLoreContext ? `[強制條目 - 必須遵守]\n以下條目為目前對話的硬性規則，回覆時必須滿足：\n${pinnedLoreContext}` : "", keep: 95 },
         { text: memoryContext, keep: 60 },
@@ -185,7 +191,10 @@ export async function generateDirectAssistant({ cid, roomId, char, nextForDispla
         ? extractPseudoVoiceDirectives(extracted.text)
         : { text: extracted.text, voices: [] };
       const photoExtracted = extractPhotoDirectives(voiceExtracted.text);
-      const cleanReply = stripModeLabel(stripInternalBlocks(photoExtracted.text));
+      // 詐騙角色的群組邀請標記：只在劇本啟用時認得；其他角色即使輸出也只當文字剝掉。
+      const scamExtracted = extractScamGroupLink(photoExtracted.text);
+      const scamGroupLink = scamContext && scamExtracted.hasLink;
+      const cleanReply = stripModeLabel(stripInternalBlocks(scamExtracted.text));
       if (swipeTargetId) {
         const candidateBubbles = cleanReply.trim()
           ? (selectedMode === "reality" ? [cleanReply] : splitAssistantBubbles(cleanReply))
@@ -220,6 +229,8 @@ export async function generateDirectAssistant({ cid, roomId, char, nextForDispla
         ));
       }
       const bubbles = cleanReply.trim() ? (selectedMode === "reality" ? [cleanReply] : splitAssistantBubbles(cleanReply)) : [];
+      // 整則只有邀請標記、沒有文字時，補一句短話讓卡片有地方掛。
+      if (scamGroupLink && !bubbles.length) bubbles.push(tr("進來看看～", "Come take a look~", "ちょっと見てみて〜", "한번 들어와 봐~"));
       const photoMessages = photoExtracted.photos.map((photo) => ({
         id: createId(),
         role: "assistant",
@@ -254,6 +265,8 @@ export async function generateDirectAssistant({ cid, roomId, char, nextForDispla
           ? { calendarProposal: { ...calendarDirective.proposal, status: "pending" } }
           : {}),
         ...(couplePromiseProposal && index === bubbles.length - 1 ? { couplePromiseProposal } : {}),
+        // 群組邀請卡掛在最後一則；點擊開反詐騙網站（見 ScamGroupLinkCard）。
+        ...(scamGroupLink && index === bubbles.length - 1 ? { scamGroupLink: { sentAt: Date.now() } } : {}),
         // 思考鏈掛在整組回覆的第一則氣泡上，只顯示一次。
         ...(index === 0 && replyThinking ? { thinking: { content: replyThinking } } : {}),
       }));

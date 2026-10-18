@@ -73,7 +73,11 @@ if (DATING_PROFILES.length === 0) {
   process.exit(0);
 }
 
-assert.equal(DATING_PROFILES.length, 25, "信風角色池必須正好有 25 位角色");
+// 內建（MAIPHONE 自製）25 位走完整內容規範；其他創作者投稿的社群角色（profileGroups/community.js）
+// 內容依原稿保留，只做結構檢查，不套用密度／欄位空白等內部寫作規範。
+const IN_HOUSE_PROFILES = DATING_PROFILES.filter((entry) => entry?.character?.creator === "MAIPHONE");
+const COMMUNITY_PROFILES = DATING_PROFILES.filter((entry) => !IN_HOUSE_PROFILES.includes(entry));
+assert.equal(IN_HOUSE_PROFILES.length, 25, "信風內建角色池必須正好有 25 位角色");
 
 const ids = new Set();
 const canonicalCharacterIds = new Set();
@@ -84,7 +88,7 @@ const paceCounts = new Map();
 const openingBubbleCounts = [];
 const superLikeBubbleCounts = [];
 
-for (const entry of DATING_PROFILES) {
+for (const entry of IN_HOUSE_PROFILES) {
   assert.ok(entry && typeof entry === "object", "角色資料必須是物件");
   assert.match(entry.id || "", /^[a-z0-9-]+$/, `${entry.id || "未知角色"} 的 id 格式錯誤`);
   assert.ok(!ids.has(entry.id), `角色 id 重複：${entry.id}`);
@@ -190,6 +194,35 @@ for (const id of legacyProfileIds) {
 }
 assert.equal(canonicalCharacterIds.size, 25, "25 位信風角色必須各自擁有唯一 canonical character ID");
 
+for (const entry of COMMUNITY_PROFILES) {
+  const label = entry?.id || "未知社群角色";
+  assert.match(entry.id || "", /^[A-Za-z0-9-]+$/, `${label} 的 id 格式錯誤`);
+  assert.ok(!ids.has(entry.id), `角色 id 重複：${entry.id}`);
+  ids.add(entry.id);
+  assert.ok(["instant", "normal", "slow"].includes(entry.responseStyle), `${label} responseStyle 無效`);
+  assert.ok(["fast", "normal", "slow"].includes(entry.pace), `${label} pace 無效`);
+  assert.ok(isValidClockTime(entry.onlineHours?.start) && isValidClockTime(entry.onlineHours?.end), `${label} onlineHours 無效`);
+  const profile = entry.profile || {};
+  assert.ok(typeof profile.name === "string" && profile.name.trim(), `${label} 缺少公開名稱`);
+  assert.ok(!publicNames.has(profile.name), `公開名稱重複：${profile.name}`);
+  publicNames.add(profile.name);
+  assert.ok(Number.isInteger(profile.age) && profile.age >= 20, `${label} 必須是成年角色`);
+  assert.ok(typeof profile.bio === "string" && profile.bio.trim(), `${label} 缺少公開自介`);
+  assert.ok(Array.isArray(profile.photos) && profile.photos.every((photo) => typeof photo === "string" && photo.trim()), `${label} photos 必須是路徑陣列`);
+  assert.ok(Array.isArray(profile.tags) && profile.tags.length > 0, `${label} 缺少公開標籤`);
+  profile.tags.forEach((tag) => assert.ok(isValidTag(tag), `${label} 使用不存在的公開標籤：${tag}`));
+  assert.ok(Array.isArray(entry.dislikes), `${label} dislikes 必須是陣列`);
+  entry.dislikes.forEach((tag) => assert.ok(isValidTag(tag), `${label} 使用不存在的隱藏雷點：${tag}`));
+  assert.ok(typeof entry.openingMessage === "string" ? entry.openingMessage.trim() : Array.isArray(entry.openingMessage) && entry.openingMessage.length, `${label} 缺少開場訊息`);
+  const expectedCharacterId = `dating-${entry.id}`;
+  assert.equal(entry.characterId, expectedCharacterId, `${label} characterId 必須使用永久 canonical ID`);
+  assert.equal(entry.character?.id, expectedCharacterId, `${label} character.id 必須與 characterId 一致`);
+  assert.ok(!canonicalCharacterIds.has(expectedCharacterId), `canonical character id 重複：${expectedCharacterId}`);
+  canonicalCharacterIds.add(expectedCharacterId);
+  assert.ok(typeof entry.character?.name === "string" && entry.character.name.trim(), `${label} 缺少角色本名`);
+  assert.ok(typeof entry.character === "object" && entry.character, `${label} 缺少角色卡`);
+}
+
 assert.equal(Math.min(...openingBubbleCounts), 1, "至少一位寡言角色的普通開場應只有 1 則");
 assert.equal(Math.max(...openingBubbleCounts), DATING_OPENING_MESSAGE_MAX, "至少一位健談角色的普通開場應使用 5 則");
 assert.ok(new Set(openingBubbleCounts).size >= 4, "普通開場泡泡數需要有明顯差異");
@@ -198,7 +231,10 @@ assert.ok(new Set(superLikeBubbleCounts).size >= 3, "Super Like 開場泡泡數�
 for (const entry of DATING_PROFILES) {
   const prompt = buildDatingSystemPrompt(entry, { bio: "", tags: [] }, "測試玩家");
   assert.ok(!/\{\{[^}]+\}\}/.test(prompt), `${entry.id} 信風 prompt 不可殘留角色變數`);
-  assert.ok(!prompt.includes(entry.character.name), `${entry.id} 信風 prompt 不可提早揭露本名`);
+  // 社群投稿角色可能公開名與本名相同（例如周月），此時本名出現在 prompt 不算洩漏。
+  if (entry.character.name !== entry.profile.name) {
+    assert.ok(!prompt.includes(entry.character.name), `${entry.id} 信風 prompt 不可提早揭露本名`);
+  }
 }
 
 for (const style of ["instant", "normal", "slow"]) {

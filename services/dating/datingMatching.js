@@ -1,7 +1,7 @@
 import {
-  CONTACT_PACE_THRESHOLDS, MATCH_BASE_RATE, MATCH_DISLIKE_WEIGHT, MATCH_LIKE_WEIGHT,
+  DATING_NICKNAME_MAX, MATCH_BASE_RATE, MATCH_DISLIKE_WEIGHT, MATCH_LIKE_WEIGHT,
   LIKE_RETRY_COOLDOWN_MS, MATCH_RATE_MAX, MATCH_RATE_MIN, PASS_COOLDOWN_MS, RESPONSE_DELAY_RANGES,
-  SUPER_LIKE_INITIAL, SUPER_LIKE_RATE_FLOOR,
+  SUPER_LIKE_INITIAL, SUPER_LIKE_MAX, SUPER_LIKE_RATE_FLOOR, SUPER_LIKE_TIME_ZONE, SUPER_LIKE_WEEKLY_FLOOR,
 } from "../../constants/dating.js";
 import { dayKey, isEffectiveMessage } from "./datingChat.js";
 import { DATING_PROFILES } from "../../data/dating/profiles.js";
@@ -11,7 +11,8 @@ const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const intersect = (a = [], b = []) => a.filter((item) => b.includes(item));
 
 export const createDatingState = () => ({
-  profile: { bio: "", photos: [], tags: [] },
+  // name 是信風專用暱稱（MP-055），空字串＝顯示層回退玩家名稱；舊存檔沒有此欄位。
+  profile: { name: "", bio: "", photos: [], tags: [] },
   swiped: {},        // profileId → { action: "pass" | "like" | "super", at }
   pending: [],       // 已右滑且註定會配對的，等時間到
   matches: [],       // 已配對：{ profileId, at, superLike, shared, seen }
@@ -26,7 +27,11 @@ export const createDatingState = () => ({
   reports: [],       // { profileId, at, resolveAt, status, claimed }
 
   superLikes: SUPER_LIKE_INITIAL,
-  superLikeLog: [],  // 稀缺資源要有帳可查：{ profileId, at, status }
+  // 稀缺資源要有帳可查：使用 { profileId, at, status: waiting|matched|silent, resolveAt }；
+  // 回補 { profileId: null, at, status: "granted", source, count }。
+  superLikeLog: [],
+  // 每週補滿只做一次：記本週（台北時間，週一起算）的 key，見 getTaipeiWeekKey。
+  lastSuperLikeRefillWeek: "",
 });
 
 export function normalizeDatingState(src, profiles = DATING_PROFILES) {
@@ -36,6 +41,7 @@ export function normalizeDatingState(src, profiles = DATING_PROFILES) {
   const profileRegistry = Array.isArray(profiles) ? profiles : DATING_PROFILES;
   return {
     profile: {
+      name: typeof profile.name === "string" || typeof profile.name === "number" ? String(profile.name).slice(0, DATING_NICKNAME_MAX) : "",
       bio: typeof profile.bio === "string" ? profile.bio.slice(0, 500) : "",
       photos: Array.isArray(profile.photos) ? profile.photos.filter((item) => typeof item === "string").slice(0, 6) : [],
       tags: Array.isArray(profile.tags) ? profile.tags.filter(isValidTag).slice(0, 12) : [],
@@ -55,7 +61,8 @@ export function normalizeDatingState(src, profiles = DATING_PROFILES) {
           messages: Array.isArray(relation.messages) ? relation.messages : [],
           unread: Math.max(0, Number(relation.unread) || 0),
           characterId: canonicalCharacterId,
-          contactState: contactCharId ? "unlocked" : "locked",
+          // invited（角色已邀請／答應，等玩家按交換）要保留；其他一律依是否已升格判定。
+          contactState: contactCharId ? "unlocked" : relation.contactState === "invited" ? "invited" : "locked",
           contactCharId,
           promotedAt: Math.max(0, Number(relation.promotedAt) || 0),
         }];
@@ -63,9 +70,62 @@ export function normalizeDatingState(src, profiles = DATING_PROFILES) {
       : {},
     blocked: source.blocked && typeof source.blocked === "object" ? source.blocked : {},
     reports: Array.isArray(source.reports) ? source.reports : [],
-    superLikes: Number.isFinite(Number(source.superLikes)) ? Math.max(0, Number(source.superLikes)) : base.superLikes,
+    superLikes: Number.isFinite(Number(source.superLikes))
+      ? clamp(Math.floor(Number(source.superLikes)), 0, SUPER_LIKE_MAX)
+      : base.superLikes,
     superLikeLog: Array.isArray(source.superLikeLog) ? source.superLikeLog : [],
+    lastSuperLikeRefillWeek: typeof source.lastSuperLikeRefillWeek === "string" ? source.lastSuperLikeRefillWeek : "",
   };
+}
+
+const taipeiDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: SUPER_LIKE_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit", weekday: "short",
+});
+
+/**
+ * 回傳 now 所屬「台北時間週」的週一日期（YYYY-MM-DD）。
+ * 以 Intl 取台北當地日期與星期，不依賴機器時區；台北沒有夏令時間，週一 00:00 的界線穩定。
+ */
+export function getTaipeiWeekKey(now = Date.now()) {
+  const parts = taipeiDateFormatter.formatToParts(new Date(now));
+  const pick = (type) => parts.find((item) => item.type === type)?.value || "";
+  const weekdayIndex = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].indexOf(pick("weekday"));
+  // 用 UTC 日曆做日期減法，避免本機時區在換日時干擾。
+  const localDay = Date.UTC(Number(pick("year")), Number(pick("month")) - 1, Number(pick("day")));
+  const monday = new Date(localDay - Math.max(0, weekdayIndex) * 24 * 60 * 60 * 1000);
+  return monday.toISOString().slice(0, 10);
+}
+
+const SUPER_LIKE_LOG_LIMIT = 50;
+
+/**
+ * 加 Super Like：夾在上限，並在帳本寫一筆 granted 紀錄。
+ * 夾限後實際加 0（已達上限）時回傳原物件、不寫帳，避免無謂存檔。
+ */
+export function grantSuperLikes(state, count, { source = "unknown", now = Date.now() } = {}) {
+  const amount = Math.max(0, Math.floor(Number(count) || 0));
+  const current = clamp(Number(state?.superLikes) || 0, 0, SUPER_LIKE_MAX);
+  const next = Math.min(SUPER_LIKE_MAX, current + amount);
+  if (next === current) return state;
+  const log = Array.isArray(state.superLikeLog) ? state.superLikeLog : [];
+  return {
+    ...state,
+    superLikes: next,
+    superLikeLog: [{ profileId: null, at: now, status: "granted", source, count: next - current }, ...log].slice(0, SUPER_LIKE_LOG_LIMIT),
+  };
+}
+
+/**
+ * 每週（台北時間週一 00:00 起算）第一次進入時補到 SUPER_LIKE_WEEKLY_FLOOR，不累積：
+ * 有 5 個就不補、但仍記下本週已處理。沒變化時回傳同一物件。
+ */
+export function applySuperLikeRefill(state, now = Date.now()) {
+  const week = getTaipeiWeekKey(now);
+  if (state?.lastSuperLikeRefillWeek === week) return state;
+  const current = Math.max(0, Number(state?.superLikes) || 0);
+  const marked = { ...state, lastSuperLikeRefillWeek: week };
+  if (current >= SUPER_LIKE_WEEKLY_FLOOR) return marked;
+  return grantSuperLikes(marked, SUPER_LIKE_WEEKLY_FLOOR - current, { source: "weekly", now });
 }
 
 export const findProfile = (profileId) => DATING_PROFILES.find((item) => item.id === profileId) || null;
@@ -172,27 +232,8 @@ export function nextRefreshAt(state, now = Date.now()) {
   return times.length ? Math.min(...times) : 0;
 }
 
-/**
- * 加入聯絡人的門檻：有效訊息數 + 跨越的遊玩日。
- *
- * 兩個條件都要滿足。跨天是關鍵——現實中沒有人聊三十句就交換聯絡方式，是「聊了幾天」。
- * 不要求連續，玩家斷一天不會被懲罰。
- *
- * 刻意不顯示成進度條：一有進度條，聊天就變成刷條，對話品質會垮。
- * 玩家感覺到的應該是角色的態度變了，然後按鈕突然出現——是驚喜，不是達成。
- */
-export function contactProgress(entry, relation) {
-  const threshold = CONTACT_PACE_THRESHOLDS[entry.pace] || CONTACT_PACE_THRESHOLDS.normal;
-  const messages = relation?.messages || [];
-  const effective = messages.filter(isEffectiveMessage);
-  const days = new Set(effective.map((item) => dayKey(item.time)));
-  return {
-    ready: effective.length >= threshold.messages && days.size >= threshold.days,
-    messages: effective.length,
-    days: days.size,
-    threshold,
-  };
-}
+// 門檻計算搬到 datingChat.js（提示詞也要用），這裡保留原匯出。
+export { contactProgress } from "./datingChat.js";
 
 /**
  * 檢舉審核：時間到才有結果，是不是詐騙由卡池的 isScam 決定。
@@ -223,6 +264,7 @@ export function resolveSuperLikeLog(log, state, now = Date.now()) {
   const pendingIds = new Set(state.pending.map((item) => item.profileId));
   let changed = false;
   const next = log.map((item) => {
+    // granted（回補）與已結案的項目不再處理。
     if (item.status !== "waiting") return item;
     if (matchedIds.has(item.profileId)) { changed = true; return { ...item, status: "matched" }; }
     if (pendingIds.has(item.profileId)) return item;

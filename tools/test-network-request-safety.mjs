@@ -220,7 +220,8 @@ const ignoredDirectories = new Set([
 ]);
 // 專案根目錄下的本機暫存：tmp/（AI 測試用的打包產物、QA 腳本）與 .claude/（AI 工作樹副本）。
 // 只排除根目錄這一層，程式裡若有同名子資料夾仍會檢查。
-const ignoredRootDirectories = new Set([".claude", "tmp"]);
+// .local 是被 Git 忽略的本機工具（例如不公開的 worker 測試），不屬於 App 程式。
+const ignoredRootDirectories = new Set([".claude", "tmp", ".local"]);
 const allowedRawFetchFile = path.join(root, "utils", "networkRequest.js");
 const offenders = [];
 

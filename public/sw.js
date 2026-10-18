@@ -1,6 +1,7 @@
 const CACHE_PREFIX = "maliphone-shell-";
 // 改版號會讓 activate 清掉舊快取；1.4.6 起舊版可能存過雲端存檔，必須清掉。
-const CACHE_NAME = `${CACHE_PREFIX}v1.4.6`;
+// -2：清掉圖片網址被存成 HTML 的快取（Pages 對不存在的檔案回 200 首頁）。
+const CACHE_NAME = `${CACHE_PREFIX}v1.4.6-2`;
 const BASE_PATH = new URL(self.registration.scope).pathname;
 const APP_SHELL = [BASE_PATH, `${BASE_PATH}manifest.webmanifest`, `${BASE_PATH}pwa/icon-192.png`, `${BASE_PATH}pwa/icon-512.png`];
 
@@ -27,6 +28,8 @@ self.addEventListener("fetch", (event) => {
   if (request.headers.has("Authorization")) return;
   if (url.origin !== self.location.origin) return;
   if (url.pathname.includes("/v1/")) return;
+  // 版本檔要每次連網比對，不能進快取。
+  if (url.pathname.endsWith("/version.json")) return;
   if (request.mode === "navigate" || request.destination === "document") {
     event.respondWith(fetch(request).catch(() => caches.match(BASE_PATH)));
     return;
@@ -46,11 +49,14 @@ self.addEventListener("fetch", (event) => {
     );
     return;
   }
+  // 圖片等靜態檔：Pages 對不存在的檔案回 200 的首頁 HTML，存起來就會永遠顯示破圖；
+  // 這類回應不快取，已存的也不拿來用。
+  const isHtml = (response) => (response?.headers?.get("content-type") || "").includes("text/html");
   event.respondWith(
     caches.match(request).then((cached) => {
-      if (cached) return cached;
+      if (cached && !isHtml(cached)) return cached;
       return fetch(request).then((response) => {
-        if (!response || !response.ok) return response;
+        if (!response || !response.ok || isHtml(response)) return response;
         const resClone = response.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put(request, resClone)).catch(() => {});
         return response;

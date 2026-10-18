@@ -97,6 +97,8 @@ function harness({ stage = null, rollbackFails = false, snapshotSaved = true, mi
     getLocalSnapshot: async () => { events.push("read-snapshot"); return missing ? null : { state: structuredClone(saved) }; },
     getRollbackAppState: async () => { events.push("capture-original"); if (captureFails) throw new Error("Fixture capture failed"); return { format: "maliphone-app-state", formatVersion: 1, state: structuredClone(original) }; },
     unpackBackupMedia, preserveLocalMedia, stripDeviceSecrets, runDataRestoreTransaction,
+    // Cloud media (MP-024): no session here, so downloads reduce to keeping this device's media.
+    downloadTextSyncMedia: async (remote, local) => ({ state: preserveLocalMedia(remote, local), downloaded: 0, failed: 0 }),
     validateTextSyncDocument, mergeWalletSyncData, mergeGameProgressSyncData,
     validateImportedAppState() { if (invalid) throw new Error("Fixture invalid snapshot"); },
     localStorage: { setItem(key, value) { local.set(key, value); }, removeItem(key) { local.delete(key); } },
@@ -252,7 +254,7 @@ const cloudMethods = {
   google: arrow(cloudSource, "restoreGoogleBackup", "\n  const showError"),
   github: arrow(cloudSource, "restoreBackup", "\n  return <div"),
 };
-const accountMethod = arrow(accountSource, "downloadTextSync", "\n  return <div");
+const accountMethod = arrow(accountSource, "downloadTextSync", "\n  const loadSyncHistory");
 const { dataRestoreFailureMessage } = await import("../services/backup/dataRestoreTransaction.js");
 for (const status of ["rolled-back", "rollback-failed", "not-started", "busy", "blocked"]) {
   const error = Object.assign(new Error("Fixture apply failure"), { restoreStatus: status });
@@ -291,6 +293,9 @@ for (const status of ["rolled-back", "rollback-failed", "not-started", "busy", "
   const download = vm.runInNewContext(`(${accountMethod})`, {
     auth: { session: {}, user: { id: "fixture" } }, textSyncProps: { applyTextSyncDocument: apply },
     window: { confirm: () => true }, text: tr, TEXT_SYNC_DOCUMENT_KEY: "fixture", getCloudDocument: async () => ({ data: {} }),
+    tr: (value) => (value && typeof value === "object" ? value["zh-TW"] : value),
+    CLOUD_MEDIA_SYNC_TEXT: { downloadConfirm: { "zh-TW": "confirm" } }, cloudMediaSyncSummary: () => "",
+    CLOUD_SYNC_REVISION_TEXT: { downloadedRevision: { "zh-TW": "applied {revision}" } }, fillCloudSyncText: (value) => String(value),
     dataRestoreFailureMessage, setTextSyncBusy() {}, setTextSyncFailed() {}, setTextSyncStatus: (message) => messages.push(message),
     saveTextSyncMeta: () => { success++; }, setTextSyncMeta: () => { success++; }, setRemoteTextSyncMeta: () => { success++; }, notify: () => { success++; },
   });

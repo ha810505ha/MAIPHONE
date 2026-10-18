@@ -80,6 +80,8 @@ export async function restoreFeatureBackup(src = {}, { replace = false, reason =
   if (data.loginReward && typeof data.loginReward === "object") put("loginReward", data.loginReward);
   if (data.systemMailbox && typeof data.systemMailbox === "object") put("systemMailbox", data.systemMailbox);
   if (data.dating && typeof data.dating === "object") put("dating", data.dating);
+  if (data.storePurchases && typeof data.storePurchases === "object") put("storePurchases", data.storePurchases);
+  if (data.aiUsage && typeof data.aiUsage === "object" && !Array.isArray(data.aiUsage)) put("aiUsage", data.aiUsage);
 
   await saveFeatureEntities(writes.entries());
   if (data.personaFeatures && typeof data.personaFeatures === "object") {

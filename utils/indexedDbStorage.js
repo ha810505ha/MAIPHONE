@@ -39,7 +39,7 @@ const DEVICE_SECRETS_KEY = "device_secrets_v1";
 const ENT_PREFIX = "ent_";
 const CORE_KEY = "ent_core";
 const OUTBOX_KEY = "sync_outbox";
-const FEATURE_KEYS = new Set(["ent_gachaInventory", "ent_gachaEpisodes", "ent_gachaCurrency", "ent_gachaCrystalLedger", "ent_gachaProgress", "ent_gachaSpecialMemories", "ent_musicPlayer", "ent_coupleDaily", "ent_calendar", "ent_yunyinSave", "ent_petHome", "ent_petSettings", "ent_loginReward", "ent_notes", "ent_systemMailbox", "ent_dating"]);
+const FEATURE_KEYS = new Set(["ent_gachaInventory", "ent_gachaEpisodes", "ent_gachaCurrency", "ent_gachaCrystalLedger", "ent_gachaProgress", "ent_gachaSpecialMemories", "ent_musicPlayer", "ent_coupleDaily", "ent_calendar", "ent_yunyinSave", "ent_petHome", "ent_petSettings", "ent_loginReward", "ent_notes", "ent_systemMailbox", "ent_dating", "ent_storePurchases", "ent_aiUsage"]);
 const charKey = (id) => `ent_char_${id}`;
 const chatKey = (id) => `ent_chat_${id}`;
 const chatBgKey = (id) => `ent_chatbg_${id}`;

@@ -1,5 +1,5 @@
 const MALIPHONE_AI_PROXY = "https://maliphone-ai-proxy.d778105.workers.dev";
-const CURRENT_VERSION = "1.4.6";
+const CURRENT_VERSION = "1.5.0";
 
 // 本地模型預設接頭：多數本機推論伺服器（Ollama、LM Studio、llama.cpp server…）
 // 都會在這個埠開一個 OpenAI 相容的 /v1 端點。
@@ -38,6 +38,7 @@ const DEFAULT_APPS = [
   { id: "player", name: "玩家", icon: "🪪", iconUrl: "./app-icons/profile.webp?v=20260802" },
   { id: "wallet", name: "錢包", icon: "💰", iconUrl: "./app-icons/wallet.webp?v=20260802" },
   { id: "game", name: "遊戲中心", icon: "🎮", iconUrl: "./app-icons/game.webp?v=20260802" },
+  { id: "store", name: "商店", icon: "🛍️", iconUrl: "./app-icons/store.webp?v=20261016" },
   { id: "petHome", name: "寵物小屋", icon: "🐾", iconUrl: "./app-icons/pet-home.webp?v=20260802", iconSize: 68 },
   { id: "yunyin", name: "雲隱山莊", icon: "⛰️", iconUrl: "./app-icons/yunyin-villa.webp?v=20260802", iconSize: 72 },
   { id: "lbook", name: "解答之書", icon: "📖", iconUrl: "./app-icons/book.webp?v=20260802" },

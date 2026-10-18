@@ -1,12 +1,15 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { loadGachaEpisodes, deleteLegacyGachaDatabase } from "../services/gacha/gachaEpisodeStorage";
 import { loadFeatureEntity, saveFeatureEntities, saveFeatureEntity } from "../utils/indexedDbStorage";
-import { DEFAULT_GACHA_POOL_ID, getGachaPool, getGachaPoolCards } from "../data/gacha/cardPools";
+import { DEFAULT_GACHA_POOL_ID, getGachaPool, getGachaPoolCards, normalizeGachaCardPool } from "../data/gacha/cardPools";
 import { compactGachaEpisodeImages } from "../utils/persistedMediaCleanup";
 import { applyCrystalTransaction, createInitialCrystalLedger, normalizeCrystalLedger } from "../utils/crystalLedger";
 import { FEATURE_DATA_CHANGED_EVENT, featureDataEventIncludes } from "../services/featureDataLifecycle";
 import { getActivePersonaStorageId } from "../services/persona/personaStorageScope.js";
 import { DEFAULT_PERSONA_ID } from "../services/persona/personaModel.js";
+import { DEFAULT_GACHA_RATES, drawCards, getGachaDrawCost } from "../services/gacha/gachaDraw.js";
+import { translate } from "../utils/i18n.js";
+import { withGachaCardArt } from "../data/gacha/cardArt.js";
 
 export const GACHA_POOL = getGachaPoolCards(DEFAULT_GACHA_POOL_ID);
 const KEYS = { inventory: "sakura-gacha-inventory-v1", crystals: "sakura-gacha-crystals-v1", episodes: "sakura-gacha-episodes-v1" };
@@ -15,16 +18,6 @@ const GACHA_ENTITY_KEYS = Object.values(DB_KEYS);
 const DEFAULT_CRYSTALS = 0;
 const GachaContext = createContext(null);
 const read = (key, fallback) => { try { const raw = localStorage.getItem(key); return raw == null ? fallback : JSON.parse(raw); } catch { return fallback; } };
-const drawOne = (progress = { drawsSinceLastSSR: 0 }) => {
-  const roll = Math.random() * 100;
-  const rates = getGachaPool(DEFAULT_GACHA_POOL_ID)?.rates || { SSR: 4, SR: 26, R: 70 };
-  const drawsSinceLastSSR = Math.max(0, Number(progress.drawsSinceLastSSR) || 0);
-  const ssrRate = drawsSinceLastSSR >= 59 ? 100 : drawsSinceLastSSR >= 50 ? Math.min(100, rates.SSR + (drawsSinceLastSSR - 49) * 10) : rates.SSR;
-  const rarity = roll < ssrRate ? "SSR" : roll < ssrRate + rates.SR ? "SR" : "R";
-  const candidates = GACHA_POOL.filter((item) => item.rarity === rarity);
-  return candidates[Math.floor(Math.random() * candidates.length)] || GACHA_POOL[0];
-};
-
 export function GachaProvider({ children }) {
   const [inventory, setInventory] = useState(() => read(KEYS.inventory, []));
   const [crystalAccount, setCrystalAccount] = useState(() => ({
@@ -164,25 +157,23 @@ export function GachaProvider({ children }) {
     : activePersonaId === DEFAULT_PERSONA_ID;
   const personaEpisodes = episodes.filter(visibleForPersona);
   const personaSpecialMemories = specialMemories.filter(visibleForPersona);
+  // MP-054：舊庫存沒有 poolId 一律視為常駐；只在讀取時補齊，不改寫存檔。
+  const normalizedInventory = useMemo(() => inventory.map((item) => withGachaCardArt(normalizeGachaCardPool(item))), [inventory]);
   const value = useMemo(() => ({
-    inventory, crystals, crystalLedger: crystalAccount.ledger, crystalLedgerReady: gachaHydrated, episodes: personaEpisodes, gachaProgress, specialMemories: personaSpecialMemories, selectedEpisodeId, setSelectedEpisodeId,
+    inventory: normalizedInventory, crystals, crystalLedger: crystalAccount.ledger, crystalLedgerReady: gachaHydrated, episodes: personaEpisodes, gachaProgress, specialMemories: personaSpecialMemories, selectedEpisodeId, setSelectedEpisodeId,
     changeCrystals,
     draw(count) {
-      const cost = count === 10 ? 1800 : 180;
+      const cost = getGachaDrawCost(count);
       if (crystalAccountRef.current.balance < cost) return null;
-      const now = Date.now();
-      let nextProgress = { ...gachaProgress };
-      const results = Array.from({ length: count }, (_, index) => {
-        const card = drawOne(nextProgress);
-        const wasSSR = card.rarity === "SSR";
-        nextProgress = { totalDrawCount: nextProgress.totalDrawCount + 1, drawsSinceLastSSR: wasSSR ? 0 : Math.min(59, nextProgress.drawsSinceLastSSR + 1) };
-        return { ...card, uid: `${now}-${index}-${Math.random().toString(36).slice(2)}`, unlockedAt: now };
+      const { results, progress: nextProgress } = drawCards({
+        pool: GACHA_POOL,
+        rates: getGachaPool(DEFAULT_GACHA_POOL_ID)?.rates || DEFAULT_GACHA_RATES,
+        progress: gachaProgress,
+        count,
+        random: Math.random,
+        now: Date.now(),
+        poolId: DEFAULT_GACHA_POOL_ID,
       });
-      if (count === 10 && !results.some((item) => item.rarity === "SSR" || item.rarity === "SR")) {
-        const srCandidates = GACHA_POOL.filter((item) => item.rarity === "SR");
-        const promoted = srCandidates[Math.floor(Math.random() * srCandidates.length)];
-        if (promoted) results[results.length - 1] = { ...promoted, uid: `${now}-sr-guarantee-${Math.random().toString(36).slice(2)}`, unlockedAt: now };
-      }
       if (!changeCrystals(-cost, {
         source: "gacha",
         note: count === 10 ? "櫻色誓約・十連召喚" : "櫻色誓約・單次召喚",
@@ -198,7 +189,14 @@ export function GachaProvider({ children }) {
       const activeEpisode = personaEpisodes.find((episode) => String(episode.characterId) === String(characterId) && episode.status === "active");
       if (activeEpisode) {
         setSelectedEpisodeId(activeEpisode.id);
-        window.alert(`與 ${characterName || activeEpisode.characterName} 的特別篇仍在進行中，將返回目前劇情。`);
+        const name = characterName || activeEpisode.characterName;
+        window.alert(translate(
+          document.documentElement.lang,
+          `與 ${name} 的特別篇仍在進行中，將返回目前劇情。`,
+          `The special episode with ${name} is still in progress. Returning to the current story.`,
+          `${name} との特別編はまだ進行中です。現在の物語に戻ります。`,
+          `${name} 와의 특별편이 아직 진행 중입니다. 현재 이야기로 돌아갑니다.`,
+        ));
         return activeEpisode;
       }
       const owned = inventory.find((item) => item.uid === itemUid);
@@ -305,7 +303,7 @@ export function GachaProvider({ children }) {
       setSpecialMemories((items) => items.filter((memory) => memory.id !== memoryId));
       if (target) setEpisodes((items) => items.map((episode) => episode.specialMemoryId !== memoryId ? episode : { ...episode, specialMemoryId: null, updatedAt: Date.now() }));
     },
-  }), [inventory, crystals, crystalAccount.ledger, gachaHydrated, episodes, personaEpisodes, gachaProgress, specialMemories, personaSpecialMemories, selectedEpisodeId, changeCrystals, activePersonaId]);
+  }), [inventory, normalizedInventory, crystals, crystalAccount.ledger, gachaHydrated, episodes, personaEpisodes, gachaProgress, specialMemories, personaSpecialMemories, selectedEpisodeId, changeCrystals, activePersonaId]);
   return <GachaContext.Provider value={value}>{children}</GachaContext.Provider>;
 }
 export function useGacha() { const value = useContext(GachaContext); if (!value) throw new Error("useGacha must be used inside GachaProvider"); return value; }

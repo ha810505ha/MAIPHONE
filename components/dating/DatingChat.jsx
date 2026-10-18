@@ -26,7 +26,7 @@ function dayLabel(time, text) {
   }
 }
 
-export default function DatingChat({ entry, relation, typing, blocked, onBack, onSend, onRetry, onPromote, onOpenContact, onOpenProfile, tr, initialDraft = "" }) {
+export default function DatingChat({ entry, relation, typing, blocked, onBack, onSend, onRetry, onPropose, onPromote, onOpenContact, onOpenProfile, tr, initialDraft = "" }) {
   // 從配對成功畫面選了開場白時，帶進輸入框讓玩家確認後再送出。
   const [draft, setDraft] = useState(initialDraft);
   const endRef = useRef(null);
@@ -101,11 +101,19 @@ export default function DatingChat({ entry, relation, typing, blocked, onBack, o
         <div ref={endRef} />
       </div>
 
-      {/* 門檻是隱性的：沒到就什麼都不顯示，到了突然出現，是驚喜而不是進度達成。 */}
-      {progress.ready && !promoted && !blocked && (
+      {/* 交換由角色決定：角色邀請或答應了才出現正式的交換卡；保底門檻開了之後玩家也能主動提議。 */}
+      {progress.invited && !promoted && !blocked && (
         <div className="dt-chat-promote">
-          <div className="dt-chat-promote-t">{text("聊得差不多了", "You two are hitting it off", "いい感じに話せてきました", "대화가 꽤 무르익었어요")}</div>
+          <div className="dt-chat-promote-t">{text(`${name}想和你交換聯絡方式`, `${name} wants to exchange contacts`, `${name}が連絡先を交換したがっています`, `${name}님이 연락처를 교환하고 싶어해요`)}</div>
           <button type="button" className="dt-chat-promote-btn" onClick={onPromote}>{text("交換聯絡方式", "Exchange contacts", "連絡先を交換", "연락처 교환하기")}</button>
+        </div>
+      )}
+      {!progress.invited && progress.proposalPending && !promoted && !blocked && (
+        <div className="dt-chat-note dt-chat-propose-note">{text("已提議交換聯絡方式，等對方回應。", "You proposed exchanging contacts. Waiting for a reply.", "連絡先の交換を提案しました。返事を待っています。", "연락처 교환을 제안했어요. 답장을 기다리는 중이에요.")}</div>
+      )}
+      {progress.canPropose && !promoted && !blocked && !typing && (
+        <div className="dt-chat-propose">
+          <button type="button" className="dt-chat-propose-btn" onClick={() => onPropose?.(text("我們交換聯絡方式吧？", "Want to exchange contacts?", "連絡先を交換しない？", "우리 연락처 교환할래?"))}>{text("提議交換聯絡方式", "Propose exchanging contacts", "連絡先の交換を提案", "연락처 교환 제안하기")}</button>
         </div>
       )}
 

@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import Icon from "../common/Icon";
 import DirectGiftModal from "../gacha/DirectGiftModal";
 import PseudoImagePicker from "./PseudoImagePicker";
 import PhotoSourceChooser from "./PhotoSourceChooser";
@@ -34,12 +35,12 @@ export default function DirectChatComposer({ image, onClearImage, pseudoImage, o
     {pseudoPickerOpen && <PseudoImagePicker onCancel={() => setPseudoPickerOpen(false)} onConfirm={(next) => { onSetPseudoImage(next); setPseudoPickerOpen(false); }} tr={tr} />}
     {photoChooserOpen && <PhotoSourceChooser onCancel={() => setPhotoChooserOpen(false)} onUpload={() => { setPhotoChooserOpen(false); fileInputRef.current?.click(); }} onPseudo={() => { setPhotoChooserOpen(false); setPseudoPickerOpen(true); }} tr={tr} />}
     {actionPanelOpen && <div className="mp-chat-actions">
-      <button className="mp-chat-action" onClick={() => { setActionPanelOpen(false); setPhotoChooserOpen(true); }}><span className="mp-chat-action-i">🖼</span><span>{tr("相片", "Photo", "写真", "사진")}</span></button>
-      {mode !== "reality" && <button className="mp-chat-action" onClick={() => { onClearImage?.(); onSetPseudoImage?.(null); onSetPseudoVoiceMode?.(true); setActionPanelOpen(false); }}><span className="mp-chat-action-i">🎙️</span><span>{tr("語音訊息", "Voice message", "ボイスメッセージ", "음성 메시지")}</span></button>}
-      {allowTransfer && <button className="mp-chat-action" onClick={() => { setActionPanelOpen(false); onOpenTransfer(); }}><span className="mp-chat-action-i">💸</span><span>{tr("轉帳", "Transfer", "送金", "송금")}</span></button>}
-      {GACHA_ENABLED && <button className="mp-chat-action" onClick={() => { setActionPanelOpen(false); setGiftOpen(true); }}><span className="mp-chat-action-i">🎁</span><span>{tr("贈禮", "Gift", "ギフト", "선물")}</span></button>}
-      <button className="mp-chat-action" onClick={() => { setActionPanelOpen(false); onStartScreenshot?.(); }}><span className="mp-chat-action-i">📸</span><span>{tr("截圖", "Screenshot", "スクショ", "캡처")}</span></button>
-      <button className="mp-chat-action" disabled><span className="mp-chat-action-i">📅</span><span>{tr("日程", "Schedule", "予定", "일정")}</span></button>
+      <button className="mp-chat-action" onClick={() => { setActionPanelOpen(false); setPhotoChooserOpen(true); }}><span className="mp-chat-action-i tone-blue"><Icon name="image" size={23} /></span><span>{tr("相片", "Photo", "写真", "사진")}</span></button>
+      {mode !== "reality" && <button className="mp-chat-action" onClick={() => { onClearImage?.(); onSetPseudoImage?.(null); onSetPseudoVoiceMode?.(true); setActionPanelOpen(false); }}><span className="mp-chat-action-i tone-amber"><Icon name="mic" size={23} /></span><span>{tr("語音訊息", "Voice message", "ボイスメッセージ", "음성 메시지")}</span></button>}
+      {allowTransfer && <button className="mp-chat-action" onClick={() => { setActionPanelOpen(false); onOpenTransfer(); }}><span className="mp-chat-action-i tone-green"><Icon name="coin" size={23} /></span><span>{tr("轉帳", "Transfer", "送金", "송금")}</span></button>}
+      {GACHA_ENABLED && <button className="mp-chat-action" onClick={() => { setActionPanelOpen(false); setGiftOpen(true); }}><span className="mp-chat-action-i tone-pink"><Icon name="gift" size={23} /></span><span>{tr("開啟特別篇", "Start a special episode", "特別編を始める", "특별편 시작")}</span></button>}
+      <button className="mp-chat-action" onClick={() => { setActionPanelOpen(false); onStartScreenshot?.(); }}><span className="mp-chat-action-i tone-purple"><Icon name="camera" size={23} /></span><span>{tr("截圖", "Screenshot", "スクショ", "캡처")}</span></button>
+      <button className="mp-chat-action" disabled><span className="mp-chat-action-i tone-teal"><Icon name="calendar" size={23} /></span><span>{tr("日程", "Schedule", "予定", "일정")}</span></button>
     </div>}
     {GACHA_ENABLED && giftOpen && <DirectGiftModal character={character} onClose={() => setGiftOpen(false)} onStarted={(episode) => { setGiftOpen(false); onGiftEpisodeStarted?.(episode); }} />}
     <div className="mp-composer-tools-row">

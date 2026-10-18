@@ -52,7 +52,8 @@ export function buildThemeCss({
     /* Use this only for an intentionally fixed light art direction (for example, a paper notebook).
        It keeps the shared phone chrome readable even while the rest of the phone is in Night. */
     .mp-page[data-mp-surface="light"]{--mp-page-surface:rgba(255,255,255,.88);--mp-page-text:#57434b;--mp-page-text-muted:#8d7580;--mp-page-border:#ead6dd;--mp-page-control-bg:rgba(255,250,248,.94);--mp-page-on-accent:#fff;color:var(--mp-page-text);}
-    .mp-page[data-mp-surface="light"]>.mp-hdr{background:var(--mp-page-control-bg);border-color:var(--mp-page-border);}
+    .mp-page[data-mp-surface="light"]>.mp-hdr:not(.mp-hdr--large),.mp-page[data-mp-surface="light"].is-collapsed>.mp-hdr--large{background:var(--mp-page-control-bg);border-color:var(--mp-page-border);}
+    .mp-page[data-mp-surface="light"] .mp-large-title h1{color:var(--mp-page-text);}
     .mp-page[data-mp-surface="light"]>.mp-hdr .mp-htitle{color:var(--mp-page-text);}
     .mp-page[data-mp-surface="light"]>.mp-hdr .mp-back{background:var(--mp-page-text);border-color:rgba(87,67,75,.22);color:var(--mp-page-on-accent);box-shadow:0 3px 10px rgba(87,67,75,.18);}
     ${isNightTheme ? `
@@ -60,9 +61,7 @@ export function buildThemeCss({
       .mp-cr{background:linear-gradient(180deg,rgba(36,27,51,.97),rgba(26,22,37,.99));}
       .mp-bar,.mp-hdr,.mp-inp-bar,.mp-dock{background:rgba(26,22,37,.95);border-color:#3a2d4f;}
       .mp-modal,.mp-sg,.mp-cc,.mp-post,.mp-sc,.mp-cw,.mp-transfer-card{background:rgba(36,27,51,.95);border-color:#3a2d4f;box-shadow:0 8px 24px rgba(7,4,12,.26);}
-      .game-center-page .mp-cw-name,.game-center-page .mp-cw div{color:#4a3c48 !important;}
-      .game-center-page .mp-cw div[style*="var(--mp-txt-l)"]{color:#6e5a6b !important;}
-      .mp-wchip.active{color:#1a1625;}
+      
       .yunyin-game-page [data-yunyin-panel="1"]{color:#4a4038 !important;}
       .yunyin-game-page [data-yunyin-panel="1"] div,.yunyin-game-page [data-yunyin-panel="1"] span,.yunyin-game-page [data-yunyin-panel="1"] b,.yunyin-game-page [data-yunyin-panel="1"] small{color:#4a4038 !important;}
       .mp-icon-c,.mp-dock-i,.mp-back{background:rgba(47,36,64,.9);border-color:#3a2d4f;box-shadow:0 3px 12px rgba(7,4,12,.24);}

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { OnlineChatMessage, RealityChatMessage, SystemNoticeMessage, TransferMessage } from "./DirectMessageTypes";
 import CalendarAppointmentCard from "./CalendarAppointmentCard";
 import CouplePromiseCard from "./CouplePromiseCard";
+import ScamGroupLinkCard from "./ScamGroupLinkCard";
 import { ThinkingPanel } from "./ChatMessageParts";
 import SwipePicker from "./SwipePicker";
 import { findTailAssistantSwipeAnchor } from "../../utils/assistantSwipeGroups.js";
@@ -100,6 +101,7 @@ export default function ChatMessageRenderer({
       && !message.pseudoVoice
       && !message.calendarProposal
       && !message.couplePromiseProposal
+      && !message.scamGroupLink
       && typeof onGenerateSwipe === "function";
     const swipe = canSwipe ? {
       index: swipeIndex,
@@ -148,6 +150,7 @@ export default function ChatMessageRenderer({
         {message.calendarProposal && (!promisePending || message.calendarProposal.status === "added") && <CalendarAppointmentCard message={message} proposal={message.calendarProposal} onAdd={onAddCalendarProposal} onDismiss={onDismissCalendarProposal} tr={tr} />}
       </>
       : null;
+    const scamLinkCard = !isUser && message.scamGroupLink ? <ScamGroupLinkCard message={message} tr={tr} /> : null;
     if (getMessageMode(message) === "reality") {
       return wrapSelectable(message, <React.Fragment key={message.id}>
         <RealityChatMessage {...sharedProps}
@@ -161,6 +164,7 @@ export default function ChatMessageRenderer({
         voicePlayback={!isUser && message.pseudoVoice ? getCharacterVoiceBubblePlayback?.(character, message) : null}
         voiceAction={message.pseudoVoice ? null : renderCharacterVoiceAction(character, message, isActive)} />
       {appointmentCard}
+      {scamLinkCard}
     </React.Fragment>);
   });
   return <>

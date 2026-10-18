@@ -1,6 +1,26 @@
 import React from "react";
 
+// 背景以 background-position 百分比定位：圖片比框大時，百分比增加會讓圖往左／上移；
+// 圖片比框小時方向相反。拖曳時依實際縮放後尺寸決定方向，讓圖片跟著手指走。
+const imageRatioCache = new Map();
+function preloadImageRatio(src) {
+  if (!src || imageRatioCache.has(src)) return;
+  imageRatioCache.set(src, 0);
+  const image = new Image();
+  image.onload = () => imageRatioCache.set(src, image.naturalHeight ? image.naturalWidth / image.naturalHeight : 0);
+  image.src = src;
+}
+function getDragDirection(box, editor) {
+  const ratio = imageRatioCache.get(editor?.src) || 0;
+  const rect = box?.getBoundingClientRect?.();
+  if (!ratio || !rect?.width || !rect?.height) return { x: -1, y: -1 };
+  const zoom = Math.max(1, Math.min(2.2, Number(editor.zoom) || 1));
+  const renderedWidth = rect.height * zoom * ratio;
+  return { x: renderedWidth >= rect.width ? -1 : 1, y: -1 };
+}
+
 export default function ChatBackgroundSettings({ currentChatChar, chatSettingsBackgroundOpen, setChatSettingsBackgroundOpen, chatBackgrounds, normalizeChatBackground, getChatBackgroundLayerStyle, getChatBackgroundBlurFilter, onChatBackgroundFile, chatBgEditor, setChatBgEditor, updateChatBackground, tr }) {
+  if (chatBgEditor?.src) preloadImageRatio(chatBgEditor.src);
   return (
     <div className="mp-cc">
       <div
@@ -81,28 +101,29 @@ export default function ChatBackgroundSettings({ currentChatChar, chatSettingsBa
           <div
             style={{
               width: "100%",
+              maxWidth: 202,
               aspectRatio: "9 / 16",
-              maxHeight: 360,
+              margin: "0 auto 10px",
               borderRadius: 14,
               overflow: "hidden",
               position: "relative",
               background: "var(--mp-page-control-bg,var(--mp-surface))",
               touchAction: "none",
               border: "1px solid var(--mp-card-border)",
-              marginBottom: 10,
               boxShadow: "inset 0 0 0 1px color-mix(in srgb,var(--mp-card-border) 70%,transparent)",
             }}
             onPointerDown={(e) => {
               e.preventDefault();
               try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch (_) {}
-              setChatBgEditor((s) => s ? { ...s, dragging: true, dragStartX: e.clientX || 0, dragStartY: e.clientY || 0, startX: s.x || 0, startY: s.y || 0 } : s);
+              const dragDir = getDragDirection(e.currentTarget, chatBgEditor);
+              setChatBgEditor((s) => s ? { ...s, dragging: true, dragStartX: e.clientX || 0, dragStartY: e.clientY || 0, startX: s.x || 0, startY: s.y || 0, dragDirX: dragDir.x, dragDirY: dragDir.y } : s);
             }}
             onPointerMove={(e) => {
               if (!chatBgEditor?.dragging) return;
               e.preventDefault();
               const dx = ((e.clientX || 0) - (chatBgEditor.dragStartX || 0)) / 2;
               const dy = ((e.clientY || 0) - (chatBgEditor.dragStartY || 0)) / 2;
-              setChatBgEditor((s) => s ? { ...s, x: Math.max(-50, Math.min(50, (s.startX || 0) - dx)), y: Math.max(-50, Math.min(50, (s.startY || 0) - dy)) } : s);
+              setChatBgEditor((s) => s ? { ...s, x: Math.max(-50, Math.min(50, (s.startX || 0) + (s.dragDirX || -1) * dx)), y: Math.max(-50, Math.min(50, (s.startY || 0) + (s.dragDirY || -1) * dy)) } : s);
             }}
             onPointerUp={(e) => {
               try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch (_) {}

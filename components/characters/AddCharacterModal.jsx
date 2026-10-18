@@ -210,7 +210,7 @@ export default function AddCharacterModal({ setModal, setEditingCharacter, addCh
             </div>
             <div style={{display:"grid",gap:8}}>
               <button type="button" className="mp-save" onClick={() => confirmStImport("reality")}>{tr("現實開場白（建議）", "Reality opening (recommended)", "現実モード（推奨）", "현실 모드 (권장)")}</button>
-              <button type="button" className="mp-save" style={{background:"linear-gradient(135deg,#90caf9,#42a5f5)"}} onClick={() => confirmStImport("online")}>{tr("線上開場白", "Online opening", "オンライン初回メッセージ", "온라인 첫 인사")}</button>
+              <button type="button" className="mp-save mp-save--secondary" onClick={() => confirmStImport("online")}>{tr("線上開場白", "Online opening", "オンライン初回メッセージ", "온라인 첫 인사")}</button>
               <button type="button" className="mp-ibtn" onClick={() => confirmStImport("none")}>{tr("不匯入開場白", "Import without opening message", "初回メッセージなしで取り込む", "첫 인사 없이 가져오기")}</button>
               <button type="button" className="mp-ibtn-r" onClick={() => setPendingStImport(null)}>{tr("取消匯入", "Cancel import", "取り込みをキャンセル", "가져오기 취소")}</button>
             </div>
@@ -312,7 +312,7 @@ export default function AddCharacterModal({ setModal, setEditingCharacter, addCh
             <div className="mp-row"><div className="mp-lbl">{tr("縮放", "Zoom", "ズーム", "확대")}</div><input type="range" min="1" max="3" step="0.01" value={avatarCrop.zoom} onChange={e=>setAvatarCrop(s=>({...(s||{}),zoom:Number(e.target.value)}))} /></div>
             <div style={{fontSize:11,color:"var(--mp-txt-l)",marginTop:4}}>{tr("拖曳圖片調整位置，套用後會自動壓縮到 400KB 以內", "Drag the image to adjust its position. It will be compressed under 400KB when applied.", "画像をドラッグして位置を調整できます。適用後は400KB以内に自動圧縮されます。", "이미지를 드래그해 위치를 조정하세요. 적용 후 400KB 이하로 자동 압축됩니다.")}</div>
             <div style={{display:"flex",gap:8,marginTop:8}}>
-              <button className="mp-save" style={{flex:1,background:"linear-gradient(135deg,#b0bec5,#90a4ae)"}} onClick={() => setAvatarCrop(null)}>{tr("取消", "Cancel", "キャンセル", "취소")}</button>
+              <button type="button" className="mp-save mp-save--ghost" style={{flex:1}} onClick={() => setAvatarCrop(null)}>{tr("取消", "Cancel", "キャンセル", "취소")}</button>
               <button className="mp-save" style={{flex:1}} onClick={applyAvatarCrop}>{tr("套用", "Apply", "適用", "적용")}</button>
             </div>
           </div>

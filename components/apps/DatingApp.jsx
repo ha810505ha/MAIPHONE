@@ -107,7 +107,7 @@ export default function DatingApp({ closeApp, dating, playerProfile, onPromoteTo
   const [celebration, setCelebration] = useState(null);
   const {
     state, deck, swipe, rewind, updateProfile, markMatchSeen, refreshAt, unseenMatches,
-    typingProfiles, openChatId, openChat, closeChat, clearOpenChat, sendMessage, retryReply, promoteToContact,
+    typingProfiles, openChatId, openChat, closeChat, clearOpenChat, sendMessage, retryReply, proposeContact, promoteToContact,
     setBlocked, report, claimReportReward, cancelAllReplies,
   } = dating;
 
@@ -116,6 +116,13 @@ export default function DatingApp({ closeApp, dating, playerProfile, onPromoteTo
   // 配對是延遲熟成的，所以慶祝畫面在玩家下次打開 App 時補放。
   const pendingCelebration = celebration || (tab === "deck" && unseenMatches[0]) || null;
   const celebrationEntry = pendingCelebration ? findProfile(pendingCelebration.profileId) : null;
+  // 從角色資料頁重看配對信：直接把已成立的配對再放一次，不動 seen 狀態以外的資料。
+  const replayCelebration = (profileId) => {
+    const match = state.matches.find((item) => item.profileId === profileId);
+    if (!match) return;
+    setDetail(null);
+    setCelebration(match);
+  };
 
   const doSwipe = (profileId, action) => {
     if (action === "super" && state.superLikes <= 0) return showToast?.(tr("Super Like 用完了", "You're out of Super Likes", "Super Likeを使い切りました", "Super Like를 모두 사용했어요"));
@@ -128,6 +135,13 @@ export default function DatingApp({ closeApp, dating, playerProfile, onPromoteTo
 
   const [chatDraft, setChatDraft] = useState("");
   const enterChat = (profileId, draft = "") => { setChatDraft(draft); setCelebration(null); switchTab("matches"); openChat(profileId); };
+  // 聊天室是提前 return 的另一棵樹，配對信（含重看）兩邊都要掛，否則從聊天室觸發看不到。
+  const celebrationNode = pendingCelebration && celebrationEntry ? (
+    <MatchCelebration match={pendingCelebration} entry={celebrationEntry} tr={tr}
+      playerPhoto={state.profile.photos?.[0] || playerProfile?.avatar} playerName={state.profile.name || playerProfile?.name}
+      onOpenChat={(draft) => enterChat(pendingCelebration.profileId, draft)}
+      onKeepSwiping={() => { markMatchSeen(pendingCelebration.profileId); setCelebration(null); }} />
+  ) : null;
   // 有獎可領就在系統分頁掛紅點，否則玩家等了兩天回來根本不知道結果出了
   const claimable = state.reports.some((item) => item.status === "confirmed" && !item.claimed);
 
@@ -168,6 +182,7 @@ export default function DatingApp({ closeApp, dating, playerProfile, onPromoteTo
           onBack={() => { setChatDraft(""); closeChat(openChatId); }}
           onSend={(text) => { setChatDraft(""); sendMessage(openChatId, text); }}
           onRetry={() => retryReply(openChatId)}
+          onPropose={(message) => { setChatDraft(""); proposeContact(openChatId, message); }}
           onOpenProfile={() => setDetail(openEntry)}
           onOpenContact={() => onOpenContact?.(state.relations[openChatId]?.contactCharId)}
           onPromote={() => {
@@ -179,7 +194,9 @@ export default function DatingApp({ closeApp, dating, playerProfile, onPromoteTo
           }}
         />
         {/* 已配對的檔案是純瀏覽：不給動作列，完整角色卡要等加入聯絡人 */}
-        {detail && <ProfileDetail entry={detail} onClose={() => setDetail(null)} {...safetyProps(detail.id)} tr={tr} />}
+        {detail && <ProfileDetail entry={detail} onClose={() => setDetail(null)} {...safetyProps(detail.id)} tr={tr}
+          onReplayCelebration={() => replayCelebration(detail.id)} />}
+        {celebrationNode}
       </div>
     );
   }
@@ -215,13 +232,9 @@ export default function DatingApp({ closeApp, dating, playerProfile, onPromoteTo
       </div>
       {/* 已配對的人只能瀏覽，不再給滑動按鈕 */}
       {detail && <ProfileDetail entry={detail} superLikes={state.superLikes} onClose={() => setDetail(null)} {...safetyProps(detail.id)} tr={tr}
-        onSwipe={state.matches.some((item) => item.profileId === detail.id) ? null : (action) => doSwipe(detail.id, action)} />}
-      {pendingCelebration && celebrationEntry && (
-        <MatchCelebration match={pendingCelebration} entry={celebrationEntry} tr={tr}
-          playerPhoto={state.profile.photos?.[0] || playerProfile?.avatar} playerName={playerProfile?.name}
-          onOpenChat={(draft) => enterChat(pendingCelebration.profileId, draft)}
-          onKeepSwiping={() => { markMatchSeen(pendingCelebration.profileId); setCelebration(null); }} />
-      )}
+        onSwipe={state.matches.some((item) => item.profileId === detail.id) ? null : (action) => doSwipe(detail.id, action)}
+        onReplayCelebration={state.matches.some((item) => item.profileId === detail.id) ? () => replayCelebration(detail.id) : undefined} />}
+      {celebrationNode}
     </div>
   );
 }

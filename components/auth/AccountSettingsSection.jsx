@@ -1,16 +1,24 @@
 import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Eye, EyeOff, KeyRound, LogIn, LogOut, Mail, UserPlus } from "lucide-react";
 import {
   getCloudDataConfig,
   getCloudDocument,
+  getCloudDocumentHistoryVersion,
   isCloudDocumentNotFound,
+  isCloudRevisionConflict,
+  isCloudUploadRateLimited,
+  listCloudDocumentHistory,
   putCloudDocument,
   runCloudDatabaseConnectionTest,
 } from "../../services/cloud/cloudDataService.js";
+import { conflictFromError, getDeviceLabel, metaAfterHistoryRestore, resolveUploadBase } from "../../services/cloud/cloudSyncRevision.js";
+import { CLOUD_SYNC_REVISION_TEXT, fillCloudSyncText } from "../../constants/cloudSyncRevisionText.js";
 import { mergeWalletSyncData } from "../../utils/walletSync.js";
 import { mergeGameProgressSyncData } from "../../utils/gameProgressSync.js";
 import { validateTextSyncDocument } from "../../utils/textSyncDocument.js";
 import { dataRestoreFailureMessage } from "../../services/backup/dataRestoreTransaction.js";
+import { CLOUD_MEDIA_SYNC_TEXT, cloudMediaSyncSummary } from "../../constants/cloudMediaSyncText.js";
 
 const inputStyle = {
   width: "100%",
@@ -102,6 +110,10 @@ export default function AccountSettingsSection({ auth, tr, notify, textSyncProps
   const [textSyncFailed, setTextSyncFailed] = useState(false);
   const [textSyncMeta, setTextSyncMeta] = useState(null);
   const [remoteTextSyncMeta, setRemoteTextSyncMeta] = useState(null);
+  // MP-032 P2：雲端較新時先擋下來請玩家選擇；P5：雲端舊版本列表。
+  const [syncConflict, setSyncConflict] = useState(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyState, setHistoryState] = useState({ loading: false, versions: null, failed: false });
   const user = auth?.user;
   const cloudDataConfigured = getCloudDataConfig().configured;
 
@@ -123,7 +135,7 @@ export default function AccountSettingsSection({ auth, tr, notify, textSyncProps
     getCloudDocument(auth.session, TEXT_SYNC_DOCUMENT_KEY)
       .then((document) => {
         if (!active) return;
-        setRemoteTextSyncMeta({ revision: document?.revision || 1, updatedAt: document?.updatedAt || null });
+        setRemoteTextSyncMeta({ revision: document?.revision || 1, updatedAt: document?.updatedAt || null, updatedBy: document?.updatedBy || null });
       })
       .catch(() => { if (active) setRemoteTextSyncMeta(null); });
     return () => { active = false; };
@@ -161,7 +173,7 @@ export default function AccountSettingsSection({ auth, tr, notify, textSyncProps
       notify?.(text("驗證信已寄出，請完成驗證後再登入。", "Verification email sent. Please verify it before signing in."));
     } else if (mode === "register") {
       notify?.(text(
-        "帳號已建立。此裝置資料尚未自動上傳；請先建立完整備份，再按「上傳此裝置文字」啟用跨裝置同步。",
+        "帳號已建立。此裝置資料尚未自動上傳；請先建立完整備份，再按「上傳此裝置存檔」啟用跨裝置同步。",
         "Account created. This device's data has not been uploaded automatically; make a full backup first, then choose “Upload this device” to enable cross-device sync.",
         "アカウントを作成しました。この端末のデータは自動アップロードされていません。完全バックアップ後に「この端末をアップロード」を押して端末間同期を有効にしてください。",
         "계정을 만들었어요. 이 기기의 데이터는 자동 업로드되지 않았습니다. 전체 백업 후 “이 기기 업로드”를 눌러 기기 간 동기화를 켜 주세요.",
@@ -222,15 +234,13 @@ export default function AccountSettingsSection({ auth, tr, notify, textSyncProps
     }
   };
 
-  const uploadTextSync = async () => {
+  const uploadTextSync = async ({ force = false } = {}) => {
     if (!textSyncProps?.getTextSyncDocument || !auth?.session) return;
-    const proceed = window.confirm(text(
-      "同步前請先確認你已有本機備份。這會用此裝置的文字資料覆蓋雲端文字資料；圖片、相簿與 API Key 不會上傳。要繼續嗎？",
-      "Make sure you have a local backup first. This replaces the cloud text data with this device's text data; images, the gallery, and API keys are not uploaded. Continue?",
-      "先にローカルバックアップがあることを確認してください。この端末のテキストデータでクラウドのテキストデータを上書きします。画像、アルバム、API キーはアップロードされません。続行しますか？",
-      "먼저 로컬 백업이 있는지 확인하세요. 이 기기의 텍스트 데이터로 클라우드 텍스트 데이터를 덮어씁니다. 이미지, 앨범, API 키는 업로드되지 않습니다. 계속할까요？",
-    ));
-    if (!proceed) return;
+    if (!force) {
+      const proceed = window.confirm(tr(CLOUD_MEDIA_SYNC_TEXT.uploadConfirm));
+      if (!proceed) return;
+    }
+    const localMeta = readTextSyncMeta(auth.user?.id);
     setTextSyncBusy(true);
     setTextSyncStatus("");
     setTextSyncFailed(false);
@@ -251,7 +261,18 @@ export default function AccountSettingsSection({ auth, tr, notify, textSyncProps
         }
         existing = null;
       }
-      const document = await textSyncProps.getTextSyncDocument();
+      // P2：雲端比這台新（或這台從沒同步過）時不直接覆蓋，先請玩家選擇。
+      const remoteInfo = existing ? { revision: existing.revision, updatedAt: existing.updatedAt, updatedBy: existing.updatedBy } : null;
+      const { baseRevision, conflict } = resolveUploadBase({ meta: localMeta, remote: remoteInfo });
+      if (conflict && !force) {
+        setSyncConflict(conflict);
+        return;
+      }
+      let mediaResult;
+      const document = await textSyncProps.getTextSyncDocument({
+        session: auth.session,
+        onMediaSync: (result) => { mediaResult = result; },
+      });
       // Text state intentionally uses manual overwrite. Wallet entries are an
       // exception: merge the current cloud ledger before replacing the document
       // so a second device cannot erase transactions it has not downloaded yet.
@@ -267,27 +288,41 @@ export default function AccountSettingsSection({ auth, tr, notify, textSyncProps
           ...mergeGameProgressSyncData(document.state.featureData, existing.data.state.featureData),
         };
       }
-      const saved = await putCloudDocument(auth.session, TEXT_SYNC_DOCUMENT_KEY, document);
-      const success = text(
-        "文字資料已上傳到帳號雲端。",
-        "Text data was uploaded to your account cloud.",
-        "テキストデータをアカウントのクラウドにアップロードしました。",
-        "텍스트 데이터가 계정 클라우드에 업로드되었습니다.",
-      );
-      setTextSyncStatus(`${success} r${saved?.revision || 1}`);
+      const saved = await putCloudDocument(auth.session, TEXT_SYNC_DOCUMENT_KEY, document, {
+        ...(force ? { force: true } : { baseRevision }),
+        device: getDeviceLabel(),
+      });
+      const revision = saved?.revision || 1;
+      const success = [
+        fillCloudSyncText(tr(CLOUD_SYNC_REVISION_TEXT.uploadedRevision), { revision }),
+        cloudMediaSyncSummary(mediaResult, tr),
+      ].filter(Boolean).join(" ");
+      setTextSyncStatus(success);
       const meta = {
         action: "upload",
         at: new Date().toISOString(),
-        revision: saved?.revision || 1,
+        revision,
         remoteUpdatedAt: saved?.updatedAt || null,
       };
       saveTextSyncMeta(auth.user?.id, meta);
       setTextSyncMeta(meta);
-      setRemoteTextSyncMeta({ revision: meta.revision, updatedAt: meta.remoteUpdatedAt });
+      setRemoteTextSyncMeta({ revision, updatedAt: meta.remoteUpdatedAt, updatedBy: saved?.updatedBy || getDeviceLabel() });
+      setHistoryState({ loading: false, versions: null, failed: false });
+      setHistoryOpen(false);
       notify?.(success);
     } catch (error) {
+      // 兩台裝置幾乎同時上傳時，由 worker 的條件寫入擋下後到的那台。
+      if (isCloudRevisionConflict(error)) {
+        setSyncConflict(conflictFromError(error, localMeta));
+        return;
+      }
       setTextSyncFailed(true);
-      setTextSyncStatus(error?.message || text("文字同步上傳失敗。", "Text sync upload failed.", "テキスト同期のアップロードに失敗しました。", "텍스트 동기화 업로드에 실패했습니다."));
+      if (isCloudUploadRateLimited(error)) {
+        const minutes = Math.max(1, Math.ceil((Number(error.retryAfter) || 3600) / 60));
+        setTextSyncStatus(fillCloudSyncText(tr(CLOUD_SYNC_REVISION_TEXT.rateLimited), { minutes }));
+        return;
+      }
+      setTextSyncStatus(error?.message || text("上傳到雲端失敗。", "Cloud upload failed.", "クラウドへのアップロードに失敗しました。", "클라우드 업로드에 실패했습니다."));
     } finally {
       setTextSyncBusy(false);
     }
@@ -295,26 +330,23 @@ export default function AccountSettingsSection({ auth, tr, notify, textSyncProps
 
   const downloadTextSync = async () => {
     if (!textSyncProps?.applyTextSyncDocument || !auth?.session) return;
-    const proceed = window.confirm(text(
-      "同步前請先確認你已有本機備份。這會以雲端文字資料更新此裝置；此裝置的圖片、相簿與 API Key 會保留。要繼續嗎？",
-      "Make sure you have a local backup first. This updates this device from cloud text data; this device's images, gallery, and API keys are kept. Continue?",
-      "先にローカルバックアップがあることを確認してください。クラウドのテキストデータでこの端末を更新します。この端末の画像、アルバム、API キーは保持されます。続行しますか？",
-      "먼저 로컬 백업이 있는지 확인하세요. 클라우드 텍스트 데이터로 이 기기를 업데이트합니다. 이 기기의 이미지, 앨범, API 키는 유지됩니다. 계속할까요？",
-    ));
+    const proceed = window.confirm(tr(CLOUD_MEDIA_SYNC_TEXT.downloadConfirm));
     if (!proceed) return;
     setTextSyncBusy(true);
     setTextSyncStatus("");
     setTextSyncFailed(false);
     try {
       const remote = await getCloudDocument(auth.session, TEXT_SYNC_DOCUMENT_KEY);
-      await textSyncProps.applyTextSyncDocument(remote?.data);
-      const success = text(
-        "雲端文字資料已套用到此裝置。",
-        "Cloud text data was applied to this device.",
-        "クラウドのテキストデータをこの端末に適用しました。",
-        "클라우드 텍스트 데이터가 이 기기에 적용되었습니다.",
-      );
-      setTextSyncStatus(`${success} r${remote?.revision || 1}`);
+      let mediaResult;
+      await textSyncProps.applyTextSyncDocument(remote?.data, {
+        session: auth.session,
+        onMediaSync: (result) => { mediaResult = result; },
+      });
+      const success = [
+        fillCloudSyncText(tr(CLOUD_SYNC_REVISION_TEXT.downloadedRevision), { revision: remote?.revision || 1 }),
+        cloudMediaSyncSummary(mediaResult, tr),
+      ].filter(Boolean).join(" ");
+      setTextSyncStatus(success);
       const meta = {
         action: "download",
         at: new Date().toISOString(),
@@ -323,17 +355,114 @@ export default function AccountSettingsSection({ auth, tr, notify, textSyncProps
       };
       saveTextSyncMeta(auth.user?.id, meta);
       setTextSyncMeta(meta);
-      setRemoteTextSyncMeta({ revision: meta.revision, updatedAt: meta.remoteUpdatedAt });
+      setRemoteTextSyncMeta({ revision: meta.revision, updatedAt: meta.remoteUpdatedAt, updatedBy: remote?.updatedBy || null });
       notify?.(success);
     } catch (error) {
       setTextSyncFailed(true);
-      setTextSyncStatus(error?.restoreStatus ? dataRestoreFailureMessage(error, text) : error?.message || text("文字同步下載失敗。", "Text sync download failed.", "テキスト同期のダウンロードに失敗しました。", "텍스트 동기화 다운로드에 실패했습니다."));
+      setTextSyncStatus(error?.restoreStatus ? dataRestoreFailureMessage(error, text) : error?.message || text("從雲端下載失敗。", "Cloud download failed.", "クラウドからのダウンロードに失敗しました。", "클라우드 다운로드에 실패했습니다."));
     } finally {
       setTextSyncBusy(false);
     }
   };
 
+  const loadSyncHistory = async () => {
+    if (!auth?.session) return;
+    setHistoryState({ loading: true, versions: null, failed: false });
+    try {
+      const result = await listCloudDocumentHistory(auth.session, TEXT_SYNC_DOCUMENT_KEY);
+      setHistoryState({ loading: false, versions: Array.isArray(result?.versions) ? result.versions : [], failed: false });
+    } catch (error) {
+      // 雲端還沒有任何存檔時，舊版本自然是空的。
+      if (error?.status === 404) {
+        setHistoryState({ loading: false, versions: [], failed: false });
+        return;
+      }
+      setHistoryState({ loading: false, versions: null, failed: true });
+    }
+  };
+
+  const toggleSyncHistory = () => {
+    const next = !historyOpen;
+    setHistoryOpen(next);
+    if (next) loadSyncHistory();
+  };
+
+  const restoreSyncHistory = async (revision) => {
+    if (!textSyncProps?.applyTextSyncDocument || !auth?.session) return;
+    if (!window.confirm(fillCloudSyncText(tr(CLOUD_SYNC_REVISION_TEXT.historyConfirm), { revision }))) return;
+    setTextSyncBusy(true);
+    setTextSyncStatus("");
+    setTextSyncFailed(false);
+    try {
+      const [version, head] = await Promise.all([
+        getCloudDocumentHistoryVersion(auth.session, TEXT_SYNC_DOCUMENT_KEY, revision),
+        getCloudDocument(auth.session, TEXT_SYNC_DOCUMENT_KEY),
+      ]);
+      validateTextSyncDocument(version?.data);
+      let mediaResult;
+      // 與一般下載走同一個受保護的套用流程（快照、失敗回復、保留本機圖片與 API Key）。
+      await textSyncProps.applyTextSyncDocument(version.data, {
+        session: auth.session,
+        onMediaSync: (result) => { mediaResult = result; },
+      });
+      const meta = metaAfterHistoryRestore({ restoredRevision: revision, headRevision: head?.revision, headUpdatedAt: head?.updatedAt || null });
+      saveTextSyncMeta(auth.user?.id, meta);
+      setTextSyncMeta(meta);
+      setRemoteTextSyncMeta({ revision: head?.revision || meta.revision, updatedAt: head?.updatedAt || null, updatedBy: head?.updatedBy || null });
+      const success = [
+        fillCloudSyncText(tr(CLOUD_SYNC_REVISION_TEXT.historyRestored), { revision }),
+        cloudMediaSyncSummary(mediaResult, tr),
+      ].filter(Boolean).join(" ");
+      setTextSyncStatus(success);
+      notify?.(success);
+    } catch (error) {
+      setTextSyncFailed(true);
+      setTextSyncStatus(error?.restoreStatus ? dataRestoreFailureMessage(error, text) : error?.message || tr(CLOUD_SYNC_REVISION_TEXT.historyUnavailable));
+    } finally {
+      setTextSyncBusy(false);
+    }
+  };
+
+  const conflictDownload = () => {
+    setSyncConflict(null);
+    downloadTextSync();
+  };
+
+  const conflictOverwrite = () => {
+    const current = syncConflict?.currentRevision;
+    if (!window.confirm(fillCloudSyncText(tr(CLOUD_SYNC_REVISION_TEXT.overwriteConfirm), { current }))) return;
+    setSyncConflict(null);
+    uploadTextSync({ force: true });
+  };
+
+  const syncActionLabel = (action) => (action === "upload"
+    ? text("上傳", "upload", "アップロード", "업로드")
+    : action === "restore-history"
+      ? tr(CLOUD_SYNC_REVISION_TEXT.restoredAction)
+      : text("下載", "download", "ダウンロード", "다운로드"));
+
+  const conflictModal = syncConflict && typeof document !== "undefined" && createPortal(<div className="mp-overlay" onClick={() => setSyncConflict(null)}>
+    <div className="mp-modal" role="dialog" aria-modal="true" aria-label={tr(CLOUD_SYNC_REVISION_TEXT.conflictTitle)} onClick={(event) => event.stopPropagation()} style={{ display: "grid", gap: 10, lineHeight: 1.65 }}>
+      <div style={{ fontSize: 15, fontWeight: 900, color: "var(--mp-txt)" }}>{tr(syncConflict.reason === "never-synced" ? CLOUD_SYNC_REVISION_TEXT.conflictNeverSyncedTitle : CLOUD_SYNC_REVISION_TEXT.conflictTitle)}</div>
+      <div style={{ fontSize: 12, color: "var(--mp-txt-l)" }}>
+        <div>{fillCloudSyncText(tr(CLOUD_SYNC_REVISION_TEXT.conflictCloudLine), {
+          current: syncConflict.currentRevision,
+          time: formatSyncTime(syncConflict.updatedAt) || "—",
+          device: syncConflict.updatedBy ? fillCloudSyncText(tr(CLOUD_SYNC_REVISION_TEXT.conflictDeviceSuffix), { device: syncConflict.updatedBy }) : "",
+        })}</div>
+        <div>{syncConflict.reason === "never-synced"
+          ? tr(CLOUD_SYNC_REVISION_TEXT.conflictNeverSyncedLine)
+          : fillCloudSyncText(tr(CLOUD_SYNC_REVISION_TEXT.conflictLocalLine), { local: syncConflict.localRevision })}</div>
+        <div style={{ marginTop: 4, color: "var(--mp-warning)" }}>{tr(CLOUD_SYNC_REVISION_TEXT.conflictWarning)}</div>
+      </div>
+      <button type="button" style={primaryButton} onClick={conflictDownload}>{tr(CLOUD_SYNC_REVISION_TEXT.conflictDownload)}</button>
+      <button type="button" style={secondaryButton} onClick={conflictOverwrite}>{tr(CLOUD_SYNC_REVISION_TEXT.conflictOverwrite)}</button>
+      <button type="button" style={{ ...secondaryButton, border: "none", background: "transparent" }} onClick={() => setSyncConflict(null)}>{tr(CLOUD_SYNC_REVISION_TEXT.conflictCancel)}</button>
+    </div>
+  </div>, document.querySelector(".mp-phone") || document.body);
+
   return <div className="mp-sg">
+    {conflictModal}
     <div onClick={() => setOpen((value) => !value)} style={{ display: "flex", justifyContent: "space-between", gap: 10, cursor: "pointer", alignItems: "center" }}>
       <div>
         <div className="mp-sg-t" style={{ marginBottom: 3 }}>{text("帳號", "Account")}</div>
@@ -353,21 +482,37 @@ export default function AccountSettingsSection({ auth, tr, notify, textSyncProps
           <div style={{ fontWeight: 900, overflowWrap: "anywhere" }}>{user.email || text("Google 帳號", "Google account")}</div>
           <div style={{ marginTop: 5, fontSize: 11, color: "var(--mp-txt-l)", overflowWrap: "anywhere" }}>{text("帳號 ID", "Account ID")}: {user.id}</div>
           <div style={{ marginTop: 4, fontSize: 11, color: "var(--mp-txt-l)" }}>{user.email_confirmed_at ? text("Email 已驗證", "Email verified") : text("Email 尚待驗證", "Email verification pending")}</div>
-          <div style={{ marginTop: 4, fontSize: 11, color: "var(--mp-txt-l)" }}>{text("可使用手動文字同步測試跨裝置登入", "Manual text sync is available for cross-device testing", "手動テキスト同期で複数端末のログインをテストできます", "수동 텍스트 동기화로 여러 기기 로그인을 테스트할 수 있습니다")}</div>
+          <div style={{ marginTop: 4, fontSize: 11, color: "var(--mp-txt-l)" }}>{text("可用手動同步在不同裝置間使用同一份存檔", "Use manual sync to share one save across devices", "手動同期で複数の端末から同じセーブデータを使えます", "수동 동기화로 여러 기기에서 같은 저장 데이터를 사용할 수 있습니다")}</div>
         </div>
         <div style={{ ...cloudTestCard, lineHeight: 1.65 }}>
-          <div style={{ fontSize: 12, fontWeight: 900 }}>{text("文字同步測試", "Text sync test", "テキスト同期テスト", "텍스트 동기화 테스트")}</div>
-          <div style={{ marginTop: 3, fontSize: 11, color: "var(--mp-txt-l)" }}>{text("目前採手動上傳與下載。只同步文字與設定；圖片、相簿、語音快取與 API Key 都留在裝置上。同步前請先匯出完整備份。", "This is manual upload/download for now. Only text and settings sync; images, the gallery, voice cache, and API keys stay on the device. Export a full backup first.", "現在は手動アップロード／ダウンロードです。テキストと設定だけを同期し、画像、アルバム、音声キャッシュ、API キーは端末に残ります。先に完全バックアップを書き出してください。", "현재는 수동 업로드/다운로드 방식입니다. 텍스트와 설정만 동기화되며 이미지, 앨범, 음성 캐시, API 키는 기기에 남습니다. 먼저 전체 백업을 내보내세요.")}</div>
-          {!cloudDataConfigured && <div style={{ marginTop: 6, fontSize: 11, color: "var(--mp-warning)" }}>{text("尚未設定 Cloudflare 資料庫 URL，因此無法啟用文字同步。", "Cloudflare database URL is not configured, so text sync is unavailable.", "Cloudflare データベース URL が未設定のため、テキスト同期は利用できません。", "Cloudflare 데이터베이스 URL이 설정되지 않아 텍스트 동기화를 사용할 수 없습니다.")}</div>}
+          <div style={{ fontSize: 12, fontWeight: 900 }}>{text("雲端同步", "Cloud sync", "クラウド同期", "클라우드 동기화")}</div>
+          <div style={{ marginTop: 3, fontSize: 11, color: "var(--mp-txt-l)" }}>{tr(CLOUD_MEDIA_SYNC_TEXT.description)}</div>
+          {!cloudDataConfigured && <div style={{ marginTop: 6, fontSize: 11, color: "var(--mp-warning)" }}>{text("尚未設定 Cloudflare 資料庫 URL，因此無法啟用雲端同步。", "Cloudflare database URL is not configured, so cloud sync is unavailable.", "Cloudflare データベース URL が未設定のため、クラウド同期は利用できません。", "Cloudflare 데이터베이스 URL이 설정되지 않아 클라우드 동기화를 사용할 수 없습니다.")}</div>}
           {(remoteTextSyncMeta || textSyncMeta) && <div style={{ marginTop: 7, display: "grid", gap: 2, fontSize: 10.5, color: "var(--mp-txt-l)" }}>
-            {remoteTextSyncMeta && <div>{text("雲端版本", "Cloud version", "クラウド版", "클라우드 버전")}: r{remoteTextSyncMeta.revision}{remoteTextSyncMeta.updatedAt ? ` · ${formatSyncTime(remoteTextSyncMeta.updatedAt)}` : ""}</div>}
-            {textSyncMeta && <div>{text("此裝置上次同步", "This device last synced", "この端末の最終同期", "이 기기의 마지막 동기화")}: {textSyncMeta.action === "upload" ? text("上傳", "upload", "アップロード", "업로드") : text("下載", "download", "ダウンロード", "다운로드")} · {formatSyncTime(textSyncMeta.at)} · r{textSyncMeta.revision}</div>}
+            {remoteTextSyncMeta && <div>{text("雲端版本", "Cloud version", "クラウド版", "클라우드 버전")}: r{remoteTextSyncMeta.revision}{remoteTextSyncMeta.updatedAt ? ` · ${formatSyncTime(remoteTextSyncMeta.updatedAt)}` : ""}{remoteTextSyncMeta.updatedBy ? ` · ${remoteTextSyncMeta.updatedBy}` : ""}</div>}
+            {textSyncMeta && <div>{text("此裝置上次同步", "This device last synced", "この端末の最終同期", "이 기기의 마지막 동기화")}: {syncActionLabel(textSyncMeta.action)} · {formatSyncTime(textSyncMeta.at)} · r{textSyncMeta.revision}</div>}
           </div>}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginTop: 9 }}>
-            <button type="button" style={secondaryButton} disabled={auth.busy || textSyncBusy || !cloudDataConfigured} onClick={uploadTextSync}>{textSyncBusy ? text("處理中…", "Working…", "処理中…", "처리 중…") : text("上傳此裝置文字", "Upload this device", "この端末をアップロード", "이 기기 업로드")}</button>
-            <button type="button" style={secondaryButton} disabled={auth.busy || textSyncBusy || !cloudDataConfigured} onClick={downloadTextSync}>{textSyncBusy ? text("處理中…", "Working…", "処理中…", "처리 중…") : text("下載雲端文字", "Download cloud text", "クラウドからダウンロード", "클라우드에서 다운로드")}</button>
+            <button type="button" style={secondaryButton} disabled={auth.busy || textSyncBusy || !cloudDataConfigured} onClick={() => uploadTextSync()}>{textSyncBusy ? text("處理中…", "Working…", "処理中…", "처리 중…") : text("上傳此裝置存檔", "Upload this device", "この端末をアップロード", "이 기기 업로드")}</button>
+            <button type="button" style={secondaryButton} disabled={auth.busy || textSyncBusy || !cloudDataConfigured} onClick={() => downloadTextSync()}>{textSyncBusy ? text("處理中…", "Working…", "処理中…", "처리 중…") : text("下載雲端存檔", "Download cloud save", "クラウドからダウンロード", "클라우드에서 다운로드")}</button>
           </div>
           {textSyncStatus && <div role="status" style={{ marginTop: 7, fontSize: 11, color: textSyncFailed ? "var(--mp-danger)" : "var(--mp-success)" }}>{textSyncStatus}</div>}
+          <div style={{ marginTop: 10, borderTop: "1px solid var(--mp-card-border)", paddingTop: 8 }}>
+            <div className="mp-version-row" role="button" tabIndex={0} onClick={toggleSyncHistory} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); toggleSyncHistory(); } }}>
+              <span>{tr(CLOUD_SYNC_REVISION_TEXT.historyTitle)}</span>
+              <span>{historyOpen ? text("收合", "Close", "閉じる", "접기") : text("查看", "View", "表示", "보기")}</span>
+            </div>
+            {historyOpen && <div style={{ marginTop: 6, display: "grid", gap: 6, fontSize: 11, color: "var(--mp-txt-l)" }}>
+              <div>{tr(CLOUD_SYNC_REVISION_TEXT.historyHint)}</div>
+              {historyState.loading && <div>{tr(CLOUD_SYNC_REVISION_TEXT.historyLoading)}</div>}
+              {historyState.failed && <div style={{ color: "var(--mp-warning)" }}>{tr(CLOUD_SYNC_REVISION_TEXT.historyUnavailable)}</div>}
+              {historyState.versions && historyState.versions.length === 0 && <div>{tr(CLOUD_SYNC_REVISION_TEXT.historyEmpty)}</div>}
+              {historyState.versions?.map((version) => <div key={version.revision} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <span>{fillCloudSyncText(tr(CLOUD_SYNC_REVISION_TEXT.historyItem), { revision: version.revision })}{version.updatedAt ? ` · ${formatSyncTime(version.updatedAt)}` : ""}{version.updatedBy ? ` · ${version.updatedBy}` : ""}</span>
+                <button type="button" style={{ ...secondaryButton, width: "auto", padding: "6px 10px", fontSize: 11, flexShrink: 0 }} disabled={auth.busy || textSyncBusy} onClick={() => restoreSyncHistory(version.revision)}>{tr(CLOUD_SYNC_REVISION_TEXT.historyDownload)}</button>
+              </div>)}
+            </div>}
+          </div>
         </div>
         <button type="button" style={secondaryButton} disabled={auth.busy} onClick={confirmSignOut}><LogOut size={16} style={{ verticalAlign: "-3px", marginRight: 6 }} />{text("登出", "Sign out")}</button>
         <div style={{ ...cloudTestCard, lineHeight: 1.65 }}>

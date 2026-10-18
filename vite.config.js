@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
+import localGachaArt from "./tools/vite-local-gacha-art.mjs";
 
 function resolveBase() {
   const repo = process.env.GITHUB_REPOSITORY?.split("/")[1];
@@ -10,9 +11,31 @@ function resolveBase() {
   return "/";
 }
 
+// 每次建置的版本號：顯示在「關於」頁，並輸出 version.json 讓已開啟的 App 偵測新版自動重載。
+function createBuildId() {
+  if (process.env.VITE_BUILD_ID) return process.env.VITE_BUILD_ID;
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).formatToParts(new Date()).map((part) => [part.type, part.value]));
+  return `${parts.year}${parts.month}${parts.day}-${parts.hour}${parts.minute}`;
+}
+const BUILD_ID = createBuildId();
+
+function buildVersionFile() {
+  return {
+    name: "maliphone-build-version",
+    apply: "build",
+    generateBundle() {
+      this.emitFile({ type: "asset", fileName: "version.json", source: JSON.stringify({ build: BUILD_ID }) });
+    },
+  };
+}
+
 export default defineConfig({
   base: resolveBase(),
-  plugins: [react()],
+  // __MALI_TEST_GRANTS__：只有測試站建置（VITE_TEST_GRANTS_ENABLED=true）才把測試結晶信包進程式。
+  define: { __MALIPHONE_BUILD__: JSON.stringify(BUILD_ID), __MALI_TEST_GRANTS__: JSON.stringify(/^(1|true|yes|on)$/i.test(process.env.VITE_TEST_GRANTS_ENABLED || "")) },
+  plugins: [react(), localGachaArt(), buildVersionFile()],
   build: {
     rollupOptions: {
       // viewer.html：唯讀檢視備份／救援檔的獨立頁面，不載入小手機主程式。

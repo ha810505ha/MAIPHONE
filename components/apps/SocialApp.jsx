@@ -350,7 +350,7 @@ export default function SocialApp({
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 700 }}>{tr("自動貼文", "Auto posts", "自動投稿", "자동 게시")}</div>
-                <div style={{ fontSize: 10, color: "var(--mp-txt-l)", marginTop: 3, lineHeight: 1.5 }}>
+                <div style={{ fontSize: "var(--mp-fs-caption)", color: "var(--mp-txt-l)", marginTop: 3, lineHeight: 1.5 }}>
                   {tr("開啟後，角色會不定時自己發佈新貼文。", "When on, characters will occasionally publish new posts on their own.", "オンにすると、キャラが時々自分から新しい投稿をします。", "켜면 캐릭터가 가끔 스스로 새 게시물을 올립니다.")}
                 </div>
               </div>
@@ -370,7 +370,7 @@ export default function SocialApp({
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 700 }}>{tr("角色之間可以互動", "Characters can interact", "キャラ同士の交流を許可", "캐릭터끼리 상호작용")}</div>
-                <div style={{ fontSize: 10, color: "var(--mp-txt-l)", marginTop: 3, lineHeight: 1.5 }}>
+                <div style={{ fontSize: "var(--mp-fs-caption)", color: "var(--mp-txt-l)", marginTop: 3, lineHeight: 1.5 }}>
                   {tr(
                     "開啟後，角色可能留言其他角色的貼文；玩家貼文維持原本的回覆方式。",
                     "When on, characters may comment on other character posts. Player posts keep their current reply behavior.",
@@ -431,7 +431,7 @@ export default function SocialApp({
               })}>{(() => { const ids = Array.isArray(socialSettings?.enabledCharacterIds) ? socialSettings.enabledCharacterIds : characters.map((c) => c.id); const all = characters.length > 0 && ids.length === characters.length && characters.every((c) => ids.includes(c.id)); return all ? tr("全不選", "None", "なし", "없음") : tr("全選", "All", "全選", "전체"); })()}</button>
             </div>
             <input className="mp-sinp" value={characterSearch} onChange={(e) => setCharacterSearch(e.target.value)} placeholder={tr("搜尋角色名稱", "Search characters", "キャラを検索", "캐릭터 검색")} style={{ marginBottom: 8 }} />
-            <div style={{ fontSize: 10, color: "var(--mp-txt-l)", marginBottom: 6 }}>{tr(`已選 ${Array.isArray(socialSettings?.enabledCharacterIds) ? socialSettings.enabledCharacterIds.length : characters.length} 位`, `${Array.isArray(socialSettings?.enabledCharacterIds) ? socialSettings.enabledCharacterIds.length : characters.length} selected`, `${Array.isArray(socialSettings?.enabledCharacterIds) ? socialSettings.enabledCharacterIds.length : characters.length}人選択`, `${Array.isArray(socialSettings?.enabledCharacterIds) ? socialSettings.enabledCharacterIds.length : characters.length}명 선택`)}</div>
+            <div style={{ fontSize: "var(--mp-fs-caption)", color: "var(--mp-txt-l)", marginBottom: 6 }}>{tr(`已選 ${Array.isArray(socialSettings?.enabledCharacterIds) ? socialSettings.enabledCharacterIds.length : characters.length} 位`, `${Array.isArray(socialSettings?.enabledCharacterIds) ? socialSettings.enabledCharacterIds.length : characters.length} selected`, `${Array.isArray(socialSettings?.enabledCharacterIds) ? socialSettings.enabledCharacterIds.length : characters.length}人選択`, `${Array.isArray(socialSettings?.enabledCharacterIds) ? socialSettings.enabledCharacterIds.length : characters.length}명 선택`)}</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, maxHeight: 390, overflowY: "auto", overscrollBehavior: "contain", padding: "2px 2px 8px" }}>
               {characters.filter((char) => !characterSearch.trim() || String(char.name || "").toLowerCase().includes(characterSearch.trim().toLowerCase())).map((char) => {
                 const enabledIds = Array.isArray(socialSettings?.enabledCharacterIds) ? socialSettings.enabledCharacterIds : characters.map((c) => c.id);
@@ -488,7 +488,7 @@ export default function SocialApp({
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                     <div style={{ fontSize: 12, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getPostAuthorName(p)}</div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                      <span style={{ fontSize: 10, color: "var(--mp-txt-l)" }}>{formatPostTime(p.time)}</span>
+                      <span style={{ fontSize: "var(--mp-fs-caption)", color: "var(--mp-txt-l)" }}>{formatPostTime(p.time)}</span>
                       <button
                         className="mp-ibtn"
                         onClick={(e) => {
@@ -514,7 +514,7 @@ export default function SocialApp({
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
               <div>
                 <div style={{ fontSize: 12, fontWeight: 800 }}>{tr(`已珍藏 ${posts.length} / ${postLimit} 則`, `${posts.length} / ${postLimit} posts saved`, `${posts.length} / ${postLimit}件保存`, `${posts.length} / ${postLimit}개 저장됨`)}</div>
-                <div style={{ fontSize: 10, color: posts.length >= Math.floor(postLimit * .8) ? "#b45f3c" : "var(--mp-txt-l)", marginTop: 4, lineHeight: 1.55 }}>
+                <div style={{ fontSize: "var(--mp-fs-caption)", color: posts.length >= Math.floor(postLimit * .8) ? "#b45f3c" : "var(--mp-txt-l)", marginTop: 4, lineHeight: 1.55 }}>
                   {posts.length >= Math.floor(postLimit * .8)
                     ? tr("貼文即將達到上限，建議先匯出備份。珍藏貼文不會自動刪除。", "The limit is near. Export a copy first. Saved posts are never auto-deleted.", "上限が近づいています。先に書き出してください。保存済み投稿は自動削除されません。", "한도에 가까워졌습니다. 먼저 내보내세요. 저장한 게시물은 자동 삭제되지 않습니다.")
                     : tr("超過上限後會從最舊、未珍藏的貼文開始清除。", "Past the limit, the oldest unsaved posts are removed first.", "上限を超えると、古い未保存投稿から削除されます。", "한도를 넘으면 오래된 미저장 게시물부터 삭제됩니다.")}
@@ -539,13 +539,13 @@ export default function SocialApp({
         right={<div className="mp-hdr-actions mp-social-head-actions">
           <button
             type="button"
-            className="mp-social-notification-bell"
+            className="mp-hdr-action"
+            style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 4 }}
             aria-label={tr("社群通知", "Social notifications", "ソーシャル通知", "소셜 알림")}
             onClick={() => setSocialNotificationsOpen(true)}
           >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />
-            </svg>
+            <Icon name="bell" size={14} />
+            {tr("通知", "Alerts", "通知", "알림")}
             {socialUnreadCount > 0 && (
               <span className="mp-social-notification-badge">
                 {socialUnreadCount > 99 ? "99+" : socialUnreadCount}

@@ -11,8 +11,8 @@ export default function DataBackupSettings({ tr, dataImporting, dataImportRef, o
         {tr("將小手機的主要遊玩進度匯出為備份檔，或從備份檔匯入後繼續使用。", "Export this phone's main play progress as a backup file, or import a backup to continue.", "このスマホの主なプレイ進行をバックアップとして書き出すか、バックアップを取り込んで続けられます。", "이 휴대폰의 주요 플레이 진행 상황을 백업 파일로 내보내거나 백업을 가져와 계속할 수 있습니다.")}
       </div>
       <div style={{ display: "grid", gap: 8 }}>
-        <button className="mp-save" style={{ background: "linear-gradient(135deg,#90caf9,#42a5f5)" }} onClick={onExport}>{tr("匯出全域資料", "Export global data", "全体データを書き出す", "전체 데이터 내보내기")}</button>
-        <button type="button" className="mp-save" style={{ background: "linear-gradient(135deg,#b0bec5,#78909c)" }} onClick={() => dataImportRef.current?.click()}>{dataImporting ? tr("等待選擇檔案…", "Waiting for file selection…", "ファイル選択待ち…", "파일 선택 대기 중…") : tr("匯入全域資料", "Import global data", "全体データを取り込む", "전체 데이터 가져오기")}</button>
+        <button type="button" className="mp-save" onClick={onExport}>{tr("匯出全域資料", "Export global data", "全体データを書き出す", "전체 데이터 내보내기")}</button>
+        <button type="button" className="mp-save mp-save--secondary" onClick={() => dataImportRef.current?.click()}>{dataImporting ? tr("等待選擇檔案…", "Waiting for file selection…", "ファイル選択待ち…", "파일 선택 대기 중…") : tr("匯入全域資料", "Import global data", "全体データを取り込む", "전체 데이터 가져오기")}</button>
         <input ref={dataImportRef} type="file" accept=".json,application/json" style={{ display: "none" }} onChange={onImport} />
         <button type="button" className="mp-ibtn" onClick={openBackupViewer}>{tr("唯讀檢視備份檔／救援檔", "View a backup or rescue file (read-only)", "バックアップ／救出ファイルを閲覧（読み取り専用）", "백업/복구 파일 보기 (읽기 전용)")}</button>
       </div>

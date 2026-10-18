@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect, useRef } from "react";
 import { VERSION, DEFAULT_APPS, DOCK_APPS, isLocalProvider } from "./constants/appConstants";
-import { DATING_ENABLED } from "./config/featureFlags";
+import { DATING_ENABLED, STORE_ENABLED } from "./config/featureFlags";
+import { DatingActionsProvider } from "./contexts/DatingActionsContext";
 import { getChangelog } from "./constants/changelog";
 import { createSocialFeedHelpers } from "./services/social/socialFeedHelpers";
 import { useGacha } from "./contexts/GachaContext";
@@ -74,6 +75,7 @@ import MaliPhoneShell from "./components/shell/MaliPhoneShell";
 import MaliPhoneOverlays from "./components/shell/MaliPhoneOverlays";
 import StorageLoadFailureScreen from "./components/shell/StorageLoadFailureScreen";
 import usePhoneNavigation from "./hooks/navigation/usePhoneNavigation";
+import { useNativeBackButton } from "./hooks/navigation/useNativeBackButton";
 import { playAppClose } from "./utils/appLaunchMotion.js";
 import useNotificationCenter from "./hooks/notifications/useNotificationCenter";
 import { subscribeSystemNotificationClicks } from "./services/notifications/systemNotifications";
@@ -83,6 +85,7 @@ import useAuthSession from "./hooks/auth/useAuthSession";
 import { setMaliTestRuntime } from "./services/cloud/maliTestRuntime.js";
 import { promoteDatingContact } from "./services/dating/datingMatchApply";
 import { DATING_PROFILES } from "./data/dating/profiles";
+import { reloadIfNewBuild } from "./utils/buildVersion";
 import { DEFAULT_APP_STATE } from "./constants/defaultAppState";
 import {
   preloadFeatureForApp,
@@ -672,6 +675,27 @@ export default function MaliPhone() {
     if (!hydrated || !dating.hydrated) return;
     dating.reconcileContacts(characters);
   }, [hydrated, dating.hydrated, dating.reconcileContacts, dating.state.relations, characters]);
+  // 信風聯絡人的頭像在加入當下複製；照片後來才上線（或舊版濾掉相對路徑）時會一直空白。
+  // 只補空頭像，玩家自己換過的頭像不動。
+  useEffect(() => {
+    if (!hydrated || !DATING_ENABLED) return;
+    const photoFor = (character) => {
+      if (!character?.datingProfileId || character.avatar) return "";
+      const profile = DATING_PROFILES.find((item) => item.id === character.datingProfileId);
+      return sanitizeUserImageUrl(profile?.profile?.photos?.[0]) || "";
+    };
+    if (!characters.some(photoFor)) return;
+    setCharacters((previous) => {
+      let changed = false;
+      const next = previous.map((character) => {
+        const photo = photoFor(character);
+        if (!photo) return character;
+        changed = true;
+        return { ...character, avatar: photo };
+      });
+      return changed ? next : previous;
+    });
+  }, [hydrated, characters]);
   const {
     updateScrollToBottomVisibility,
     scrollCurrentChatToBottom,
@@ -844,6 +868,17 @@ export default function MaliPhone() {
     }).catch(() => {});
     return () => navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
   }, []);
+  // 網頁版：打開或從背景切回時比對線上 version.json，有新版就自動重載一次。
+  useEffect(() => {
+    if (!(typeof import.meta !== "undefined" && import.meta.env && import.meta.env.PROD)) return undefined;
+    if (window.Capacitor?.isNativePlatform?.()) return undefined;
+    const baseUrl = import.meta.env.BASE_URL || "/";
+    const check = () => { void reloadIfNewBuild({ baseUrl }); };
+    const onVisible = () => { if (document.visibilityState === "visible") check(); };
+    check();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
   useEffect(() => {
     if (!hydrated) return;
     let changed = false;
@@ -957,7 +992,7 @@ export default function MaliPhone() {
     openAppFromTouch,
     suppressAppClickUntilRef,
   } = usePhoneNavigation({
-    canOpenApp: (appId) => appId !== "dating" || DATING_ENABLED,
+    canOpenApp: (appId) => (appId !== "dating" || DATING_ENABLED) && (appId !== "store" || STORE_ENABLED),
     preloadApp: preloadFeatureForApp,
     onUnlockStart: () => setUnlocking(true),
     onUnlockComplete: () => {
@@ -1638,6 +1673,7 @@ export default function MaliPhone() {
     player: { ...DEFAULT_APPS.find((a) => a.id === "player"), name: t("player") },
     wallet: { ...DEFAULT_APPS.find((a) => a.id === "wallet"), name: t("wallet") },
     game: { ...DEFAULT_APPS.find((a) => a.id === "game"), name: t("gameCenter") },
+    store: { ...DEFAULT_APPS.find((a) => a.id === "store"), name: t("store") },
     petHome: { ...DEFAULT_APPS.find((a) => a.id === "petHome"), name: tr("寵物小屋", "Pet Home", "ペットのおうち", "펫 하우스") },
     yunyin: { ...DEFAULT_APPS.find((a) => a.id === "yunyin"), name: tr("雲隱山莊", "Yunyin Villa", "雲隠山荘", "운은산장") },
     lbook: { ...DEFAULT_APPS.find((a) => a.id === "lbook"), name: t("answerBook") },
@@ -1653,6 +1689,7 @@ export default function MaliPhone() {
   const appById = Object.fromEntries(DEFAULT_APPS.map(a => [a.id, localizedAppById[a.id] || a]));
   const localizedApps = DEFAULT_APPS
     .filter((app) => app.id !== "dating" || DATING_ENABLED)
+    .filter((app) => app.id !== "store" || STORE_ENABLED)
     .map((app) => appById[app.id]);
   const renderAppIcon = (app, size = 26) => {
     if (app?.iconUrl) {
@@ -1661,6 +1698,18 @@ export default function MaliPhone() {
     return app?.icon || "";
   };
   const home = useHomeCustomization({ apps: localizedApps, homeSlots, setHomeSlots, dockOrder, setDockOrder });
+  // Android 系統返回鍵：彈窗 → 頁面返回鍵 → 關 App → 主畫面再按一次離開（MP-064）。
+  useNativeBackButton({
+    enabled: typeof window !== "undefined" && !!window.Capacitor?.isNativePlatform?.(),
+    locked,
+    currentApp,
+    closeApp,
+    folderOpen: !!home.openFolder,
+    closeFolder: home.closeFolder,
+    libraryOpen: home.libraryOpen,
+    closeLibrary: home.closeLibrary,
+    onConfirmExit: () => showToast(tr("再按一次返回鍵離開", "Press back again to exit", "もう一度戻るとアプリを終了します", "한 번 더 누르면 종료돼요")),
+  });
   const { allAppIds, safeDock, cleanedSlots, homePages } = home;
   const dockApps = safeDock.map(id => appById[id]).filter(Boolean);
 
@@ -2060,6 +2109,9 @@ export default function MaliPhone() {
       displayWalletText={displayWalletText}
       sanitizeUserImageUrl={sanitizeUserImageUrl}
       showToast={showToast}
+      // 花費本的 OpenRouter 對帳：有管理金鑰看帳戶總額，否則用聊天中的 OpenRouter 金鑰。
+      openRouterKey={apiConfig?.openRouterManagementKey || (apiConfig?.provider === "openrouter" && apiConfig?.aiSource !== "hosted_test" ? apiConfig?.apiKey : "") || ""}
+      openRouterKeyType={apiConfig?.openRouterManagementKey ? "account" : "key"}
     />
   );
   const renderPhone = () => (
@@ -2112,7 +2164,13 @@ export default function MaliPhone() {
   // 存檔讀取失敗：停在這裡、不渲染任何會存檔的畫面，避免空資料蓋掉玩家資料。
   if (appStateLoadFailed) return <StorageLoadFailureScreen error={appStateLoadError} tr={tr} themeCss={themeCss} />;
   if (dataController.restoreRecovery) return <StorageLoadFailureScreen error={dataController.restoreRecovery.error} beforeRestoreBackup={dataController.restoreRecovery.backup} tr={tr} themeCss={themeCss} />;
+  // 商店與登入獎勵透過這個 context 加 Super Like；信風關閉時給 no-op。
+  const datingActions = DATING_ENABLED
+    ? { enabled: true, superLikes: dating.state.superLikes, grantSuperLikes: dating.grantSuperLikes }
+    : null;
+
   return (
+    <DatingActionsProvider value={datingActions}>
     <MaliPhoneShell
       themeCss={themeCss}
       effects={{ enabled: themeEffectsEnabled, theme: normalizedThemeName }}
@@ -2213,6 +2271,7 @@ export default function MaliPhone() {
         playerProfile,
         chatHistory,
         setChatHistory,
+        showToast,
         renderers: {
           chat: renderChat,
           status: renderStatus,
@@ -2316,5 +2375,6 @@ export default function MaliPhone() {
         />
       )}
     />
+    </DatingActionsProvider>
   );
 }

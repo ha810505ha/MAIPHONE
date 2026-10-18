@@ -10,6 +10,8 @@ import { FEATURE_DATA_CHANGED_EVENT, featureDataEventIncludes } from "../../serv
 import { NOTES_ENTITY_KEY, upsertNoteDraft } from "../../utils/notesPersistence";
 import { AppHeader, LargeTitle, LargeTitleHeader, SUB_PAGE_CLASS, useLargeTitle } from "../shell/LargeTitle";
 import StorageLoadFailureScreen from "../shell/StorageLoadFailureScreen";
+import EmptyState from "../common/EmptyState";
+import SegmentedControl from "../common/SegmentedControl";
 import { recordRuntimeDiagnostic } from "../../services/diagnostics/runtimeDiagnostics";
 
 const KEY = NOTES_ENTITY_KEY;
@@ -362,10 +364,18 @@ export default function NotesApp({ onBack, tr }) {
               outline: 0,
             }}
           />
-          <div style={{ display: "inline-grid", gridTemplateColumns: "auto auto", alignSelf: "flex-start", gap: 3, padding: 3, borderRadius: 999, background: "rgba(255,255,255,.7)", border: "1px solid #ead6dd" }}>
-            {[["shared", "一般"], ["private", "🔒 私密"]].map(([value, label]) => (
-              <button key={value} type="button" onClick={() => setDraft({ ...draft, privacy: value })} style={{ border: 0, borderRadius: 999, padding: "5px 9px", background: draft.privacy === value ? (value === "private" ? "#756476" : "#f39ab3") : "transparent", color: draft.privacy === value ? "#fff" : "#8d7580", fontSize: 12, fontWeight: 800, transition: "background .18s ease,color .18s ease" }}>{label}</button>
-            ))}
+          <div style={{ alignSelf: "flex-start", width: 200, maxWidth: "100%" }}>
+            <style>{`.mp-notes-privacy-seg{margin:0}`}</style>
+            <SegmentedControl
+              className="mp-notes-privacy-seg"
+              ariaLabel={tr("筆記可見範圍", "Note visibility", "ノートの公開範囲", "노트 공개 범위")}
+              items={[
+                { id: "shared", label: tr("一般", "General", "一般", "일반") },
+                { id: "private", label: tr("🔒 私密", "🔒 Private", "🔒 非公開", "🔒 비공개") },
+              ]}
+              value={draft.privacy === "private" ? "private" : "shared"}
+              onChange={(value) => setDraft({ ...draft, privacy: value })}
+            />
           </div>
           <div
             style={{
@@ -543,7 +553,7 @@ export default function NotesApp({ onBack, tr }) {
             outline: 0,
           }}
         />
-        <div style={{ display: "flex", gap: 8, margin: "12px 0" }}>
+        <div className="mp-chip-row" style={{ margin: "12px 0" }}>
           {[
             ["all", "全部"],
             ["private", "私密"],
@@ -551,23 +561,21 @@ export default function NotesApp({ onBack, tr }) {
           ].map(([key, label]) => (
             <button
               key={key}
+              type="button"
+              className={`mp-chip ${filter === key ? "active" : ""}`}
               onClick={() => setFilter(key)}
-              style={{
-                border: 0,
-                borderRadius: 999,
-                padding: "7px 13px",
-                background: filter === key ? "#7d5a6e" : "#fff",
-                color: filter === key ? "#fff" : "#7d5a6e",
-              }}
             >
               {label}
             </button>
           ))}
         </div>
         {visible.length === 0 ? (
-          <div style={{ textAlign: "center", color: "#9a7f88", padding: 50 }}>
-            還沒有筆記，點擊右下角鉛筆開始記錄
-          </div>
+          <EmptyState
+            compact
+            icon="notebook"
+            title={tr("還沒有筆記", "No notes yet", "ノートはまだありません", "아직 노트가 없어요")}
+            text={tr("點右下角鉛筆開始記錄", "Tap the pencil at the bottom right to start writing.", "右下の鉛筆から書き始めましょう。", "오른쪽 아래 연필을 눌러 작성해 보세요.")}
+          />
         ) : (
           visible.map((note) => (
             <div

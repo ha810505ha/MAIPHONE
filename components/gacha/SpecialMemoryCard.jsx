@@ -4,6 +4,13 @@ import { sanitizeUserImageUrl } from "../../utils/coreUtils";
 import { generateSpecialMemorySummary } from "../../services/gacha/specialMemoryService";
 import { downloadImageFile } from "../../utils/exportFile";
 import { translate } from "../../utils/i18n";
+import { withGachaCardArt } from "../../data/gacha/cardArt.js";
+
+// 紀念卡上的契機圖：有卡圖就用卡圖（依 itemId 於顯示時解析，舊記憶也能補上），沒有才退回 Emoji。
+const memoryArt = (memory) => {
+  const resolved = withGachaCardArt({ id: memory?.itemId });
+  return { full: resolved?.art || "", thumb: resolved?.artThumbnail || resolved?.art || "" };
+};
 
 const RARITY_THEMES = {
   SSR: { label: "SSR MEMORY", bgTop: "#fff6e3", bgBottom: "#ffdfe9", frame: "#c99a4b", frameSoft: "#e5c78f", accent: "#a2652f", text: "#5c4632", glow: "rgba(255,214,150,.55)" },
@@ -104,7 +111,7 @@ export async function renderSpecialMemoryImage(memory, { characterAvatar, player
   const theme = themeOf(memory);
   const W = 720, H = 1150;
   await ensureCardFonts();
-  const [charImage, playerImage] = await Promise.all([loadSafeImage(characterAvatar), loadSafeImage(playerAvatar)]);
+  const [charImage, playerImage, artImage] = await Promise.all([loadSafeImage(characterAvatar), loadSafeImage(playerAvatar), loadSafeImage(memoryArt(memory).full)]);
   const canvas = document.createElement("canvas");
   canvas.width = W;
   canvas.height = H;
@@ -152,8 +159,20 @@ export async function renderSpecialMemoryImage(memory, { characterAvatar, player
   ctx.fill();
   ctx.stroke();
   ctx.restore();
-  ctx.font = "84px 'Segoe UI Emoji','Apple Color Emoji','Noto Color Emoji',sans-serif";
-  ctx.fillText(memory.itemIcon || "🌸", W / 2, 222);
+  if (artImage) {
+    // 卡圖裁成同一個圓，填滿（cover）；載入失敗就退回 Emoji。
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(W / 2, 216, 80, 0, Math.PI * 2);
+    ctx.clip();
+    const scale = Math.max(160 / artImage.width, 160 / artImage.height);
+    const w = artImage.width * scale, h = artImage.height * scale;
+    ctx.drawImage(artImage, W / 2 - w / 2, 216 - h / 2, w, h);
+    ctx.restore();
+  } else {
+    ctx.font = "84px 'Segoe UI Emoji','Apple Color Emoji','Noto Color Emoji',sans-serif";
+    ctx.fillText(memory.itemIcon || "🌸", W / 2, 222);
+  }
 
   ctx.fillStyle = theme.text;
   ctx.font = `700 34px ${HAND_FONT}`;
@@ -245,13 +264,13 @@ export function SpecialMemoryModal({ memory: memoryProp, characterAvatar, player
     }
   };
   const renderAvatar = (src, fallbackChar) => <span className="sg-memory-ava" style={{ borderColor: theme.frame, color: theme.accent }}>{src ? <img src={src} alt="" /> : (fallbackChar || "♥")}</span>;
-  return <div className="sg-memory-overlay" onClick={onClose}>
-    <style>{`.sg-memory-overlay{position:fixed;inset:0;z-index:340;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:13px;background:rgba(46,30,40,.55);backdrop-filter:blur(6px);padding:22px 18px}.sg-memory-card{position:relative;width:min(324px,86vw);max-height:74vh;overflow-y:auto;border-radius:22px;padding:28px 24px 24px;text-align:center;box-shadow:0 22px 55px rgba(70,40,55,.35);animation:sgMemoryIn .45s cubic-bezier(.2,.9,.3,1.2);font-family:'LXGW WenKai TC','Noto Serif TC','PMingLiU',serif;scrollbar-width:none}.sg-memory-card::-webkit-scrollbar{display:none}.sg-memory-frame{position:absolute;inset:10px;border-radius:15px;pointer-events:none}.sg-memory-corner{position:absolute;font-size:13px;line-height:1}.sg-memory-rarity{font-size:11px;font-weight:800;letter-spacing:.34em;text-indent:.34em;margin-bottom:12px}.sg-memory-icon{width:78px;height:78px;margin:0 auto;border-radius:50%;display:grid;place-items:center;font-size:38px;background:rgba(255,255,255,.68)}.sg-memory-item{margin-top:13px;font-size:19px;font-weight:900}.sg-memory-title{margin-top:3px;font-size:15px;font-weight:700}.sg-memory-divider{display:flex;align-items:center;gap:9px;margin:12px 8px;font-size:10px}.sg-memory-divider:before,.sg-memory-divider:after{content:"";height:1px;flex:1;background:currentColor;opacity:.5}.sg-memory-summary{font-size:13px;line-height:1.95;text-align:justify;white-space:pre-wrap;word-break:break-word}.sg-memory-quote-mark{margin:10px 0 -6px;font:34px/1 'Great Vibes',cursive;opacity:.9}.sg-memory-monologue{font-size:13.5px;line-height:1.95;white-space:pre-wrap;word-break:break-word}.sg-memory-sign{margin-top:5px;font-size:11px;opacity:.8}.sg-memory-pair{display:flex;align-items:center;justify-content:center;margin-top:16px}.sg-memory-ava{width:44px;height:44px;border-radius:50%;border:2px solid;display:grid;place-items:center;overflow:hidden;background:rgba(255,255,255,.85);font-size:18px;font-weight:800}.sg-memory-ava+.sg-memory-ava{margin-left:-9px}.sg-memory-ava img{width:100%;height:100%;object-fit:cover}.sg-memory-footer{margin-top:9px;font-size:11.5px;font-weight:700}.sg-memory-date{margin-top:3px;font-size:10.5px;opacity:.8}.sg-memory-brand{margin-top:9px;font:26px/1 'Great Vibes',cursive;opacity:.75}.sg-memory-actions{display:flex;gap:9px}.sg-memory-btn{border:0;border-radius:14px;padding:11px 17px;font-size:13px;font-weight:800}.sg-memory-btn-primary{background:linear-gradient(135deg,#df91a8,#bd5b7a);color:#fff}.sg-memory-btn-primary:disabled{opacity:.55}.sg-memory-btn-ghost{background:rgba(255,255,255,.88);color:#8c5468}.sg-memory-btn-sealed{background:linear-gradient(135deg,#e9cd8e,#c99a4b);color:#fff;text-shadow:0 1px 2px rgba(140,95,30,.35);box-shadow:0 3px 12px rgba(185,140,60,.4)}.sg-memory-notice{max-width:86vw;color:#ffe9f1;font-size:11px;text-align:center}@keyframes sgMemoryIn{from{transform:translateY(22px) scale(.92);opacity:0}to{transform:none;opacity:1}}`}</style>
+  return <div className="sg-memory-overlay" data-back-dismiss onClick={onClose}>
+    <style>{`.sg-memory-overlay{position:fixed;inset:0;z-index:340;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:13px;background:rgba(46,30,40,.55);backdrop-filter:blur(6px);padding:22px 18px}.sg-memory-card{position:relative;width:min(324px,86vw);max-height:74vh;overflow-y:auto;border-radius:22px;padding:28px 24px 24px;text-align:center;box-shadow:0 22px 55px rgba(70,40,55,.35);animation:sgMemoryIn .45s cubic-bezier(.2,.9,.3,1.2);font-family:'LXGW WenKai TC','Noto Serif TC','PMingLiU',serif;scrollbar-width:none}.sg-memory-card::-webkit-scrollbar{display:none}.sg-memory-frame{position:absolute;inset:10px;border-radius:15px;pointer-events:none}.sg-memory-corner{position:absolute;font-size:13px;line-height:1}.sg-memory-rarity{font-size:11px;font-weight:800;letter-spacing:.34em;text-indent:.34em;margin-bottom:12px}.sg-memory-icon{width:78px;height:78px;margin:0 auto;border-radius:50%;display:grid;place-items:center;font-size:38px;background:rgba(255,255,255,.68)}.sg-memory-icon.has-art{overflow:hidden;padding:0}.sg-memory-icon.has-art img{width:100%;height:100%;object-fit:cover;display:block}.sg-memory-item{margin-top:13px;font-size:19px;font-weight:900}.sg-memory-title{margin-top:3px;font-size:15px;font-weight:700}.sg-memory-divider{display:flex;align-items:center;gap:9px;margin:12px 8px;font-size:10px}.sg-memory-divider:before,.sg-memory-divider:after{content:"";height:1px;flex:1;background:currentColor;opacity:.5}.sg-memory-summary{font-size:13px;line-height:1.95;text-align:justify;white-space:pre-wrap;word-break:break-word}.sg-memory-quote-mark{margin:10px 0 -6px;font:34px/1 'Great Vibes',cursive;opacity:.9}.sg-memory-monologue{font-size:13.5px;line-height:1.95;white-space:pre-wrap;word-break:break-word}.sg-memory-sign{margin-top:5px;font-size:11px;opacity:.8}.sg-memory-pair{display:flex;align-items:center;justify-content:center;margin-top:16px}.sg-memory-ava{width:44px;height:44px;border-radius:50%;border:2px solid;display:grid;place-items:center;overflow:hidden;background:rgba(255,255,255,.85);font-size:18px;font-weight:800}.sg-memory-ava+.sg-memory-ava{margin-left:-9px}.sg-memory-ava img{width:100%;height:100%;object-fit:cover}.sg-memory-footer{margin-top:9px;font-size:11.5px;font-weight:700}.sg-memory-date{margin-top:3px;font-size:10.5px;opacity:.8}.sg-memory-brand{margin-top:9px;font:26px/1 'Great Vibes',cursive;opacity:.75}.sg-memory-actions{display:flex;gap:9px}.sg-memory-btn{border:0;border-radius:14px;padding:11px 17px;font-size:13px;font-weight:800}.sg-memory-btn-primary{background:linear-gradient(135deg,#df91a8,#bd5b7a);color:#fff}.sg-memory-btn-primary:disabled{opacity:.55}.sg-memory-btn-ghost{background:rgba(255,255,255,.88);color:#8c5468}.sg-memory-btn-sealed{background:linear-gradient(135deg,#e9cd8e,#c99a4b);color:#fff;text-shadow:0 1px 2px rgba(140,95,30,.35);box-shadow:0 3px 12px rgba(185,140,60,.4)}.sg-memory-notice{max-width:86vw;color:#ffe9f1;font-size:11px;text-align:center}@keyframes sgMemoryIn{from{transform:translateY(22px) scale(.92);opacity:0}to{transform:none;opacity:1}}`}</style>
     <div className="sg-memory-card" style={{ background: `linear-gradient(180deg,${theme.bgTop},${theme.bgBottom})`, color: theme.text }} onClick={(event) => event.stopPropagation()}>
       <div className="sg-memory-frame" style={{ border: `2px solid ${theme.frame}`, boxShadow: `inset 0 0 0 1px ${theme.frameSoft}` }} />
       {[["top", "left"], ["top", "right"], ["bottom", "left"], ["bottom", "right"]].map(([v, h]) => <span key={v + h} className="sg-memory-corner" style={{ [v]: 14, [h]: 17, color: theme.frame }}>✦</span>)}
       <div className="sg-memory-rarity" style={{ color: theme.accent }}>{theme.label}</div>
-      <div className="sg-memory-icon" style={{ border: `1.5px solid ${theme.frameSoft}` }}>{memory.itemIcon || "🌸"}</div>
+      <div className={`sg-memory-icon ${memoryArt(memory).thumb ? "has-art" : ""}`} style={{ border: `1.5px solid ${theme.frameSoft}` }}>{memoryArt(memory).thumb ? <img src={memoryArt(memory).thumb} alt="" /> : (memory.itemIcon || "🌸")}</div>
       <div className="sg-memory-item">{memory.itemName}</div>
       <div className="sg-memory-title" style={{ color: theme.accent }}>{memory.title}</div>
       <div className="sg-memory-divider" style={{ color: theme.frame }}>❖</div>
@@ -278,7 +297,9 @@ export function SpecialMemoryModal({ memory: memoryProp, characterAvatar, player
 }
 
 // 特別篇完結後顯示的入口：尚未凝結 → 生成並凝結；已凝結 → 直接查看紀念卡。
-export default function SpecialMemorySection({ episode, character, playerProfile, apiConfig }) {
+export default function SpecialMemorySection({ episode, character, playerProfile, apiConfig, tr, locale }) {
+  const uiLocale = locale || (typeof document !== "undefined" && document.documentElement.lang) || "zh-TW";
+  const localTr = typeof tr === "function" ? tr : (...translations) => translate(uiLocale, ...translations);
   const { specialMemories, addSpecialMemory } = useGacha();
   const [isCondensing, setIsCondensing] = useState(false);
   const [error, setError] = useState("");
@@ -287,7 +308,7 @@ export default function SpecialMemorySection({ episode, character, playerProfile
   const memory = specialMemories.find((item) => item.episodeId === episode.id);
   const characterAvatar = sanitizeUserImageUrl(character?.avatar || episode.characterAvatar);
   const playerAvatar = sanitizeUserImageUrl(playerProfile?.avatar);
-  const playerName = String(playerProfile?.name || "").trim() || "你";
+  const playerName = String(playerProfile?.name || "").trim() || localTr("你", "You", "あなた", "나");
   const condense = async () => {
     if (isCondensing || memory) return;
     setError("");
@@ -295,23 +316,23 @@ export default function SpecialMemorySection({ episode, character, playerProfile
     try {
       const generated = await generateSpecialMemorySummary({ episode, character, playerProfile, apiConfig });
       const created = addSpecialMemory({ episodeId: episode.id, title: generated.title, text: generated.memoryText, summary: generated.summary, monologue: generated.monologue });
-      if (!created) throw new Error("特別記憶建立失敗，請重試");
+      if (!created) throw new Error(localTr("特別記憶建立失敗，請重試", "Could not create the special memory. Please try again.", "特別な思い出を作成できませんでした。もう一度お試しください。", "특별한 추억을 만들지 못했어요. 다시 시도해 주세요."));
       setViewing(true);
     } catch (reason) {
-      setError(reason?.message || "特別記憶生成失敗，請稍後重試");
+      setError(reason?.message || localTr("特別記憶生成失敗，請稍後重試", "Could not generate the special memory. Please try again later.", "特別な思い出を生成できませんでした。後でもう一度お試しください。", "특별한 추억을 생성하지 못했어요. 잠시 후 다시 시도해 주세요."));
     } finally {
       setIsCondensing(false);
     }
   };
   return <div className="sg-memory-section">
-    <style>{`.sg-memory-section{display:flex;flex-direction:column;align-items:center;gap:7px;margin:14px auto 6px}.sg-memory-cta{border:1px solid #dfb9c6;border-radius:16px;padding:10px 19px;background:linear-gradient(135deg,#fff3f7,#ffe9f0);color:#a5526d;font-size:12px;font-weight:800;box-shadow:0 5px 16px rgba(180,100,130,.16)}.sg-memory-cta:disabled{opacity:.55}.sg-memory-cta.done{background:linear-gradient(135deg,#fff8e9,#ffeccd);border-color:#e2c795;color:#a2652f}.sg-memory-hint{color:var(--mp-txt-l,#a18a8c);font-size:10px}.sg-memory-error{border:0;background:transparent;color:#bd5277;font-size:11px;text-decoration:underline}`}</style>
+    <style>{`.sg-memory-section{display:flex;flex-direction:column;align-items:center;gap:7px;margin:14px auto 6px}.sg-memory-cta{border:1px solid #dfb9c6;border-radius:16px;padding:10px 19px;background:linear-gradient(135deg,#fff3f7,#ffe9f0);color:#a5526d;font-size:12px;font-weight:800;box-shadow:0 5px 16px rgba(180,100,130,.16)}.sg-memory-cta:disabled{opacity:.55}.sg-memory-cta.done{background:linear-gradient(135deg,#fff8e9,#ffeccd);border-color:#e2c795;color:#a2652f}.sg-memory-hint{color:var(--mp-txt-l,#a18a8c);font-size:11px}.sg-memory-error{border:0;background:transparent;color:#bd5277;font-size:11px;text-decoration:underline}`}</style>
     {memory
-      ? <button className="sg-memory-cta done" onClick={() => setViewing(true)}>✦ 查看特別記憶</button>
+      ? <button type="button" className="sg-memory-cta done" onClick={() => setViewing(true)}>✦ {localTr("查看特別記憶", "View special memory", "特別な思い出を見る", "특별한 추억 보기")}</button>
       : <>
-        <button className="sg-memory-cta" disabled={isCondensing} onClick={condense}>{isCondensing ? "記憶凝結中…" : "✦ 凝結成特別記憶"}</button>
-        <div className="sg-memory-hint">凝結後會化成一張可下載的紀念卡，並讓角色在日常聊天裡記得這段故事</div>
+        <button type="button" className="sg-memory-cta" disabled={isCondensing} onClick={condense}>{isCondensing ? localTr("記憶凝結中…", "Condensing memory…", "思い出を結晶化中…", "추억을 응축하는 중…") : `✦ ${localTr("凝結成特別記憶", "Condense into a special memory", "特別な思い出に結晶化", "특별한 추억으로 응축")}`}</button>
+        <div className="sg-memory-hint">{localTr("凝結後會化成一張可下載的紀念卡，並讓角色在日常聊天裡記得這段故事", "Once condensed, it becomes a downloadable memory card and the character remembers this story in everyday chat.", "結晶化するとダウンロードできる記念カードになり、キャラクターが日常の会話でこの物語を覚えています。", "응축하면 다운로드할 수 있는 기념 카드가 되고, 캐릭터가 일상 대화에서 이 이야기를 기억해요.")}</div>
       </>}
-    {error && <button className="sg-memory-error" onClick={condense}>{error}（點擊重試）</button>}
-    {viewing && memory && <SpecialMemoryModal memory={memory} characterAvatar={characterAvatar} playerAvatar={playerAvatar} playerName={playerName} onClose={() => setViewing(false)} />}
+    {error && <button type="button" className="sg-memory-error" onClick={condense}>{error}{localTr("（點擊重試）", " (tap to retry)", "（タップして再試行）", " (눌러서 다시 시도)")}</button>}
+    {viewing && memory && <SpecialMemoryModal memory={memory} characterAvatar={characterAvatar} playerAvatar={playerAvatar} playerName={playerName} tr={localTr} locale={uiLocale} onClose={() => setViewing(false)} />}
   </div>;
 }

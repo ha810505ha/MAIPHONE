@@ -7,6 +7,7 @@ import {
 } from "../../services/syncService";
 import { getDeviceId as getLocalDeviceId } from "../../utils/indexedDbStorage";
 import { SYNC_ENABLED } from "../../config/featureFlags";
+import SegmentedControl from "../common/SegmentedControl";
 
 const fieldStyle = {
   width: "100%",
@@ -246,27 +247,16 @@ export default function AccountSyncSettings({ tr, notify }) {
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", padding: 4, borderRadius: 999, background: "rgba(232,108,155,.09)" }}>
-                {["login", "register"].map((mode) => (
-                  <button
-                    key={mode}
-                    onClick={() => setFormMode(mode)}
-                    style={{
-                      border: "none",
-                      borderRadius: 999,
-                      padding: "9px 12px",
-                      fontWeight: 900,
-                      cursor: "pointer",
-                      color: formMode === mode ? "white" : "var(--mp-txt-l)",
-                      background: formMode === mode ? "linear-gradient(135deg,#ff9abd,#e86c9b)" : "transparent",
-                      boxShadow: formMode === mode ? "0 4px 11px rgba(218,91,140,.2)" : "none",
-                      transition: "all .18s ease",
-                    }}
-                  >
-                    {mode === "login" ? text("登入", "Sign in") : text("註冊", "Register")}
-                  </button>
-                ))}
-              </div>
+              <SegmentedControl
+                className="mp-account-mode-seg"
+                ariaLabel={text("登入或註冊", "Sign in or register", "ログインまたは登録", "로그인 또는 가입")}
+                items={[
+                  { id: "login", label: text("登入", "Sign in") },
+                  { id: "register", label: text("註冊", "Register") },
+                ]}
+                value={formMode}
+                onChange={setFormMode}
+              />
 
               <div style={iconFieldStyle}>
                 <Mail size={17} style={{ position: "absolute", left: 13, color: "#d8789c", pointerEvents: "none" }} />

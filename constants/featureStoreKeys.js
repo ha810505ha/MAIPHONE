@@ -17,6 +17,9 @@ export const FEATURE_EXPORTS = {
   yunyinSave: ["ent_yunyinSave", null],
   systemMailbox: ["ent_systemMailbox", null],
   dating: ["ent_dating", null],
+  storePurchases: ["ent_storePurchases", null],
+  // AI 花費本（MP-063）：整台裝置一本，不分人格；進全域備份，不進帳號雲端同步。
+  aiUsage: ["ent_aiUsage", null],
 };
 
 export const PERSONA_FEATURE_EXPORTS = {

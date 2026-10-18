@@ -54,7 +54,7 @@ const extractHostedText = (payload) => (
   || ""
 );
 
-async function callHostedTestRequest(messages, apiConfig, sysPrompt, options = {}) {
+async function callHostedTestRequest(messages, apiConfig, sysPrompt, options = {}, meter = null) {
   const runtime = getMaliTestRuntime();
   if (!runtime.session?.access_token) {
     throw new Error("測試 LLM 需要先登入可用的測試帳號");
@@ -87,11 +87,13 @@ async function callHostedTestRequest(messages, apiConfig, sysPrompt, options = {
   });
   const text = extractHostedText(payload);
   if (!text.trim()) throw new Error("測試 LLM 沒有回傳文字內容");
+  if (meter) meter.points = Number(payload?.pointsCharged || 0);
   return text;
 }
 
-async function callAIRequest(messages, apiConfig, sysPrompt, options = {}) {
-  if (isHostedTestMode(apiConfig)) return callHostedTestRequest(messages, apiConfig, sysPrompt, options);
+// meter：成功時把原始回應留給花費本讀 token／費用（MP-063），不影響回傳文字。
+async function callAIRequest(messages, apiConfig, sysPrompt, options = {}, meter = null) {
+  if (isHostedTestMode(apiConfig)) return callHostedTestRequest(messages, apiConfig, sysPrompt, options, meter);
   const { provider, baseUrl: configuredBaseUrl, apiKey, model } = apiConfig;
   const baseUrl = resolveRequestBaseUrl(provider, configuredBaseUrl);
   const request = (url, init) => fetchWithTimeout(url, init, {
@@ -151,6 +153,7 @@ async function callAIRequest(messages, apiConfig, sysPrompt, options = {}) {
     });
     const data = await res.json();
     if (data.error) throw httpError(data.error.message, res.status);
+    if (meter) meter.payload = data;
     return data.content?.[0]?.text || "";
   }
 
@@ -196,6 +199,7 @@ async function callAIRequest(messages, apiConfig, sysPrompt, options = {}) {
     const data = await res.json().catch(() => null);
     if (!res.ok || data?.error) throw httpError(data?.error?.message || `HTTP ${res.status}`, res.status);
     const out = (data?.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("");
+    if (meter) meter.payload = data;
     return out || "";
   }
 
@@ -271,6 +275,7 @@ async function callAIRequest(messages, apiConfig, sysPrompt, options = {}) {
       };
       throw error;
     }
+    if (meter) meter.payload = responsePayloads;
     return finalText;
   }
 
@@ -305,7 +310,14 @@ async function callAIRequest(messages, apiConfig, sysPrompt, options = {}) {
   const res = await request(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ model, messages: apiMsgs, ...completionLimit, ...(temperature == null ? {} : { temperature }) }),
+    body: JSON.stringify({
+      model,
+      messages: apiMsgs,
+      ...completionLimit,
+      ...(temperature == null ? {} : { temperature }),
+      // 讓 OpenRouter 在回應附上這次實際扣的金額，花費本記實扣。
+      ...(provider === "openrouter" ? { usage: { include: true } } : {}),
+    }),
   });
 
   let data = null;
@@ -336,12 +348,37 @@ async function callAIRequest(messages, apiConfig, sysPrompt, options = {}) {
     }
     throw httpError(`[${provider}/${model}] ${rawMsg}`, data.error.code ?? res.status);
   }
+  if (meter) meter.payload = data;
   return data?.choices?.[0]?.message?.content || "";
 }
 
+// 記帳模組延後載入：只有真的叫過 AI 才需要，也讓 Node 測試匯入本檔時不碰 IndexedDB。
+function reportAiUsage(apiConfig, options, meter) {
+  const hosted = isHostedTestMode(apiConfig);
+  if (!hosted && !meter.payload) return;
+  import("./aiUsage/aiUsageStore.js")
+    .then(async ({ recordAiUsage }) => {
+      const { extractAiUsage } = await import("./aiUsage/aiUsageCore.js");
+      const provider = hosted ? "mali" : String(apiConfig?.provider || "unknown");
+      recordAiUsage({
+        provider,
+        model: hosted ? apiConfig?.hostedTestModel : apiConfig?.model,
+        app: options.app || options.feature || "other",
+        action: options.action || "generate",
+        usage: hosted ? null : extractAiUsage(provider, meter.payload),
+        isLocal: !hosted && isLocalConnection(provider, apiConfig?.baseUrl),
+        points: hosted ? meter.points ?? 0 : null,
+      });
+    })
+    .catch(() => {});
+}
+
 async function callAI(messages, apiConfig, sysPrompt, options = {}) {
+  const meter = { payload: null, points: null };
   try {
-    return await callAIRequest(messages, apiConfig, sysPrompt, options);
+    const text = await callAIRequest(messages, apiConfig, sysPrompt, options, meter);
+    try { reportAiUsage(apiConfig, options, meter); } catch (_) {}
+    return text;
   } catch (error) {
     recordRuntimeDiagnostic({
       kind: "ai-error",

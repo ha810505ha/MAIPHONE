@@ -12,6 +12,8 @@ export function MaliPhoneWalletSurface({
   closeApp,
   displayWalletText,
   formatMoney,
+  openRouterKey,
+  openRouterKeyType,
   sanitizeUserImageUrl,
   setWallet,
   showToast,
@@ -44,6 +46,8 @@ export function MaliPhoneWalletSurface({
       displayWalletText={displayWalletText}
       sanitizeUserImageUrl={sanitizeUserImageUrl}
       showToast={showToast}
+      openRouterKey={openRouterKey}
+      openRouterKeyType={openRouterKeyType}
     />
   );
 }

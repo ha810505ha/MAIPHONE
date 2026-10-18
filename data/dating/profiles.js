@@ -12,6 +12,7 @@
 import { LOCAL_ONE_PROFILES } from "./profileGroups/localOne.js";
 import { LOCAL_TWO_PROFILES } from "./profileGroups/localTwo.js";
 import { INTERNATIONAL_PROFILES } from "./profileGroups/international.js";
+import { COMMUNITY_PROFILES } from "./profileGroups/community.js";
 
 /**
  * 信風只是一張公開展示板；這個 id 才是角色在小手機裡的永久身份。
@@ -36,4 +37,5 @@ export const DATING_PROFILES = Object.freeze([
   ...LOCAL_ONE_PROFILES,
   ...LOCAL_TWO_PROFILES,
   ...INTERNATIONAL_PROFILES,
+  ...COMMUNITY_PROFILES,
 ].map(attachCanonicalCharacterIdentity));

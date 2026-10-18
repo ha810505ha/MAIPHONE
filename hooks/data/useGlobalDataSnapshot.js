@@ -40,6 +40,7 @@ import {
   saveLocalSnapshot,
 } from "../../services/backup/localSnapshotService";
 import { recordRuntimeDiagnostic } from "../../services/diagnostics/runtimeDiagnostics";
+import { downloadTextSyncMedia, uploadTextSyncMedia } from "../../services/cloud/cloudMediaService.js";
 import { mergeWalletSyncData } from "../../utils/walletSync";
 import { summarizeBackupContent } from "../../utils/backupInspect";
 import { mergeGameProgressSyncData } from "../../utils/gameProgressSync";
@@ -424,10 +425,12 @@ export default function useGlobalDataSnapshot({
     };
   }, { source: "snapshot" });
 
-  const getTextSyncDocument = async () => {
+  const getTextSyncDocument = async ({ session, environment, onMediaSync } = {}) => {
     const backup = await getAppStateSnapshot();
     const appState = unpackBackupMedia(backup.state, backup.assets);
-    return createTextSyncDocument(appState, { version: VERSION });
+    const media = session ? await uploadTextSyncMedia(appState, { session, environment }) : null;
+    onMediaSync?.(media);
+    return createTextSyncDocument(appState, { version: VERSION, mediaRefs: media?.mediaRefs });
   };
 
   const validateImportedAppState = (incoming) => {
@@ -709,25 +712,31 @@ export default function useGlobalDataSnapshot({
 
   const applyImportedAppState = (incoming, options) => runProtectedRestore(() => incoming, options);
 
-  const applyTextSyncDocument = (incoming) => runProtectedRestore((localBackup) => {
+  const applyTextSyncDocument = async (incoming, { session, environment, onMediaSync } = {}) => {
+    let media;
+    const result = await runProtectedRestore(async (localBackup) => {
     const document = validateTextSyncDocument(incoming);
     // Keep media, feature stores, local-only data, and device secrets on this
     // device. The remote document only becomes authoritative for text state.
     const localState = unpackBackupMedia(localBackup.state, localBackup.assets);
-    const mergedState = preserveLocalMedia(document.state, localState);
+    // Pull referenced cloud images before the restore transaction starts; local
+    // images and anything that fails to download stay as they are on this device.
+    media = await downloadTextSyncMedia(document.state, localState, { session, environment });
+    const mergedState = media.state;
+    const remoteFeatureData = mergedState.featureData || {};
     // Merge shared progress explicitly. Media-related and unsupported feature
     // stores remain local to this device.
-    const gameProgress = mergeGameProgressSyncData(localState.featureData || {}, document.state.featureData || {});
+    const gameProgress = mergeGameProgressSyncData(localState.featureData || {}, remoteFeatureData);
     mergedState.featureData = {
       ...(localState.featureData || {}),
-      ...(document.state.featureData || {}),
+      ...remoteFeatureData,
       ...gameProgress,
     };
     const walletData = mergeWalletSyncData({
       wallet: localState.wallet,
       characterWallets: localState.characterWallets,
       transfers: localState.transfers,
-    }, document.state.walletData);
+    }, mergedState.walletData);
     mergedState.wallet = walletData.wallet;
     mergedState.characterWallets = walletData.characterWallets;
     mergedState.transfers = walletData.transfers;
@@ -741,7 +750,10 @@ export default function useGlobalDataSnapshot({
       state: mergedState,
     };
     return appState;
-  }, { source: "text-sync" });
+    }, { source: "text-sync" });
+    onMediaSync?.({ downloaded: media?.downloaded || 0, failed: media?.failed || 0 });
+    return result;
+  };
 
   return {
     persistenceSnapshot,

@@ -170,17 +170,19 @@ async function decodeGallerySource(source) {
  */
 export async function compressImageForGallery(source, options = {}) {
   const maxBytes = Number(options.maxBytes) > 0 ? Number(options.maxBytes) : GALLERY_MAX_BYTES;
-  const mimeType = supportsWebp() ? "image/webp" : "image/jpeg";
+  const maxEdge = Number(options.maxEdge) > 0 ? Math.floor(Number(options.maxEdge)) : 0;
+  const maxEdges = maxEdge ? [1, 0.8, 0.6, 0.4, 0.2].map((scale) => Math.max(1, Math.floor(maxEdge * scale))) : GALLERY_MAX_EDGES;
+  const mimeType = supportsWebp() ? "image/webp" : options.preserveAlpha ? "image/png" : "image/jpeg";
   const decoded = await decodeGallerySource(source);
   try {
     let picked = null;
     const canvas = createResizeCanvas(1, 1);
-    for (const maxEdge of GALLERY_MAX_EDGES) {
+    for (const maxEdge of maxEdges) {
       const longest = Math.max(decoded.width, decoded.height);
       const scale = longest > maxEdge ? maxEdge / longest : 1;
       canvas.width = Math.max(1, Math.round(decoded.width * scale));
       canvas.height = Math.max(1, Math.round(decoded.height * scale));
-      const context = canvas.getContext("2d", { alpha: false });
+      const context = canvas.getContext("2d", { alpha: !!options.preserveAlpha });
       if (!context) throw new Error("Canvas 不可用");
       context.drawImage(decoded.image, 0, 0, canvas.width, canvas.height);
       for (const quality of GALLERY_QUALITIES) {

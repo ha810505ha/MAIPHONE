@@ -7,6 +7,15 @@ const name = (profileId) => findProfile(profileId)?.profile.name || profileId;
 const uiLocale = () => (typeof document !== "undefined" && document.documentElement.lang) || "zh-TW";
 const when = (time) => (time ? new Date(time).toLocaleDateString(uiLocale(), { month: "numeric", day: "numeric" }) : "");
 
+// superLikeLog 回補帳目的來源文案（MP-051）。新來源記得補這裡，否則顯示「系統補發」。
+const GRANT_SOURCE_LABELS = {
+  weekly: (tr) => tr("每週補滿", "Weekly refill", "週次補充", "주간 충전"),
+  contact: (tr) => tr("交換聯絡方式", "Exchanged contacts", "連絡先交換", "연락처 교환"),
+  report: (tr) => tr("檢舉成立", "Report upheld", "通報成立", "신고 승인"),
+  shop: (tr) => tr("商店購買", "Store purchase", "ストア購入", "상점 구매"),
+  loginStreak: (tr) => tr("連續登入第 7 天", "Day 7 login streak", "7日連続ログイン", "7일 연속 로그인"),
+};
+
 /**
  * 帳號後台：SL 餘額、官方通知、封鎖名單、檢舉紀錄。
  * 封鎖與檢舉的「動作」刻意留在對方的檔案頁——那是形成判斷的地方；
@@ -24,14 +33,26 @@ export default function DatingSystemPanel({ state, onClaim, onUnblock, tr = (zhT
         <div className="dt-sg-t">Super Like</div>
         <div className="dt-sl-count"><span>{superLikes}</span> {tr("個可用", "available", "個使用可能", "개 사용 가능")}</div>
         <div className="dt-me-hint">{tr(
-          "Super Like 大幅提高配對成功率，對方也會知道你用了，回覆通常更快。協助檢舉違規帳號可以獲得更多。",
-          "Super Likes greatly boost your match rate. They'll know you used one, and usually reply faster. Help report rule-breaking accounts to earn more.",
-          "Super Likeを使うとマッチ率が大きく上がり、相手にも伝わるので返信も早くなりがちです。違反アカウントの通報に協力すると追加でもらえます。",
-          "Super Like는 매칭 확률을 크게 높여 줘요. 상대도 알게 되어 보통 답장이 더 빨라요. 위반 계정 신고에 협조하면 더 받을 수 있어요.",
+          "Super Like 大幅提高配對成功率，對方也會知道你用了，回覆通常更快。每週一補滿到 3、交換聯絡方式 +1、檢舉成立 +2，商店也可購買。",
+          "Super Likes greatly boost your match rate. They'll know you used one, and usually reply faster. Refilled to 3 every Monday, +1 for exchanging contacts, +2 for an upheld report, and available in the Store.",
+          "Super Likeを使うとマッチ率が大きく上がり、相手にも伝わるので返信も早くなりがちです。毎週月曜に3個まで補充、連絡先交換で+1、通報成立で+2、ストアでも購入できます。",
+          "Super Like는 매칭 확률을 크게 높여 줘요. 상대도 알게 되어 보통 답장이 더 빨라요. 매주 월요일 3개까지 충전, 연락처 교환 +1, 신고 승인 +2, 상점에서도 구매할 수 있어요.",
         )}</div>
         {superLikeLog.length > 0 && (
           <div className="dt-sl-log">
             {superLikeLog.map((item) => {
+              // 回補帳目（status "granted"）沒有對象，左欄改顯示來源，右欄顯示 +N。
+              if (item.status === "granted") {
+                const sourceLabel = GRANT_SOURCE_LABELS[item.source]
+                  ? GRANT_SOURCE_LABELS[item.source](tr)
+                  : tr("系統補發", "System grant", "システム付与", "시스템 지급");
+                return (
+                  <div key={`granted-${item.source}-${item.at}`} className="dt-slog">
+                    <span>{sourceLabel}{item.at ? ` · ${when(item.at)}` : ""}</span>
+                    <span className="dt-slog-s granted">+{Math.max(1, Number(item.count) || 1)}</span>
+                  </div>
+                );
+              }
               const status = item.status === "matched" ? tr("已配對", "Matched", "マッチ済み", "매칭됨")
                 : item.status === "silent" ? tr("未回應", "No response", "反応なし", "응답 없음")
                   : tr("等待中", "Waiting", "待機中", "대기 중");

@@ -121,9 +121,7 @@ console.log("ok: zh-CN conversion, overrides, UI text, and changelog fallback st
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const appDirectory = path.join(repoRoot, "components", "apps");
-const nonLocalizedApps = new Set([
-  "DatingApp.jsx",
-]);
+const nonLocalizedApps = new Set([]);
 
 for (const fileName of fs.readdirSync(appDirectory).filter((file) => file.endsWith(".jsx"))) {
   if (nonLocalizedApps.has(fileName)) continue;

@@ -1,6 +1,13 @@
 import { toSimplifiedChinese } from "../utils/i18n.js";
 
 const ZH_CHANGELOG = {
+  "1.5.0": [
+    "10/19 更新",
+    "櫻色誓約｜正式開放！在遊戲中心召喚心意卡、收集珍藏，送給喜歡的角色就能展開「特別篇」，可以選擇面對面相處或隔著手機聊天。",
+    "系統信箱｜送上櫻色誓約開放紀念：10,000 靈魂結晶。",
+    "雲端同步｜上傳前會先比對版本，避免蓋掉其他裝置較新的進度，雲端也會保留最近 3 份舊版；頭像、聊天背景與桌布也能一起同步。",
+    "錢包｜新增「AI 花費本」，每次 AI 呼叫的用量與費用都記在這裡。",
+  ],
   "1.4.6": [
     "10/14 修正更新",
     "雲端同步｜修正下載雲端資料時可能拿到舊版本，以及上傳時可能蓋掉其他裝置較新進度的問題。",
@@ -180,6 +187,29 @@ const ZH_CHANGELOG = {
 };
 
 const TRANSLATED_CHANGELOG = {
+  "1.5.0": {
+    en: [
+      "10/19 Update",
+      "Sakura Vow | Now open! Summon heartfelt cards in the Game Center, build your collection, and give a card to a character you love to begin a special episode, either face to face or over the phone.",
+      "System mailbox | A Sakura Vow launch gift: 10,000 Soul Crystals.",
+      "Cloud sync | Uploads now check versions first so newer progress from another device isn't overwritten, and the cloud keeps your 3 most recent older copies. Avatars, chat backgrounds, and wallpapers can sync too.",
+      "Wallet | Added the AI cost book, which records the usage and cost of every AI call.",
+    ],
+    ja: [
+      "10/19 アップデート",
+      "桜色の誓い｜正式オープン！ゲームセンターで想いのカードを召喚してコレクションし、お気に入りのキャラクターに贈ると「特別編」が始まります。会って過ごすか、スマホ越しに話すかを選べます。",
+      "システムメール｜桜色の誓いオープン記念として、魂の結晶 10,000 個をお届けします。",
+      "クラウド同期｜アップロード前にバージョンを照合し、他の端末の新しい進行状況を上書きしないようにしました。クラウドには直近3件の旧データも保存されます。アバター、チャット背景、壁紙も同期できます。",
+      "ウォレット｜「AI 費用帳」を追加し、AI を呼び出すたびの利用量と費用を記録します。",
+    ],
+    ko: [
+      "10/19 업데이트",
+      "벚꽃빛 서약 | 정식 오픈! 게임 센터에서 마음의 카드를 소환해 모으고, 좋아하는 캐릭터에게 선물하면 「특별편」이 시작돼요. 직접 만나거나 휴대폰 너머로 대화하는 방식 중 고를 수 있어요.",
+      "시스템 우편함 | 벚꽃빛 서약 오픈 기념으로 영혼의 결정 10,000개를 보내 드려요.",
+      "클라우드 동기화 | 업로드 전에 버전을 먼저 비교해 다른 기기의 최신 진행 상황을 덮어쓰지 않도록 했고, 클라우드에 최근 이전 버전 3개를 보관해요. 아바타, 채팅 배경, 배경화면도 함께 동기화할 수 있어요.",
+      "지갑 | 「AI 비용 장부」를 추가해 AI를 호출할 때마다 사용량과 비용을 기록해요.",
+    ],
+  },
   "1.4.6": {
     en: [
       "10/14 Fix Update",

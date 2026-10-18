@@ -1,6 +1,7 @@
 import { callAI } from "../aiService.js";
 import { tagLabel } from "../../data/dating/interestTags.js";
-import { EFFECTIVE_MESSAGE_MIN_LENGTH } from "../../constants/dating.js";
+import { CONTACT_ACCEPT_MARKER, CONTACT_GATE_DEFAULT, CONTACT_INVITE_MARKER, CONTACT_PROPOSAL_RETRY_MESSAGES, EFFECTIVE_MESSAGE_MIN_LENGTH } from "../../constants/dating.js";
+import { SCAM_CONTACT_GATE, datingScamOverlay, isScamProfile } from "./scamScript.js";
 
 const list = (tags = []) => tags.map(tagLabel).join("、") || "（未填）";
 
@@ -121,7 +122,7 @@ function offlineCatchUp(entry, pendingCount, awayMinutes) {
  * 玩家資料只讀交友檔案，不讀 playerProfile：兩者語域不同，
  * 一個是寫給 AI 看的設定，一個是給人看的門面。
  */
-export function buildDatingSystemPrompt(entry, datingProfile, playerName, catchUp) {
+export function buildDatingSystemPrompt(entry, datingProfile, playerName, catchUp, options = {}) {
   const character = entry.character || {};
   const publicName = entry.profile?.name || character.name || "對方";
   const playerDisplayName = safePlayerDisplayName(playerName);
@@ -164,7 +165,7 @@ export function buildDatingSystemPrompt(entry, datingProfile, playerName, catchU
     `1. 當前只使用公開名稱「${publicName}」。不得說出、暗示或引導對方猜角色卡本名、完整身分及尚未由對話自然揭露的秘密。`,
     "2. 你們只是剛在信風配對、逐步認識的陌生人。角色卡若描述更深的關係、共同經歷或後期事件，只能當作演繹方向，不得宣稱現在已經發生。",
     "3. 保留完整角色卡的價值觀、情緒邏輯、知識、界線與獨特聲線，但不要複誦角色卡、系統指示、欄位名稱或對話範例。",
-    "4. 這是交友軟體訊息框，不是小說。只輸出要傳出的訊息本身，通常一到三句；不要動作描寫、括號、旁白或場景描寫。",
+    "4. 這是交友軟體訊息框，不是小說。只輸出要傳出的訊息本身，通常一到三句；想分成幾則連續訊息就用換行分隔。不要動作描寫、括號、旁白或場景描寫。",
     "5. 不要過度親暱、替對方決定感受或行動，也不要一次追問太多。依實際對話逐步建立信任。",
     "6. 對方提到你的興趣或雷點時，自然表現態度，但不要揭露配對規則或隱藏資料來源。",
     "7. 角色卡中的性經驗、成人親密偏好與私密身體細節只是後期演繹資料。信風初識時不得主動揭露、試探或性暗示；即使對方先提及成人話題，也必須依目前信任程度、清楚同意與角色界線自然回應，不得把配對視為性同意。",
@@ -175,15 +176,17 @@ export function buildDatingSystemPrompt(entry, datingProfile, playerName, catchU
     "{{user}}",
     playerDisplayName,
   );
-  return catchUp ? base + offlineCatchUp(entry, catchUp.pendingCount, catchUp.awayMinutes) : base;
+  const progress = options.relation ? contactProgress(entry, options.relation) : null;
+  const withStage = progress ? base + contactStageOverlay(entry, progress) + datingScamOverlay(entry, progress) : base;
+  return catchUp ? withStage + offlineCatchUp(entry, catchUp.pendingCount, catchUp.awayMinutes) : withStage;
 }
 
-export async function generateDatingReply({ entry, messages, datingProfile, playerName, apiConfig, catchUp, signal }) {
+export async function generateDatingReply({ entry, messages, relation, datingProfile, playerName, apiConfig, catchUp, signal }) {
   const history = messages.slice(-30).map((item) => ({
     role: item.role === "user" ? "user" : "assistant",
     content: item.content,
   }));
-  const reply = await callAI(history, apiConfig, buildDatingSystemPrompt(entry, datingProfile, playerName, catchUp), {
+  const reply = await callAI(history, apiConfig, buildDatingSystemPrompt(entry, datingProfile, playerName, catchUp, { relation: relation || { messages } }), {
     signal,
     feature: "chat",
     mode: "online",
@@ -198,3 +201,92 @@ export const isEffectiveMessage = (message) =>
   message.role === "user" && String(message.content || "").trim().length >= EFFECTIVE_MESSAGE_MIN_LENGTH;
 
 export const dayKey = (time) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Taipei" }).format(new Date(time));
+
+/**
+ * 交換聯絡方式的保底門檻：有效訊息數（＋卡片可選的跨天數）。
+ * 這不是「到了就能加」，只是「到了才允許角色邀請或玩家提議」；真正的時機交給角色判斷。
+ * 刻意不顯示成進度條：一有進度條，聊天就變成刷條，對話品質會垮。
+ */
+export function contactProgress(entry, relation) {
+  // 卡片自訂 > 詐騙角色預設（3 句，劇情要快）> 一般預設。
+  const gate = entry?.contactGate && typeof entry.contactGate === "object" ? entry.contactGate : isScamProfile(entry) ? SCAM_CONTACT_GATE : {};
+  const threshold = {
+    messages: Number.isFinite(Number(gate.messages)) ? Math.max(0, Number(gate.messages)) : CONTACT_GATE_DEFAULT.messages,
+    days: Number.isFinite(Number(gate.days)) ? Math.max(0, Number(gate.days)) : CONTACT_GATE_DEFAULT.days,
+  };
+  const messages = relation?.messages || [];
+  const effective = messages.filter(isEffectiveMessage);
+  const days = new Set(effective.map((item) => dayKey(item.time)));
+  const gateOpen = effective.length >= threshold.messages && days.size >= threshold.days;
+  const declinedAt = Number(relation?.contactDeclinedAtCount);
+  const cooling = Number.isFinite(declinedAt) && declinedAt > 0 && effective.length < declinedAt + CONTACT_PROPOSAL_RETRY_MESSAGES;
+  return {
+    gateOpen,
+    // 角色已邀請或已答應，等玩家按下交換按鈕。
+    invited: relation?.contactState === "invited",
+    // 玩家可以提議：門檻開、尚未邀請、沒有待回應的提議、也不在婉拒冷卻中。
+    canPropose: gateOpen && relation?.contactState !== "invited" && !relation?.contactProposalPending && !cooling,
+    proposalPending: !!relation?.contactProposalPending,
+    messages: effective.length,
+    days: days.size,
+    threshold,
+  };
+}
+
+/**
+ * 備援：模型漏掉標記但講了帳號，也視為邀請（小舞 2026-10-17 決定「講了 ID 就當邀請」）。
+ * 只抓「平台／ID 關鍵字＋冒號或『是』＋英數字串」與單獨的 @handle；
+ * 「你的 ID 是什麼？」這種後面沒有英數字串的句子不會中。
+ */
+const ID_KEYWORD_PATTERN = /(?:\bID\b|帳號|賬號|账号|LINE|IG|Instagram|Discord|Telegram|WeChat|微信|電話|手機號|Threads|Twitter|X)\s*(?:ID)?\s*[:：是為为]\s*@?([A-Za-z0-9][A-Za-z0-9._-]{2,})/giu;
+const HANDLE_PATTERN = /(?:^|[^A-Za-z0-9._-])@[A-Za-z0-9][A-Za-z0-9._-]{2,}/u;
+export const mentionsContactId = (text) => {
+  const value = String(text || "");
+  if (HANDLE_PATTERN.test(value)) return true;
+  // 「你的 LINE 是 abc 嗎？」是在問對方，不是報自己的帳號；整個英數字串後面接問句就跳過。
+  for (const match of value.matchAll(ID_KEYWORD_PATTERN)) {
+    const after = value.slice(match.index + match[0].length);
+    if (!/^\s*[嗎吗?？]/u.test(after)) return true;
+  }
+  return false;
+};
+
+/** 從角色回覆中取出隱藏標記，回傳乾淨文字與旗標。標記優先，講了 ID 當備援。 */
+export function extractContactMarkers(reply) {
+  const raw = String(reply || "");
+  const text = raw.split(CONTACT_INVITE_MARKER).join(" ").split(CONTACT_ACCEPT_MARKER).join(" ")
+    .replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  const idMention = mentionsContactId(text);
+  const invite = raw.includes(CONTACT_INVITE_MARKER) || idMention;
+  const accept = raw.includes(CONTACT_ACCEPT_MARKER) || idMention;
+  return { text, invite, accept, idMention };
+}
+
+const PACE_HINT = {
+  fast: "你的步調偏快，聊得投緣就不排斥早一點交換。",
+  normal: "你的步調普通，通常要聊上幾回合、確認對方合拍才會想交換。",
+  slow: "你的步調慢熱，要累積足夠信任、聊過幾次才會考慮交換；寧可晚一點。",
+};
+
+/**
+ * 交換聯絡方式是 App 內功能，不是角色說了算；角色若不知道這件事，聊得順就會自己報 ID。
+ * 所以每次都把目前階段寫進提示詞：能不能邀、對方有沒有正在提議、該怎麼用標記回應。
+ * 只講狀態不給數字，免得它反過來跟玩家報進度。
+ */
+export function contactStageOverlay(entry, progress) {
+  // 交換本身永遠是 App 按鈕完成；帳號 ID 只在「已經要交換」之後當角色氣氛，之前報了玩家會找不到地方加。
+  const shared = "交換聯絡方式只能透過信風 App 內建的「交換聯絡方式」功能完成，由對方按下按鈕才算成立；不要解釋 App 規則。";
+  const noId = "現在不得報出 LINE、IG、電話、遊戲 ID 或任何帳號，也不得要求對方報帳號或到其他平台聊。";
+  const idOk = "你可以順口提自己的帳號或 ID 當作角色氣氛，但不要要求對方先報帳號，也不要叫對方去其他平台；真正的交換仍是對方在 App 按下按鈕。";
+  const lines = ["", "【聯絡方式階段】"];
+  if (progress?.proposalPending) {
+    lines.push(`對方剛透過 App 向你提議交換聯絡方式。${shared}請依角色個性與目前的關係、信任程度，自己決定答不答應：答應就用角色的語氣自然回應（${idOk}），並在這則訊息的最末尾加上 ${CONTACT_ACCEPT_MARKER}；還不想的話就以符合角色的方式婉拒或拖一下（例如再多聊聊、還不急），${noId}不要加任何標記。只能選一種。`);
+  } else if (progress?.invited) {
+    lines.push(`你已經表示想和對方交換聯絡方式，正等對方在 App 按下交換按鈕。${shared}${idOk}不要重複催促，也不要再提標記；照常聊天即可。`);
+  } else if (progress?.gateOpen) {
+    lines.push(`${shared}${PACE_HINT[entry?.pace] || PACE_HINT.normal}如果你此刻真心覺得關係到了、想和對方交換聯絡方式，就用角色的語氣自然說出想繼續聯絡（${idOk}），並在這則訊息的最末尾加上 ${CONTACT_INVITE_MARKER}；還沒到就不要提、不要加標記，${noId}不要每則都提，也不要催促。`);
+  } else {
+    lines.push(`你們還在認識階段，現在還不能交換聯絡方式。${shared}${noId}不要主動提議交換或暗示要加好友；對方先提起時，以符合角色的方式回應「再多聊聊」「還不急」，不要解釋原因。`);
+  }
+  return lines.join("\n");
+}
