@@ -1,8 +1,10 @@
-/* global window */
+/* global window, location */
 // 隱私權政策內容（五語系）。依 2026-10-15 實際資料流撰寫，並經 Codex 對照程式審閱。
 // 資料流改變時（新增第三方、同步範圍、刪帳流程、AI 服務商）須同步更新本檔與 terms-content.js。
 (function () {
   var MAIL = '<a href="mailto:support@maliphone.com">support@maliphone.com</a>';
+  // 正式網域 maliphone.com 尚未公開（小舞 2026-10-19）：GitHub Pages 等其他網域不寫出網址，只說有網頁版。
+  var OFFICIAL = /(^|\.)maliphone\.com$|^maliphone(-test)?\.pages\.dev$|^localhost$|^127\.0\.0\.1$/.test(location.hostname);
   var GPOLICY = '<a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener">Google API Services User Data Policy</a>';
   var YT_TOS = '<a href="https://www.youtube.com/t/terms" target="_blank" rel="noopener">';
   var G_PRIV = '<a href="https://policies.google.com/privacy" target="_blank" rel="noopener">';
@@ -13,7 +15,7 @@
     title: "MaliPhone 隱私權政策",
     updated: "生效日期：2026 年 10 月 15 日",
     intro: [
-      "MaliPhone 是一支放在瀏覽器裡的小手機，你可以在這裡和 AI 角色聊天、經營生活、玩小遊戲。網頁版位於 maliphone.com，另有 Android 版。本服務由個人開發者營運，沒有成立公司。",
+      (OFFICIAL ? "MaliPhone 是一支放在瀏覽器裡的小手機，你可以在這裡和 AI 角色聊天、經營生活、玩小遊戲。網頁版位於 maliphone.com，另有 Android 版。本服務由個人開發者營運，沒有成立公司。" : "MaliPhone 是一支放在瀏覽器裡的小手機，你可以在這裡和 AI 角色聊天、經營生活、玩小遊戲。有網頁版，另有 Android 版。本服務由個人開發者營運，沒有成立公司。"),
       "這份政策用白話說明：營運者會碰到哪些資料、為什麼需要、會交給誰，以及你可以怎麼管理。依台灣《個人資料保護法》應告知的事項，也都寫在下面。"
     ],
     summary: [
@@ -107,7 +109,7 @@
     title: "MaliPhone 隐私政策",
     updated: "生效日期：2026 年 10 月 15 日",
     intro: [
-      "MaliPhone 是一部放在浏览器里的小手机，你可以在这里和 AI 角色聊天、经营生活、玩小游戏。网页版位于 maliphone.com，另有 Android 版。本服务由个人开发者运营，没有成立公司。",
+      (OFFICIAL ? "MaliPhone 是一部放在浏览器里的小手机，你可以在这里和 AI 角色聊天、经营生活、玩小游戏。网页版位于 maliphone.com，另有 Android 版。本服务由个人开发者运营，没有成立公司。" : "MaliPhone 是一部放在浏览器里的小手机，你可以在这里和 AI 角色聊天、经营生活、玩小游戏。有网页版，另有 Android 版。本服务由个人开发者运营，没有成立公司。"),
       "这份政策用白话说明：运营者会接触哪些数据、为什么需要、会交给谁，以及你可以怎么管理。依台湾《个人资料保护法》应告知的事项，也都写在下面。"
     ],
     summary: [
@@ -201,7 +203,7 @@
     title: "MaliPhone Privacy Policy",
     updated: "Effective date: October 15, 2026",
     intro: [
-      "MaliPhone is a little phone that lives in your browser. You can chat with AI characters, run your daily life, and play small games. The web version is at maliphone.com, and there is also an Android version. The service is run by an individual developer, not a company.",
+      (OFFICIAL ? "MaliPhone is a little phone that lives in your browser. You can chat with AI characters, run your daily life, and play small games. The web version is at maliphone.com, and there is also an Android version. The service is run by an individual developer, not a company." : "MaliPhone is a little phone that lives in your browser. You can chat with AI characters, run your daily life, and play small games. There is a web version and an Android version. The service is run by an individual developer, not a company."),
       "This policy explains in plain language what data we touch, why we need it, who it goes to, and how you can manage it. The notices required under Taiwan's Personal Data Protection Act are also included below."
     ],
     summary: [
@@ -295,7 +297,7 @@
     title: "MaliPhone プライバシーポリシー",
     updated: "施行日：2026年10月15日",
     intro: [
-      "MaliPhone は、ブラウザの中にある小さなスマートフォンです。AI キャラクターとのチャット、生活の運営、ミニゲームなどを楽しめます。Web 版は maliphone.com にあり、Android 版もあります。本サービスは会社ではなく、個人開発者が運営しています。",
+      (OFFICIAL ? "MaliPhone は、ブラウザの中にある小さなスマートフォンです。AI キャラクターとのチャット、生活の運営、ミニゲームなどを楽しめます。Web 版は maliphone.com にあり、Android 版もあります。本サービスは会社ではなく、個人開発者が運営しています。" : "MaliPhone は、ブラウザの中にある小さなスマートフォンです。AI キャラクターとのチャット、生活の運営、ミニゲームなどを楽しめます。Web 版と Android 版があります。本サービスは会社ではなく、個人開発者が運営しています。"),
       "このポリシーでは、どのようなデータを扱うのか、なぜ必要なのか、誰に渡すのか、そしてあなたがどう管理できるのかを、わかりやすい言葉で説明します。「個人情報保護法」（台湾）に基づいて通知すべき事項も、以下にすべて記載しています。"
     ],
     summary: [
@@ -389,7 +391,7 @@
     title: "MaliPhone 개인정보 처리방침",
     updated: "시행일: 2026년 10월 15일",
     intro: [
-      "MaliPhone은 브라우저 안에 있는 작은 휴대폰입니다. 여기에서 AI 캐릭터와 채팅하고, 생활을 꾸리고, 미니 게임을 즐길 수 있습니다. 웹 버전은 maliphone.com에 있으며 Android 버전도 있습니다. 본 서비스는 회사가 아닌 개인 개발자가 운영합니다.",
+      (OFFICIAL ? "MaliPhone은 브라우저 안에 있는 작은 휴대폰입니다. 여기에서 AI 캐릭터와 채팅하고, 생활을 꾸리고, 미니 게임을 즐길 수 있습니다. 웹 버전은 maliphone.com에 있으며 Android 버전도 있습니다. 본 서비스는 회사가 아닌 개인 개발자가 운영합니다." : "MaliPhone은 브라우저 안에 있는 작은 휴대폰입니다. 여기에서 AI 캐릭터와 채팅하고, 생활을 꾸리고, 미니 게임을 즐길 수 있습니다. 웹 버전과 Android 버전이 있습니다. 본 서비스는 회사가 아닌 개인 개발자가 운영합니다."),
       "이 방침은 어떤 데이터를 다루는지, 왜 필요한지, 누구에게 전달되는지, 그리고 이용자가 어떻게 관리할 수 있는지를 쉬운 말로 설명합니다. 「개인정보 보호법」(대만)에 따라 알려야 하는 사항도 아래에 모두 적었습니다."
     ],
     summary: [

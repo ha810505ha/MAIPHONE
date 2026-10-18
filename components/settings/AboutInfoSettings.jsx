@@ -8,7 +8,7 @@ import {
 } from "../../services/diagnostics/runtimeDiagnostics.js";
 import { explainError } from "../../services/diagnostics/errorExplain.js";
 import { normalizeUiLanguage } from "../../utils/i18n.js";
-import { getPrivacyUrl, getTermsUrl } from "../../utils/privacyUrl.js";
+import { canShowOfficialContact, getPrivacyUrl, getTermsUrl } from "../../utils/privacyUrl.js";
 import { BUILD_ID } from "../../utils/buildVersion";
 
 export const SUPPORT_EMAIL = "support@maliphone.com";
@@ -145,6 +145,7 @@ export default function AboutInfoSettings({ tr, version, currentChangelogTitle, 
                   </div>
                 )}
               </div>
+              {canShowOfficialContact() && (
               <div className="mp-sg">
                 <div className="mp-sg-t">{tr("聯絡客服", "Contact support", "お問い合わせ", "고객 지원")}</div>
                 <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.7,marginBottom:8}}>
@@ -169,6 +170,7 @@ export default function AboutInfoSettings({ tr, version, currentChangelogTitle, 
                   </button>
                 </div>
               </div>
+              )}
               <div className="mp-sg">
                 <div className="mp-sg-t">{tr("服務條款與免責聲明", "Terms and disclaimer", "利用規約と免責事項", "이용약관 및 면책")}</div>
                 <div style={{fontSize:12,color:"var(--mp-txt-l)",lineHeight:1.7,marginBottom:8}}>
