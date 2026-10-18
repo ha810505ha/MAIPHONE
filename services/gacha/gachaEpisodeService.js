@@ -16,7 +16,7 @@ export async function generateGachaEpisodeOpening({ episode, character, playerPr
   if (!isAiConfigReady(apiConfig)) return fallbackOpening(episode);
   const recent = recentMessages.filter((message) => ["user", "assistant"].includes(message?.role)).slice(-16).map((message) => `${message.role === "user" ? "玩家" : "角色"}：${clean(message.content, 320)}`).join("\n");
   const modeRule = episode.mode === "reality"
-    ? "兩人身處同一場景。依卡片、人設與近期互動選擇具體的故事契機；角色開場可以包含一句台詞與極短動作，不必發生贈禮。"
+    ? "兩人身處同一場景，整個開場都是當面互動；不得寫成傳訊息、通話、視訊或兩人分處兩地。若劇情種子同時列出線上或隔空的做法，現實模式只採用同場景的版本。依卡片、人設與近期互動選擇具體的故事契機；角色開場可以包含一句台詞與極短動作，不必發生贈禮。"
     : "兩人身處不同地方，透過訊息、照片或通話展開故事；角色開場是角色傳來的第一則訊息。可以涉及包裹，但不得把所有卡片都寫成寄送禮物，不得描寫兩人面對面。";
   const systemPrompt = `任務：以玩家選用的卡片為故事契機，為玩家與角色的「特別篇」生成第一幕。這是會繼續發展的獨立篇章，玩家最多可回覆 20 則；現在只點燃第一個契機，留下大量後續空間。
 
@@ -32,7 +32,7 @@ export async function generateGachaEpisodeOpening({ episode, character, playerPr
 情緒調性：${Array.isArray(episode.item?.tone) ? episode.item.tone.join("、") : "依卡片與關係自然判斷"}
 關係判斷：依近期互動與角色／玩家設定，不依卡片固定階段。資訊不足時從較陌生、克制的互動開始。
 開場短語／劇情種子：${episode.item?.openingPrompt || "未提供，請根據卡片資料自然創作。"}
-本模式轉譯：${episode.item?.modeInterpretation?.[episode.mode] || "依互動模式自然轉譯，不要硬套成實體物品。"}
+本模式轉譯（優先於劇情種子）：${episode.item?.modeInterpretation?.[episode.mode] || "依互動模式自然轉譯，不要硬套成實體物品。"}
 模式規則：${modeRule}
 近期聊天（只供判斷關係，不得直接引用）：${recent || "沒有近期聊天；若設定也沒有關係線索，視為剛認識不久，保持禮貌與克制。"}
 
@@ -137,7 +137,7 @@ export async function generateGachaEpisodeReply({ episode, character, playerProf
   const isReality = episode.mode === "reality";
   const modeLabel = isReality ? "現實見面（兩人身處同一場景）" : "線上（兩人身處不同地方，只透過手機訊息、照片或通話聯繫）";
   const modeRules = isReality
-    ? "現實模式：可以描寫動作、表情、環境與距離感，像面對面的互動。"
+    ? "現實模式（必須遵守）：本篇全程兩人在同一場景，可以描寫動作、表情、環境與距離感，像面對面的互動。玩家的話一律視為當面說出，即使寫得像訊息也一樣；不得改成透過手機、訊息、通話或視訊聯絡，也不得讓兩人分處兩地，除非劇情中有人暫時離開並已交代。"
     : "線上模式（必須遵守）：你與玩家不在同一個地方，所有內容都是你透過手機傳出的訊息。只能寫角色傳送的文字內容，可以分成多則短訊息（以換行分隔）；可以提到自己正在做什麼或看到什麼，但不得用旁白或括號描寫動作、表情、環境，不得出現「看著你」「走近」「握住」等面對面接觸，不得描寫玩家的表情或身體反應。若想見面，只能提議或約定，不可在本回合直接變成面對面。";
   const currentTurn = Math.min(20, Math.max(1, Number(episode.playerMessageCount || 0) + 1));
   const storyPhase = forceEnding
