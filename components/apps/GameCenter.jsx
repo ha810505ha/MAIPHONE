@@ -26,7 +26,7 @@ export default function GameCenter({ page, setPage, closeApp, t, tr, characters,
       {GACHA_ENABLED && <button className="mp-cw" type="button" onClick={() => setPage("gacha")} style={{ width: "100%", border: "1px solid var(--mp-line)", background: "var(--mp-surface)", textAlign: "center", padding: 14, flexDirection: "column", alignItems: "center", gap: 10, borderRadius: 22 }}>
         <div className="game-center-icon" style={{ background: "linear-gradient(145deg,#ffd6e3,#f5a9c1)" }}>🌸</div>
         <div className="mp-cw-name" style={{ fontSize: 16, marginTop: 2 }}>{tr("櫻色誓約", "Sakura Vow", "桜色の誓い", "벚꽃빛 서약")}</div>
-        <div className="game-center-sub">{tr("測試版", "Beta", "ベータ版", "베타")}</div>
+        <div className="game-center-sub">{tr("心動召喚", "Summon", "ときめき召喚", "두근 소환")}</div>
       </button>}
       <button className="mp-cw" type="button" onClick={() => setPage("loginReward")} style={{ width: "100%", border: "1px solid var(--mp-line)", background: "var(--mp-surface)", textAlign: "center", padding: 14, flexDirection: "column", alignItems: "center", gap: 10, borderRadius: 22 }}>
         <div className="game-center-icon" style={{ background: "linear-gradient(145deg,#fff0c9,#f5bfd2)" }}>🎁</div>
