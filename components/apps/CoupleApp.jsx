@@ -8,6 +8,7 @@ import { AppHeader, LargeTitle, LargeTitleHeader, SUB_PAGE_CLASS, useLargeTitle 
 import { coupleDayKey, generateLoveSign, generateDailyTask, judgeCoupleTask, settleTemperature, temperatureComment } from "../../services/couple/coupleDailyService";
 import Icon from "../common/Icon";
 import MoonlitSignStage from "../couple/MoonlitSignStage";
+import GachaItemThumb from "../gacha/GachaItemThumb";
 import {
   COUPLE_OPEN_PROMISE_LIMIT, COUPLE_UNLOCKS, addCoupleAnniversary, addCouplePromise, buildCoupleAnniversaries, buildCoupleTimeline,
   completeCouplePromise, daysTogether as countDaysTogether, daysUntil, fromDateKey, getCoupleAnniversaries, getCoupleNickname,
@@ -641,7 +642,7 @@ export default function CoupleApp({ closeApp, characters = [], chatHistory = {},
                     <span style={{ position: "absolute", left: -17.5, top: 17, width: 9, height: 9, borderRadius: "50%", background: color, border: "2px solid #fff", boxShadow: `0 0 0 2px ${color}55` }} />
                     <button type="button" onClick={() => setViewingMemory(memory)}
                       style={{ ...GLASS, width: "100%", display: "flex", alignItems: "center", gap: 11, borderRadius: 16, borderLeft: `3px solid ${color}`, padding: "11px 13px", textAlign: "left", boxShadow: "0 5px 16px rgba(200,110,140,.13)" }}>
-                      <span style={{ width: 42, height: 42, flex: "0 0 auto", borderRadius: 13, display: "grid", placeItems: "center", fontSize: 21, background: `linear-gradient(145deg,${color}22,${color}0d)`, border: `1px solid ${color}44` }}>{memory.itemIcon || "🌸"}</span>
+                      <GachaItemThumb itemId={memory.itemId} rarity={memory.itemRarity} icon={memory.itemIcon} size={42} ring={false} style={{ border: `1px solid ${color}66` }} />
                       <span style={{ flex: 1, minWidth: 0 }}>
                         <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           <b style={{ fontSize: 12.5, color: "#6d3c50", fontFamily: HAND_FONT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{memory.title}</b>

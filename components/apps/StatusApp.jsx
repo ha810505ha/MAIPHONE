@@ -12,6 +12,7 @@ import {
 } from "../../services/chat/memoryCompression";
 import { AvatarFallback } from "../common/Avatar";
 import Icon from "../common/Icon";
+import GachaItemThumb from "../gacha/GachaItemThumb";
 
 const SPECIAL_MEMORY_FRAME = { SSR: "#c99a4b", SR: "#8f6cc9", R: "#6f9cc9" };
 const VAULT_PAGE_SIZE = 5;
@@ -401,7 +402,7 @@ export default function StatusApp({
                 {s.specials.map((m) => (
                   <button key={m.id} type="button" style={{ borderColor: SPECIAL_MEMORY_FRAME[m.itemRarity] || SPECIAL_MEMORY_FRAME.R }} onClick={() => setViewingSpecialMemory({ memory: m, character: c })}>
                     {m.pinned && <span className="mp-status-special-pin" aria-hidden="true">✦</span>}
-                    <span className="mp-status-special-icon">{m.itemIcon || "🌸"}</span>
+                    <GachaItemThumb itemId={m.itemId} rarity={m.itemRarity} icon={m.itemIcon} size={40} ring={false} />
                     <span className="mp-status-special-title">{m.title}</span>
                     <span className="mp-status-special-rarity" style={{ color: SPECIAL_MEMORY_FRAME[m.itemRarity] || SPECIAL_MEMORY_FRAME.R }}>{m.itemRarity}</span>
                   </button>
