@@ -1,4 +1,4 @@
-const MALIPHONE_AI_PROXY = "https://maliphone-ai-proxy.d778105.workers.dev";
+const MALIPHONE_AI_PROXY = "https://api.maliphone.com";
 const CURRENT_VERSION = "1.5.0";
 
 // 本地模型預設接頭：多數本機推論伺服器（Ollama、LM Studio、llama.cpp server…）

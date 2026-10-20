@@ -158,7 +158,7 @@ try {
     "system",
   );
   assert.equal(output, "ok");
-  assert.equal(requestUrl, "https://maliphone-ai-proxy.d778105.workers.dev/nvidia/chat/completions");
+  assert.equal(requestUrl, "https://api.maliphone.com/nvidia/chat/completions");
   assert.equal(requestInit.headers.Authorization, "Bearer nvapi-test");
   assert.equal(JSON.parse(requestInit.body).max_tokens, 500);
 
@@ -174,7 +174,7 @@ try {
   );
   assert.equal(
     requestUrl,
-    "https://maliphone-ai-proxy.d778105.workers.dev/ollama/chat/completions",
+    "https://api.maliphone.com/ollama/chat/completions",
     "the retired official Ollama Worker URL must migrate without overwriting custom endpoints",
   );
 

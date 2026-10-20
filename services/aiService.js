@@ -15,8 +15,8 @@ const httpError = (message, status) => {
   return error;
 };
 
-const NVIDIA_PROXY_BASE_URL = "https://maliphone-ai-proxy.d778105.workers.dev/nvidia";
-const OLLAMA_PROXY_BASE_URL = "https://maliphone-ai-proxy.d778105.workers.dev/ollama";
+const NVIDIA_PROXY_BASE_URL = "https://api.maliphone.com/nvidia";
+const OLLAMA_PROXY_BASE_URL = "https://api.maliphone.com/ollama";
 const LEGACY_OLLAMA_PROXY_RE = /^https:\/\/orange-butterfly-8390\.d778105\.workers\.dev\/ollama(?:\/+)?$/i;
 
 const isGemini25ProModel = (model) => /(^|\/)gemini-2\.5-pro(?:$|[-:])/i.test(String(model || ""));
