@@ -140,15 +140,17 @@ export function chooseOption(save, choiceIdx) {
   else if (ch.risk != null) ok = r >= Math.min(0.95, ch.risk + eff.riskPlus);
 
   const fx = (ok ? ch.good : ch.bad) || {};
+  const coins = fx.coins ? Math.round(fx.coins * difficultyById(run.difficulty).coinMul) : 0;
+  const itemN = fx.item ? Math.round(fx.item.n * eff.dropMul) : 0;
   if (fx.hp) run.hp = Math.max(0, Math.min(run.hpMax, run.hp + fx.hp));
   if (fx.exp) run.exp += Math.round(fx.exp * eff.expMul);
-  if (fx.coins) run.coins += Math.round(fx.coins * difficultyById(run.difficulty).coinMul);
-  if (fx.item) run.loot[fx.item.id] = (run.loot[fx.item.id] || 0) + fx.item.n * eff.dropMul;
+  if (fx.coins) run.coins += coins;
+  if (fx.item) run.loot[fx.item.id] = Math.round(run.loot[fx.item.id] || 0) + itemN;
   const veinCrystals = fx.crystalVein ? 1 + Math.floor(roll(run.seed, "veinAmount") * CRYSTAL_VEIN_MAX) : 0;
   if (veinCrystals) run.crystals = (run.crystals || 0) + veinCrystals;
 
   run.usedEvents.push(ev.id);
-  run.outcome = { ok, text: ok ? (ch.goodText || "順利通過。") : (ch.badText || "事與願違。"), fx: { ...fx, exp: fx.exp ? Math.round(fx.exp * eff.expMul) : 0, itemN: fx.item ? fx.item.n * eff.dropMul : 0, crystals: veinCrystals } };
+  run.outcome = { ok, text: ok ? (ch.goodText || "順利通過。") : (ch.badText || "事與願違。"), fx: { ...fx, coins, exp: fx.exp ? Math.round(fx.exp * eff.expMul) : 0, itemN, crystals: veinCrystals } };
   run.state = run.hp <= 0 ? "dead" : run.floor >= run.totalFloors ? "cleared" : "outcome";
   return run.outcome;
 }
@@ -179,7 +181,8 @@ export function finishRun(save, mode /* "cleared" | "retreat" | "dead" */) {
     crystals: (mode === "cleared" ? Math.min(15, 10 + Math.floor(run.totalFloors / 2)) + difficulty.crystalBonus : mode === "retreat" ? Math.min(10, 5 + Math.floor(run.floor / 2)) : 3)
       + Math.floor((run.crystals || 0) * keep),
     items: Object.entries(run.loot)
-      .map(([id, n]) => ({ id, n: Math.floor(n * keep) }))
+      // 舊進行中存檔可能仍有小數；先取整數，再套用出局減半。
+      .map(([id, n]) => ({ id, n: Math.floor(Math.round(n) * keep) }))
       .filter((it) => it.n > 0),
   };
   // 通關保底建材（難度越高越多），與袋中戰利品合併入帳
