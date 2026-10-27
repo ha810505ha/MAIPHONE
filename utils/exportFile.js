@@ -201,23 +201,44 @@ const blobToBase64 = (blob) => new Promise((resolve, reject) => {
   reader.readAsDataURL(blob);
 });
 
-// Saves a binary image blob with the same platform fallbacks as JSON exports:
-// Capacitor filesystem (base64) → native share sheet → anchor download.
+// 圖片（紀念卡、聊天截圖）的儲存順序：
+// 1. 原生 App：先寫到相簿看得到的 Pictures/MaliPhone/（外掛寫完會通知媒體庫掃描），
+//    寫不進去（例如 Android 10 的分區儲存）再退回 Documents/。
+// 2. Android 內嵌 WebView（原生 App 兩處都寫失敗，或 LINE／FB 這類 App 內瀏覽器）：
+//    anchor download 不可靠，改開系統分享面板讓玩家自己選存放位置。
+// 3. 其他（Android Chrome 等一般瀏覽器、iOS、桌面）：一般下載，檔案進瀏覽器的下載資料夾。
+//    一般 Android 瀏覽器以前也被導去分享面板，玩家按「下載」卻跳出分享，所以不再這樣做。
+const IMAGE_ALBUM_FOLDER = "Pictures/MaliPhone";
+const isAndroidWebView = () => {
+  const userAgent = navigator.userAgent || "";
+  return /Android/i.test(userAgent) && /\bwv\b/.test(userAgent);
+};
+
 export async function downloadImageFile(blob, filename, { preferBrowserDownload = false } = {}) {
   const safeName = sanitizeFilename(filename);
-  if (window.Capacitor?.isNativePlatform?.()) {
+  const isNative = !!window.Capacitor?.isNativePlatform?.();
+  if (isNative) {
     try {
       const { Filesystem, Directory } = await import("@capacitor/filesystem");
       await ensureFilesystemPermission(Filesystem);
       const data = await blobToBase64(blob);
-      await Filesystem.writeFile({ path: safeName, data, directory: Directory.Documents, recursive: true });
-      return { method: "native-filesystem", path: safeName };
+      const targets = [
+        { path: `${IMAGE_ALBUM_FOLDER}/${safeName}`, directory: Directory.ExternalStorage, location: `${IMAGE_ALBUM_FOLDER}/${safeName}`, album: true },
+        { path: safeName, directory: Directory.Documents, location: `Documents/${safeName}`, album: false },
+      ];
+      for (const target of targets) {
+        try {
+          await Filesystem.writeFile({ path: target.path, data, directory: target.directory, recursive: true });
+          return { method: "native-filesystem", path: safeName, location: target.location, album: target.album };
+        } catch (error) {
+          console.warn(`[export] cannot write ${target.location}, trying the next location`, error);
+        }
+      }
     } catch (error) {
       console.warn("[export] native filesystem unavailable, falling back", error);
     }
   }
-  const isNativeAndroid = !!window.Capacitor?.isNativePlatform?.() || /Android/i.test(navigator.userAgent || "");
-  if (!preferBrowserDownload && isNativeAndroid && typeof navigator.share === "function" && typeof File === "function") {
+  if (!preferBrowserDownload && (isNative || isAndroidWebView()) && typeof navigator.share === "function" && typeof File === "function") {
     try {
       const file = new File([blob], safeName, { type: blob.type || "image/png" });
       if (!navigator.canShare || navigator.canShare({ files: [file] })) {

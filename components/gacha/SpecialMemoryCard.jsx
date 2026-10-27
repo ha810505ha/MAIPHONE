@@ -3,6 +3,7 @@ import { useGacha } from "../../contexts/GachaContext";
 import { sanitizeUserImageUrl } from "../../utils/coreUtils";
 import { generateSpecialMemorySummary } from "../../services/gacha/specialMemoryService";
 import { downloadImageFile } from "../../utils/exportFile";
+import { fetchWithTimeout, NETWORK_TIMEOUTS } from "../../utils/networkRequest.js";
 import { translate } from "../../utils/i18n";
 import { withGachaCardArt } from "../../data/gacha/cardArt.js";
 
@@ -47,12 +48,11 @@ const wrapCanvasText = (ctx, text, maxWidth, maxLines) => {
   return lines;
 };
 
-// 載入頭像並確認不會污染 canvas（污染後 toBlob 會失敗、整張卡都存不下來）。
-// 先畫到一張測試小畫布上試 toDataURL，失敗（外部網址無 CORS）就放棄頭像改用字首圓圈。
-const loadSafeImage = (src) => new Promise((resolve) => {
-  if (!src) return resolve(null);
+// 載入要畫進 canvas 的圖（卡圖、頭像），並確認不會污染 canvas（污染後 toBlob 會失敗、整張卡都存不下來）：
+// 先畫到一張測試小畫布上試 toDataURL，失敗就當作不能用。
+const loadImageElement = (src, { crossOrigin = false } = {}) => new Promise((resolve) => {
   const img = new Image();
-  img.crossOrigin = "anonymous";
+  if (crossOrigin) img.crossOrigin = "anonymous";
   img.onload = () => {
     try {
       const probe = document.createElement("canvas");
@@ -65,6 +65,22 @@ const loadSafeImage = (src) => new Promise((resolve) => {
   img.onerror = () => resolve(null);
   img.src = src;
 });
+
+// 遠端卡圖（R2）的坑：玩家先在抽卡、特別篇畫面用一般 <img> 看過同一張圖，瀏覽器快取裡那份回應沒有 CORS 標頭，
+// 之後 crossOrigin 載入會直接吃到快取、被 CORS 擋下（Chromium 實測如此），存出來的紀念卡就只剩 Emoji。
+// 所以 crossOrigin 載入失敗時，改用 cache:"reload" 的請求繞過快取重抓一次再畫；
+// 對方真的沒開 CORS 才放棄（卡圖退回 Emoji、頭像退回字首圓圈）。
+const loadSafeImage = async (src) => {
+  if (!src) return null;
+  const direct = await loadImageElement(src, { crossOrigin: true });
+  if (direct || !/^https?:/i.test(src)) return direct;
+  try {
+    const response = await fetchWithTimeout(src, { mode: "cors", cache: "reload", credentials: "omit" }, { timeoutMs: NETWORK_TIMEOUTS.MEDIA });
+    if (!response.ok) return null;
+    const objectUrl = URL.createObjectURL(await response.blob());
+    try { return await loadImageElement(objectUrl); } finally { URL.revokeObjectURL(objectUrl); }
+  } catch { return null; }
+};
 
 const drawAvatarCircle = (ctx, { image, fallbackChar, cx, cy, radius, theme }) => {
   ctx.save();
@@ -255,8 +271,11 @@ export function SpecialMemoryModal({ memory: memoryProp, characterAvatar, player
     try {
       const blob = await renderSpecialMemoryImage(memory, { characterAvatar, playerAvatar, playerName, locale, tr: localTr });
       const result = await downloadImageFile(blob, `special-memory-${memory.characterName || "memory"}-${formatMemoryDate(memory.createdAt, locale).replace(/\//g, "")}.png`);
-      if (result?.method === "native-filesystem") setNotice(localTr(`已儲存到 Documents/${result.path}`, `Saved to Documents/${result.path}`, `Documents/${result.path} に保存しました`, `Documents/${result.path}에 저장했습니다`));
-      else if (result?.method !== "cancelled") setNotice(localTr("紀念卡已下載", "Memory card downloaded.", "記念カードをダウンロードしました。", "기념 카드를 다운로드했습니다."));
+      if (result?.method === "native-filesystem") setNotice(result.album
+        ? localTr(`已存入相簿：${result.location}`, `Saved to your gallery: ${result.location}`, `アルバムに保存しました：${result.location}`, `갤러리에 저장했습니다: ${result.location}`)
+        : localTr(`已儲存到 ${result.location}`, `Saved to ${result.location}`, `${result.location} に保存しました`, `${result.location}에 저장했습니다`));
+      else if (result?.method === "share") setNotice(localTr("已開啟分享面板，請選擇要存放紀念卡的位置", "Share sheet opened. Choose where to save the card.", "共有シートを開きました。記念カードの保存先を選んでください。", "공유 시트를 열었습니다. 기념 카드를 저장할 위치를 선택하세요."));
+      else if (result?.method !== "cancelled") setNotice(localTr("紀念卡已下載，可在下載資料夾或相簿找到", "Memory card downloaded. Check your Downloads folder or gallery.", "記念カードをダウンロードしました。ダウンロードフォルダまたはアルバムをご確認ください。", "기념 카드를 다운로드했습니다. 다운로드 폴더나 갤러리에서 확인하세요."));
     } catch (error) {
       setNotice(error?.message || localTr("下載失敗，請改用截圖另存", "Download failed. Please save a screenshot instead.", "ダウンロードに失敗しました。スクリーンショットで保存してください。", "다운로드에 실패했습니다. 스크린샷으로 저장해 주세요."));
     } finally {

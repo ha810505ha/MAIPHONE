@@ -112,7 +112,9 @@ export default function ChatScreenshotModal({ open, onClose, onReselect, message
       const characterName = String(character?.name || "");
       const safeName = (containsScreenshotRedactionKeyword(characterName, redactionKeywords) ? "redacted-chat" : (characterName || "chat")).replace(/[\\/:*?"<>|]+/g, "_");
       const result = await downloadImageFile(blob, createScreenshotFilename(safeName), { preferBrowserDownload: true });
-      if (result?.method === "native-filesystem") setNotice(tr(`已儲存到 Documents/${result.path}`, `Saved to Documents/${result.path}`, `Documents/${result.path} に保存しました`, `Documents/${result.path}에 저장했습니다`));
+      if (result?.method === "native-filesystem") setNotice(result.album
+        ? tr(`已存入相簿：${result.location}`, `Saved to your gallery: ${result.location}`, `アルバムに保存しました：${result.location}`, `갤러리에 저장했습니다: ${result.location}`)
+        : tr(`已儲存到 ${result.location}`, `Saved to ${result.location}`, `${result.location} に保存しました`, `${result.location}에 저장했습니다`));
       else if (result?.method !== "cancelled") setNotice(tr("PNG 已下載", "PNG downloaded", "PNGを保存しました", "PNG를 저장했습니다"));
     } catch (reason) {
       setError(reason?.message || tr("截圖產生或儲存失敗", "Failed to create or save screenshot", "画像の作成または保存に失敗しました", "캡처 생성 또는 저장에 실패했습니다"));

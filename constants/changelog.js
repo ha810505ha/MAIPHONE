@@ -1,6 +1,11 @@
 import { toSimplifiedChinese } from "../utils/i18n.js";
 
 const ZH_CHANGELOG = {
+  "1.5.1": [
+    "10/27 修正更新",
+    "特別篇｜修正紀念卡按「下載」卻跳出分享面板的問題：現在會直接存到下載資料夾，App 內則存進相簿。",
+    "特別篇｜修正下載的紀念卡上沒有卡片圖、只剩表情符號的問題。",
+  ],
   "1.5.0": [
     "10/19 更新",
     "櫻色誓約｜正式開放！在遊戲中心召喚心意卡、收集珍藏，送給喜歡的角色就能展開「特別篇」，可以選擇面對面相處或隔著手機聊天。",
@@ -187,6 +192,23 @@ const ZH_CHANGELOG = {
 };
 
 const TRANSLATED_CHANGELOG = {
+  "1.5.1": {
+    en: [
+      "10/27 Fix Update",
+      "Special episodes | Fixed the memory card's Download button opening a share sheet instead. It now saves straight to your Downloads folder, or to your gallery in the app.",
+      "Special episodes | Fixed downloaded memory cards showing an emoji instead of the card art.",
+    ],
+    ja: [
+      "10/27 修正アップデート",
+      "特別編｜記念カードの「ダウンロード」を押すと共有シートが開いてしまう問題を修正しました。ダウンロードフォルダ（アプリ内ではアルバム）に直接保存されます。",
+      "特別編｜ダウンロードした記念カードにカードの絵柄が入らず、絵文字だけになる問題を修正しました。",
+    ],
+    ko: [
+      "10/27 수정 업데이트",
+      "특별편 | 기념 카드의 「다운로드」를 누르면 공유 시트가 열리던 문제를 수정했습니다. 이제 다운로드 폴더(앱에서는 갤러리)에 바로 저장됩니다.",
+      "특별편 | 다운로드한 기념 카드에 카드 그림 대신 이모지만 나오던 문제를 수정했습니다.",
+    ],
+  },
   "1.5.0": {
     en: [
       "10/19 Update",
