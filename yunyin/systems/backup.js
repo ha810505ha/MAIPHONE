@@ -4,7 +4,7 @@ import { loadSave, replaceSave } from "./save";
 export const YUNYIN_BACKUP_TYPE = "maliphone-yunyin-save";
 
 export async function exportYunyinSave() {
-  const save = await loadSave();
+  const { fresh, ...save } = await loadSave();
   const payload = { type: YUNYIN_BACKUP_TYPE, version: 1, exportedAt: new Date().toISOString(), save };
   return downloadJsonFile(payload, `yunyin-save-${new Date().toISOString().slice(0, 10)}.json`);
 }

@@ -9,7 +9,7 @@ import { createMapRuntime, getMapDefinition, hasMap } from "./world/mapRegistry"
 import { routeWorldTap } from "./world/interactionRouter";
 import { mergedPortalVisuals } from "./world/portalVisuals.js";
 import { findActionPlan, findInteractionPlan, targetWithAction } from "./world/worldInteractions";
-import { loadSave, persistSave } from "./systems/save";
+import { loadSave, persistSave, touchSave } from "./systems/save";
 import { settleExp, meditateDaily } from "./systems/cultivation";
 import { HARVEST_REPLANT_GUARD_MS, plotStage, harvestPlot, remainMin, replantPromptBlocked, ripenedDuring, cropById } from "./systems/farm";
 import { settleShelves, refreshOrders, furnaceDone, itemMeta, recipeById } from "./systems/shop";
@@ -141,7 +141,8 @@ function YunyinRuntime({ onBack, characters = [], onAiGenerate = null, initialSa
   const fieldActionsRef = useRef({});
   const playerActionRef = useRef(() => {});
   homeEditorRef.current = homeEditor;
-  const markDirty = () => { setCoins(gameSave.coins); persistSave(gameSave); };
+  // 只有進度變動才解除「尚未寫回」狀態；單純走動、換地圖、縮放不算（MP-090）。
+  const markDirty = () => { touchSave(gameSave); setCoins(gameSave.coins); persistSave(gameSave); };
   const markDirtyRef = useRef(null);
   markDirtyRef.current = markDirty;
 

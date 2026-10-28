@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { dataRestoreFailureMessage } from "../../services/backup/dataRestoreTransaction";
+import { BACKUP_KINDS, readBackupReminderState, setBackupReminderEnabled } from "../../services/backup/backupReminder";
 import {
   createGitHubPrivateRepository,
   getGitHubBackupConfig,
@@ -34,7 +35,7 @@ function messageOf(error) {
   return String(error?.message || "Unknown error").slice(0, 160);
 }
 
-export default function CloudBackupSettings({ tr, getExportableState, validateImportedState, summarizeImportedData, applyImportedState, showToast }) {
+export default function CloudBackupSettings({ tr, getExportableState, validateImportedState, summarizeImportedData, applyImportedState, showToast, onBackedUp }) {
   const [open, setOpen] = useState(false);
   const [provider, setProvider] = useState("");
   const [busy, setBusy] = useState(false);
@@ -50,6 +51,12 @@ export default function CloudBackupSettings({ tr, getExportableState, validateIm
   const [googleSession, setGoogleSession] = useState(() => takePendingGoogleDriveWebSession());
   const [googleBackups, setGoogleBackups] = useState([]);
   const [googleBackupId, setGoogleBackupId] = useState("");
+  // 每日備份提醒（MP-090）：只存這台裝置，預設開。
+  const [reminderEnabled, setReminderEnabled] = useState(() => readBackupReminderState().enabled);
+  const toggleReminder = (next) => {
+    setReminderEnabled(Boolean(next));
+    setBackupReminderEnabled(Boolean(next));
+  };
 
   const config = getGitHubBackupConfig();
   const googleConfig = getGoogleDriveBackupConfig();
@@ -88,6 +95,7 @@ export default function CloudBackupSettings({ tr, getExportableState, validateIm
     try {
       setBusy(true);
       await putGoogleDriveBackup(googleSession.accessToken, await getExportableState());
+      onBackedUp?.(BACKUP_KINDS.googleDrive);
       const backups = await listGoogleDriveBackups(googleSession.accessToken);
       setGoogleBackups(backups);
       setGoogleBackupId(backups[0]?.id || "");
@@ -186,6 +194,7 @@ export default function CloudBackupSettings({ tr, getExportableState, validateIm
       setBusy(true);
       const payload = await getExportableState();
       await putGitHubBackupFile(accessToken, repository, payload);
+      onBackedUp?.(BACKUP_KINDS.github);
       await loadGitHubBackups(repository);
       const destination = repository.fullName || `${repository.owner}/${repository.name}`;
       setNotice(tr(`已新增備份版本到 ${destination}。`, `A new backup version was added to ${destination}.`, `${destination} に新しいバックアップ版を追加しました。`, `${destination}에 새 백업 버전을 추가했습니다.`));
@@ -215,6 +224,13 @@ export default function CloudBackupSettings({ tr, getExportableState, validateIm
       {tr("只有在你按下雲端備份後，才會選擇自己的 Google Drive 或 GitHub。API Key 不會包含在備份中。", "Only when you choose cloud backup will you select your own Google Drive or GitHub. API keys are not included.", "クラウドバックアップを選んだときだけ、自分の Google Drive または GitHub を選択します。API キーはバックアップに含まれません。", "클라우드 백업을 선택할 때만 본인의 Google Drive 또는 GitHub을 선택합니다. API 키는 백업에 포함되지 않습니다.")}
       <br />
       {tr("相簿目前僅保存在此裝置，不包含在雲端備份或帳號同步中。", "The gallery currently stays on this device and is not included in cloud backups or account sync.", "アルバムは現在この端末のみに保存され、クラウドバックアップとアカウント同期には含まれません。", "앨범은 현재 이 기기에만 저장되며 클라우드 백업이나 계정 동기화에는 포함되지 않습니다.")}
+    </div>
+    <div className="mp-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 8 }}>
+      <div style={{ minWidth: 0 }}>
+        <div className="mp-lbl">{tr("每日備份提醒", "Daily backup reminder", "毎日のバックアップ通知", "매일 백업 알림")}</div>
+        <div style={{ fontSize: 10, color: "var(--mp-txt-l)", lineHeight: 1.55, marginTop: 2 }}>{tr("超過一天沒備份（Google Drive、GitHub、匯出備份檔或上傳雲端存檔）時，開啟小手機會跳一則通知提醒。只提醒，不會自動上傳。", "If no backup (Google Drive, GitHub, export file or cloud save upload) has been made for a day, a notification reminds you when you open the phone. It only reminds; nothing is uploaded automatically.", "1日以上バックアップ（Google Drive、GitHub、書き出し、クラウドセーブのアップロード）がないと、スマホを開いたときに通知でお知らせします。通知のみで自動アップロードはしません。", "하루 이상 백업(Google Drive, GitHub, 내보내기, 클라우드 저장 업로드)이 없으면 휴대폰을 열 때 알림으로 알려줍니다. 알림만 하며 자동 업로드는 하지 않습니다.")}</div>
+      </div>
+      <button type="button" role="switch" aria-checked={reminderEnabled} className={`mp-switch ${reminderEnabled ? "active" : ""}`} onClick={() => toggleReminder(!reminderEnabled)}><span /></button>
     </div>
     {!open ? <button type="button" className="mp-save" style={{ ...buttonStyle, background: "linear-gradient(135deg,#8ec5fc,#4a90e2)" }} onClick={() => setOpen(true)}>{tr("☁ 開啟雲端備份", "☁ Open cloud backup", "☁ クラウドバックアップを開く", "☁ 클라우드 백업 열기")}</button> : <div style={cardStyle}>
       {!provider && <>

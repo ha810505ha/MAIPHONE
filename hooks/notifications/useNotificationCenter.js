@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BANNER_DURATION, DEFAULT_NOTIFICATION_SETTINGS, NOTIFICATION_TYPES } from "../../constants/notifications";
+import { BANNER_DURATION, DEFAULT_NOTIFICATION_SETTINGS, IMMERSIVE_APPS, NOTIFICATION_TYPES } from "../../constants/notifications";
 import useTransientItem from "../useTransientItem";
 import {
   buildBadgeCounts,
@@ -10,6 +10,7 @@ import {
   collectSocialActivities,
   filterAllowedTypes,
   normalizeNotificationSettings,
+  selectCatchUpNotifications,
   selectLockNotifications,
 } from "../../services/notifications/notificationSources";
 import {
@@ -24,7 +25,7 @@ import {
  * 持久層是各功能自己的未讀狀態，通知清單即時衍生；橫幅只是瞬時 UI 狀態，不進存檔。
  * 唯一需要保存的是 lastNotifiedAt，用來確保橫幅只對「新事件」跳一次。
  */
-export default function useNotificationCenter({ characters, chatHistory, proactiveUnread, datingState, datingProfiles, posts, socialNow, mailboxMails, locked, currentApp }) {
+export default function useNotificationCenter({ characters, chatHistory, proactiveUnread, datingState, datingProfiles, posts, socialNow, mailboxMails, yunyinSave, loginReward, featureLoaded, featureNow, locked, currentApp }) {
   const [settings, setSettings] = useState(DEFAULT_NOTIFICATION_SETTINGS);
   const [lastNotifiedAt, setLastNotifiedAt] = useState(0);
   const [socialSeenAt, setSocialSeenAt] = useState(0);
@@ -34,10 +35,13 @@ export default function useNotificationCenter({ characters, chatHistory, proacti
   });
   const lastNotifiedRef = useRef(0);
   const baselineRef = useRef(false);
+  // 在沉浸 App（山莊）裡被抑制的通知先收著，離開時補跳一次。
+  const missedRef = useRef([]);
+  const previousAppRef = useRef(currentApp);
 
   const notifications = useMemo(
-    () => collectNotifications({ characters, chatHistory, proactiveUnread, datingState, datingProfiles, posts, socialSeenAt, socialNow, mailboxMails }),
-    [characters, chatHistory, proactiveUnread, datingState, datingProfiles, posts, socialSeenAt, socialNow, mailboxMails],
+    () => collectNotifications({ characters, chatHistory, proactiveUnread, datingState, datingProfiles, posts, socialSeenAt, socialNow, mailboxMails, yunyinSave, loginReward, featureLoaded, featureNow }),
+    [characters, chatHistory, proactiveUnread, datingState, datingProfiles, posts, socialSeenAt, socialNow, mailboxMails, yunyinSave, loginReward, featureLoaded, featureNow],
   );
   const socialActivities = useMemo(
     () => collectSocialActivities({ characters, posts, socialSeenAt, socialNow }),
@@ -68,11 +72,27 @@ export default function useNotificationCenter({ characters, chatHistory, proacti
       return;
     }
 
-    if (!canInterrupt({ settings, locked, currentApp })) return;
+    if (!canInterrupt({ settings, locked, currentApp })) {
+      // 只有「人在沉浸 App 裡」這種抑制會補跳；鎖定與勿擾維持不補跳。
+      if (IMMERSIVE_APPS.includes(currentApp) && !locked) missedRef.current = [...missedRef.current, ...fresh.filter((item) => item.appId !== currentApp)];
+      return;
+    }
     // 人已經在該 App 裡面時，不跳自己的通知。
     const interrupting = fresh.filter((item) => item.appId !== currentApp);
     if (interrupting.length) showBanner(buildBannerPayload(interrupting));
   }, [notifications, settings, locked, currentApp, showBanner]);
+
+  // 離開沉浸 App：把遊玩期間錯過、現在還沒被讀掉的通知補跳一次（小舞 2026-10-28）。
+  useEffect(() => {
+    const previous = previousAppRef.current;
+    previousAppRef.current = currentApp;
+    if (!IMMERSIVE_APPS.includes(previous) || IMMERSIVE_APPS.includes(currentApp)) return;
+    const missed = missedRef.current;
+    missedRef.current = [];
+    if (!missed.length || !canInterrupt({ settings, locked, currentApp })) return;
+    const catchUp = selectCatchUpNotifications(missed, notifications, currentApp);
+    if (catchUp.length) showBanner(buildBannerPayload(catchUp));
+  }, [currentApp, notifications, settings, locked, showBanner]);
 
   const [systemPermission, setSystemPermission] = useState(() => getSystemNotificationPermission());
   const requestSystemPermission = useCallback(async () => {
@@ -80,6 +100,14 @@ export default function useNotificationCenter({ characters, chatHistory, proacti
     setSystemPermission(result);
     return result;
   }, []);
+
+  // App 自己的提醒（例如備份提醒）也走同一張橫幅、同一套抑制規則；被抑制時回 false，由呼叫端決定要不要改天再試。
+  const showSystemBanner = useCallback((item) => {
+    if (!item || !canInterrupt({ settings, locked, currentApp })) return false;
+    if (item.appId && item.appId === currentApp) return false;
+    showBanner(item);
+    return true;
+  }, [settings, locked, currentApp, showBanner]);
 
   const hydrate = useCallback((data) => {
     setSettings(normalizeNotificationSettings(data?.notificationSettings));
@@ -110,6 +138,7 @@ export default function useNotificationCenter({ characters, chatHistory, proacti
       }
       : null,
     dismissBanner,
+    showSystemBanner,
     lockNotifications: useMemo(() => selectLockNotifications(notifications, settings), [notifications, settings]),
     badges: useMemo(() => buildBadgeCounts(notifications, settings), [notifications, settings]),
     socialActivities,

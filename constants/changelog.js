@@ -1,6 +1,17 @@
 import { toSimplifiedChinese } from "../utils/i18n.js";
 
 const ZH_CHANGELOG = {
+  "1.5.2": [
+    "10/28 資料保護更新",
+    "資料保護｜App 版的自動快照改存在 App 自己的資料夾，手機系統清掉網頁資料時快照仍會留著，可以直接還原。",
+    "資料保護｜開啟時若發現資料突然消失，會先停在救援畫面讓你從快照還原，不會用空資料開始。",
+    "資料保護｜App 版新增「最後一次存檔」：資料有變動時每分鐘自動在 App 資料夾留一份最新存檔，就算系統清掉資料，最多也只會損失一分鐘內的進度。",
+    "資料保護｜新增每日備份提醒：超過一天沒備份時，開啟小手機會跳一則通知，點一下就到備份頁。可在「設定 → 資料 → 雲端備份」關閉。",
+    "設定｜AI 分頁拿掉「測試模型（文字）」區塊，自帶 API（API 預設、AI 連線）照常使用。",
+    "通知｜雲隱山莊的田熟了、丹煉好了，以及今天的登入獎勵還沒領，現在會像角色訊息一樣跳通知，點一下直接進去。在山莊裡錯過的其他通知，離開山莊時會補跳一次。可在「設定 → 通知」分別關閉。",
+    "雲端同步｜下載雲端存檔時，雲隱山莊、登入獎勵、靈魂結晶改以「有進度的那份」為準，剛重置的空進度不會再蓋掉你的存檔；雲端沒有筆記或行事曆時也不會清掉本機的。",
+    "雲端同步｜這台裝置還沒有角色而雲端已有存檔時，帳號頁會提示一鍵載入。",
+  ],
   "1.5.1": [
     "10/27 修正更新",
     "特別篇｜修正紀念卡按「下載」卻跳出分享面板的問題：現在會直接存到下載資料夾，App 內則存進相簿。",
@@ -192,6 +203,41 @@ const ZH_CHANGELOG = {
 };
 
 const TRANSLATED_CHANGELOG = {
+  "1.5.2": {
+    en: [
+      "10/28 Data Protection Update",
+      "Data protection | In the app, automatic snapshots are now stored in the app's own folder, so they survive when the system clears web storage and can be restored directly.",
+      "Data protection | If your data suddenly disappears, the app now stops at a recovery screen so you can restore a snapshot instead of starting from empty data.",
+      "Data protection | The app now keeps a \"Latest save\": while data changes, a fresh copy is written to the app's own folder every minute, so even if the system clears your data you lose at most a minute of progress.",
+      "Data protection | New daily backup reminder: if you haven't backed up for a day, a notification appears when you open the phone and takes you to the backup page. Turn it off under Settings → Data → Cloud backup.",
+      "Settings | The \"Test model (text)\" block is removed from the AI tab; your own API (presets and AI connection) works as before.",
+      "Notifications | Ripe crops and finished furnace batches in Cloudveil Villa, and an unclaimed daily login reward, now notify you like character messages; tap to jump straight in. Notifications missed while inside the villa show once when you leave. Each can be turned off under Settings → Notifications.",
+      "Cloud sync | When downloading a cloud save, Cloudveil Villa, login rewards and soul crystals now follow whichever side has progress, so a freshly reset device can no longer overwrite your save. Empty cloud notes or calendar no longer wipe local ones.",
+      "Cloud sync | When this device has no characters yet but a cloud save exists, the account page offers to load it with one tap.",
+    ],
+    ja: [
+      "10/28 データ保護アップデート",
+      "データ保護｜アプリ版の自動スナップショットはアプリ専用フォルダに保存されるようになり、端末がウェブデータを消しても残るので、そのまま復元できます。",
+      "データ保護｜起動時にデータが突然消えていた場合、空のデータで始めずに復元画面で止まり、スナップショットから戻せます。",
+      "データ保護｜アプリ版に「最後の保存」を追加。データが変わるたびに1分ごとにアプリ専用フォルダへ最新の保存を残すので、システムにデータを消されても失うのは最大1分ぶんだけです。",
+      "データ保護｜毎日のバックアップ通知を追加。1日以上バックアップがないと、スマホを開いたときに通知が出て、タップするとバックアップ画面に移動します。「設定 → データ → クラウドバックアップ」でオフにできます。",
+      "設定｜AI タブから「テストモデル（テキスト）」を外しました。自前の API（API プリセット・AI 接続）はこれまでどおり使えます。",
+      "通知｜雲隠山荘の作物の収穫どき・丹炉の完成、そして今日のログイン報酬の未受け取りが、キャラのメッセージと同じように通知されるようになりました。タップでそのまま移動できます。山荘にいる間に見逃した通知は、山荘を出たときに一度まとめてお知らせします。「設定 → 通知」で個別にオフにできます。",
+      "クラウド同期｜クラウドのセーブデータを読み込むとき、雲隠山荘・ログイン報酬・ソウルクリスタルは「進行があるほう」を優先し、リセット直後の空の進行がセーブデータを上書きしなくなりました。クラウドにメモやカレンダーがない場合も端末側を消しません。",
+      "クラウド同期｜この端末にキャラがなくクラウドにセーブデータがあるときは、アカウント画面でワンタップ読み込みを案内します。",
+    ],
+    ko: [
+      "10/28 데이터 보호 업데이트",
+      "데이터 보호 | 앱의 자동 스냅샷을 앱 전용 폴더에 저장해, 시스템이 웹 데이터를 지워도 스냅샷이 남아 바로 복원할 수 있습니다.",
+      "데이터 보호 | 실행 시 데이터가 갑자기 사라졌다면 빈 데이터로 시작하지 않고 복구 화면에서 멈춰 스냅샷으로 되돌릴 수 있습니다.",
+      "데이터 보호 | 앱에 「마지막 저장」을 추가했습니다. 데이터가 바뀌면 1분마다 앱 전용 폴더에 최신 저장본을 남기므로, 시스템이 데이터를 지워도 최대 1분치 진행만 잃습니다.",
+      "데이터 보호 | 매일 백업 알림을 추가했습니다. 하루 이상 백업하지 않으면 휴대폰을 열 때 알림이 뜨고, 누르면 백업 페이지로 이동합니다. 「설정 → 데이터 → 클라우드 백업」에서 끌 수 있습니다.",
+      "설정 | AI 탭에서 「테스트 모델(텍스트)」 블록을 제거했습니다. 개인 API(API 프리셋, AI 연결)는 그대로 사용할 수 있습니다.",
+      "알림 | 운은산장의 작물 수확 시기와 단로 완성, 그리고 오늘의 로그인 보상 미수령이 캐릭터 메시지처럼 알림으로 표시됩니다. 눌러서 바로 이동할 수 있어요. 산장에 있는 동안 놓친 알림은 산장을 나올 때 한 번 모아서 알려줍니다. 「설정 → 알림」에서 각각 끌 수 있습니다.",
+      "클라우드 동기화 | 클라우드 저장 데이터를 내려받을 때 운은산장, 로그인 보상, 영혼 결정은 「진행이 있는 쪽」을 따르므로 방금 초기화된 빈 진행이 저장 데이터를 덮어쓰지 않습니다. 클라우드에 메모나 캘린더가 없어도 기기 데이터를 지우지 않습니다.",
+      "클라우드 동기화 | 이 기기에 캐릭터가 없고 클라우드 저장 데이터가 있으면 계정 화면에서 한 번에 불러오도록 안내합니다.",
+    ],
+  },
   "1.5.1": {
     en: [
       "10/27 Fix Update",

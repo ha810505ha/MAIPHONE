@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
-import { callAI } from "../services/aiService.js";
-import { setMaliTestRuntime } from "../services/cloud/maliTestRuntime.js";
+
+// 測試模型預設關（小舞 2026-10-28，見 config/featureFlags.js）；這支測的是旗標開時的路由，要先開再載入。
+process.env.VITE_MALI_TEST_MODEL_ENABLED = "true";
+const { callAI } = await import("../services/aiService.js");
+const { setMaliTestRuntime } = await import("../services/cloud/maliTestRuntime.js");
 
 const previousFetch = globalThis.fetch;
 let request = null;

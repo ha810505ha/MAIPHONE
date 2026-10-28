@@ -34,3 +34,25 @@ export const LEGACY_AUTO_SYNC_ENABLED = readFeatureFlag("VITE_LEGACY_AUTO_SYNC_E
 
 // 相簿算圖仍在開發中；false 時隱藏設定頁的圖像 API 區塊與相簿的生成入口。
 export const IMAGE_GEN_ENABLED = readFeatureFlag("VITE_IMAGE_GEN_ENABLED", false);
+
+// 雲端存檔上傳（MP-090，小舞 2026-10-28）：正式站 maliphone.com 只讀雲端、不上傳，
+// 雲端存檔以手機 App 上傳為準，玩家逐步移轉到正式站時不會互相蓋來蓋去。
+// 建置旗標可整包關閉（VITE_CLOUD_UPLOAD_ENABLED=false）；正式網域則在執行時直接判定，
+// 同一份 dist 放到 GitHub Pages／測試站仍可上傳。
+export const CLOUD_UPLOAD_ENABLED = readFeatureFlag("VITE_CLOUD_UPLOAD_ENABLED", true);
+export const OFFICIAL_SITE_HOST_PATTERN = /(^|\.)maliphone\.com$/;
+
+export function isCloudUploadAllowed({ hostname, flag = CLOUD_UPLOAD_ENABLED } = {}) {
+  if (!flag) return false;
+  const host = hostname ?? (typeof window !== "undefined" ? window.location?.hostname : "") ?? "";
+  return !OFFICIAL_SITE_HOST_PATTERN.test(String(host || "").toLowerCase());
+}
+
+// 測試模型（文字）／測試 LLM（小舞 2026-10-28）：點數商店要上了，設定頁先拿掉這塊讓版面乾淨；
+// 自帶 API（API 預設、AI 連線）照常。預設關；測試站要用就在建置時開 VITE_MALI_TEST_MODEL_ENABLED=true。
+// 關閉時所有存檔／備份裡的 aiSource 一律視為 personal，舊玩家不會卡在看不到的測試模型上。
+export const MALI_TEST_MODEL_ENABLED = readFeatureFlag("VITE_MALI_TEST_MODEL_ENABLED", false);
+
+export function normalizeAiSource(source, enabled = MALI_TEST_MODEL_ENABLED) {
+  return enabled && source === "hosted_test" ? "hosted_test" : "personal";
+}

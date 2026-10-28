@@ -4,7 +4,7 @@ import vm from "node:vm";
 import { runDataRestoreTransaction } from "../services/backup/dataRestoreTransaction.js";
 import { createTextSyncDocument, validateTextSyncDocument } from "../utils/textSyncDocument.js";
 import { mergeWalletSyncData } from "../utils/walletSync.js";
-import { mergeGameProgressSyncData } from "../utils/gameProgressSync.js";
+import { mergeGameProgressSyncData, mergeTextSyncFeatureData } from "../utils/gameProgressSync.js";
 import { preserveMissingDeviceSecrets, stripDeviceSecrets } from "../utils/deviceSecrets.js";
 import { preserveLocalMedia, stripTextSyncMedia } from "../utils/textSyncDocument.js";
 import { compactActivePersona, compactLegacyLocalData, packBackupMedia, restoreActivePersona, unpackBackupMedia } from "../utils/backupMediaAssets.js";
@@ -99,7 +99,8 @@ function harness({ stage = null, rollbackFails = false, snapshotSaved = true, mi
     unpackBackupMedia, preserveLocalMedia, stripDeviceSecrets, runDataRestoreTransaction,
     // Cloud media (MP-024): no session here, so downloads reduce to keeping this device's media.
     downloadTextSyncMedia: async (remote, local) => ({ state: preserveLocalMedia(remote, local), downloaded: 0, failed: 0 }),
-    validateTextSyncDocument, mergeWalletSyncData, mergeGameProgressSyncData,
+    validateTextSyncDocument, mergeWalletSyncData, mergeGameProgressSyncData, mergeTextSyncFeatureData,
+    normalizeAiSource: (source) => (source === "hosted_test" ? "hosted_test" : "personal"),
     validateImportedAppState() { if (invalid) throw new Error("Fixture invalid snapshot"); },
     localStorage: { setItem(key, value) { local.set(key, value); }, removeItem(key) { local.delete(key); } },
     window: { dispatchEvent() {} }, Event: class {},

@@ -6,6 +6,7 @@ import {
 } from "../../constants/notifications.js";
 import { messagePreviewText } from "../../utils/pseudoImage.js";
 import { normalizeUiLanguage, translate } from "../../utils/i18n.js";
+import { taiwanDayKey } from "../../utils/taiwanDayKey.js";
 
 // 通知在 hook 裡彙整、拿不到元件的 tr，直接讀目前介面語言（非瀏覽器環境退回繁中）。
 const uiTr = (...translations) => translate(
@@ -223,11 +224,126 @@ function collectDatingNotifications({ datingState, datingProfiles }) {
  * 新功能要接通知，就在這裡加一個 collector。
  * 各功能的未讀狀態是唯一真相，這裡只負責轉譯成統一的通知描述。
  */
+/**
+ * 山莊：熟成的田與煉好的丹（MP-091）。只讀存檔欄位，不 import 山莊的作物／丹方表，
+ * 免得把遊戲資料拖進主程式；`readyAt`／`unitMs` 由山莊在種植／開爐時寫入，舊檔沒有就略過。
+ * time 取「最早熟成而還沒收」的那一件：之後陸續熟成不再重複跳，全部收完後再熟的才算新事件。
+ */
+export function collectVillaReadyItems(save, now = Date.now()) {
+  const timestamp = Number(now) || Date.now();
+  const plots = Array.isArray(save?.farm?.plots) ? save.farm.plots : [];
+  const ripePlots = plots.filter((plot) => plot?.cropId && Number(plot.readyAt) > 0 && Number(plot.readyAt) <= timestamp);
+  const furnaces = Array.isArray(save?.shop?.furnaces) ? save.shop.furnaces : [];
+  const cooked = furnaces.map((furnace) => {
+    const startedAt = Number(furnace?.startedAt);
+    const unitMs = Number(furnace?.unitMs);
+    if (!furnace?.recipeId || !(startedAt > 0) || !(unitMs > 0)) return null;
+    const firstReadyAt = startedAt + unitMs;
+    if (firstReadyAt > timestamp) return null;
+    const done = Math.min(Number(furnace.batch) || 0, Math.floor((timestamp - startedAt) / unitMs));
+    return done > 0 ? { readyAt: firstReadyAt, count: done } : null;
+  }).filter(Boolean);
+  const readyTimes = [...ripePlots.map((plot) => Number(plot.readyAt)), ...cooked.map((item) => item.readyAt)];
+  return {
+    ripePlots: ripePlots.length,
+    cookedBatches: cooked.reduce((sum, item) => sum + item.count, 0),
+    earliestReadyAt: readyTimes.length ? Math.min(...readyTimes) : 0,
+  };
+}
+
+/** 下一個會讓山莊通知變化的時間點（下一塊田熟、下一爐第一份好）；沒有就回 0。 */
+export function nextVillaDueAt(save, now = Date.now()) {
+  const timestamp = Number(now) || Date.now();
+  const candidates = [];
+  for (const plot of Array.isArray(save?.farm?.plots) ? save.farm.plots : []) {
+    if (plot?.cropId && Number(plot.readyAt) > timestamp) candidates.push(Number(plot.readyAt));
+  }
+  for (const furnace of Array.isArray(save?.shop?.furnaces) ? save.shop.furnaces : []) {
+    const startedAt = Number(furnace?.startedAt);
+    const unitMs = Number(furnace?.unitMs);
+    if (furnace?.recipeId && startedAt > 0 && unitMs > 0 && startedAt + unitMs > timestamp) candidates.push(startedAt + unitMs);
+  }
+  return candidates.length ? Math.min(...candidates) : 0;
+}
+
+function collectVillaNotifications({ yunyinSave, featureLoaded, featureNow }) {
+  if (!featureLoaded || !yunyinSave) return [];
+  const ready = collectVillaReadyItems(yunyinSave, featureNow);
+  if (!ready.ripePlots && !ready.cookedBatches) return [];
+  const parts = [];
+  if (ready.ripePlots) parts.push(uiTr(`${ready.ripePlots} 塊田可以收成了`, `${ready.ripePlots} plot${ready.ripePlots > 1 ? "s are" : " is"} ready to harvest`, `${ready.ripePlots} 区画の作物が収穫できます`, `밭 ${ready.ripePlots}곳을 수확할 수 있어요`));
+  if (ready.cookedBatches) parts.push(uiTr(`丹爐煉好了 ${ready.cookedBatches} 份`, `${ready.cookedBatches} batch${ready.cookedBatches > 1 ? "es" : ""} finished in the furnace`, `丹炉で ${ready.cookedBatches} 回分が完成しました`, `단로에서 ${ready.cookedBatches}회분이 완성됐어요`));
+  return [{
+    id: `${NOTIFICATION_TYPES.VILLA}:ready`,
+    type: NOTIFICATION_TYPES.VILLA,
+    title: uiTr("雲隱山莊", "Cloudveil Villa", "雲隠山荘", "운은산장"),
+    body: parts.join(uiTr("、", ", ", "、", ", ")),
+    fallbackIcon: "⛰️",
+    // 明細在 body；count 固定 1，橫幅標題才不會變成「雲隱山莊・3 則訊息」。
+    count: 1,
+    time: ready.earliestReadyAt,
+    appId: "yunyin",
+    payload: {},
+  }];
+}
+
+/** 台灣時間 05:00 換日（與 taiwanDayKey 一致）：回傳目前這一「天」的起點時間戳。 */
+export function taiwanDayStart(now = Date.now()) {
+  const [year, month, day] = taiwanDayKey(now).split("-").map(Number);
+  return Date.UTC(year, month - 1, day, 5) - 8 * 60 * 60 * 1000;
+}
+
+function collectLoginRewardNotifications({ loginReward, featureLoaded, featureNow }) {
+  if (!featureLoaded) return [];
+  const now = Number(featureNow) || Date.now();
+  if (loginReward?.lastClaimDate === taiwanDayKey(now)) return [];
+  const nextDay = Math.min(7, (Number(loginReward?.day) || 0) + 1);
+  return [{
+    id: `${NOTIFICATION_TYPES.LOGIN_REWARD}:today`,
+    type: NOTIFICATION_TYPES.LOGIN_REWARD,
+    title: uiTr("登入獎勵", "Login reward", "ログイン報酬", "로그인 보상"),
+    body: uiTr(`今天的獎勵還沒領（第 ${nextDay} 天），點一下去領。`, `Today's reward (day ${nextDay}) is waiting. Tap to claim.`, `今日の報酬（${nextDay}日目）がまだです。タップして受け取りましょう。`, `오늘의 보상(${nextDay}일차)을 아직 받지 않았어요. 눌러서 받으세요.`),
+    fallbackIcon: "🎁",
+    count: 1,
+    time: taiwanDayStart(now),
+    appId: "game",
+    payload: { gamePage: "loginReward" },
+  }];
+}
+
+/** 通知時鐘下一次該跳的時間：下一塊田熟／下一爐好／下一次換日，取最近的。 */
+export function nextFeatureNotificationDueAt({ yunyinSave } = {}, now = Date.now()) {
+  const timestamp = Number(now) || Date.now();
+  const candidates = [taiwanDayStart(timestamp) + 24 * 60 * 60 * 1000];
+  const villa = nextVillaDueAt(yunyinSave, timestamp);
+  if (villa) candidates.push(villa);
+  return Math.min(...candidates.filter((value) => value > timestamp));
+}
+
+/**
+ * 離開沉浸 App 時要補跳的通知（MP-091）：遊玩期間被抑制的那些，
+ * 只留現在還存在（沒被讀掉）的，去重，且不包含正要進入的 App 自己的。
+ */
+export function selectCatchUpNotifications(missed, notifications, currentApp) {
+  const seen = new Set();
+  const result = [];
+  for (const item of missed || []) {
+    if (!item?.id || seen.has(item.id)) continue;
+    seen.add(item.id);
+    const live = (notifications || []).find((candidate) => candidate.id === item.id);
+    if (!live || live.appId === currentApp) continue;
+    result.push(live);
+  }
+  return result.sort((a, b) => b.time - a.time);
+}
+
 export function collectNotifications(sources = {}) {
   return [
     ...collectMessageNotifications(sources),
     ...collectDatingNotifications(sources),
     ...collectSocialNotifications(sources),
+    ...collectVillaNotifications(sources),
+    ...collectLoginRewardNotifications(sources),
     ...collectMailboxNotifications(sources),
   ].sort((a, b) => b.time - a.time);
 }
@@ -268,7 +384,7 @@ export function buildBadgeCounts(list, settings) {
 
 /**
  * 橫幅是唯一會打斷玩家的表面，抑制條件也最多。
- * 三種抑制情境（鎖定／勿擾／沉浸 App）行為一致：不顯示，而且不補跳。
+ * 鎖定／勿擾：不顯示，而且不補跳；沉浸 App：不顯示，離開時補跳一次（selectCatchUpNotifications）。
  */
 export function canInterrupt({ settings, locked, currentApp, now }) {
   if (locked) return false;

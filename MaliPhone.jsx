@@ -13,7 +13,7 @@ import { downloadJsonFile, downloadTextFile, exportToastMessage } from "./utils/
 import { UI_TEXT } from "./constants/uiText";
 import { localizeFallbackText, translate } from "./utils/i18n";
 import { callAI, isAiConfigReady } from "./services/aiService";
-import { loadAppState, saveAppState, loadFeatureEntity } from "./utils/indexedDbStorage";
+import { loadAppState, saveAppState, loadFeatureEntity, getStorageWipeNotice, acknowledgeStorageWipe, clearStorageMarker } from "./utils/indexedDbStorage";
 import { buildCalendarPromptContext, takeCalendarChatReminder } from "./services/calendar/calendarPromptContext";
 import { addChatCalendarEvent, updateCalendarEvent } from "./services/calendar/calendarEventStore";
 import { saveCouplePromiseFromChat } from "./services/couple/coupleDailyService";
@@ -74,11 +74,15 @@ import MaliPhoneSettingsSurface from "./components/settings/MaliPhoneSettingsSur
 import MaliPhoneShell from "./components/shell/MaliPhoneShell";
 import MaliPhoneOverlays from "./components/shell/MaliPhoneOverlays";
 import StorageLoadFailureScreen from "./components/shell/StorageLoadFailureScreen";
+import StorageWipedScreen from "./components/shell/StorageWipedScreen";
+import { recordRuntimeDiagnostic } from "./services/diagnostics/runtimeDiagnostics";
 import usePhoneNavigation from "./hooks/navigation/usePhoneNavigation";
 import { useNativeBackButton } from "./hooks/navigation/useNativeBackButton";
 import { playAppClose } from "./utils/appLaunchMotion.js";
 import useNotificationCenter from "./hooks/notifications/useNotificationCenter";
+import useFeatureNotificationSources from "./hooks/notifications/useFeatureNotificationSources";
 import { subscribeSystemNotificationClicks } from "./services/notifications/systemNotifications";
+import { BACKUP_REMINDER_DELAY_MS, buildBackupReminderNotification, isBackupReminderDue, markBackupDone, markBackupReminded, readBackupReminderState, BACKUP_KINDS } from "./services/backup/backupReminder";
 import useTransientItem from "./hooks/useTransientItem";
 import useDatingApp from "./hooks/dating/useDatingApp";
 import useAuthSession from "./hooks/auth/useAuthSession";
@@ -558,11 +562,17 @@ export default function MaliPhone() {
     playerName: playerProfile?.name,
     onError: (message) => showToast(message || tr("訊息傳送失敗", "Message failed to send", "メッセージを送信できませんでした", "메시지를 보내지 못했어요")),
   });
+  // 山莊存檔與登入獎勵進度（通知用；MP-091）。
+  const featureNotificationSources = useFeatureNotificationSources({ currentApp });
   const notificationCenter = useNotificationCenter({
     characters, chatHistory, proactiveUnread, locked, currentApp,
     datingState: DATING_ENABLED ? dating.state : null,
     datingProfiles: DATING_ENABLED ? DATING_PROFILES : [],
     posts, socialNow: socialTick, mailboxMails,
+    yunyinSave: featureNotificationSources.yunyinSave,
+    loginReward: featureNotificationSources.loginReward,
+    featureLoaded: featureNotificationSources.loaded,
+    featureNow: featureNotificationSources.featureNow,
   });
   const { applyLoadedAppState } = useAppHydrationController({
     defaultAppState,
@@ -655,6 +665,23 @@ export default function MaliPhone() {
     schedulePush,
     onLoad: applyLoadedAppState,
   });
+  // 資料庫被清掉（MP-090）：上次存檔有資料、這次四種格式都讀不到。先停在救援畫面，
+  // 讓玩家從快照還原或明確選擇從空白開始；期間不存每日快照，免得空資料擠掉好的那份。
+  const [storageWipeNotice, setStorageWipeNotice] = useState(null);
+  const storageWipeNoticeRef = useRef(null);
+  useEffect(() => {
+    if (!hydrated) return;
+    const notice = getStorageWipeNotice();
+    if (!notice) return;
+    storageWipeNoticeRef.current = notice;
+    setStorageWipeNotice(notice);
+    recordRuntimeDiagnostic({
+      kind: "storage-wiped",
+      source: "indexedDbStorage",
+      message: "IndexedDB was empty on boot but the last save had data",
+      details: notice,
+    });
+  }, [hydrated]);
   // 每日本機快照：開機穩定後檢查一次，App 長時間開著時每小時再檢查；距離上次滿 20 小時才存。
   const dataControllerRef = useRef(dataController);
   dataControllerRef.current = dataController;
@@ -664,11 +691,41 @@ export default function MaliPhone() {
     navigator.storage?.persisted?.()
       .then((persisted) => (persisted ? true : navigator.storage.persist?.()))
       .catch(() => null);
-    const check = () => { dataControllerRef.current.takeDailySnapshotIfDue(); };
+    const check = () => {
+      if (storageWipeNoticeRef.current) return;
+      dataControllerRef.current.takeDailySnapshotIfDue();
+    };
     const bootTimer = setTimeout(check, 15_000);
     const hourly = setInterval(check, 60 * 60 * 1000);
     return () => { clearTimeout(bootTimer); clearInterval(hourly); };
   }, [hydrated]);
+  // 最新存檔鏡像（MP-090）：資料有變動時，最多每分鐘把整份文字資料寫一份到 App 私有檔案夾
+  // （只在 APK 有作用，網頁版直接略過）。計時器到點才讀當下狀態，所以一分鐘內的變動都會收進去。
+  const latestMirrorTimerRef = useRef(null);
+  useEffect(() => {
+    if (!hydrated || storageWipeNoticeRef.current || latestMirrorTimerRef.current) return;
+    latestMirrorTimerRef.current = setTimeout(() => {
+      latestMirrorTimerRef.current = null;
+      if (storageWipeNoticeRef.current) return;
+      dataControllerRef.current.takeLatestSnapshotIfIdle();
+    }, 60_000);
+  }, [hydrated, dataController.persistenceSnapshot]);
+  useEffect(() => () => clearTimeout(latestMirrorTimerRef.current), []);
+  // 每日備份提醒（MP-090）：解鎖後稍等，太久沒備份就用通知橫幅提醒一次；被抑制（勿擾、沉浸 App）就下次解鎖再試。
+  const backupReminderRef = useRef({ characters, tr });
+  backupReminderRef.current = { characters, tr };
+  useEffect(() => {
+    if (!hydrated || locked || storageWipeNoticeRef.current) return undefined;
+    const timer = setTimeout(() => {
+      if (storageWipeNoticeRef.current) return;
+      const state = readBackupReminderState();
+      const { characters: currentCharacters, tr: currentTr } = backupReminderRef.current;
+      if (!isBackupReminderDue({ state, characterCount: currentCharacters.length })) return;
+      const shown = notificationCenter.showSystemBanner(buildBackupReminderNotification({ state, tr: currentTr }));
+      if (shown) markBackupReminded();
+    }, BACKUP_REMINDER_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [hydrated, locked]);
   // 主資料與信風各自從不同儲存實體 hydration；兩邊都完成後才校正聯絡人，
   // 避免啟動途中把其實仍存在的舊版角色誤判成已刪除。
   useEffect(() => {
@@ -1408,6 +1465,7 @@ export default function MaliPhone() {
     restoreLocalSnapshot,
   } = dataController;
   const { importRef: dataImportRef, importing: dataImporting, preview: dataImportPreview, exportAllData, importAllData, confirmImport: confirmImportPreview, cancelImport: cancelDataImport } = useDataImportExport({
+    onExported: () => markBackupDone(BACKUP_KINDS.exportFile),
     getExportableState: getExportableAppState,
     downloadJsonFile,
     summarizeImportedData,
@@ -1639,6 +1697,8 @@ export default function MaliPhone() {
     if (notif.payload?.settingsTab) setSettingsTab(notif.payload.settingsTab);
     // 順序不能反：openApp("chat") 會清掉 currentChatChar，先設角色會被蓋掉，只停在列表。
     openApp(notif.appId);
+    // 同理：openApp("game") 會把遊戲中心重設回大廳，要在之後再指定頁面。
+    if (notif.payload?.gamePage) setGamePage(notif.payload.gamePage);
     if (charId) {
       setProactiveUnread((prev) => { const next = { ...prev }; delete next[charId]; return next; });
       setCurrentChatChar(characters.find((item) => item.id === charId) || null);
@@ -2048,10 +2108,13 @@ export default function MaliPhone() {
           summarizeImportedData,
           applyImportedState: applyImportedAppState,
           showToast,
+          onBackedUp: markBackupDone,
         },
         textSyncProps: {
           getTextSyncDocument,
           applyTextSyncDocument,
+          localCharacterCount: characters.length,
+          onUploaded: () => markBackupDone(BACKUP_KINDS.cloudSave),
         },
         snapshotProps: {
           takeSnapshot: takeLocalSnapshotSafely,
@@ -2164,6 +2227,18 @@ export default function MaliPhone() {
   // 存檔讀取失敗：停在這裡、不渲染任何會存檔的畫面，避免空資料蓋掉玩家資料。
   if (appStateLoadFailed) return <StorageLoadFailureScreen error={appStateLoadError} tr={tr} themeCss={themeCss} />;
   if (dataController.restoreRecovery) return <StorageLoadFailureScreen error={dataController.restoreRecovery.error} beforeRestoreBackup={dataController.restoreRecovery.backup} tr={tr} themeCss={themeCss} />;
+  if (storageWipeNotice) {
+    return (
+      <StorageWipedScreen
+        tr={tr}
+        themeCss={themeCss}
+        notice={storageWipeNotice}
+        restoreSnapshot={dataController.restoreLocalSnapshot}
+        onRestored={() => { acknowledgeStorageWipe(); storageWipeNoticeRef.current = null; setStorageWipeNotice(null); }}
+        onContinue={() => { clearStorageMarker(); storageWipeNoticeRef.current = null; setStorageWipeNotice(null); }}
+      />
+    );
+  }
   // 商店與登入獎勵透過這個 context 加 Super Like；信風關閉時給 no-op。
   const datingActions = DATING_ENABLED
     ? { enabled: true, superLikes: dating.state.superLikes, grantSuperLikes: dating.grantSuperLikes }

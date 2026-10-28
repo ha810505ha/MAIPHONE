@@ -15,7 +15,7 @@ import AboutInfoSettings from "./AboutInfoSettings";
 import ResetDataSettings from "./ResetDataSettings";
 import SystemMailboxSettings from "./SystemMailboxSettings";
 import NotificationSettings from "./NotificationSettings";
-import { IMAGE_GEN_ENABLED } from "../../config/featureFlags";
+import { IMAGE_GEN_ENABLED, MALI_TEST_MODEL_ENABLED } from "../../config/featureFlags";
 import { LargeTitle, LargeTitleHeader, useLargeTitle } from "../shell/LargeTitle";
 import SegmentedControl from "../common/SegmentedControl";
 
@@ -69,7 +69,7 @@ export default function SettingsApp({ closeApp, t, tr, tab, setTab, nightTheme, 
         {tab === "api" && <>
           <ApiPresetSettings {...api.presetProps} />
           <AiConnectionSettings {...api.connectionProps} />
-          <MaliTestModelSettings {...api.hostedTestProps} />
+          {MALI_TEST_MODEL_ENABLED && <MaliTestModelSettings {...api.hostedTestProps} />}
           <VoiceApiSettings {...api.voiceProps} />
           {IMAGE_GEN_ENABLED && <ImageApiSettings tr={tr} />}
           {section("角色行為", "Character behavior", "キャラの動作", "캐릭터 동작")}

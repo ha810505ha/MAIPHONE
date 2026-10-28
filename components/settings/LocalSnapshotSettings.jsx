@@ -6,6 +6,7 @@ const reasonLabel = (reason, tr) => {
   if (reason === SNAPSHOT_REASONS.beforeOverwrite) return tr("覆蓋資料前", "Before overwrite", "上書き前", "덮어쓰기 전");
   if (reason === SNAPSHOT_REASONS.beforeReset) return tr("清空資料前", "Before reset", "データ消去前", "데이터 삭제 전");
   if (reason === SNAPSHOT_REASONS.manual) return tr("手動建立", "Manual", "手動作成", "수동 생성");
+  if (reason === SNAPSHOT_REASONS.latest) return tr("最後一次存檔", "Latest save", "最後の保存", "마지막 저장");
   return tr("快照", "Snapshot", "スナップショット", "스냅샷");
 };
 
@@ -98,10 +99,10 @@ export default function LocalSnapshotSettings({ tr, takeSnapshot, restoreSnapsho
       <div className="mp-sg-t">{tr("自動快照", "Automatic snapshots", "自動スナップショット", "자동 스냅샷")}</div>
       <div style={{ fontSize: 12, color: "var(--mp-txt-l)", lineHeight: 1.7, marginBottom: 8 }}>
         {tr(
-          "每天、以及匯入／下載雲端／還原／清空資料前，會自動在這台裝置留一份文字資料（不含圖片與 API Key）。資料被蓋掉或回溯時可以從這裡救回。手機或瀏覽器清除網站資料時快照也會一起消失，重要資料仍請匯出備份。",
-          "A text-only copy (no images or API keys) is saved on this device every day and before importing, downloading from the cloud, restoring, or resetting. Use it to recover if data gets overwritten or rolled back. Snapshots are removed if the device or browser clears site data, so keep exporting backups for important data.",
-          "毎日、およびインポート／クラウドからのダウンロード／復元／データ消去の前に、テキストデータ（画像と API キーを除く）をこの端末に自動保存します。データが上書きされたり巻き戻ったりしたときに、ここから戻せます。端末やブラウザがサイトデータを消去するとスナップショットも消えるため、大切なデータはバックアップを書き出してください。",
-          "매일, 그리고 가져오기/클라우드 다운로드/복원/데이터 삭제 전에 텍스트 데이터(이미지와 API 키 제외)를 이 기기에 자동으로 저장합니다. 데이터가 덮어써지거나 되돌아갔을 때 여기서 복구할 수 있습니다. 기기나 브라우저가 사이트 데이터를 지우면 스냅샷도 함께 사라지므로 중요한 데이터는 백업을 내보내세요.",
+          "每天、以及匯入／下載雲端／還原／清空資料前，會自動在這台裝置留一份文字資料（不含圖片與 API Key）。資料被蓋掉或回溯時可以從這裡救回。App 版的快照另存在 App 自己的資料夾，資料有變動時還會每分鐘更新一份「最後一次存檔」；網頁版在瀏覽器清除網站資料時快照會一起消失。清除 App 資料、解除安裝或換手機都救不回，重要資料仍請匯出備份。",
+          "A text-only copy (no images or API keys) is saved on this device every day and before importing, downloading from the cloud, restoring, or resetting. Use it to recover if data gets overwritten or rolled back. In the app, snapshots live in the app's own folder and a \"Latest save\" copy is refreshed every minute while data changes; on the web, snapshots are removed when the browser clears site data. Clearing app data, uninstalling or switching phones cannot be undone here, so keep exporting backups for important data.",
+          "毎日、およびインポート／クラウドからのダウンロード／復元／データ消去の前に、テキストデータ（画像と API キーを除く）をこの端末に自動保存します。データが上書きされたり巻き戻ったりしたときに、ここから戻せます。アプリ版ではスナップショットをアプリ専用フォルダに保存し、データが変わるたびに「最後の保存」を1分ごとに更新します。ウェブ版はブラウザがサイトデータを消去するとスナップショットも消えます。アプリのデータ消去・アンインストール・機種変更では戻せないため、大切なデータはバックアップを書き出してください。",
+          "매일, 그리고 가져오기/클라우드 다운로드/복원/데이터 삭제 전에 텍스트 데이터(이미지와 API 키 제외)를 이 기기에 자동으로 저장합니다. 데이터가 덮어써지거나 되돌아갔을 때 여기서 복구할 수 있습니다. 앱에서는 스냅샷을 앱 전용 폴더에 저장하고 데이터가 바뀌면 1분마다 「마지막 저장」을 갱신합니다. 웹에서는 브라우저가 사이트 데이터를 지우면 스냅샷도 함께 사라집니다. 앱 데이터 삭제, 삭제 설치, 기기 변경은 여기서 되돌릴 수 없으니 중요한 데이터는 백업을 내보내세요.",
         )}
       </div>
       {loadError && <div style={{ fontSize: 12, color: "var(--mp-txt-l)" }}>{tr("目前讀不到快照。", "Snapshots can't be read right now.", "現在スナップショットを読み込めません。", "지금은 스냅샷을 읽을 수 없습니다.")}</div>}

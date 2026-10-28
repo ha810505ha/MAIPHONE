@@ -3,7 +3,7 @@ import { exportToastMessage } from "../../utils/exportFile";
 import { isRescueFile, rescueToAppState } from "../../utils/backupInspect";
 import { dataRestoreFailureMessage } from "../../services/backup/dataRestoreTransaction";
 
-export default function useDataImportExport({ getExportableState, downloadJsonFile, summarizeImportedData, validateImportedState, applyImportedState, showToast, tr, sanitizeText }) {
+export default function useDataImportExport({ getExportableState, downloadJsonFile, summarizeImportedData, validateImportedState, applyImportedState, showToast, tr, sanitizeText, onExported }) {
   const importRef = useRef(null);
   const [importing, setImporting] = useState(false);
   const [preview, setPreview] = useState(null);
@@ -11,12 +11,14 @@ export default function useDataImportExport({ getExportableState, downloadJsonFi
   const exportAllData = useCallback(async () => {
     try {
       const result = await downloadJsonFile(await getExportableState(), `maliphone-backup-${new Date().toISOString().slice(0, 10)}.json`);
+      // 玩家按取消（分享面板關掉）不算備份完成。
+      if (result?.method !== "cancelled") onExported?.();
       const message = exportToastMessage(result, tr);
       if (message) showToast(`${tr("資料", "Data", "データ", "데이터")}${message}`);
     } catch (error) {
       showToast(`${tr("匯出失敗", "Export failed", "書き出しに失敗しました", "내보내기 실패")}：${sanitizeText(error?.message || "Unknown error", 80)}`);
     }
-  }, [downloadJsonFile, getExportableState, showToast, tr, sanitizeText]);
+  }, [downloadJsonFile, getExportableState, showToast, tr, sanitizeText, onExported]);
 
   const importAllData = useCallback(async (event) => {
     const file = event.target.files?.[0];

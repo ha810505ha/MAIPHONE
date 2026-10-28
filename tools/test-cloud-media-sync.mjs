@@ -23,7 +23,7 @@ import { compressImageForGallery } from "../services/images/galleryImageStorage.
 import { CLOUD_MEDIA_SYNC_TEXT, cloudMediaSyncSummary } from "../constants/cloudMediaSyncText.js";
 import { SUPPORTED_UI_LANGUAGES, translate } from "../utils/i18n.js";
 import { mergeWalletSyncData } from "../utils/walletSync.js";
-import { mergeGameProgressSyncData } from "../utils/gameProgressSync.js";
+import { mergeGameProgressSyncData, mergeTextSyncFeatureData } from "../utils/gameProgressSync.js";
 
 const session = { access_token: "mock-media-session" };
 const environment = { VITE_CLOUDFLARE_DATA_API_URL: "https://media.example/" };
@@ -352,12 +352,13 @@ try {
       restoreActivePersona: identity, unpackBackupMedia: identity,
       createTextSyncDocument, validateTextSyncDocument: (document) => document,
       uploadTextSyncMedia: (state, options) => uploadTextSyncMedia(state, { ...options, compress: async () => ({ blob }) }),
-      downloadTextSyncMedia, mergeWalletSyncData, mergeGameProgressSyncData,
+      downloadTextSyncMedia, mergeWalletSyncData, mergeGameProgressSyncData, mergeTextSyncFeatureData,
       // MP-040 data protection: React state, local snapshots, and the restore transaction.
       useRef: (value) => ({ current: value }), useState: (value) => [value, () => {}],
       stripDeviceSecrets: identity, preserveLocalMedia, stripTextSyncMedia,
       SNAPSHOT_REASONS: { daily: "daily" }, getLocalSnapshot: async () => null,
-      isDailySnapshotDue: async () => false, saveLocalSnapshot: async () => null,
+      isDailySnapshotDue: async () => false, saveLocalSnapshot: async () => null, saveLatestSnapshot: async () => null,
+      normalizeAiSource: (source) => (source === "hosted_test" ? "hosted_test" : "personal"),
       recordRuntimeDiagnostic() {}, summarizeBackupContent: () => ({}),
       runDataRestoreTransaction,
     };

@@ -300,6 +300,64 @@ async function writeStateEntities(state, force = false) {
   mem.lastRevs = nextLastRevs;
   if (outboxDirty) mem.outbox = nextOutbox;
   mem.lastDeviceSecrets = deviceSecrets;
+  writeStorageMarker(entities);
+}
+
+// === 資料庫被清掉的偵測（MP-090） ===
+// Android WebView 會在空間不足或資料庫損毀時把整個 IndexedDB 清掉，但 localStorage 會留下。
+// 每次存檔後在 localStorage 記一筆「上次存了幾位角色、幾則訊息」；開機發現資料庫是空的
+// 但標記說上次有資料，就不用空資料開機，改讓玩家先從快照或備份還原。
+const STORAGE_MARKER_KEY = "mali_storage_marker_v1";
+let storageWipeNotice = null;
+
+function summarizeEntitiesForMarker(entities) {
+  let characters = 0;
+  let messages = 0;
+  for (const [key, data] of entities) {
+    if (key.startsWith("ent_char_")) characters += 1;
+    else if (key.startsWith("ent_chat_") && !key.startsWith("ent_chatbg_") && Array.isArray(data)) messages += data.length;
+  }
+  return { characters, messages };
+}
+
+function writeStorageMarker(entities) {
+  // 玩家還沒決定要不要從快照還原時，空資料的存檔不能把標記蓋成 0。
+  if (storageWipeNotice) return;
+  try {
+    const summary = summarizeEntitiesForMarker(entities);
+    const previous = readStorageMarker();
+    if (previous && previous.characters === summary.characters && previous.messages === summary.messages) return;
+    localStorage.setItem(STORAGE_MARKER_KEY, JSON.stringify({ ...summary, savedAt: Date.now() }));
+  } catch {}
+}
+
+function readStorageMarker() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_MARKER_KEY) || "null");
+    if (!parsed || typeof parsed !== "object") return null;
+    return {
+      characters: Math.max(0, Number(parsed.characters) || 0),
+      messages: Math.max(0, Number(parsed.messages) || 0),
+      savedAt: Number(parsed.savedAt) || 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function clearStorageMarker() {
+  storageWipeNotice = null;
+  try { localStorage.removeItem(STORAGE_MARKER_KEY); } catch {}
+}
+
+/** 開機時發現資料庫空了但上次有資料：回傳上次的摘要給救援畫面用。 */
+function getStorageWipeNotice() {
+  return storageWipeNotice;
+}
+
+/** 玩家已從快照還原：解除通知，之後的存檔照常更新標記。 */
+function acknowledgeStorageWipe() {
+  storageWipeNotice = null;
 }
 
 // 從實體 map 還原成整包 app state
@@ -437,6 +495,9 @@ async function loadAppState(defaultState) {
     clearLegacyLocalStorage();
     return hydrateDeviceSecrets(stripDeviceSecrets(migrated), mem.lastDeviceSecrets);
   }
+  // 四種格式都沒有：若標記說上次有資料，這不是第一次開機，是資料庫被清掉了。
+  const marker = readStorageMarker();
+  storageWipeNotice = marker && (marker.characters > 0 || marker.messages > 0) ? marker : null;
   const deviceSecrets = normalizeDeviceSecrets(storedSecrets || EMPTY_DEVICE_SECRETS);
   mem.lastDeviceSecrets = deviceSecrets;
   return hydrateDeviceSecrets(defaultState, deviceSecrets);
@@ -500,6 +561,8 @@ async function resetLocalEntitiesUnlocked() {
   mem.lastSaved = new Map();
   mem.lastRevs = new Map();
   mem.outbox = {};
+  // 換帳號清空是刻意的，下次開機不能被當成資料庫被清掉。
+  clearStorageMarker();
 }
 function resetLocalEntities() {
   return enqueueMutation(resetLocalEntitiesUnlocked);
@@ -671,4 +734,4 @@ async function readRescueEntries() {
 }
 
 export { readRescueEntries };
-export { loadAppState, saveAppState, getSyncOutbox, readEntity, ackSynced, applyRemoteEntities, clearSyncOutbox, resetLocalEntities, clearDeviceSecrets, getDeviceId, loadFeatureEntity, saveFeatureEntity, saveFeatureEntities, loadPersonaFeatureEntity, savePersonaFeatureEntities };
+export { loadAppState, saveAppState, getSyncOutbox, readEntity, ackSynced, applyRemoteEntities, clearSyncOutbox, resetLocalEntities, clearDeviceSecrets, getDeviceId, loadFeatureEntity, saveFeatureEntity, saveFeatureEntities, loadPersonaFeatureEntity, savePersonaFeatureEntities, getStorageWipeNotice, acknowledgeStorageWipe, clearStorageMarker };

@@ -1,4 +1,5 @@
 import { loadFeatureEntity, saveFeatureEntity } from "../../utils/indexedDbStorage";
+import { YUNYIN_SAVE_UPDATED_EVENT } from "../../constants/notifications";
 import { normalizeHomeState } from "../home/homeState";
 import { cropById } from "./farm.js";
 import { normalizeNpcField } from "./npcFields.js";
@@ -145,23 +146,42 @@ export async function loadSave({ isCurrent = () => true } = {}) {
   }
   const migrated = normalizeSave(legacy);
   assertCurrent();
+  // 沒有任何存檔時先用記憶體裡的預設開局，不立刻寫回：資料庫被系統清掉後第一次開山莊，
+  // 不能用一份「最新建立」的空檔搶走雲端合併與備份的優先權（MP-090）。玩家有實際進度才存。
+  if (legacyText === null) return { ...migrated, fresh: true };
   await saveFeatureEntity(DB_KEY, migrated);
   assertCurrent();
   // Keep the legacy copy if migration could not commit, or the caller left.
-  if (legacyText !== null) {
-    try { localStorage.removeItem(KEY); } catch (_) {}
-  }
+  try { localStorage.removeItem(KEY); } catch (_) {}
   return migrated;
 }
 
+/** 玩家做了會改變進度的事：這份存檔從此可以寫回。 */
+export function touchSave(s) {
+  if (s && typeof s === "object") delete s.fresh;
+  return s;
+}
+
+// 存檔後把整份存檔廣播給通知層（MP-091）；人在山莊裡時對方只先收著，離開才套用。
+function announceSave(snapshot) {
+  if (typeof window === "undefined") return;
+  try { window.dispatchEvent(new CustomEvent(YUNYIN_SAVE_UPDATED_EVENT, { detail: snapshot })); } catch {}
+}
+
 export function persistSave(s) {
+  if (s?.fresh) return Promise.resolve();
   s.lastSeenAt = Date.now();
-  return saveFeatureEntity(DB_KEY, structuredClone(s)).catch((error) => console.error("[yunyin] 存檔失敗", error));
+  const snapshot = structuredClone(s);
+  announceSave(snapshot);
+  return saveFeatureEntity(DB_KEY, snapshot).catch((error) => console.error("[yunyin] 存檔失敗", error));
 }
 
 export async function replaceSave(raw) {
   const normalized = normalizeSave(raw);
+  delete normalized.fresh;
   normalized.lastSeenAt = Date.now();
-  await saveFeatureEntity(DB_KEY, structuredClone(normalized));
+  const snapshot = structuredClone(normalized);
+  await saveFeatureEntity(DB_KEY, snapshot);
+  announceSave(snapshot);
   return normalized;
 }

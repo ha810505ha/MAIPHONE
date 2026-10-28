@@ -10,7 +10,7 @@ const original = { coins: 975, inventory: { fixture_item: 7 }, mapLayoutVersion:
 function villa({ data = null, legacy = null, readError, legacyError, writeError, onWrite } = {}) {
   const events = [];
   const disk = { data: structuredClone(data), legacy };
-  const api = vm.runInNewContext(`${saveSource}\n({loadSave, persistSave});`, {
+  const api = vm.runInNewContext(`${saveSource}\n({loadSave, persistSave, touchSave});`, {
     Date, DOMException, structuredClone, console,
     OUTDOOR_MARGIN: 4, cropById: () => null,
     normalizeHomeState: (value) => ({ ...value, residentLinePacks: value?.residentLinePacks || {} }),
@@ -34,8 +34,19 @@ const loaded = villa({ data: original });
 assert.equal((await loaded.loadSave()).coins, 975);
 assert.deepEqual(loaded.events, ["read"]);
 const fresh = villa();
-assert.equal((await fresh.loadSave()).coins, 100);
-assert.deepEqual(fresh.events, ["read", "legacy-read", "write"]);
+const freshSave = await fresh.loadSave();
+assert.equal(freshSave.coins, 100);
+// MP-090：沒有存檔時不立刻寫回預設開局，避免清空後的空檔搶走合併優先權。
+assert.deepEqual(fresh.events, ["read", "legacy-read"]);
+assert.equal(freshSave.fresh, true);
+await fresh.persistSave(freshSave);
+assert.deepEqual(fresh.events, ["read", "legacy-read"], "a pristine save must not be written");
+assert.equal(fresh.disk.data, null);
+fresh.touchSave(freshSave);
+await fresh.persistSave(freshSave);
+assert.deepEqual(fresh.events, ["read", "legacy-read", "write"], "the save is written once progress exists");
+assert.equal(fresh.disk.data.coins, 100);
+assert.equal("fresh" in fresh.disk.data, false);
 const migrated = villa({ legacy: JSON.stringify(original) });
 assert.equal((await migrated.loadSave()).unknownFutureField, "keep");
 assert.deepEqual(migrated.events, ["read", "legacy-read", "write", "legacy-remove"]);

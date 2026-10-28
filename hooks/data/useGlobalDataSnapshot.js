@@ -37,14 +37,16 @@ import {
   SNAPSHOT_REASONS,
   getLocalSnapshot,
   isDailySnapshotDue,
+  saveLatestSnapshot,
   saveLocalSnapshot,
 } from "../../services/backup/localSnapshotService";
 import { recordRuntimeDiagnostic } from "../../services/diagnostics/runtimeDiagnostics";
 import { downloadTextSyncMedia, uploadTextSyncMedia } from "../../services/cloud/cloudMediaService.js";
 import { mergeWalletSyncData } from "../../utils/walletSync";
 import { summarizeBackupContent } from "../../utils/backupInspect";
-import { mergeGameProgressSyncData } from "../../utils/gameProgressSync";
+import { mergeTextSyncFeatureData } from "../../utils/gameProgressSync";
 import { runDataRestoreTransaction } from "../../services/backup/dataRestoreTransaction";
+import { normalizeAiSource } from "../../config/featureFlags";
 
 export const LOCAL_APP_DATA_KEYS = [
   "maliphone-pet-home",
@@ -353,6 +355,7 @@ export default function useGlobalDataSnapshot({
   const takeLocalSnapshot = async (reason) => {
     const { state: rawState } = await getAppStateSnapshot({ packMedia: false });
     const state = stripTextSyncMedia(rawState);
+    if (reason === SNAPSHOT_REASONS.latest) return saveLatestSnapshot({ state, version: VERSION });
     return saveLocalSnapshot({ reason, state, version: VERSION });
   };
 
@@ -362,6 +365,21 @@ export default function useGlobalDataSnapshot({
       return await takeLocalSnapshot(reason);
     } catch (error) {
       recordRuntimeDiagnostic({ kind: "local-snapshot", error, source: `localSnapshot:${reason}` });
+      return null;
+    }
+  };
+
+  // 最新存檔鏡像（MP-090）：還原／匯入進行中不寫；寫失敗只記一次診斷，免得手機滿了每分鐘洗一筆。
+  const latestSnapshotFailureLogged = useRef(false);
+  const takeLatestSnapshotIfIdle = async () => {
+    if (persistenceWriteGuard.active || persistenceWriteGuard.blocked) return null;
+    try {
+      return await takeLocalSnapshot(SNAPSHOT_REASONS.latest);
+    } catch (error) {
+      if (!latestSnapshotFailureLogged.current) {
+        latestSnapshotFailureLogged.current = true;
+        recordRuntimeDiagnostic({ kind: "local-snapshot", error, source: "localSnapshot:latest" });
+      }
       return null;
     }
   };
@@ -618,7 +636,7 @@ export default function useGlobalDataSnapshot({
       apiConfig: {
         ...defaultAppState.apiConfig,
         ...(src.apiConfig && typeof src.apiConfig === "object" ? src.apiConfig : {}),
-        aiSource: src.apiConfig?.aiSource === "hosted_test" ? "hosted_test" : "personal",
+        aiSource: normalizeAiSource(src.apiConfig?.aiSource),
       },
       ttsConfig: src.ttsConfig && typeof src.ttsConfig === "object"
         ? {
@@ -725,13 +743,9 @@ export default function useGlobalDataSnapshot({
     const mergedState = media.state;
     const remoteFeatureData = mergedState.featureData || {};
     // Merge shared progress explicitly. Media-related and unsupported feature
-    // stores remain local to this device.
-    const gameProgress = mergeGameProgressSyncData(localState.featureData || {}, remoteFeatureData);
-    mergedState.featureData = {
-      ...(localState.featureData || {}),
-      ...remoteFeatureData,
-      ...gameProgress,
-    };
+    // stores remain local to this device, and an empty cloud notes/calendar
+    // never erases local ones.
+    mergedState.featureData = mergeTextSyncFeatureData(localState.featureData || {}, remoteFeatureData);
     const walletData = mergeWalletSyncData({
       wallet: localState.wallet,
       characterWallets: localState.characterWallets,
@@ -771,6 +785,7 @@ export default function useGlobalDataSnapshot({
     applyTextSyncDocument,
     takeLocalSnapshotSafely,
     takeDailySnapshotIfDue,
+    takeLatestSnapshotIfIdle,
     restoreLocalSnapshot,
   };
 }

@@ -36,6 +36,8 @@ export function startCraft(save, recipeId, batch, now = Date.now()) {
   idle.recipeId = recipeId;
   idle.startedAt = now;
   idle.batch = batch;
+  // 通知層只讀這個欄位算煉好幾份，不 import 丹方表（MP-091）。
+  idle.unitMs = r.craftMin * 60000;
   return null;
 }
 

@@ -20,7 +20,7 @@ export default function NotificationCard({ notification, className, onClick, ges
   return (
     <button type="button" className={`mp-notif ${className || ""}`} data-phase={dataPhase} onClick={onClick} {...gestureHandlers}>
       <div className="mp-notif-avatar">
-        {notification.summaryCount ? <AvatarFallback icon="bell" /> : avatar ? <img src={avatar} alt="" /> : (notification.fallbackIcon || <AvatarFallback name={notification.title} />)}
+        {notification.summaryCount ? <AvatarFallback icon="bell" /> : avatar ? <img src={avatar} alt="" /> : notification.icon ? <AvatarFallback icon={notification.icon} /> : (notification.fallbackIcon || <AvatarFallback name={notification.title} />)}
       </div>
       <div className="mp-notif-body">
         <div className="mp-notif-head">

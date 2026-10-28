@@ -13,7 +13,7 @@ import {
 } from "../services/cloud/cloudDataService.js";
 import { createTextSyncDocument, validateTextSyncDocument } from "../utils/textSyncDocument.js";
 import { mergeWalletSyncData } from "../utils/walletSync.js";
-import { mergeGameProgressSyncData } from "../utils/gameProgressSync.js";
+import { mergeGameProgressSyncData, mergeTextSyncFeatureData } from "../utils/gameProgressSync.js";
 import { NetworkTimeoutError } from "../utils/networkRequest.js";
 import { conflictFromError, getDeviceLabel, resolveUploadBase } from "../services/cloud/cloudSyncRevision.js";
 import { CLOUD_SYNC_REVISION_TEXT, fillCloudSyncText } from "../constants/cloudSyncRevisionText.js";
@@ -129,7 +129,7 @@ async function runUpload(readResponse, { cancel = false, captureFails = false, p
     textSyncProps: { getTextSyncDocument: async () => { outcome.captures++; if (captureFails) throw new Error("Fixture capture failure"); return structuredClone(outcome.local); } },
     getCloudDocument: (value, docKey) => getCloudDocument(value, docKey, environment),
     putCloudDocument: (value, docKey, data, options = {}) => putCloudDocument(value, docKey, data, { ...options, environment }),
-    isCloudDocumentNotFound, validateTextSyncDocument, mergeWalletSyncData, mergeGameProgressSyncData,
+    isCloudDocumentNotFound, validateTextSyncDocument, mergeWalletSyncData, mergeGameProgressSyncData, mergeTextSyncFeatureData,
     // MP-032 P2：本機上次同步的版號與衝突處理。
     readTextSyncMeta: () => (localRevision ? { revision: localRevision } : null),
     resolveUploadBase, conflictFromError, isCloudRevisionConflict, isCloudUploadRateLimited, getDeviceLabel: () => "Fixture",

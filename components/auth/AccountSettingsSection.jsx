@@ -19,6 +19,7 @@ import { mergeGameProgressSyncData } from "../../utils/gameProgressSync.js";
 import { validateTextSyncDocument } from "../../utils/textSyncDocument.js";
 import { dataRestoreFailureMessage } from "../../services/backup/dataRestoreTransaction.js";
 import { CLOUD_MEDIA_SYNC_TEXT, cloudMediaSyncSummary } from "../../constants/cloudMediaSyncText.js";
+import { isCloudUploadAllowed } from "../../config/featureFlags.js";
 
 const inputStyle = {
   width: "100%",
@@ -116,6 +117,11 @@ export default function AccountSettingsSection({ auth, tr, notify, textSyncProps
   const [historyState, setHistoryState] = useState({ loading: false, versions: null, failed: false });
   const user = auth?.user;
   const cloudDataConfigured = getCloudDataConfig().configured;
+  // 正式站只讀雲端，不上傳（MP-090）。
+  const uploadAllowed = isCloudUploadAllowed();
+  // 這台裝置沒有任何角色而雲端有存檔：多半是新瀏覽器或資料被清掉，提示一鍵載入；絕不自動覆蓋。
+  const localCharacterCount = Number(textSyncProps?.localCharacterCount);
+  const offerCloudLoad = Number.isFinite(localCharacterCount) && localCharacterCount === 0 && !!remoteTextSyncMeta;
 
   useEffect(() => {
     if (auth?.isPasswordRecovery) {
@@ -306,6 +312,7 @@ export default function AccountSettingsSection({ auth, tr, notify, textSyncProps
       };
       saveTextSyncMeta(auth.user?.id, meta);
       setTextSyncMeta(meta);
+      textSyncProps?.onUploaded?.();
       setRemoteTextSyncMeta({ revision, updatedAt: meta.remoteUpdatedAt, updatedBy: saved?.updatedBy || getDeviceLabel() });
       setHistoryState({ loading: false, versions: null, failed: false });
       setHistoryOpen(false);
@@ -328,9 +335,9 @@ export default function AccountSettingsSection({ auth, tr, notify, textSyncProps
     }
   };
 
-  const downloadTextSync = async () => {
+  const downloadTextSync = async ({ confirm = true } = {}) => {
     if (!textSyncProps?.applyTextSyncDocument || !auth?.session) return;
-    const proceed = window.confirm(tr(CLOUD_MEDIA_SYNC_TEXT.downloadConfirm));
+    const proceed = !confirm || window.confirm(tr(CLOUD_MEDIA_SYNC_TEXT.downloadConfirm));
     if (!proceed) return;
     setTextSyncBusy(true);
     setTextSyncStatus("");
@@ -492,8 +499,13 @@ export default function AccountSettingsSection({ auth, tr, notify, textSyncProps
             {remoteTextSyncMeta && <div>{text("雲端版本", "Cloud version", "クラウド版", "클라우드 버전")}: r{remoteTextSyncMeta.revision}{remoteTextSyncMeta.updatedAt ? ` · ${formatSyncTime(remoteTextSyncMeta.updatedAt)}` : ""}{remoteTextSyncMeta.updatedBy ? ` · ${remoteTextSyncMeta.updatedBy}` : ""}</div>}
             {textSyncMeta && <div>{text("此裝置上次同步", "This device last synced", "この端末の最終同期", "이 기기의 마지막 동기화")}: {syncActionLabel(textSyncMeta.action)} · {formatSyncTime(textSyncMeta.at)} · r{textSyncMeta.revision}</div>}
           </div>}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginTop: 9 }}>
-            <button type="button" style={secondaryButton} disabled={auth.busy || textSyncBusy || !cloudDataConfigured} onClick={() => uploadTextSync()}>{textSyncBusy ? text("處理中…", "Working…", "処理中…", "처리 중…") : text("上傳此裝置存檔", "Upload this device", "この端末をアップロード", "이 기기 업로드")}</button>
+          {offerCloudLoad && <div role="status" style={{ marginTop: 9, padding: 10, borderRadius: 12, background: "color-mix(in srgb,var(--mp-accent) 12%,var(--mp-card-bg,var(--mp-surface)))", border: "1px solid color-mix(in srgb,var(--mp-accent) 24%,var(--mp-card-border))", fontSize: 12, lineHeight: 1.65 }}>
+            <div>{text("這台裝置還沒有任何角色，雲端已經有一份存檔。要把雲端存檔載入到這台裝置嗎？", "This device has no characters yet, and your cloud save exists. Load the cloud save onto this device?", "この端末にはまだキャラがなく、クラウドにセーブデータがあります。この端末に読み込みますか？", "이 기기에는 아직 캐릭터가 없고 클라우드에 저장 데이터가 있습니다. 이 기기로 불러올까요?")}</div>
+            <button type="button" style={{ ...secondaryButton, marginTop: 8 }} disabled={auth.busy || textSyncBusy || !cloudDataConfigured} onClick={() => downloadTextSync({ confirm: false })}>{textSyncBusy ? text("處理中…", "Working…", "処理中…", "처리 중…") : text("載入雲端存檔", "Load cloud save", "クラウドのセーブデータを読み込む", "클라우드 저장 불러오기")}</button>
+          </div>}
+          {!uploadAllowed && <div style={{ marginTop: 7, fontSize: 11, color: "var(--mp-txt-l)", lineHeight: 1.6 }}>{text("這個網站只會讀取雲端存檔，不會上傳。要更新雲端存檔，請在手機 App 上傳；本機備份可用匯出檔或 Google 雲端硬碟。", "This site only reads your cloud save and never uploads. Upload from the mobile app to update it; use export files or Google Drive for local backups.", "このサイトはクラウドのセーブデータを読み込むだけで、アップロードはしません。更新はモバイルアプリからアップロードしてください。ローカルのバックアップは書き出しファイルか Google ドライブを使えます。", "이 사이트는 클라우드 저장 데이터를 읽기만 하고 업로드하지 않습니다. 업데이트는 모바일 앱에서 업로드해 주세요. 로컬 백업은 내보내기 파일이나 Google 드라이브를 사용할 수 있습니다.")}</div>}
+          <div style={{ display: "grid", gridTemplateColumns: uploadAllowed ? "1fr 1fr" : "1fr", gap: 7, marginTop: 9 }}>
+            {uploadAllowed && <button type="button" style={secondaryButton} disabled={auth.busy || textSyncBusy || !cloudDataConfigured} onClick={() => uploadTextSync()}>{textSyncBusy ? text("處理中…", "Working…", "処理中…", "처리 중…") : text("上傳此裝置存檔", "Upload this device", "この端末をアップロード", "이 기기 업로드")}</button>}
             <button type="button" style={secondaryButton} disabled={auth.busy || textSyncBusy || !cloudDataConfigured} onClick={() => downloadTextSync()}>{textSyncBusy ? text("處理中…", "Working…", "処理中…", "처리 중…") : text("下載雲端存檔", "Download cloud save", "クラウドからダウンロード", "클라우드에서 다운로드")}</button>
           </div>
           {textSyncStatus && <div role="status" style={{ marginTop: 7, fontSize: 11, color: textSyncFailed ? "var(--mp-danger)" : "var(--mp-success)" }}>{textSyncStatus}</div>}

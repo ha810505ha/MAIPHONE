@@ -4,6 +4,7 @@ import { useGacha } from "../../contexts/GachaContext";
 import { useDatingActions } from "../../contexts/DatingActionsContext";
 import { SUPER_LIKE_LOGIN_STREAK_REWARD } from "../../constants/dating";
 import { taiwanDayKey } from "../../utils/taiwanDayKey";
+import { dispatchFeatureDataChanged } from "../../services/featureDataLifecycle";
 import { AppHeader, LargeTitle, LargeTitleHeader, SUB_PAGE_CLASS, useLargeTitle } from "../shell/LargeTitle";
 
 const REWARDS = [50, 60, 70, 80, 90, 100, 200];
@@ -34,6 +35,8 @@ export default function LoginRewardApp({ onBack, tr }) {
     setProgress(next);
     changeCrystals(reward, { source: "login", note: tr(`登入獎勵・第 ${nextDay} 天`, `Login reward · Day ${nextDay}`, `ログイン報酬・${nextDay}日目`, `로그인 보상 · ${nextDay}일차`) });
     await saveFeatureEntity("ent_loginReward", next);
+    // 讓通知層知道今天領過了（MP-091）。
+    dispatchFeatureDataChanged(["ent_loginReward"], "login-reward-claim");
     // 連續登入第 7 天額外 +1 Super Like（MP-051）；信風關閉時 context 是 no-op，提示也不顯示。
     const streakBonus = nextDay >= 7 && datingActions.enabled;
     if (streakBonus) datingActions.grantSuperLikes(SUPER_LIKE_LOGIN_STREAK_REWARD, "loginStreak");

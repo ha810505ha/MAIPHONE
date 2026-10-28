@@ -6,6 +6,7 @@ import { isLocalProvider } from "../constants/appConstants.js";
 import { getRealityThinkingBudget } from "../utils/realityOutputSettings.js";
 import { normalizeImagePayload } from "../utils/imagePayload.js";
 import { translate } from "../utils/i18n.js";
+import { MALI_TEST_MODEL_ENABLED } from "../config/featureFlags.js";
 
 // 帶 HTTP 狀態碼的錯誤，錯誤診斷靠它判斷原因（例如 401 金鑰錯、429 太頻繁）。
 const httpError = (message, status) => {
@@ -38,7 +39,7 @@ const resolveRequestBaseUrl = (provider, configuredBaseUrl) => {
   return configuredBaseUrl;
 };
 
-export const isHostedTestMode = (apiConfig) => apiConfig?.aiSource === "hosted_test";
+export const isHostedTestMode = (apiConfig) => MALI_TEST_MODEL_ENABLED && apiConfig?.aiSource === "hosted_test";
 
 export const isAiConfigReady = (apiConfig) => {
   if (isHostedTestMode(apiConfig)) return Boolean(apiConfig?.hostedTestProvider && apiConfig?.hostedTestModel);

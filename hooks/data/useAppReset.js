@@ -1,6 +1,6 @@
 import { DOCK_APPS } from "../../constants/appConstants";
 import { HOME_SLOT_COUNT } from "../../utils/homeLayout";
-import { clearDeviceSecrets } from "../../utils/indexedDbStorage";
+import { clearDeviceSecrets, clearStorageMarker } from "../../utils/indexedDbStorage";
 import { resetFeatureData } from "../../services/featureBackupService";
 
 /**
@@ -98,6 +98,8 @@ export default function useAppReset({
     try {
       await resetFeatureData();
       await clearDeviceSecrets();
+      // 玩家自己清空的，下次開機不能被當成資料庫被系統清掉。
+      clearStorageMarker();
       const { clearImageApiConfig } = await import("../../services/images/galleryImageStorage");
       await clearImageApiConfig();
       applyLocalAppDataSnapshot({}, { replace: true });

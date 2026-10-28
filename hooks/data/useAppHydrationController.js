@@ -3,6 +3,7 @@ import { FONT_PRESETS } from "../../styles/themePresets";
 import { normalizeCharacterBlockStates } from "../../services/chat/characterBlockState";
 import { normalizeUiLanguage } from "../../utils/i18n";
 import { HOME_PAGE_SIZE, HOME_SLOT_COUNT, normalizeHomeSlots } from "../../utils/homeLayout";
+import { normalizeAiSource } from "../../config/featureFlags";
 
 /**
  * Owns the persisted app-state hydration and legacy migration boundary.
@@ -172,7 +173,7 @@ export default function useAppHydrationController({
     setApiConfig({
       ...defaultAppState.apiConfig,
       ...(data.apiConfig && typeof data.apiConfig === "object" ? data.apiConfig : {}),
-      aiSource: data.apiConfig?.aiSource === "hosted_test" ? "hosted_test" : "personal",
+      aiSource: normalizeAiSource(data.apiConfig?.aiSource),
     });
     setTtsConfig(
       data.ttsConfig && typeof data.ttsConfig === "object"

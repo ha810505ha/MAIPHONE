@@ -65,6 +65,8 @@ export function plantCrop(save, plotIdx, cropId, now = Date.now()) {
   }
   plot.cropId = cropId;
   plot.plantedAt = plantedAt;
+  // 通知層只讀這個欄位判斷熟了沒，不 import 作物表（MP-091）。
+  plot.readyAt = plantedAt + growMs(crop);
   return null;
 }
 

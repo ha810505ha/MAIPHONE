@@ -38,7 +38,8 @@ export default function NotificationSettings({ tr, settings, updateSettings, sys
     ["match", tr("信風配對", "Matches", "マッチング", "매칭")],
     ["like", tr("有人喜歡你", "New likes", "いいね", "좋아요")],
     ["social", tr("社群動態", "Social updates", "ソーシャル", "소셜")],
-    ["wallet", tr("錢包入帳", "Wallet", "ウォレット", "지갑")],
+    ["villa", tr("雲隱山莊", "Cloudveil Villa", "雲隠山荘", "운은산장")],
+    ["loginReward", tr("登入獎勵", "Login reward", "ログイン報酬", "로그인 보상")],
     ["mailbox", tr("系統信箱", "System mailbox", "システムメール", "시스템 우편함")],
   ].filter(([key]) => DATING_ENABLED || (key !== "match" && key !== "like")); // 信風未開放時不列出它的通知類型
   const surfaceLabels = [
