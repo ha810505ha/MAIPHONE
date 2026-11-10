@@ -1,0 +1,526 @@
+import { fetchWithTimeout, NETWORK_TIMEOUTS } from "../utils/networkRequest.js";
+import { recordRuntimeDiagnostic } from "./diagnostics/runtimeDiagnostics.js";
+import { getMaliTestRuntime } from "./cloud/maliTestRuntime.js";
+import { runMaliTextGeneration } from "./cloud/maliTestService.js";
+import { isLocalProvider } from "../constants/appConstants.js";
+import { getRealityThinkingBudget } from "../utils/realityOutputSettings.js";
+import { normalizeImagePayload } from "../utils/imagePayload.js";
+import { translate } from "../utils/i18n.js";
+import { MALI_TEST_MODEL_ENABLED } from "../config/featureFlags.js";
+
+// 帶 HTTP 狀態碼的錯誤，錯誤診斷靠它判斷原因（例如 401 金鑰錯、429 太頻繁）。
+const httpError = (message, status) => {
+  const error = new Error(message);
+  const code = Number(status);
+  if (Number.isFinite(code) && code > 0) error.status = code;
+  return error;
+};
+
+const NVIDIA_PROXY_BASE_URL = "https://api.maliphone.com/nvidia";
+const OLLAMA_PROXY_BASE_URL = "https://api.maliphone.com/ollama";
+const LEGACY_OLLAMA_PROXY_RE = /^https:\/\/orange-butterfly-8390\.d778105\.workers\.dev\/ollama(?:\/+)?$/i;
+
+const isGemini25ProModel = (model) => /(^|\/)gemini-2\.5-pro(?:$|[-:])/i.test(String(model || ""));
+
+// Ollama 也可能被玩家指向本機（localhost / 127.0.0.1），此時同樣免 API Key。
+const LOCALHOST_URL_RE = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i;
+const isLocalConnection = (provider, baseUrl) => (
+  isLocalProvider(provider) || (provider === "ollama" && LOCALHOST_URL_RE.test(baseUrl || ""))
+);
+
+const resolveRequestBaseUrl = (provider, configuredBaseUrl) => {
+  if (provider === "nvidia") return NVIDIA_PROXY_BASE_URL;
+  // 1.2.17 以前儲存的 Ollama 預設網址會跟著玩家備份保留下來；舊 Worker
+  // 下線後 Safari 只會回報不具體的 `Load failed`。僅遷移官方舊網址，保留
+  // 玩家自行設定的 Ollama / OpenAI 相容端點。
+  if (provider === "ollama" && LEGACY_OLLAMA_PROXY_RE.test(String(configuredBaseUrl || ""))) {
+    return OLLAMA_PROXY_BASE_URL;
+  }
+  return configuredBaseUrl;
+};
+
+export const isHostedTestMode = (apiConfig) => MALI_TEST_MODEL_ENABLED && apiConfig?.aiSource === "hosted_test";
+
+export const isAiConfigReady = (apiConfig) => {
+  if (isHostedTestMode(apiConfig)) return Boolean(apiConfig?.hostedTestProvider && apiConfig?.hostedTestModel);
+  const provider = apiConfig?.provider;
+  if (!provider) return false;
+  // 本地模型（LM Studio、llama.cpp…）與指向本機的 Ollama 都免 API Key。
+  return isLocalConnection(provider, apiConfig?.baseUrl) || Boolean(apiConfig?.apiKey);
+};
+
+const extractHostedText = (payload) => (
+  payload?.response?.candidates?.[0]?.content?.parts?.map((part) => part?.text || "").join("")
+  || payload?.response?.choices?.[0]?.message?.content
+  || ""
+);
+
+async function callHostedTestRequest(messages, apiConfig, sysPrompt, options = {}, meter = null) {
+  const runtime = getMaliTestRuntime();
+  if (!runtime.session?.access_token) {
+    throw new Error("測試 LLM 需要先登入可用的測試帳號");
+  }
+  if (!apiConfig?.hostedTestProvider || !apiConfig?.hostedTestModel) {
+    throw new Error("請先在測試模型面板選擇可用模型");
+  }
+  if (messages.some((message) => message?.image)) {
+    throw new Error("測試 LLM 目前只支援文字，不會傳送圖片內容");
+  }
+  const contents = messages
+    .filter((message) => message?.role !== "system")
+    .map((message) => ({
+      role: message?.role === "assistant" ? "model" : "user",
+      parts: [{ text: String(message?.content || "") }],
+    }));
+  if (!contents.length) contents.push({ role: "user", parts: [{ text: "請回覆。" }] });
+  const maxOutputTokens = Number(apiConfig.maxTokens) > 0 ? Number(apiConfig.maxTokens) : 4000;
+  const payload = await runMaliTextGeneration(runtime.session, runtime.environment, {
+    provider: apiConfig.hostedTestProvider,
+    model: apiConfig.hostedTestModel,
+    feature: options.feature || "other",
+    mode: options.mode || "app",
+    app: options.app || options.feature || "other",
+    action: options.action || "generate",
+    maxOutputTokens,
+    systemPrompt: sysPrompt || "",
+    contents,
+    signal: options.signal,
+  });
+  const text = extractHostedText(payload);
+  if (!text.trim()) throw new Error("測試 LLM 沒有回傳文字內容");
+  if (meter) meter.points = Number(payload?.pointsCharged || 0);
+  return text;
+}
+
+// meter：成功時把原始回應留給花費本讀 token／費用（MP-063），不影響回傳文字。
+async function callAIRequest(messages, apiConfig, sysPrompt, options = {}, meter = null) {
+  if (isHostedTestMode(apiConfig)) return callHostedTestRequest(messages, apiConfig, sysPrompt, options, meter);
+  const { provider, baseUrl: configuredBaseUrl, apiKey, model } = apiConfig;
+  const baseUrl = resolveRequestBaseUrl(provider, configuredBaseUrl);
+  const request = (url, init) => fetchWithTimeout(url, init, {
+    signal: options.signal,
+    timeoutMs: options.timeoutMs || NETWORK_TIMEOUTS.AI,
+  });
+  const cleanBaseUrl = (baseUrl || "https://aiplatform.googleapis.com/v1").replace(/\/+$/, "");
+  const providerNeedsApiKey = !isLocalConnection(provider, baseUrl);
+  if (providerNeedsApiKey && !apiKey) throw new Error("請先設定 API Key");
+
+  const sys = sysPrompt || "你是一位自然、友善、穩定的 AI 角色助理。";
+  const configuredMaxTokens = Number(apiConfig.maxTokens) > 0 ? Number(apiConfig.maxTokens) : 4000;
+  const tuneRealityGemini25Pro = (
+    (provider === "vertex" || provider === "gemini")
+    && options.mode === "reality"
+    && options.action === "direct_reply"
+    && isGemini25ProModel(model)
+  );
+  const maxTokens = configuredMaxTokens;
+  const realityThinkingBudget = tuneRealityGemini25Pro ? getRealityThinkingBudget(maxTokens) : null;
+  const hasImageInput = messages.some((m) => !!m.image);
+  const temperature = apiConfig.temperatureEnabled && Number.isFinite(Number(apiConfig.temperature))
+    ? Math.max(0, Math.min(2, Number(apiConfig.temperature))) : null;
+
+  if (hasImageInput && provider === "openrouter" && String(model || "").toLowerCase() === "auto") {
+    throw new Error("OpenRouter 的 auto 可能會選到不支援圖片的模型，請改成可視覺模型（例如 openai/gpt-4o-mini、anthropic/claude-3.5-sonnet）。");
+  }
+
+  if (provider === "claude") {
+    const res = await request(`${baseUrl}/messages`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: maxTokens,
+        ...(temperature == null ? {} : { temperature }),
+        system: sys,
+        messages: messages
+          .filter((m) => m.role !== "system")
+          .map((m) => {
+            const image = m.image ? normalizeImagePayload(m.image, m.imageMime) : null;
+            return {
+              role: m.role,
+              content: image
+                ? [
+                    { type: "image", source: { type: "base64", media_type: image.mimeType, data: image.data } },
+                    { type: "text", text: m.content || "請描述這張圖" },
+                  ]
+                : m.content,
+            };
+          }),
+      }),
+    });
+    const data = await res.json();
+    if (data.error) throw httpError(data.error.message, res.status);
+    if (meter) meter.payload = data;
+    return data.content?.[0]?.text || "";
+  }
+
+  // Gemini/Vertex 共用：轉成原生多輪 contents 格式（user/model 交錯，圖片走 inlineData）
+  const buildGeminiBody = () => {
+    const contents = [];
+    for (const m of messages) {
+      if (m.role !== "user" && m.role !== "assistant" && m.role !== "system") continue;
+      const role = m.role === "assistant" ? "model" : "user";
+      const parts = [];
+      if (m.image) {
+        const image = normalizeImagePayload(m.image, m.imageMime);
+        parts.push({ inlineData: { mimeType: image.mimeType, data: image.data } });
+      }
+      parts.push({ text: m.content || (m.image ? "請描述這張圖" : "") });
+      // Gemini 要求 user/model 交錯，連續同角色訊息合併成同一輪的多個 parts
+      const last = contents[contents.length - 1];
+      if (last && last.role === role) last.parts.push(...parts);
+      else contents.push({ role, parts });
+    }
+    if (!contents.length || contents[0].role !== "user") {
+      contents.unshift({ role: "user", parts: [{ text: "（對話開始）" }] });
+    }
+    return {
+      systemInstruction: { parts: [{ text: sys }] },
+      contents,
+      generationConfig: {
+        maxOutputTokens: maxTokens,
+        ...(temperature == null ? {} : { temperature }),
+        ...(tuneRealityGemini25Pro ? {
+          thinkingConfig: { thinkingBudget: realityThinkingBudget },
+        } : {}),
+      },
+    };
+  };
+
+  if (provider === "gemini") {
+    const res = await request(`${baseUrl}/models/${model}:generateContent?key=${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildGeminiBody()),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || data?.error) throw httpError(data?.error?.message || `HTTP ${res.status}`, res.status);
+    const out = (data?.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("");
+    if (meter) meter.payload = data;
+    return out || "";
+  }
+
+  if (provider === "vertex") {
+    const endpoint = `${cleanBaseUrl}/publishers/google/models/${encodeURIComponent(model)}:streamGenerateContent?key=${encodeURIComponent(apiKey)}`;
+    const res = await request(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(buildGeminiBody()),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      const errMsg = data?.error?.message || `HTTP ${res.status}`;
+      if (res.status === 404) {
+        throw httpError(`Vertex 404：請確認模型名稱或快捷模式 region/設定是否正確（目前模型：${model || "-"}）`, 404);
+      }
+      throw httpError(errMsg, res.status);
+    }
+    const text = await res.text();
+    const tryExtractText = (obj) =>
+      obj?.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") ||
+      obj?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      obj?.candidates?.[0]?.content?.text ||
+      obj?.text ||
+      "";
+
+    let out = "";
+    let responsePayloads = [];
+    // Vertex streamGenerateContent commonly returns one complete JSON array.
+    // Parse that first; line-by-line parsing of pretty-printed arrays can
+    // accidentally accept only one chunk and leave the reply truncated.
+    try {
+      const parsed = JSON.parse(text);
+      responsePayloads = Array.isArray(parsed) ? parsed : [parsed];
+      out = Array.isArray(parsed)
+        ? parsed.map(tryExtractText).join("")
+        : tryExtractText(parsed);
+    } catch (_) {
+      const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      for (const line of lines) {
+        const payload = line.startsWith("data:") ? line.slice(5).trim() : line;
+        if (!payload || payload === "[DONE]") continue;
+        try {
+          const chunk = JSON.parse(payload);
+          responsePayloads.push(chunk);
+          out += tryExtractText(chunk);
+        } catch (_) {}
+      }
+    }
+
+    const finalText = out.trim();
+    if (!finalText) {
+      const finishReasons = [...new Set(responsePayloads
+        .map((payload) => payload?.candidates?.[0]?.finishReason)
+        .filter(Boolean))];
+      const usageMetadata = [...responsePayloads].reverse()
+        .find((payload) => payload?.usageMetadata)?.usageMetadata;
+      const promptFeedback = responsePayloads
+        .find((payload) => payload?.promptFeedback)?.promptFeedback;
+      const error = new Error("Vertex 已連線但回覆空白，請先換成 `gemini-2.5-flash` 或 `gemini-2.5-pro` 測試");
+      error.details = {
+        provider: "vertex",
+        model: String(model || ""),
+        mode: String(options.mode || ""),
+        maxOutputTokens: maxTokens,
+        thinkingBudget: realityThinkingBudget,
+        finishReasons,
+        promptFeedback: promptFeedback || null,
+        usageMetadata: usageMetadata || null,
+        responseChunks: responsePayloads.length,
+      };
+      throw error;
+    }
+    if (meter) meter.payload = responsePayloads;
+    return finalText;
+  }
+
+  const headers = { "Content-Type": "application/json" };
+  // 本地免 key，但若玩家對受保護的本地/通道端點填了 key，仍要帶上。
+  if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+  if (provider === "openrouter") headers["HTTP-Referer"] = "https://maliphone.app";
+
+  const apiMsgs = [
+    { role: "system", content: sys },
+    ...messages.map((m) => {
+      const image = m.image ? normalizeImagePayload(m.image, m.imageMime) : null;
+      return image
+        ? {
+            role: m.role,
+            content: [
+              { type: "image_url", image_url: { url: `data:${image.mimeType};base64,${image.data}` } },
+              { type: "text", text: m.content || "請描述這張圖" },
+            ],
+          }
+        : { role: m.role, content: m.content || "" };
+    }),
+  ];
+  const usesMaxCompletionTokens =
+    provider === "openai" ||
+    /^o\d/i.test(String(model || "")) ||
+    /^gpt-5/i.test(String(model || ""));
+  const completionLimit = usesMaxCompletionTokens
+    ? { max_completion_tokens: maxTokens }
+    : { max_tokens: maxTokens };
+
+  const res = await request(`${baseUrl}/chat/completions`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model,
+      messages: apiMsgs,
+      ...completionLimit,
+      ...(temperature == null ? {} : { temperature }),
+      // 讓 OpenRouter 在回應附上這次實際扣的金額，花費本記實扣。
+      ...(provider === "openrouter" ? { usage: { include: true } } : {}),
+    }),
+  });
+
+  let data = null;
+  try {
+    data = await res.json();
+  } catch (_) {
+    data = null;
+  }
+  if (!res.ok) {
+    const errMsg = data?.error?.message || data?.message || `HTTP ${res.status}`;
+    // OpenRouter 免費模型常被下架或改成付費，原始英文訊息玩家看不懂，改成白話提示。
+    if (provider === "openrouter" && res.status === 404 && /:free$/i.test(String(model || ""))) {
+      const lang = typeof document === "undefined" ? "zh-TW" : document.documentElement.lang;
+      throw httpError(translate(
+        lang,
+        `免費模型「${model}」已經停用了（可能下架或改成付費）。請到設定的 AI 模型重新整理清單，換一個名稱結尾是 :free 的模型。`,
+        `The free model "${model}" is no longer available (it may have been removed or made paid). Refresh the model list in AI settings and pick another model ending in :free.`,
+        `無料モデル「${model}」は利用できなくなりました（終了または有料化の可能性）。AI 設定でモデル一覧を更新し、末尾が :free の別モデルを選んでください。`,
+        `무료 모델 "${model}"을(를) 더 이상 사용할 수 없습니다(종료 또는 유료 전환 가능). AI 설정에서 모델 목록을 새로고침하고 이름이 :free로 끝나는 다른 모델을 선택해 주세요.`,
+      ), 404);
+    }
+    throw httpError(`[${provider}/${model}] ${errMsg}`, res.status);
+  }
+  if (data?.error) {
+    const rawMsg = data.error.message || JSON.stringify(data.error);
+    if (/support image input|image input|vision|multimodal/i.test(rawMsg)) {
+      throw new Error("目前選用模型不支援圖片輸入，請改成支援視覺的模型後再試。");
+    }
+    throw httpError(`[${provider}/${model}] ${rawMsg}`, data.error.code ?? res.status);
+  }
+  if (meter) meter.payload = data;
+  return data?.choices?.[0]?.message?.content || "";
+}
+
+// 記帳模組延後載入：只有真的叫過 AI 才需要，也讓 Node 測試匯入本檔時不碰 IndexedDB。
+function reportAiUsage(apiConfig, options, meter) {
+  const hosted = isHostedTestMode(apiConfig);
+  if (!hosted && !meter.payload) return;
+  import("./aiUsage/aiUsageStore.js")
+    .then(async ({ recordAiUsage }) => {
+      const { extractAiUsage } = await import("./aiUsage/aiUsageCore.js");
+      const provider = hosted ? "mali" : String(apiConfig?.provider || "unknown");
+      recordAiUsage({
+        provider,
+        model: hosted ? apiConfig?.hostedTestModel : apiConfig?.model,
+        app: options.app || options.feature || "other",
+        action: options.action || "generate",
+        usage: hosted ? null : extractAiUsage(provider, meter.payload),
+        isLocal: !hosted && isLocalConnection(provider, apiConfig?.baseUrl),
+        points: hosted ? meter.points ?? 0 : null,
+      });
+    })
+    .catch(() => {});
+}
+
+async function callAI(messages, apiConfig, sysPrompt, options = {}) {
+  const meter = { payload: null, points: null };
+  try {
+    const text = await callAIRequest(messages, apiConfig, sysPrompt, options, meter);
+    try { reportAiUsage(apiConfig, options, meter); } catch (_) {}
+    return text;
+  } catch (error) {
+    recordRuntimeDiagnostic({
+      kind: "ai-error",
+      error,
+      source: `aiService:${isHostedTestMode(apiConfig) ? "hosted_test" : String(apiConfig?.provider || "unknown")}`,
+      details: error?.status ? { ...(error.details || {}), status: error.status } : error?.details,
+    });
+    throw error;
+  }
+}
+
+async function fetchAvailableModels(apiConfig, options = {}) {
+  const { provider, baseUrl: configuredBaseUrl, apiKey } = apiConfig;
+  const baseUrl = resolveRequestBaseUrl(provider, configuredBaseUrl);
+  const request = (url, init) => fetchWithTimeout(url, init, {
+    signal: options.signal,
+    timeoutMs: options.timeoutMs || NETWORK_TIMEOUTS.METADATA,
+  });
+  const cleanBaseUrl = (baseUrl || "https://aiplatform.googleapis.com/v1").replace(/\/+$/, "");
+  const providerNeedsApiKey = !isLocalConnection(provider, baseUrl);
+  if (providerNeedsApiKey && !apiKey) throw new Error("請先設定 API Key");
+
+  // 本地模型：先試 OpenAI 相容的 /v1/models（LM Studio、llama.cpp…），
+  // 再退回 Ollama 原生的 /api/tags，兩個端點都涵蓋。
+  if (isLocalProvider(provider)) {
+    const cleanBase = (baseUrl || "").replace(/\/+$/, "");
+    const candidates = [
+      `${cleanBase}/models`,
+      `${cleanBase.replace(/\/v1$/i, "")}/api/tags`,
+    ];
+    const localHeaders = {};
+    if (apiKey) localHeaders.Authorization = `Bearer ${apiKey}`;
+    for (const url of candidates) {
+      try {
+        const res = await request(url, { headers: localHeaders });
+        const data = await res.json();
+        if (!res.ok) continue;
+        if (Array.isArray(data?.data)) {
+          const list = data.data.map((m) => m.id).filter(Boolean);
+          if (list.length) return list;
+        }
+        if (Array.isArray(data?.models)) {
+          const list = data.models.map((m) => m.name).filter(Boolean);
+          if (list.length) return list;
+        }
+      } catch (_) {}
+    }
+    throw new Error("本地模型抓取失敗，請確認伺服器已啟動，且允許此網站跨來源連線（CORS）");
+  }
+
+  if (provider === "ollama" && /ollama\.com/i.test(baseUrl || "")) {
+    const cleanBase = (baseUrl || "").replace(/\/+$/, "");
+    const candidates = [
+      `${cleanBase}/models`,
+      `${cleanBase.replace(/\/v1$/i, "")}/api/tags`,
+    ];
+    for (const url of candidates) {
+      try {
+        const res = await request(url, {
+          headers: { Authorization: `Bearer ${apiKey}` },
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error?.message || data?.error || `HTTP ${res.status}`);
+        if (Array.isArray(data?.data)) return data.data.map((m) => m.id).filter(Boolean);
+        if (Array.isArray(data?.models)) return data.models.map((m) => m.name).filter(Boolean);
+      } catch (_) {}
+    }
+    throw new Error(`Ollama 模型抓取失敗（已嘗試 v1/models 與 api/tags）`);
+  }
+
+  if (provider === "gemini") {
+    const res = await request(`${baseUrl}/models?key=${apiKey}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error?.message || `HTTP ${res.status}`);
+    return (data.models || []).map((m) => (m.name || "").replace(/^models\//, "")).filter(Boolean);
+  }
+
+  if (provider === "vertex") {
+    const res = await request(`${cleanBaseUrl}/publishers/google/models?key=${encodeURIComponent(apiKey)}`);
+    const data = await res.json();
+    if (!res.ok) {
+      const errMsg = data?.error?.message || `HTTP ${res.status}`;
+      if (res.status === 404) {
+        throw new Error("Vertex 模型列表 404：請先確認快捷模式、API key 與網址是否正確");
+      }
+      throw new Error(errMsg);
+    }
+    return (data?.models || []).map((m) => (m.name || "").replace(/^.*\/models\//, "")).filter(Boolean);
+  }
+
+  if (provider === "claude") {
+    const res = await request(`${baseUrl}/models`, {
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error?.message || `HTTP ${res.status}`);
+    return (data.data || []).map((m) => m.id).filter(Boolean);
+  }
+
+  if (provider === "novelai") {
+    const headers = {};
+    if (providerNeedsApiKey) headers.Authorization = `Bearer ${apiKey}`;
+    const fallbackModels = ["kayra", "erato", "clio"];
+    try {
+      const res = await request(`${baseUrl}/models`, { headers });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error?.message || `HTTP ${res.status}`);
+      const list = (data.data || []).map((m) => m.id).filter(Boolean);
+      return list.length ? list : fallbackModels;
+    } catch (_) {
+      return fallbackModels;
+    }
+  }
+
+  const headers = {};
+  if (providerNeedsApiKey) headers.Authorization = `Bearer ${apiKey}`;
+  if (provider === "openrouter") headers["HTTP-Referer"] = "https://maliphone.app";
+  const nvidiaFallbackModels = [
+    "meta/llama-3.3-70b-instruct",
+    "openai/gpt-oss-20b",
+    "openai/gpt-oss-120b",
+    "deepseek-ai/deepseek-v4-flash",
+    "qwen/qwen3.5-122b-a10b",
+  ];
+  try {
+    const res = await request(`${baseUrl}/models`, { headers });
+    const data = await res.json();
+    if (!res.ok) {
+      const error = new Error(data?.error?.message || data?.detail || `HTTP ${res.status}`);
+      error.status = res.status;
+      throw error;
+    }
+    const models = (data.data || []).map((m) => m.id).filter(Boolean);
+    return provider === "nvidia" && !models.length ? nvidiaFallbackModels : models;
+  } catch (error) {
+    if (provider === "nvidia" && ![401, 403].includes(error?.status)) return nvidiaFallbackModels;
+    throw error;
+  }
+}
+
+export { callAI, fetchAvailableModels };

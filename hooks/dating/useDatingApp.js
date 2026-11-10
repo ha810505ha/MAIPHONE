@@ -1,0 +1,599 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  DATING_ENTITY_KEY, IN_APP_REPLY_DELAY, REPORT_REVIEW_RANGE, REPORT_REWARD_SUPER_LIKES, SUPER_LIKE_CONTACT_REWARD,
+} from "../../constants/dating";
+import { isOnline, pendingUserMessages } from "../../services/dating/datingPresence";
+import { loadFeatureEntity, saveFeatureEntity } from "../../utils/indexedDbStorage";
+import {
+  availableProfiles, chooseDatingContactId, createDatingState, decideSwipe, findProfile, maturePending,
+  nextRefreshAt, normalizeDatingState, resolveReports, resolveSuperLikeLog, sharedTags,
+  applySuperLikeRefill, grantSuperLikes as grantSuperLikesToState,
+} from "../../services/dating/datingMatching";
+import { contactProgress, extractContactMarkers, generateDatingReply } from "../../services/dating/datingChat";
+import { splitAssistantBubbles } from "../../utils/chatMessageUtils";
+import { FEATURE_DATA_CHANGED_EVENT, featureDataEventIncludes } from "../../services/featureDataLifecycle";
+import { createDatingReplyLifecycle, waitForDatingReplyDelay } from "../../services/dating/datingReplyLifecycle";
+import { createDatingOpeningMessageRecords } from "../../services/dating/datingOpenings.js";
+import { isRequestCancelled } from "../../utils/networkRequest.js";
+
+const SWEEP_INTERVAL = 30 * 1000;
+// 同一段回覆拆成多則泡泡時，每則之間的停頓（毫秒）。
+const BUBBLE_GAP_MS = [300, 1000];
+const newId = () => `dm-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+const createEmptyRelation = (profileId) => {
+  const entry = findProfile(profileId);
+  return {
+    messages: [],
+    unread: 0,
+    characterId: entry?.character?.id || entry?.characterId || null,
+    contactState: "locked",
+    contactCharId: null,
+    promotedAt: 0,
+  };
+};
+
+/**
+ * 交友 App 的狀態、配對熟成與 App 內聊天。
+ *
+ * 熟成 sweep 掛在殼層而非 App 內，因為延遲配對的重點就是玩家在玩別的東西時收到通知。
+ * 判定不需要呼叫 AI，所以跑得比主動訊息的 15 分鐘密集得多。
+ */
+export default function useDatingApp({ apiConfig, playerName, onError }) {
+  const [state, setState] = useState(createDatingState);
+  const [hydrated, setHydrated] = useState(false);
+  const [tick, setTick] = useState(0);
+  const [typingProfiles, setTypingProfiles] = useState(() => new Set());
+  const [openChatId, setOpenChatId] = useState(null);
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const openChatIdRef = useRef(openChatId);
+  openChatIdRef.current = openChatId;
+  // 每個對象各自持有 request token；不同對象可並行，同一對象不可重複生成。
+  const replyLifecycleRef = useRef(null);
+  if (!replyLifecycleRef.current) replyLifecycleRef.current = createDatingReplyLifecycle();
+  const lifecycleGenerationRef = useRef(0);
+  const promotingProfilesRef = useRef(new Set());
+
+  useEffect(() => {
+    let mounted = true;
+    const reload = async () => {
+      const generation = ++lifecycleGenerationRef.current;
+      replyLifecycleRef.current.cancelAll("Dating data reloaded");
+      setTypingProfiles(new Set());
+      setOpenChatId(null);
+      const data = await loadFeatureEntity(DATING_ENTITY_KEY, null).catch(() => null);
+      if (!mounted || generation !== lifecycleGenerationRef.current) return;
+      setState(data ? normalizeDatingState(data) : createDatingState());
+      setHydrated(true);
+    };
+    const onFeatureDataChanged = (event) => {
+      if (featureDataEventIncludes(event, DATING_ENTITY_KEY)) void reload();
+    };
+    void reload();
+    window.addEventListener(FEATURE_DATA_CHANGED_EVENT, onFeatureDataChanged);
+    return () => {
+      mounted = false;
+      lifecycleGenerationRef.current += 1;
+      replyLifecycleRef.current.cancelAll("Dating app disposed");
+      window.removeEventListener(FEATURE_DATA_CHANGED_EVENT, onFeatureDataChanged);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return undefined;
+    const timer = setTimeout(() => { saveFeatureEntity(DATING_ENTITY_KEY, state).catch(() => {}); }, 200);
+    return () => clearTimeout(timer);
+  }, [hydrated, state]);
+
+  const patchRelation = useCallback((profileId, updater) => {
+    setState((current) => {
+      const relation = current.relations[profileId] || createEmptyRelation(profileId);
+      return { ...current, relations: { ...current.relations, [profileId]: { ...relation, ...updater(relation) } } };
+    });
+  }, []);
+
+  const syncTypingProfiles = useCallback(() => {
+    setTypingProfiles(replyLifecycleRef.current.activeProfileIds());
+  }, []);
+
+  const cancelReply = useCallback((profileId, reason = "Dating reply cancelled") => {
+    if (replyLifecycleRef.current.cancel(profileId, reason)) syncTypingProfiles();
+  }, [syncTypingProfiles]);
+
+  const cancelAllReplies = useCallback((reason = "Dating app closed") => {
+    if (replyLifecycleRef.current.cancelAll(reason)) syncTypingProfiles();
+  }, [syncTypingProfiles]);
+
+  const runSweep = useCallback(() => {
+    setState((previous) => {
+      const now = Date.now();
+      // 每週 Super Like 補滿放在 sweep：和檢舉／Super Like 結案一樣是「時間到就發生」的事。
+      const current = applySuperLikeRefill(previous, now);
+      const { matured, remaining } = maturePending(current, now);
+      const log = resolveSuperLikeLog(current.superLikeLog, current, now);
+      const reports = resolveReports(current.reports, now);
+      if (!matured.length) {
+        if (current === previous && log === current.superLikeLog && reports === current.reports) return previous;
+        return { ...current, superLikeLog: log, reports };
+      }
+      const matches = [...current.matches];
+      const relations = { ...current.relations };
+      for (const item of matured) {
+        const entry = findProfile(item.profileId);
+        if (!entry) continue;
+        matches.push({
+          profileId: entry.id, at: now, superLike: !!item.superLike,
+          shared: sharedTags(entry, current.profile.tags), seen: false,
+        });
+        // 開場訊息預寫：配對通知點進去立刻有話可看，不必等 AI。
+        const openingSource = (item.superLike && entry.superLikeOpeningMessage) || entry.openingMessage || [];
+        const openingMessages = createDatingOpeningMessageRecords(openingSource, { now, createId: newId });
+        const relation = relations[entry.id] || createEmptyRelation(entry.id);
+        relations[entry.id] = openingMessages.length
+          ? {
+            ...relation,
+            messages: [...relation.messages, ...openingMessages],
+            unread: (Number(relation.unread) || 0) + openingMessages.length,
+          }
+          : { ...relation };
+      }
+      const next = { ...current, pending: remaining, matches, relations, reports };
+      return { ...next, superLikeLog: resolveSuperLikeLog(next.superLikeLog, next, now) };
+    });
+  }, []);
+
+  const swipe = useCallback((profileId, action) => {
+    setState((current) => {
+      const entry = findProfile(profileId);
+      if (!entry) return current;
+      const now = Date.now();
+      const superLike = action === "super";
+      if (superLike && current.superLikes <= 0) return current;
+      const next = {
+        ...current,
+        swiped: { ...current.swiped, [profileId]: { action, at: now } },
+        superLikes: superLike ? current.superLikes - 1 : current.superLikes,
+      };
+      if (action === "pass") return next;
+      const decision = decideSwipe(entry, current.profile.tags, superLike, now);
+      if (decision) next.pending = [...current.pending, decision];
+      if (superLike) {
+        // 沒配對的話，等預定時間過完再標成「未回應」——不是拒絕通知，只是沒有下文。
+        const resolveAt = decision?.matchAt || now + 12 * 60 * 60 * 1000;
+        next.superLikeLog = [{ profileId, at: now, status: "waiting", resolveAt }, ...current.superLikeLog].slice(0, 50);
+      }
+      return next;
+    });
+  }, []);
+
+  // 回上一張只救手滑的「跳過」。喜歡／Super Like 已經骰過結果，能退回就等於能重骰；
+  // 沒配到的人冷卻後本來就會回到牌堆，不需要靠回上一張。
+  const rewind = useCallback((profileId) => {
+    setState((current) => {
+      if (current.swiped[profileId]?.action !== "pass") return current;
+      const swiped = { ...current.swiped };
+      delete swiped[profileId];
+      return { ...current, swiped };
+    });
+  }, []);
+
+  /** 產生一則回覆並寫進對話。catchUp 有值代表這是離線期間累積的訊息，上線後一次回完。 */
+  const produceReply = useCallback(async (entry, catchUp) => {
+    const profileId = entry.id;
+    // 交換聯絡方式後，信風只保留唯讀歷史；新的回覆只能進一般聊天。
+    if (stateRef.current.relations[profileId]?.contactCharId) return;
+    const request = replyLifecycleRef.current.start(profileId);
+    if (!request) return;
+    const lifecycleGeneration = lifecycleGenerationRef.current;
+    syncTypingProfiles();
+    const startedAt = Date.now();
+    try {
+      const rawReply = await generateDatingReply({
+        entry, messages: stateRef.current.relations[profileId]?.messages || [],
+        relation: stateRef.current.relations[profileId],
+        datingProfile: stateRef.current.profile, playerName: stateRef.current.profile?.name || playerName, apiConfig, catchUp,
+        signal: request.controller.signal,
+      });
+      // 隱藏標記只給程式看：邀請／答應就把狀態切到 invited，文字本身去掉標記再存。
+      const markers = extractContactMarkers(rawReply);
+      const reply = markers.text;
+      // 最短耗時：秒回型幾乎立刻，慢熱型即使在線也會拖一下。API 本身慢的話就不再加等。
+      const [min, max] = IN_APP_REPLY_DELAY[entry.responseStyle] || IN_APP_REPLY_DELAY.normal;
+      const remaining = min + Math.random() * (max - min) - (Date.now() - startedAt);
+      if (remaining > 0) await waitForDatingReplyDelay(remaining, request.controller.signal);
+      if (
+        !reply
+        || lifecycleGeneration !== lifecycleGenerationRef.current
+        || !replyLifecycleRef.current.isActive(request)
+        || stateRef.current.blocked?.[profileId]
+        || stateRef.current.relations[profileId]?.contactCharId
+      ) return;
+      const bubbles = splitAssistantBubbles(reply).filter((bubble) => bubble.trim());
+      if (!bubbles.length) bubbles.push(reply);
+      // 一段回覆依換行拆成多個泡泡，逐則寫入；中間保持「輸入中」並隨機停 0.3～1 秒，像真的連續打字。
+      // 聯絡方式的狀態變化只在最後一則一起寫，避免按鈕比話先出現。
+      // 回覆已經拿到了，停頓途中被取消（例如離開 App）就不再等，剩下的泡泡一次寫完，不丟內容。
+      let rush = false;
+      for (let index = 0; index < bubbles.length; index += 1) {
+        if (index > 0 && !rush) {
+          try {
+            await waitForDatingReplyDelay(BUBBLE_GAP_MS[0] + Math.random() * (BUBBLE_GAP_MS[1] - BUBBLE_GAP_MS[0]), request.controller.signal);
+          } catch (reason) {
+            if (!isRequestCancelled(reason)) throw reason;
+            rush = true;
+          }
+          if (
+            lifecycleGeneration !== lifecycleGenerationRef.current
+            || stateRef.current.blocked?.[profileId]
+            || stateRef.current.relations[profileId]?.contactCharId
+          ) return;
+        }
+        const content = bubbles[index];
+        const last = index === bubbles.length - 1;
+        patchRelation(profileId, (relation) => {
+          if (relation.contactCharId) return {};
+          const progress = contactProgress(entry, relation);
+          // 角色一旦邀請、答應，或講了帳號 ID，就切成 invited 讓按鈕跟著出現；
+          // 不再卡保底門檻（門檻只管提示詞與玩家提議按鈕），避免「有 ID 沒按鈕」。
+          const accepted = last && relation.contactState !== "invited" && (markers.accept || markers.invite);
+          const declinedProposal = last && relation.contactProposalPending && !accepted;
+          return {
+            messages: [...relation.messages, { id: newId(), role: "assistant", content, time: Date.now() }],
+            // 補回的訊息要算未讀才會跳通知；玩家正開著這個聊天室就是已讀。
+            unread: catchUp && openChatIdRef.current !== profileId ? relation.unread + 1 : relation.unread,
+            replyFailedAt: 0,
+            ...(accepted ? { contactState: "invited", contactInvitedAt: Date.now(), contactInvitedBy: relation.contactProposalPending ? "player" : "character" } : {}),
+            // 提議已被回覆：清掉待回應旗標；被婉拒就記下目前有效訊息數，之後要再聊幾句才能再提。
+            ...(last && relation.contactProposalPending ? { contactProposalPending: false } : {}),
+            ...(declinedProposal ? { contactDeclinedAtCount: progress.messages } : {}),
+          };
+        });
+      }
+    } catch (error) {
+      // 玩家的訊息已經寫進去了，保留它；標記失敗後 sweep 不再自動重試（避免每 30 秒白燒 API），
+      // 改由玩家在聊天室按重試或再傳一則新訊息。
+      if (
+        !isRequestCancelled(error)
+        && lifecycleGeneration === lifecycleGenerationRef.current
+        && replyLifecycleRef.current.isActive(request)
+      ) {
+        patchRelation(profileId, () => ({ replyFailedAt: Date.now() }));
+        // 預設訊息由呼叫端用介面語言補上，hook 本身不碰翻譯。
+        onError?.(error?.message || "");
+      }
+    } finally {
+      if (replyLifecycleRef.current.finish(request)) syncTypingProfiles();
+    }
+  }, [apiConfig, playerName, patchRelation, onError, syncTypingProfiles]);
+
+  const sendMessage = useCallback(async (profileId, text) => {
+    const entry = findProfile(profileId);
+    const content = String(text || "").trim();
+    if (!entry || !content || replyLifecycleRef.current.has(profileId)) return;
+    if (stateRef.current.blocked?.[profileId]) return;
+    if (stateRef.current.relations[profileId]?.contactCharId) return;
+    patchRelation(profileId, (relation) => (relation.contactCharId ? {} : {
+        messages: [...relation.messages, { id: newId(), role: "user", content, time: Date.now() }],
+        // 玩家再傳一則就是主動要求重來，清掉失敗標記。
+        replyFailedAt: 0,
+      }));
+    // 離線就先不回；等他上線後由 sweep 一次回完，這樣才有真實的時間差。
+    if (!isOnline(entry)) return;
+    await produceReply(entry, null);
+  }, [patchRelation, produceReply]);
+
+  /**
+   * 玩家主動提議交換聯絡方式：送出一則固定的提議訊息（文字由介面依語言提供），
+   * 並標記待回應；角色下一則回覆依關係答應（標記）或婉拒。
+   */
+  const proposeContact = useCallback(async (profileId, text) => {
+    const entry = findProfile(profileId);
+    const relation = stateRef.current.relations[profileId];
+    const content = String(text || "").trim();
+    if (!entry || !relation || !content || replyLifecycleRef.current.has(profileId)) return false;
+    if (stateRef.current.blocked?.[profileId] || relation.contactCharId) return false;
+    if (!contactProgress(entry, relation).canPropose) return false;
+    patchRelation(profileId, (current) => (current.contactCharId ? {} : {
+      messages: [...current.messages, { id: newId(), role: "user", content, time: Date.now(), contactProposal: true }],
+      contactProposalPending: true,
+      contactProposedAt: Date.now(),
+      replyFailedAt: 0,
+    }));
+    if (!isOnline(entry)) return true;
+    await produceReply(entry, null);
+    return true;
+  }, [patchRelation, produceReply]);
+
+  /** 回覆失敗後由玩家手動重試。對方離線的話只清掉標記，等上線後照常補回。 */
+  const retryReply = useCallback(async (profileId) => {
+    const entry = findProfile(profileId);
+    const relation = stateRef.current.relations[profileId];
+    if (!entry || !relation || relation.contactCharId || stateRef.current.blocked?.[profileId]) return;
+    if (replyLifecycleRef.current.has(profileId)) return;
+    patchRelation(profileId, () => ({ replyFailedAt: 0 }));
+    if (!pendingUserMessages(relation.messages).length || !isOnline(entry)) return;
+    await produceReply(entry, null);
+  }, [patchRelation, produceReply]);
+
+  /** 對方上線後，把離線期間累積的訊息補回。 */
+  const deliverPendingReplies = useCallback(() => {
+    const current = stateRef.current;
+    for (const [profileId, relation] of Object.entries(current.relations || {})) {
+      if (relation.contactCharId || relation.replyFailedAt || current.blocked?.[profileId] || replyLifecycleRef.current.has(profileId)) continue;
+      const entry = findProfile(profileId);
+      if (!entry || !isOnline(entry)) continue;
+      const pending = pendingUserMessages(relation.messages);
+      if (!pending.length) continue;
+      const awayMinutes = (Date.now() - pending[0].time) / 60000;
+      produceReply(entry, { pendingCount: pending.length, awayMinutes });
+    }
+  }, [produceReply]);
+
+  // 掛在這裡而不是檔案上方：它依賴 deliverPendingReplies，宣告順序不能反。
+  useEffect(() => {
+    if (!hydrated) return undefined;
+    const tickAll = () => { runSweep(); deliverPendingReplies(); };
+    const onVisible = () => { if (document.visibilityState === "visible") tickAll(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    const kick = setTimeout(tickAll, 1500);
+    const interval = setInterval(tickAll, SWEEP_INTERVAL);
+    // 空狀態的「還有多久有人回鍋」要會自己走，所以額外跳一個 tick。
+    const ticker = setInterval(() => setTick((value) => value + 1), 60 * 1000);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+      clearTimeout(kick);
+      clearInterval(interval);
+      clearInterval(ticker);
+    };
+  }, [hydrated, runSweep, deliverPendingReplies]);
+
+  /**
+   * 交換聯絡方式＝解鎖 registry 中同一張完整角色卡，不建立第二個人物。
+   * 搬一份歷史到永久 characterId 當起點，信風原對話從此唯讀，避免兩邊分岔。
+   */
+  const promoteToContact = useCallback((profileId, onPromote) => {
+    if (promotingProfilesRef.current.has(profileId)) return null;
+    const entry = findProfile(profileId);
+    const relation = stateRef.current.relations[profileId];
+    if (!entry || !relation || relation.contactCharId) return null;
+    promotingProfilesRef.current.add(profileId);
+    try {
+      const charId = onPromote?.(entry, relation.messages);
+      if (!charId) return null;
+      cancelReply(profileId, "Dating contact promoted");
+      patchRelation(profileId, () => ({
+        characterId: entry.character?.id || entry.characterId || charId,
+        contactState: "unlocked",
+        contactCharId: charId,
+        promotedAt: Date.now(),
+      }));
+      // 交換聯絡方式成功 +1：鼓勵把一段關係聊到底，而不是只滑卡。
+      setState((current) => grantSuperLikesToState(current, SUPER_LIKE_CONTACT_REWARD, { source: "contact", now: Date.now() }));
+      return charId;
+    } finally {
+      promotingProfilesRef.current.delete(profileId);
+    }
+  }, [cancelReply, patchRelation]);
+
+  /**
+   * 聯絡人被刪除時解除信風的唯讀鎖定。profileId 可縮小搜尋範圍，
+   * 但仍會核對 characterId，避免誤清另一位角色的升格狀態。
+   */
+  const releaseContact = useCallback((characterId, profileId = null) => {
+    const targetCharacterId = String(characterId || "").trim();
+    const targetProfileId = String(profileId || "").trim();
+    if (!targetCharacterId) return;
+
+    setState((current) => {
+      let nextRelations = current.relations;
+      let changed = false;
+      for (const [candidateProfileId, relation] of Object.entries(current.relations || {})) {
+        if (targetProfileId && candidateProfileId !== targetProfileId) continue;
+        if (String(relation?.contactCharId || "").trim() !== targetCharacterId) continue;
+        if (!changed) nextRelations = { ...current.relations };
+        nextRelations[candidateProfileId] = {
+          ...relation,
+          contactState: "locked",
+          contactCharId: null,
+          promotedAt: 0,
+        };
+        changed = true;
+      }
+      return changed ? { ...current, relations: nextRelations } : current;
+    });
+  }, []);
+
+  /**
+   * 以角色卡的 datingProfileId 為權威來源修復舊存檔：
+   * - 角色仍存在但 id 已改變時，更新 relation.contactCharId。
+   * - relation 指向已不存在（或屬於其他 profile）的角色時，解除鎖定。
+   * 沒有任何差異時必須回傳原 state，避免每次角色同步都觸發存檔。
+   */
+  const reconcileContacts = useCallback((characters) => {
+    if (!Array.isArray(characters)) return;
+    const contactsById = new Map();
+    const contactIdsByProfile = new Map();
+    for (const character of characters) {
+      const characterId = String(character?.id || "").trim();
+      if (!characterId) continue;
+      contactsById.set(characterId, character);
+      const datingProfileId = String(character?.datingProfileId || "").trim();
+      if (datingProfileId) {
+        const ids = contactIdsByProfile.get(datingProfileId) || [];
+        contactIdsByProfile.set(datingProfileId, [...ids, characterId]);
+      }
+    }
+
+    // 對帳若補上升格關係，任何尚在途中的信風回覆都不能再落地。
+    for (const profileId of contactIdsByProfile.keys()) {
+      cancelReply(profileId, "Dating contacts reconciled");
+    }
+
+    const reconciledAt = Date.now();
+    setState((current) => {
+      const contactIdByProfile = new Map();
+      for (const [profileId, candidateIds] of contactIdsByProfile.entries()) {
+        const candidates = candidateIds.map((characterId) => contactsById.get(characterId)).filter(Boolean);
+        const preferredId = chooseDatingContactId(candidates, profileId, current.relations?.[profileId]);
+        if (preferredId) contactIdByProfile.set(profileId, preferredId);
+      }
+
+      let nextRelations = current.relations;
+      let changed = false;
+      const updateRelation = (profileId, relation, patch) => {
+        if (!changed) nextRelations = { ...current.relations };
+        nextRelations[profileId] = { ...relation, ...patch };
+        changed = true;
+      };
+
+      // 兩個儲存實體若在寫入中途被關閉，可能只留下已建立的角色，卻沒有 relation。
+      // datingProfileId 是可信的反向索引；由它重建 unlocked 關係，避免角色又回到牌堆。
+      for (const [profileId, mappedCharacterId] of contactIdByProfile.entries()) {
+        if (current.relations?.[profileId] || !findProfile(profileId)) continue;
+        const relation = createEmptyRelation(profileId);
+        updateRelation(profileId, relation, {
+          contactState: "unlocked",
+          contactCharId: mappedCharacterId,
+          promotedAt: Number(contactsById.get(mappedCharacterId)?.createdAt) || reconciledAt,
+        });
+      }
+
+      for (const [profileId, relation] of Object.entries(current.relations || {})) {
+        const mappedCharacterId = contactIdByProfile.get(profileId);
+        const canonicalCharacterId = findProfile(profileId)?.character?.id || relation?.characterId || null;
+        if (mappedCharacterId) {
+          if (
+            String(relation?.contactCharId || "").trim() !== mappedCharacterId
+            || relation?.contactState !== "unlocked"
+            || relation?.characterId !== canonicalCharacterId
+          ) {
+            updateRelation(profileId, relation, {
+              characterId: canonicalCharacterId,
+              contactState: "unlocked",
+              contactCharId: mappedCharacterId,
+              promotedAt: Number(relation?.promotedAt) > 0 ? relation.promotedAt : reconciledAt,
+            });
+          }
+          continue;
+        }
+
+        const linkedCharacterId = String(relation?.contactCharId || "").trim();
+        if (!linkedCharacterId) {
+          if (
+            relation?.contactState !== "locked"
+            || Number(relation?.promotedAt) !== 0
+            || relation?.characterId !== canonicalCharacterId
+          ) {
+            updateRelation(profileId, relation, {
+              characterId: canonicalCharacterId,
+              contactState: "locked",
+              contactCharId: null,
+              promotedAt: 0,
+            });
+          }
+          continue;
+        }
+        const linkedCharacter = contactsById.get(linkedCharacterId);
+        const linkedProfileId = String(linkedCharacter?.datingProfileId || "").trim();
+        // 沒有 datingProfileId 的舊角色仍可用精確 id 證明它存在；若有，則必須屬於目前 profile。
+        if (linkedCharacter && (!linkedProfileId || linkedProfileId === profileId)) {
+          if (relation?.contactState !== "unlocked" || relation?.characterId !== canonicalCharacterId) {
+            updateRelation(profileId, relation, {
+              characterId: canonicalCharacterId,
+              contactState: "unlocked",
+            });
+          }
+          continue;
+        }
+        updateRelation(profileId, relation, {
+          characterId: canonicalCharacterId,
+          contactState: "locked",
+          contactCharId: null,
+          promotedAt: 0,
+        });
+      }
+
+      return changed ? { ...current, relations: nextRelations } : current;
+    });
+  }, [cancelReply]);
+
+  const setBlocked = useCallback((profileId, blocked) => {
+    if (blocked) cancelReply(profileId, "Profile blocked");
+    setState((current) => {
+      const next = { ...current.blocked };
+      if (blocked) next[profileId] = Date.now(); else delete next[profileId];
+      return { ...current, blocked: next };
+    });
+  }, [cancelReply]);
+
+  /** 檢舉一定連帶封鎖：真實的交友軟體就是這樣，也讓誤報的成本天然存在。 */
+  const report = useCallback((profileId) => {
+    cancelReply(profileId, "Profile reported");
+    setState((current) => {
+      if (current.reports.some((item) => item.profileId === profileId)) return current;
+      const now = Date.now();
+      const [min, max] = REPORT_REVIEW_RANGE;
+      return {
+        ...current,
+        blocked: { ...current.blocked, [profileId]: now },
+        reports: [{ profileId, at: now, resolveAt: now + min + Math.random() * (max - min), status: "reviewing", claimed: false }, ...current.reports],
+      };
+    });
+  }, [cancelReply]);
+
+  const claimReportReward = useCallback((profileId) => {
+    setState((current) => {
+      const target = current.reports.find((item) => item.profileId === profileId);
+      if (!target || target.status !== "confirmed" || target.claimed) return current;
+      return grantSuperLikesToState({
+        ...current,
+        reports: current.reports.map((item) => (item.profileId === profileId ? { ...item, claimed: true } : item)),
+      }, REPORT_REWARD_SUPER_LIKES, { source: "report", now: Date.now() });
+    });
+  }, []);
+
+  /**
+   * 外部加點入口（商店、登入獎勵連續第 7 天等）。會夾在 SUPER_LIKE_MAX 並寫入 superLikeLog。
+   * @param {number} count 要加的數量
+   * @param {string} source 來源標記，例如 "shop"、"loginStreak"
+   */
+  const grantSuperLikes = useCallback((count, source = "external") => {
+    setState((current) => grantSuperLikesToState(current, count, { source, now: Date.now() }));
+  }, []);
+
+  const openChat = useCallback((profileId) => {
+    setOpenChatId(profileId);
+    patchRelation(profileId, () => ({ unread: 0 }));
+    setState((current) => ({
+      ...current,
+      matches: current.matches.map((item) => (item.profileId === profileId ? { ...item, seen: true } : item)),
+    }));
+  }, [patchRelation]);
+
+  const closeChat = useCallback((profileId = openChatId) => {
+    if (profileId) cancelReply(profileId, "Dating chat closed");
+    setOpenChatId(null);
+  }, [openChatId, cancelReply]);
+
+  // 離開 App 時清掉「正在看的聊天室」，否則背景補回的訊息會被當成已讀、不跳通知。
+  const clearOpenChat = useCallback(() => setOpenChatId(null), []);
+
+  return {
+    state, hydrated, typingProfiles, openChatId, openChat, closeChat, clearOpenChat, swipe, rewind, sendMessage, retryReply, proposeContact, promoteToContact,
+    releaseContact, reconcileContacts, setBlocked, report, claimReportReward, grantSuperLikes, cancelAllReplies,
+    deck: useMemo(() => availableProfiles(state, Date.now()), [state, tick]),
+    refreshAt: useMemo(() => nextRefreshAt(state, Date.now()), [state, tick]),
+    unseenMatches: useMemo(() => state.matches.filter((item) => !item.seen), [state.matches]),
+    updateProfile: useCallback((patch) => {
+      setState((current) => normalizeDatingState({ ...current, profile: { ...current.profile, ...patch } }));
+    }, []),
+    markMatchSeen: useCallback((profileId) => {
+      setState((current) => ({
+        ...current,
+        matches: current.matches.map((item) => (item.profileId === profileId ? { ...item, seen: true } : item)),
+      }));
+    }, []),
+  };
+}

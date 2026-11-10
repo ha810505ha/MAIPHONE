@@ -1,0 +1,310 @@
+import React, { useRef } from "react";
+import { exportToastMessage } from "../../utils/exportFile";
+import { AppHeader, LargeTitle, LargeTitleHeader, SUB_PAGE_CLASS, useLargeTitle } from "../shell/LargeTitle";
+import Icon from "../common/Icon";
+
+export default function LorebookApp({
+  lorebooks, setLorebooks, activeLorebookId, setActiveLorebookId,
+  editingLorebookBook, setEditingLorebookBook, editingLorebookEntry, setEditingLorebookEntry,
+  pendingLorebookExport, setPendingLorebookExport, viewingLorebookEntry, setViewingLorebookEntry,
+  lorebookImportInputRef, closeApp, t, tr, sanitizeText, downloadJsonFile, showToast, gid, notify, ask,
+}) {
+  const largeTitle = useLargeTitle();
+  // 編輯視窗打開時記下原始內容；點遮罩或按 Android 返回（會模擬點遮罩）時，有改過就先確認，避免輸入整段消失。
+  const bookBaselineRef = useRef(null);
+  const entryBaselineRef = useRef(null);
+  if (!editingLorebookBook) bookBaselineRef.current = null;
+  else if (bookBaselineRef.current === null) bookBaselineRef.current = JSON.stringify(editingLorebookBook);
+  if (!editingLorebookEntry) entryBaselineRef.current = null;
+  else if (entryBaselineRef.current === null) entryBaselineRef.current = JSON.stringify(editingLorebookEntry);
+  const confirmDiscardEdits = () => window.confirm(tr("要捨棄尚未儲存的修改嗎？", "Discard unsaved changes?", "保存していない変更を破棄しますか？", "저장하지 않은 변경 사항을 버릴까요?"));
+  const dismissBookEditor = () => {
+    if (editingLorebookBook && JSON.stringify(editingLorebookBook) !== bookBaselineRef.current && !confirmDiscardEdits()) return;
+    setEditingLorebookBook(null);
+  };
+  const dismissEntryEditor = () => {
+    if (editingLorebookEntry && JSON.stringify(editingLorebookEntry) !== entryBaselineRef.current && !confirmDiscardEdits()) return;
+    setEditingLorebookEntry(null);
+  };
+    const activeBook = lorebooks.find((b) => b.id === activeLorebookId) || null;
+    const entries = activeBook?.entries || [];
+    const sortedEntries = [...entries].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    const sortedBooks = [...lorebooks].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    const exportLorebook = async (book) => {
+      if (!book) return;
+      const safeName = sanitizeText(book.name || "lorebook", 80)
+        .replace(/[\\/:*?"<>|]+/g, "-")
+        .trim() || "lorebook";
+      try {
+        const result = await downloadJsonFile({
+          format: "maliphone-lorebook",
+          version: 1,
+          exportedAt: new Date().toISOString(),
+          lorebook: {
+            name: book.name || "",
+            description: book.description || "",
+            enabled: book.enabled !== false,
+            entries: (book.entries || []).map((entry) => ({
+              title: entry.title || "",
+              keywords: Array.isArray(entry.keywords) ? entry.keywords : [],
+              content: entry.content || "",
+              enabled: entry.enabled !== false,
+            })),
+          },
+        }, `${safeName}.malilorebook.json`);
+        const message = exportToastMessage(result, tr);
+        if (message) showToast(`${tr("世界書", "Lorebook", "世界観", "월드북")}${message}`);
+      } catch (error) {
+        showToast(`${tr("匯出失敗", "Export failed", "書き出しに失敗しました", "내보내기 실패")}：${sanitizeText(error?.message || "Unknown error", 80)}`);
+      }
+    };
+    const normalizeImportedLorebook = (rawBook, fallbackName) => {
+      if (!rawBook || typeof rawBook !== "object") return null;
+      const rawEntries = Array.isArray(rawBook.entries)
+        ? rawBook.entries
+        : rawBook.entries && typeof rawBook.entries === "object"
+          ? Object.values(rawBook.entries)
+          : [];
+      const now = Date.now();
+      const normalizedEntries = rawEntries.map((entry, index) => {
+        if (!entry || typeof entry !== "object") return null;
+        const rawKeywords = entry.keywords ?? entry.keys ?? entry.key ?? [];
+        const keywords = (Array.isArray(rawKeywords) ? rawKeywords : String(rawKeywords || "").split(","))
+          .map((keyword) => sanitizeText(String(keyword).trim(), 32))
+          .filter(Boolean)
+          .slice(0, 20);
+        const title = sanitizeText(
+          entry.title || entry.comment || entry.name || keywords[0] || `${tr("條目", "Entry", "項目", "항목")} ${index + 1}`,
+          120
+        );
+        return {
+          id: gid(),
+          title,
+          keywords,
+          content: sanitizeText(entry.content || entry.text || "", 3000),
+          enabled: typeof entry.enabled === "boolean" ? entry.enabled : !entry.disable,
+          updatedAt: now + index,
+        };
+      }).filter(Boolean);
+      return {
+        id: gid(),
+        name: sanitizeText(rawBook.name || rawBook.title || fallbackName || tr("匯入的世界書", "Imported lorebook", "インポートした世界観", "가져온 월드북"), 80),
+        description: sanitizeText(rawBook.description || "", 400),
+        enabled: rawBook.enabled !== false,
+        updatedAt: now,
+        entries: normalizedEntries,
+      };
+    };
+    const importLorebookFile = async (event) => {
+      const file = event.target.files?.[0];
+      event.target.value = "";
+      if (!file) return;
+      try {
+        const parsed = JSON.parse(await file.text());
+        const fallbackName = file.name.replace(/(?:\.malilorebook)?\.json$/i, "");
+        const candidates = Array.isArray(parsed?.lorebooks)
+          ? parsed.lorebooks
+          : Array.isArray(parsed?.state?.lorebooks)
+            ? parsed.state.lorebooks
+            : [parsed?.lorebook || parsed];
+        const importedBooks = candidates
+          .map((book, index) => normalizeImportedLorebook(book, candidates.length > 1 ? `${fallbackName} ${index + 1}` : fallbackName))
+          .filter(Boolean);
+        if (importedBooks.length === 0) throw new Error(tr("找不到可匯入的世界書", "No importable lorebook found", "インポートできる世界観が見つかりません", "가져올 수 있는 월드북을 찾을 수 없습니다"));
+        setLorebooks((prev) => [...importedBooks, ...prev]);
+        setActiveLorebookId(importedBooks[0].id);
+        showToast(tr(`已匯入 ${importedBooks.length} 本世界書`, `Imported ${importedBooks.length} lorebook(s)`, `${importedBooks.length}件の世界観をインポートしました`, `월드북 ${importedBooks.length}개를 가져왔습니다`));
+      } catch (err) {
+        showToast(`${tr("世界書匯入失敗", "Lorebook import failed", "世界観のインポートに失敗しました", "월드북 가져오기에 실패했습니다")}：${sanitizeText(err?.message || tr("檔案格式錯誤", "Invalid file format", "ファイル形式が正しくありません", "파일 형식이 올바르지 않습니다"), 120)}`);
+      }
+    };
+    const saveBook = () => {
+      if (!editingLorebookBook?.name?.trim()) return showToast(tr("請輸入世界書名稱", "Please enter a lorebook name", "ワールドブック名を入力してください", "월드북 이름을 입력해주세요"));
+        const payload = {
+          id: editingLorebookBook.id || gid(),
+          name: sanitizeText(editingLorebookBook.name, 80),
+          description: sanitizeText(editingLorebookBook.description, 400),
+          enabled: true,
+          updatedAt: Date.now(),
+          entries: editingLorebookBook.id ? (lorebooks.find((b) => b.id === editingLorebookBook.id)?.entries || []) : [],
+        };
+      setLorebooks((prev) => {
+        const idx = prev.findIndex((x) => x.id === payload.id);
+        if (idx < 0) return [payload, ...prev];
+        const next = [...prev];
+        next[idx] = payload;
+        return next;
+      });
+      setActiveLorebookId(payload.id);
+      setEditingLorebookBook(null);
+      notify(tr("世界書已儲存", "Lorebook saved", "ワールドブックを保存しました", "월드북이 저장되었습니다"), "Lorebook saved");
+    };
+    const saveEntry = () => {
+      if (!activeBook) return;
+      if (!editingLorebookEntry?.title?.trim()) return showToast(tr("請輸入條目標題", "Please enter an entry title", "項目タイトルを入力してください", "항목 제목을 입력해주세요"));
+      const keywords = editingLorebookEntry.keywords.split(",").map((k) => sanitizeText(k.trim(), 32)).filter(Boolean).slice(0, 20);
+      const payload = {
+        id: editingLorebookEntry.id || gid(),
+        title: sanitizeText(editingLorebookEntry.title, 120),
+        keywords,
+        content: sanitizeText(editingLorebookEntry.content, 3000),
+        // 保留欄位供舊版匯出格式相容；實際啟用狀態由各聊天室設定決定。
+        enabled: true,
+        updatedAt: Date.now(),
+      };
+      setLorebooks((prev) => prev.map((b) => {
+        if (b.id !== activeBook.id) return b;
+        const entriesNext = [...(b.entries || [])];
+        const idx = entriesNext.findIndex((x) => x.id === payload.id);
+        if (idx < 0) entriesNext.unshift(payload);
+        else entriesNext[idx] = payload;
+        return { ...b, entries: entriesNext, updatedAt: Date.now() };
+      }));
+      setEditingLorebookEntry(null);
+      notify(tr("條目已儲存", "Entry saved", "エントリを保存しました", "항목이 저장되었습니다"), "Entry saved");
+    };
+    const deleteBook = (id) => {
+      if (!ask("確定要刪除這本世界書嗎？", "Delete this lorebook?")) return;
+      setLorebooks((prev) => prev.filter((x) => x.id !== id));
+      if (activeLorebookId === id) setActiveLorebookId(null);
+      notify(tr("世界書已刪除", "Lorebook deleted", "ワールドブックを削除しました", "월드북이 삭제되었습니다"), "Lorebook deleted");
+    };
+    const deleteEntry = (id) => {
+      if (!activeBook) return;
+      if (!ask("確定要刪除這個條目嗎？", "Delete this entry?")) return;
+      setLorebooks((prev) => prev.map((b) => b.id === activeBook.id ? { ...b, entries: (b.entries || []).filter((x) => x.id !== id), updatedAt: Date.now() } : b));
+      notify(tr("條目已刪除", "Entry deleted", "項目を削除しました", "항목이 삭제되었습니다"), "Entry deleted");
+    };
+    return (
+      <div className={activeBook ? SUB_PAGE_CLASS : largeTitle.pageClassName}>
+        {activeBook
+          ? <AppHeader title={activeBook.name || tr("世界書", "Lorebook", "世界観", "월드북")} onBack={() => setActiveLorebookId(null)} backLabel={tr("返回世界書", "Back to Lorebooks", "世界観一覧に戻る", "월드북 목록으로")} />
+          : <LargeTitleHeader title={tr("世界書", "Lorebook", "世界観", "월드북")} onBack={closeApp} backLabel={tr("返回首頁", "Back to Home", "ホームに戻る", "홈으로 돌아가기")} />}
+        <div className="mp-cm" onScroll={activeBook ? undefined : largeTitle.onScroll}>
+          {!activeBook && <LargeTitle title={tr("世界書", "Lorebook", "世界観", "월드북")} />}
+          {!activeBook ? <>
+              <div className="mp-lorebook-guide">
+                <b>{tr("世界書是做什麼的？", "What are lorebooks for?", "世界観とは？", "월드북이란?")}</b>
+                <span>{tr("先建立可重複使用的背景設定，再到「聊天室設定 → 世界書」選擇要讓哪些角色使用。", "Create reusable background information, then choose who can use it in Chat settings → Lorebook.", "再利用できる背景設定を作成し、「チャット設定 → 世界観」で使用するキャラクターを選びます。", "재사용할 배경 설정을 만든 뒤 「채팅 설정 → 월드북」에서 사용할 캐릭터를 선택하세요.")}</span>
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <button className="mp-add mp-lorebook-top-action" style={{flex:1}} onClick={() => setEditingLorebookBook({ id: null, name: "", description: "", enabled: true })}><b>＋ {tr("建立世界書", "Create lorebook", "世界観を作成", "월드북 만들기")}</b><small>{tr("從空白開始", "Start from scratch", "空白から作成", "빈 문서에서 시작")}</small></button>
+                <button className="mp-add mp-lorebook-top-action" style={{flex:1}} onClick={() => lorebookImportInputRef.current?.click()}><b>⇩ {t("import")}</b><small>{tr("讀取 JSON 檔", "Load a JSON file", "JSONを読み込む", "JSON 파일 불러오기")}</small></button>
+                <input ref={lorebookImportInputRef} type="file" accept="application/json,.json" hidden onChange={importLorebookFile} />
+              </div>
+            <div style={{height:8}} />
+            {sortedBooks.length === 0 ? <div className="mp-empty"><div className="mp-empty-icon" aria-hidden="true"><Icon name="books" size={34} /></div><div className="mp-empty-t">{tr("目前沒有世界書", "No lorebooks yet", "まだ世界観がありません", "아직 월드북이 없습니다")}</div></div> : sortedBooks.map((b) => (
+              <div key={b.id} className="mp-cc">
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+                    <div style={{fontWeight:700,fontSize:13}}>{b.name}</div>
+                    <span className="mp-lorebook-count">{(b.entries || []).length} {tr("個條目", "entries", "項目", "개 항목")}</span>
+                  </div>
+                {b.description && <div className="mp-lorebook-description" style={{fontSize:12,lineHeight:1.55,marginTop:8}}>{b.description}</div>}
+                {!b.description && <div className="mp-lorebook-no-description">{tr("尚未填寫世界書說明", "No description yet", "説明はまだありません", "아직 설명이 없습니다")}</div>}
+                <div className="mp-lorebook-book-actions">
+                  <button className="mp-ibtn-chat mp-lorebook-manage-btn" onClick={() => setActiveLorebookId(b.id)}>{tr("管理條目", "Manage entries", "項目を管理", "항목 관리")} <span>›</span></button>
+                    <button className="mp-ibtn" onClick={() => setEditingLorebookBook({ id: b.id, name: b.name || "", description: b.description || "", enabled: true })}>{tr("編輯", "Edit", "編集", "편집")}</button>
+                    <button className="mp-ibtn-r" onClick={() => deleteBook(b.id)}>{tr("刪除", "Delete", "削除", "삭제")}</button>
+                  </div>
+                </div>
+            ))}
+          </> : <>
+            <div className="mp-cc" style={{marginBottom:8}}>
+              <div className="mp-lorebook-detail-kicker">{tr("目前管理的世界書", "Managing lorebook", "管理中の世界観", "관리 중인 월드북")}</div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+                <div style={{fontWeight:700,fontSize:14}}>{activeBook.name}</div>
+                <div style={{display:"flex",gap:6}}>
+                  <button className="mp-ibtn" onClick={() => setPendingLorebookExport(activeBook)}>{t("export")}</button>
+                  <button className="mp-ibtn" onClick={() => setActiveLorebookId(null)}>{t("backToList")}</button>
+                </div>
+              </div>
+              {activeBook.description && <div className="mp-lorebook-description" style={{fontSize:12,color:"var(--mp-txt-l)",marginTop:6}}>{activeBook.description}</div>}
+              <div className="mp-lorebook-detail-help">{tr("這裡只管理世界書內容；請到「聊天室設定 → 世界書」決定要使用哪些世界書與條目。", "This page only manages lorebook content. Choose which lorebooks and entries to use in Chat settings → Lorebook.", "ここでは世界観の内容のみを管理します。使用する世界観と項目は「チャット設定 → 世界観」で選択してください。", "여기서는 월드북 내용만 관리합니다. 사용할 월드북과 항목은 「채팅 설정 → 월드북」에서 선택하세요.")}</div>
+            </div>
+            <button className="mp-add" onClick={() => setEditingLorebookEntry({ id: null, title: "", keywords: "", content: "", enabled: true })}>＋ {tr("新增世界設定條目", "Add world setting entry", "世界設定の項目を追加", "세계 설정 항목 추가")}</button>
+            <div style={{height:8}} />
+            {sortedEntries.length === 0 ? <div className="mp-empty"><div className="mp-empty-icon" aria-hidden="true"><Icon name="book" size={34} /></div><div className="mp-empty-t">{tr("這本世界書尚無條目", "This lorebook has no entries yet", "この世界観にはまだ項目がありません", "이 월드북에는 아직 항목이 없습니다")}</div></div> : sortedEntries.map((e) => (
+              <div key={e.id} className="mp-cc">
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+                  <div style={{fontWeight:700,fontSize:13}}>{e.title}</div>
+                </div>
+                <div className="mp-lorebook-entry-field"><b>{tr("觸發關鍵字", "Trigger keywords", "発動キーワード", "트리거 키워드")}</b><span>{(e.keywords||[]).join("、") || tr("未設定（不會由關鍵字觸發）", "None (not triggered by keywords)", "未設定（キーワードでは発動しません）", "설정 안 됨(키워드로 실행되지 않음)")}</span></div>
+                <div className="mp-lorebook-entry-label">{tr("提供給 AI 的設定內容", "Setting content provided to AI", "AIに渡す設定内容", "AI에 제공할 설정 내용")}</div>
+                <div className="mp-lorebook-entry-preview">{e.content || tr("尚未填寫內容", "No content yet", "内容はまだありません", "아직 내용이 없습니다")}</div>
+                <div style={{display:"flex",gap:6,marginTop:10}}>
+                  <button className="mp-ibtn mp-ibtn-view" onClick={() => setViewingLorebookEntry(e)}>{tr("查看完整內容", "View full content", "全文を見る", "전체 내용 보기")}</button>
+                  <div style={{marginLeft:"auto"}} />
+                  <button className="mp-ibtn-r" onClick={() => deleteEntry(e.id)}>{tr("刪除", "Delete", "削除", "삭제")}</button>
+                </div>
+              </div>
+            ))}
+          </>}
+        </div>
+        {pendingLorebookExport && (
+          <div className="mp-overlay" onClick={() => setPendingLorebookExport(null)}>
+            <div className="mp-modal" onClick={(ev) => ev.stopPropagation()}>
+              <div className="mp-modal-t">{tr("確認匯出世界書", "Confirm lorebook export", "世界観の書き出し確認", "월드북 내보내기 확인")}</div>
+              <div style={{fontSize:13,lineHeight:1.65,color:"var(--mp-txt)",marginTop:8}}>
+                {tr("即將匯出", "You are about to export", "書き出す世界観", "내보낼 월드북")}：<strong>{pendingLorebookExport.name || tr("未命名世界書", "Untitled lorebook", "無題の世界観", "이름 없는 월드북")}</strong>
+              </div>
+              <div style={{fontSize:11,color:"var(--mp-txt-l)",marginTop:4}}>
+                {tr("條目", "Entries", "項目", "항목")}：{(pendingLorebookExport.entries || []).length}
+              </div>
+              <div style={{display:"flex",gap:8,marginTop:16}}>
+                <button type="button" className="mp-save mp-save--ghost" style={{flex:1}} onClick={() => setPendingLorebookExport(null)}>{t("cancel")}</button>
+                <button className="mp-save" style={{flex:1}} onClick={() => { exportLorebook(pendingLorebookExport); setPendingLorebookExport(null); }}>{tr("確認匯出", "Confirm export", "書き出す", "내보내기 확인")}</button>
+              </div>
+            </div>
+          </div>
+        )}
+        {viewingLorebookEntry && (
+          <div className="mp-overlay" onClick={() => setViewingLorebookEntry(null)}>
+            <div className="mp-modal" onClick={(ev) => ev.stopPropagation()}>
+              <div className="mp-modal-t">{viewingLorebookEntry.title || t("title")}</div>
+              <div className="mp-row"><div className="mp-lbl">{t("keywords")}</div><div style={{fontSize:12,color:"var(--mp-txt-l)"}}>{(viewingLorebookEntry.keywords || []).join(tr("、", ", ", "、", ", ")) || tr("無", "None", "なし", "없음")}</div></div>
+              <div className="mp-row"><div className="mp-lbl">{t("content")}</div><div className="mp-lorebook-content">{viewingLorebookEntry.content || ""}</div></div>
+              <div style={{display:"flex",gap:8,marginTop:8}}>
+                <button type="button" className="mp-save mp-save--ghost" style={{flex:1}} onClick={() => setViewingLorebookEntry(null)}>{t("close")}</button>
+                <button className="mp-save" style={{flex:1}} onClick={() => { setViewingLorebookEntry(null); setEditingLorebookEntry({ id: viewingLorebookEntry.id, title: viewingLorebookEntry.title || "", keywords: (viewingLorebookEntry.keywords || []).join(", "), content: viewingLorebookEntry.content || "", enabled: true }); }}>{t("edit")}</button>
+              </div>
+            </div>
+          </div>
+        )}
+        {editingLorebookBook && (
+          <div className="mp-overlay" onClick={dismissBookEditor}>
+            <div className="mp-modal" onClick={(ev) => ev.stopPropagation()}>
+              <div className="mp-modal-t">{editingLorebookBook.id ? tr("編輯世界書", "Edit lorebook", "世界観を編集", "월드북 편집") : tr("新增世界書", "Add lorebook", "世界観を追加", "월드북 추가")}</div>
+              <div className="mp-row"><div className="mp-lbl">{tr("名稱", "Name", "名前", "이름")} *</div><input className="mp-sinp" value={editingLorebookBook.name} onChange={(ev)=>setEditingLorebookBook((s)=>({ ...s, name: ev.target.value }))} placeholder={tr("例如：學園設定、組織規範", "e.g. school rules, organization rules", "例: 学園設定、組織規範", "예: 학교 설정, 조직 규정")} /></div>
+              <div className="mp-row"><div className="mp-lbl">{tr("描述", "Description", "説明", "설명")}</div><textarea className="mp-ta" value={editingLorebookBook.description} onChange={(ev)=>setEditingLorebookBook((s)=>({ ...s, description: ev.target.value }))} style={{minHeight:100,resize:"vertical"}} /></div>
+                <div style={{display:"flex",gap:8,marginTop:8}}>
+                <button type="button" className="mp-save mp-save--ghost" style={{flex:1}} onClick={() => setEditingLorebookBook(null)}>{tr("取消", "Cancel", "キャンセル", "취소")}</button>
+                <button className="mp-save" style={{flex:1}} onClick={saveBook}>{tr("儲存", "Save", "保存", "저장")}</button>
+              </div>
+            </div>
+          </div>
+        )}
+        {editingLorebookEntry && (
+          <div className="mp-overlay" onClick={dismissEntryEditor}>
+            <div className="mp-modal" onClick={(ev) => ev.stopPropagation()}>
+              <div className="mp-modal-t">{editingLorebookEntry.id ? tr("編輯條目", "Edit entry", "項目を編集", "항목 편집") : tr("新增條目", "Add entry", "項目を追加", "항목 추가")}</div>
+              <div className="mp-lorebook-editor-help">
+                {tr(
+                  "儲存內容後，請到聊天室設定選擇是否啟用，以及使用關鍵字或常駐模式。",
+                  "After saving, choose whether to enable it and use keyword or always-on mode in Chat settings.",
+                  "保存後、チャット設定で有効化するか、キーワード／常駐モードを選択してください。",
+                  "저장 후 채팅 설정에서 활성화 여부와 키워드 또는 상시 모드를 선택하세요."
+                )}
+              </div>
+              <div className="mp-row"><div className="mp-lbl">{tr("標題", "Title", "タイトル", "제목")} *</div><input className="mp-sinp" value={editingLorebookEntry.title} onChange={(ev)=>setEditingLorebookEntry((s)=>({ ...s, title: ev.target.value }))} placeholder={tr("例如：學校、地區、組織", "e.g. school, district, organization", "例: 学校、地域、組織", "예: 학교, 지역, 조직")} /></div>
+              <div className="mp-row"><div className="mp-lbl">{tr("觸發關鍵字", "Trigger keywords", "トリガーキーワード", "트리거 키워드")} ({tr("逗號分隔", "Comma-separated", "カンマ区切り", "쉼표로 구분")})</div><div className="mp-lorebook-field-help">{tr("聊天出現其中任一詞語，就會啟用下方設定。", "Any matching term in chat activates the setting below.", "チャットにいずれかの語句が登場すると、下の設定が有効になります。", "채팅에 단어 중 하나가 나오면 아래 설정이 활성화됩니다.")}</div><input className="mp-sinp" value={editingLorebookEntry.keywords} onChange={(ev)=>setEditingLorebookEntry((s)=>({ ...s, keywords: ev.target.value }))} placeholder={tr("例如：十支局, 受訓, 規範", "e.g. ten squads, training, rules", "例: 十支局、訓練、規範", "예: 10부서, 훈련, 규정")} /></div>
+              <div className="mp-row"><div className="mp-lbl">{tr("提供給 AI 的設定內容", "Setting provided to AI", "AIに渡す設定内容", "AI에 제공할 설정 내용")}</div><div className="mp-lorebook-field-help">{tr("寫下 AI 需要知道的背景、規則或人物關係，不會直接顯示在聊天訊息中。", "Write the background, rules, or relationships the AI should know. This is not shown directly in chat.", "AIに知らせたい背景・ルール・人物関係を書きます。チャットには直接表示されません。", "AI가 알아야 할 배경, 규칙, 인물 관계를 작성하세요. 채팅 메시지에는 직접 표시되지 않습니다.")}</div><textarea className="mp-ta" value={editingLorebookEntry.content} onChange={(ev)=>setEditingLorebookEntry((s)=>({ ...s, content: ev.target.value }))} placeholder={tr("例如：十支局位於市中心，成員進出時必須出示識別證。", "e.g. The Tenth Bureau is downtown, and members must show ID to enter.", "例: 十支局は市中心部にあり、出入りには身分証の提示が必要。", "예: 제10지부는 도심에 있으며 출입 시 신분증을 제시해야 한다.")} style={{minHeight:160,resize:"vertical"}} /></div>
+              <div style={{display:"flex",gap:8,marginTop:8}}>
+                <button type="button" className="mp-save mp-save--ghost" style={{flex:1}} onClick={() => setEditingLorebookEntry(null)}>{tr("取消", "Cancel", "キャンセル", "취소")}</button>
+                <button className="mp-save" style={{flex:1}} onClick={saveEntry}>{tr("儲存", "Save", "保存", "저장")}</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+}

@@ -1,0 +1,1 @@
+.desktop-pet-stay.desktop-pet-left{animation:desktopPetEnterLeft 1.5s ease-out forwards}.desktop-pet-stay.desktop-pet-right{animation:desktopPetEnterRight 1.5s ease-out forwards}@keyframes desktopPetEnterLeft{from{left:-82px}to{left:16px}}@keyframes desktopPetEnterRight{from{right:-82px}to{right:16px}}

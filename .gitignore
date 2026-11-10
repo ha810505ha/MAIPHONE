@@ -1,0 +1,111 @@
+node_modules
+dist
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.log
+logs/
+coverage/
+.vite/
+.cache/
+*.tsbuildinfo
+
+# Environment files and local credentials (examples remain shareable)
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+
+# Certificates, mobile signing files, Firebase/service-account credentials and local deployment secrets
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.mobileprovision
+**/google-services.json
+**/GoogleService-Info.plist
+**/service-account*.json
+**/*serviceAccount*.json
+**/credentials*.json
+.dev.vars
+**/.dev.vars
+.envrc
+*.tfvars
+secrets/
+*.secrets.*
+
+# Build packages and local database files must never be published as source
+*.apk
+*.aab
+*.ipa
+*.db
+*.sqlite
+*.sqlite3
+
+# Cloudflare Worker is deployed and backed up locally; keep its source and
+# environment bindings outside this public application repository.
+cloudflare-worker-proxy/
+
+# Local Codex/editor workspace state
+.local/
+.codex-remote-attachments/
+android/.idea/
+/android/
+/backend/
+backend/.env
+backend/.env.*
+!backend/.env.example
+backend/node_modules/
+backend/public/
+.pglite-dev/
+
+# Local prototypes that are not wired into the production app yet
+/GachaGame.jsx
+card/
+chat-layout-preview.html
+chat-layout-preview.css
+
+# Private Yunyin assets stay out of Git
+yunyin/assets/
+# Local-only content editors and their drafts
+tools/gacha-card-editor/
+tools/dating-profile-editor/
+tools/dating-profile-editor.zip
+# Unreleased dating character profiles are private and stay on this machine.
+data/dating/profileGroups/
+# Local-only assets destined for separate private asset repositories.
+# Normal product UI assets such as public/app-icons/ remain tracked by MAIP.
+private-assets/
+
+# Local image-generation working files and exports
+/output/imagegen/
+/tmp/imagegen/
+/public/gacha/
+# 信風角色照片：第三方創作者素材，只留本機
+/public/dating-photos/
+/assets/card-frames/
+/assets/cards/preview/
+
+# Local developer config / internal planning docs
+.claude/
+.codex/
+.hallmark/
+CLAUDE.md
+backend/docs/plan.md
+/docs/
+/tmp/
+
+# 資安檢查紀錄：記載尚未修復的弱點，repo 是 public 的，外流等於給攻擊者地圖
+# Covered by /docs/ above.
+
+# 付費素材原始檔：授權禁止散布，repo 是 public 的所以不能進 git（build 產物 dist/ 已排除，不受影響）
+yunyin/assets/
+
+# 只在本機／正式站使用、不進公開 repo（2026-10-19）
+# 自測 APK 打包卡圖影音用；未接進回歸測試的卡圖檢查
+/tools/bundle-gacha-assets.mjs
+/tools/test-gacha-art.mjs

@@ -1,0 +1,675 @@
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import DOMPurify from "dompurify";
+import { confirmLocalized } from "../../utils/i18n";
+import { useLocalizedStaticText } from "../../utils/useLocalizedStaticText";
+import {
+  loadFeatureEntity,
+  saveFeatureEntity,
+} from "../../utils/indexedDbStorage";
+import { FEATURE_DATA_CHANGED_EVENT, featureDataEventIncludes } from "../../services/featureDataLifecycle";
+import { NOTES_ENTITY_KEY, upsertNoteDraft } from "../../utils/notesPersistence";
+import { AppHeader, LargeTitle, LargeTitleHeader, SUB_PAGE_CLASS, useLargeTitle } from "../shell/LargeTitle";
+import StorageLoadFailureScreen from "../shell/StorageLoadFailureScreen";
+import EmptyState from "../common/EmptyState";
+import SegmentedControl from "../common/SegmentedControl";
+import { recordRuntimeDiagnostic } from "../../services/diagnostics/runtimeDiagnostics";
+
+const KEY = NOTES_ENTITY_KEY;
+const NOTE_UI_TEXT = {
+  "\u7cfb\u7d71\u5b57\u9ad4": ["System", "\u30b7\u30b9\u30c6\u30e0", "\uc2dc\uc2a4\ud15c"],
+  "\u9ed1\u9ad4": ["Sans-serif", "\u30b4\u30b7\u30c3\u30af", "\uace0\ub515"],
+  "\u660e\u9ad4": ["Serif", "\u660e\u671d", "\uba85\uc870"],
+  "\u5fae\u8edf\u6b63\u9ed1\u9ad4": ["Microsoft JhengHei", "Microsoft JhengHei", "Microsoft JhengHei"],
+  "\u7b49\u5bec\u5b57\u9ad4": ["Monospace", "\u7b49\u5e45", "\uace0\uc815\ud3ed"],
+  "\u6b63\u5728\u8b80\u53d6\u7b46\u8a18\u2026": ["Loading notes\u2026", "\u30e1\u30e2\u3092\u8aad\u307f\u8fbc\u307f\u4e2d\u2026", "\uba54\ubaa8\ub97c \ubd88\ub7ec\uc624\ub294 \uc911\u2026"],
+  "\u65b0\u589e\u7b46\u8a18": ["New note", "\u65b0\u3057\u3044\u30e1\u30e2", "\uc0c8 \uba54\ubaa8"],
+  "\u81ea\u52d5\u5132\u5b58": ["Auto-saved", "\u81ea\u52d5\u4fdd\u5b58", "\uc790\ub3d9 \uc800\uc7a5"],
+  "\u6a19\u984c": ["Title", "\u30bf\u30a4\u30c8\u30eb", "\uc81c\ubaa9"],
+  "\u4e00\u822c": ["General", "\u4e00\u822c", "\uc77c\ubc18"],
+  "\u79c1\u5bc6": ["Private", "\u975e\u516c\u958b", "\ube44\uacf5\uac1c"],
+  "\ud83d\udd12 \u79c1\u5bc6": ["\ud83d\udd12 Private", "\ud83d\udd12 \u975e\u516c\u958b", "\ud83d\udd12 \ube44\uacf5\uac1c"],
+  "\u5b57\u8272 \u25be": ["Text color \u25be", "\u6587\u5b57\u8272 \u25be", "\uae00\uc790\uc0c9 \u25be"],
+  "\u7b46\u8a18": ["Notes", "\u30e1\u30e2", "\uba54\ubaa8"],
+  "\u641c\u5c0b\u7b46\u8a18": ["Search notes", "\u30e1\u30e2\u3092\u691c\u7d22", "\uba54\ubaa8 \uac80\uc0c9"],
+  "\u5168\u90e8": ["All", "\u3059\u3079\u3066", "\uc804\uccb4"],
+  "\u9084\u6c92\u6709\u7b46\u8a18\uff0c\u9ede\u64ca\u53f3\u4e0b\u89d2\u925b\u7b46\u958b\u59cb\u8a18\u9304": ["No notes yet. Tap the pencil to start writing.", "\u30e1\u30e2\u306f\u307e\u3060\u3042\u308a\u307e\u305b\u3093\u3002\u53f3\u4e0b\u306e\u925b\u7b46\u304b\u3089\u66f8\u304d\u59cb\u3081\u307e\u3057\u3087\u3046\u3002", "\uc544\uc9c1 \uba54\ubaa8\uac00 \uc5c6\uc5b4\uc694. \uc624\ub978\ucabd \uc544\ub798 \uc5f0\ud544\uc744 \ub20c\ub7ec \uc791\uc131\ud558\uc138\uc694."],
+  "\u672a\u547d\u540d\u7b46\u8a18": ["Untitled note", "\u7121\u984c\u306e\u30e1\u30e2", "\uc81c\ubaa9 \uc5c6\ub294 \uba54\ubaa8"],
+  "\u5c1a\u672a\u8f38\u5165\u5167\u5bb9": ["No content yet", "\u5185\u5bb9\u306f\u307e\u3060\u3042\u308a\u307e\u305b\u3093", "\uc544\uc9c1 \ub0b4\uc6a9\uc774 \uc5c6\uc5b4\uc694"],
+  "\u522a\u9664": ["Delete", "\u524a\u9664", "\uc0ad\uc81c"],
+};
+const COLORS = [
+  "#57434b",
+  "#9b4d68",
+  "#d85e87",
+  "#c47b22",
+  "#3d7a5c",
+  "#3974a8",
+  "#7654a6",
+  "#222222",
+];
+const FONTS = [
+  ["system-ui", "系統字體"],
+  ["Arial, sans-serif", "Arial"],
+  ["'Noto Sans TC', sans-serif", "黑體"],
+  ["'Noto Serif TC', serif", "明體"],
+  ["'Microsoft JhengHei', sans-serif", "微軟正黑體"],
+  ["monospace", "等寬字體"],
+];
+const id = () =>
+  globalThis.crypto?.randomUUID?.() ||
+  `note_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+const empty = () => ({
+  id: id(),
+  title: "",
+  content: "",
+  privacy: "private",
+  pinned: false,
+  createdAt: Date.now(),
+  updatedAt: Date.now(),
+});
+const textOf = (html = "") =>
+  String(html)
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+const SANITIZE_CONFIG = {
+  USE_PROFILES: { html: true },
+  // 禁止事件屬性 / javascript: 等危險載體,保留 rich-text 需要的樣式
+  FORBID_ATTR: ["srcset"],
+  ALLOW_DATA_ATTR: false,
+};
+const sanitizeHtml = (value = "") =>
+  typeof DOMPurify.sanitize === "function"
+    ? DOMPurify.sanitize(String(value), SANITIZE_CONFIG)
+    : "";
+const htmlOf = (value = "") =>
+  /<\/?[a-z][\s\S]*>/i.test(value)
+    ? sanitizeHtml(value)
+    : String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\n/g, "<br>");
+
+export default function NotesApp({ onBack, tr }) {
+  const largeTitle = useLargeTitle();
+  const notesTitle = tr("筆記", "Notes", "ノート", "노트");
+  const [notes, setNotes] = useState(null),
+    [loading, setLoading] = useState(true),
+    [loadError, setLoadError] = useState(null),
+    [query, setQuery] = useState(""),
+    [filter, setFilter] = useState("all"),
+    [draft, setDraft] = useState(null),
+    [showColors, setShowColors] = useState(false),
+    [activeFormats, setActiveFormats] = useState({});
+  const editorRef = useRef(null),
+    selectionRef = useRef(null),
+    timerRef = useRef(null),
+    rootRef = useRef(null),
+    notesRef = useRef(notes),
+    draftRef = useRef(draft),
+    latestContentRef = useRef(null),
+    readyRef = useRef(false),
+    loadEpochRef = useRef(0),
+    reloadRef = useRef(null),
+    pendingWriteRef = useRef(Promise.resolve());
+  notesRef.current = notes;
+  draftRef.current = draft;
+  const localizeNoteUi = (value) => {
+    const matchedEntry = Object.entries(NOTE_UI_TEXT).find(([zh, translations]) => (
+      zh === value || translations.includes(value)
+    ));
+    if (matchedEntry) return tr(matchedEntry[0], ...matchedEntry[1]);
+    const color = value.match(/^(?:\u5957\u7528 |Apply )(#[0-9a-f]{6})(?: \u5b57\u8272| text color)$/i)
+      || value.match(/^(#[0-9a-f]{6}) (?:\u306e\u6587\u5b57\u8272\u3092\u9069\u7528|\uae00\uc790\uc0c9 \uc801\uc6a9)$/i);
+    return color
+      ? tr(`\u5957\u7528 ${color[1]} \u5b57\u8272`, `Apply ${color[1]} text color`, `${color[1]} \u306e\u6587\u5b57\u8272\u3092\u9069\u7528`, `${color[1]} \uae00\uc790\uc0c9 \uc801\uc6a9`)
+      : value;
+  };
+  useLocalizedStaticText(rootRef, localizeNoteUi);
+  const trackWrite = (data) => {
+    const pending = saveFeatureEntity(KEY, data);
+    // IndexedDB serializes mutations; draining the last one also drains earlier writes.
+    pendingWriteRef.current = pending.catch(() => {});
+    return pending;
+  };
+  const write = async (next) => {
+    if (!readyRef.current) return;
+    notesRef.current = next;
+    setNotes(next);
+    await trackWrite(next);
+  };
+  const persistCurrentDraft = ({ updateState = true } = {}) => {
+    const activeDraft = draftRef.current;
+    if (!readyRef.current || !activeDraft) return Promise.resolve(null);
+    const content = latestContentRef.current
+      ?? editorRef.current?.innerHTML
+      ?? activeDraft.content;
+    const result = upsertNoteDraft(notesRef.current, activeDraft, content);
+    notesRef.current = result.notes;
+    if (updateState) setNotes(result.notes);
+    return trackWrite(result.notes).then(() => result.item);
+  };
+  const saveDraft = (content = null) => {
+    if (!readyRef.current || !draftRef.current) return;
+    if (content !== null) latestContentRef.current = content;
+    clearTimeout(timerRef.current);
+    const epoch = loadEpochRef.current;
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      if (!readyRef.current || epoch !== loadEpochRef.current) return;
+      persistCurrentDraft().catch((error) => console.error("[notes] 自動儲存失敗", error));
+    }, 450);
+  };
+  useEffect(() => {
+    if (draft) saveDraft();
+  }, [draft?.title, draft?.privacy]);
+  useEffect(() => {
+    let live = true;
+    const reload = () => {
+      const epoch = ++loadEpochRef.current;
+      readyRef.current = false;
+      setLoading(true);
+      setLoadError(null);
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+      latestContentRef.current = null;
+      draftRef.current = null;
+      setDraft(null);
+      pendingWriteRef.current.then(() => {
+        if (!live || epoch !== loadEpochRef.current) return;
+        return loadFeatureEntity(KEY, []);
+      })
+        .then((data) => {
+          if (!live || epoch !== loadEpochRef.current) return;
+          if (!Array.isArray(data)) throw new DOMException("Invalid notes data", "DataError");
+          notesRef.current = data;
+          setNotes(data);
+          readyRef.current = true;
+          setLoading(false);
+        })
+        .catch((error) => {
+          if (!live || epoch !== loadEpochRef.current) return;
+          recordRuntimeDiagnostic({ kind: "storage-load", appId: "notes", message: "Notes could not be loaded", details: { name: error?.name || "Error" } });
+          setLoadError(error);
+          setLoading(false);
+        });
+    };
+    reloadRef.current = reload;
+    const onFeatureDataChanged = (event) => {
+      if (featureDataEventIncludes(event, KEY)) reload();
+    };
+    reload();
+    window.addEventListener(FEATURE_DATA_CHANGED_EVENT, onFeatureDataChanged);
+    return () => {
+      live = false;
+      window.removeEventListener(FEATURE_DATA_CHANGED_EVENT, onFeatureDataChanged);
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+      if (draftRef.current) {
+        void persistCurrentDraft({ updateState: false }).catch((error) => console.error("[notes] 離開前儲存失敗", error));
+      }
+      readyRef.current = false;
+      ++loadEpochRef.current;
+      reloadRef.current = null;
+    };
+  }, []);
+  useEffect(() => {
+    const remember = () => {
+      const s = window.getSelection();
+      if (s?.rangeCount && editorRef.current?.contains(s.anchorNode)) {
+        selectionRef.current = s.getRangeAt(0).cloneRange();
+        setActiveFormats({
+          bold: document.queryCommandState("bold"),
+          italic: document.queryCommandState("italic"),
+          underline: document.queryCommandState("underline"),
+          strikeThrough: document.queryCommandState("strikeThrough"),
+        });
+      }
+    };
+    document.addEventListener("selectionchange", remember);
+    return () => document.removeEventListener("selectionchange", remember);
+  }, [draft]);
+  const restoreSelection = () => {
+    const selection = window.getSelection();
+    if (selectionRef.current && selection) {
+      selection.removeAllRanges();
+      selection.addRange(selectionRef.current);
+    }
+    editorRef.current?.focus();
+  };
+  const format = (command, value = null) => {
+    restoreSelection();
+    document.execCommand("styleWithCSS", false, true);
+    document.execCommand(command, false, value);
+    setActiveFormats((current) => ({
+      ...current,
+      [command]: document.queryCommandState(command),
+    }));
+    saveDraft(editorRef.current?.innerHTML || "");
+  };
+  const setFontSize = (px) => {
+    if (styleSelection({ fontSize: `${px}px` })) return;
+    restoreSelection();
+    const selection = window.getSelection();
+    if (!selection?.rangeCount) return;
+    const range = selection.getRangeAt(0);
+    const span = document.createElement("span");
+    const marker = document.createTextNode("\u200B");
+    span.style.fontSize = `${px}px`;
+    span.appendChild(marker);
+    range.insertNode(span);
+    range.setStart(marker, 1);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    selectionRef.current = range.cloneRange();
+    saveDraft(editorRef.current?.innerHTML || "");
+  };
+  const styleSelection = (style) => {
+    const s = window.getSelection(),
+      r = selectionRef.current || (s?.rangeCount ? s.getRangeAt(0) : null);
+    if (!r || !r.toString()) return false;
+    const next = r.cloneRange(),
+      span = document.createElement("span");
+    Object.assign(span.style, style);
+    span.appendChild(next.extractContents());
+    next.insertNode(span);
+    selectionRef.current = next;
+    s?.removeAllRanges();
+    s?.addRange(next);
+    editorRef.current?.focus();
+    saveDraft(editorRef.current?.innerHTML || "");
+    return true;
+  };
+  const visible = useMemo(
+    () =>
+      (notes || [])
+        .filter(
+          (n) =>
+            (filter === "all" || n.privacy === filter) &&
+            (!query.trim() ||
+              `${n.title} ${textOf(n.content)}`
+                .toLowerCase()
+                .includes(query.trim().toLowerCase())),
+        )
+        .sort(
+          (a, b) =>
+            Number(b.pinned) - Number(a.pinned) || b.updatedAt - a.updatedAt,
+        ),
+    [notes, filter, query],
+  );
+  if (loadError) return <StorageLoadFailureScreen error={loadError} tr={tr} featureTitle={notesTitle} onRetry={() => reloadRef.current?.()} onBack={onBack} />;
+  if (loading || notes === null)
+    return (
+      <div
+      className="mp-page"
+      ref={rootRef}
+        style={{ display: "grid", placeItems: "center" }}
+      >
+        {tr("正在讀取筆記⋯", "Loading notes…", "ノートを読み込み中…", "노트를 불러오는 중…")}
+      </div>
+    );
+  if (draft)
+    return (
+      <div
+        className="mp-page"
+        ref={rootRef}
+        data-mp-surface="light"
+        style={{
+          background: "linear-gradient(180deg,#fffaf8,#fdecef)",
+          color: "#57434b",
+          display: "flex",
+          flexDirection: "column",
+          minHeight: 0,
+        }}
+      >
+        <AppHeader
+          title={`${draft.privacy === "private" ? "🔒 " : ""}${draft.title || tr("新增筆記", "New note", "新しいノート", "새 노트")}`}
+          onBack={() => {
+              clearTimeout(timerRef.current);
+              timerRef.current = null;
+              void persistCurrentDraft().catch((error) => console.error("[notes] 返回前儲存失敗", error));
+              draftRef.current = null;
+              latestContentRef.current = null;
+              setDraft(null);
+            }}
+          backLabel={tr("返回筆記列表", "Back to notes", "ノート一覧に戻る", "노트 목록으로")}
+          right={<span className="mp-hdr-note">{tr("自動儲存", "Auto-saved", "自動保存", "자동 저장")}</span>}
+        />
+        <div
+          style={{
+            padding: "14px 18px max(18px, env(safe-area-inset-bottom))",
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+            flex: 1,
+            minHeight: 0,
+            overflow: "hidden",
+          }}
+        >
+          <input
+            value={draft.title}
+            onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+            placeholder="標題"
+            style={{
+              border: 0,
+              borderBottom: "1px solid #f0cbd6",
+              background: "transparent",
+              padding: "8px 2px",
+              fontSize: 24,
+              fontWeight: 900,
+              color: "#57434b",
+              outline: 0,
+            }}
+          />
+          <div style={{ alignSelf: "flex-start", width: 200, maxWidth: "100%" }}>
+            <style>{`.mp-notes-privacy-seg{margin:0}`}</style>
+            <SegmentedControl
+              className="mp-notes-privacy-seg"
+              ariaLabel={tr("筆記可見範圍", "Note visibility", "ノートの公開範囲", "노트 공개 범위")}
+              items={[
+                { id: "shared", label: tr("一般", "General", "一般", "일반") },
+                { id: "private", label: tr("🔒 私密", "🔒 Private", "🔒 非公開", "🔒 비공개") },
+              ]}
+              value={draft.privacy === "private" ? "private" : "shared"}
+              onChange={(value) => setDraft({ ...draft, privacy: value })}
+            />
+          </div>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              gap: 6,
+              padding: 7,
+              borderRadius: 18,
+              background: draft.privacy === "private" ? "rgba(239,234,241,.94)" : "rgba(255,255,255,.78)",
+              border: draft.privacy === "private" ? "1px solid #b9a9bc" : "1px solid #f0d5dc",
+              position: "relative",
+              zIndex: 10,
+              order: 1,
+              boxShadow: "0 8px 24px rgba(87,67,75,.14)",
+            }}
+          >
+            {[
+              ["bold", "B"],
+              ["italic", "I"],
+              ["underline", "U"],
+              ["strikeThrough", "S"],
+            ].map(([cmd, label]) => (
+              <button
+                key={cmd}
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  format(cmd);
+                }}
+                style={{
+                  border: 0,
+                  borderRadius: 10,
+                  minWidth: 32,
+                  padding: "7px 9px",
+                  background: activeFormats[cmd] ? "#d85e87" : "#fff4f6",
+                  color: activeFormats[cmd] ? "#fff" : "#714f5c",
+                  fontWeight: cmd === "bold" ? 900 : 500,
+                  fontStyle: cmd === "italic" ? "italic" : "normal",
+                  textDecoration:
+                    cmd === "underline"
+                      ? "underline"
+                      : cmd === "strikeThrough"
+                        ? "line-through"
+                        : "none",
+                }}
+              >
+                {label}
+              </button>
+            ))}
+            <select
+              defaultValue="16"
+              onChange={(e) => setFontSize(e.target.value)}
+              style={{
+                border: 0,
+                borderRadius: 10,
+                padding: "7px 8px",
+                background: "#fff4f6",
+                color: "#714f5c",
+              }}
+            >
+              <option value="12">12 px</option>
+              <option value="14">14 px</option>
+              <option value="16">16 px</option>
+              <option value="18">18 px</option>
+              <option value="22">22 px</option>
+              <option value="28">28 px</option>
+            </select>
+            <select
+              defaultValue="system-ui"
+              onChange={(e) => format("fontName", e.target.value)}
+              style={{ border: 0, borderRadius: 10, padding: "7px 8px", background: "#fff4f6", color: "#714f5c", maxWidth: 112 }}
+            >
+              {FONTS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+            <div style={{ position: "relative" }}>
+              <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => setShowColors((value) => !value)} style={{ border: 0, borderRadius: 10, padding: "7px 10px", background: "#fff4f6", color: "#714f5c" }}>字色 ▾</button>
+              {showColors && <div style={{ position: "absolute", top: "calc(100% + 7px)", right: 0, zIndex: 12, display: "grid", gridTemplateColumns: "repeat(4, 28px)", gap: 8, padding: 10, borderRadius: 14, background: "#fff", border: "1px solid #f0d5dc", boxShadow: "0 8px 24px rgba(87,67,75,.18)" }}>
+                {COLORS.map((color) => <button key={color} type="button" aria-label={`套用 ${color} 字色`} onMouseDown={(e) => { e.preventDefault(); if (!styleSelection({ color })) format("foreColor", color); setShowColors(false); }} style={{ width: 28, height: 28, padding: 0, borderRadius: 8, border: "2px solid #fff", background: color, boxShadow: "0 0 0 1px #d8c1c9" }} />)}
+              </div>}
+            </div>
+          </div>
+          <div
+            ref={editorRef}
+            contentEditable
+            suppressContentEditableWarning
+            onMouseUp={() => {
+              const s = window.getSelection();
+              if (s?.rangeCount && s.toString())
+                selectionRef.current = s.getRangeAt(0).cloneRange();
+            }}
+            onKeyUp={() => {
+              const s = window.getSelection();
+              if (s?.rangeCount && s.toString())
+                selectionRef.current = s.getRangeAt(0).cloneRange();
+            }}
+            onInput={(e) => saveDraft(e.currentTarget.innerHTML)}
+            dangerouslySetInnerHTML={{ __html: htmlOf(draft.content) }}
+            style={{
+              order: 2,
+              flex: "1 1 auto",
+              width: "100%",
+              boxSizing: "border-box",
+              minHeight: 0,
+              overflowY: "auto",
+              overflowX: "hidden",
+              borderRadius: 6,
+              padding: "22px 18px 80px",
+              backgroundColor: draft.privacy === "private" ? "rgba(242,238,244,.96)" : "rgba(255,255,255,.88)",
+              backgroundImage: "repeating-linear-gradient(to bottom, transparent 0, transparent 31px, rgba(207,170,181,.2) 32px)",
+              backgroundSize: "100% 32px",
+              color: "#57434b",
+              fontSize: 16,
+              lineHeight: "32px",
+              outline: 0,
+              boxShadow: draft.privacy === "private" ? "inset 0 0 0 1px rgba(117,100,118,.24),0 5px 18px rgba(87,67,75,.1)" : "0 5px 18px rgba(87,67,75,.08)",
+            }}
+          />
+        </div>
+      </div>
+    );
+  const open = (note) => {
+    const next = note ? { ...note } : empty();
+    latestContentRef.current = next.content || "";
+    setDraft(next);
+  };
+  const remove = async (note) => {
+    if (document.documentElement.lang !== "zh-TW") {
+      if (window.confirm(tr("\u78ba\u5b9a\u8981\u522a\u9664\u9019\u7bc7\u7b46\u8a18\u55ce\uff1f", "Delete this note?", "\u3053\u306e\u30e1\u30e2\u3092\u524a\u9664\u3057\u307e\u3059\u304b\uff1f", "\uc774 \uba54\ubaa8\ub97c \uc0ad\uc81c\ud560\uae4c\uc694?"))) {
+        await write(notes.filter((n) => n.id !== note.id));
+      }
+      return;
+    }
+    if (confirmLocalized("確定要刪除這篇筆記嗎？"))
+      await write(notes.filter((n) => n.id !== note.id));
+  };
+  const pin = async (note) =>
+    await write(
+      notes.map((n) =>
+        n.id === note.id
+          ? { ...n, pinned: !n.pinned, updatedAt: Date.now() }
+          : n,
+      ),
+    );
+  return (
+    <div
+        className={largeTitle.pageClassName}
+      onScroll={largeTitle.onScroll}
+        ref={rootRef}
+      data-mp-surface="light"
+      style={{
+        background: "linear-gradient(180deg,#fffaf8,#fdecef)",
+        color: "var(--mp-page-text)",
+        overflowY: "auto",
+        position: "relative",
+        height: "100%",
+        minHeight: 0,
+        boxSizing: "border-box",
+      }}
+    >
+      <LargeTitleHeader title={notesTitle} onBack={onBack} backLabel={tr("返回首頁", "Back to Home", "ホームに戻る", "홈으로 돌아가기")} />
+      <LargeTitle title={notesTitle} />
+      <div style={{ padding: 14 }}>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="搜尋筆記"
+          style={{
+            width: "100%",
+            boxSizing: "border-box",
+            border: "1px solid #f0cbd6",
+            borderRadius: 14,
+            padding: "10px 13px",
+            background: "rgba(255,255,255,.8)",
+            outline: 0,
+          }}
+        />
+        <div className="mp-chip-row" style={{ margin: "12px 0" }}>
+          {[
+            ["all", "全部"],
+            ["private", "私密"],
+            ["shared", "一般"],
+          ].map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              className={`mp-chip ${filter === key ? "active" : ""}`}
+              onClick={() => setFilter(key)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {visible.length === 0 ? (
+          <EmptyState
+            compact
+            icon="notebook"
+            title={tr("還沒有筆記", "No notes yet", "ノートはまだありません", "아직 노트가 없어요")}
+            text={tr("點右下角鉛筆開始記錄", "Tap the pencil at the bottom right to start writing.", "右下の鉛筆から書き始めましょう。", "오른쪽 아래 연필을 눌러 작성해 보세요.")}
+          />
+        ) : (
+          visible.map((note) => (
+            <div
+              key={note.id}
+              onClick={() => open(note)}
+              style={{
+                position: "relative",
+                marginBottom: 10,
+                padding: "14px 44px 14px 15px",
+                borderRadius: 16,
+                background: "rgba(255,255,255,.82)",
+                border: "1px solid #f0d5dc",
+                cursor: "pointer",
+              }}
+            >
+              <div style={{ fontWeight: 800 }}>
+                {note.pinned ? "📌 " : ""}
+                {note.title || "未命名筆記"}
+              </div>
+              <div
+                style={{
+                  marginTop: 5,
+                  color: "#8a737c",
+                  fontSize: 13,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {textOf(note.content) || "尚未輸入內容"}
+              </div>
+              <div style={{ marginTop: 7, color: "#b18c99", fontSize: 11 }}>
+                {note.privacy === "private" ? "🔒 私密" : "一般"}
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  pin(note);
+                }}
+                style={{
+                  position: "absolute",
+                  top: 10,
+                  right: 9,
+                  border: 0,
+                  background: "transparent",
+                  fontSize: 17,
+                }}
+              >
+                {note.pinned ? "★" : "☆"}
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  remove(note);
+                }}
+                style={{
+                  position: "absolute",
+                  bottom: 8,
+                  right: 10,
+                  border: 0,
+                  background: "transparent",
+                  color: "#c58a9b",
+                  fontSize: 12,
+                }}
+              >
+                刪除
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+      <button
+        type="button"
+        className="notes-add-button"
+        aria-label="新增筆記"
+        onClick={() => open()}
+        style={{
+          position: "absolute",
+          right: 16,
+          bottom: "max(26px, env(safe-area-inset-bottom))",
+          zIndex: 20,
+          width: 58,
+          height: 58,
+          border: 0,
+          borderRadius: "50%",
+          background: "linear-gradient(145deg,#f39ab3,#d85e87)",
+          color: "#fff",
+          fontSize: 28,
+          lineHeight: 1,
+          boxShadow: "0 10px 24px rgba(168,75,108,.32)",
+        }}
+      >
+        ✎
+      </button>
+    </div>
+  );
+}

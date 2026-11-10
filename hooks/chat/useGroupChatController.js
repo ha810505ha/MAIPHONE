@@ -1,0 +1,296 @@
+import { useState } from "react";
+import { gid, sanitizeText } from "../../utils/coreUtils";
+import { createImageCropState, drawCoverCrop } from "../../utils/imageCrop";
+
+export default function useGroupChatController({
+  characters,
+  currentChatGroup,
+  setGroupChats,
+  setGroupScenes,
+  setCurrentChatGroup,
+  sanitizeImageUrl,
+  showToast,
+  notify,
+  tr,
+}) {
+  const [groupCreateOpen, setGroupCreateOpen] = useState(false);
+  const [groupCreateName, setGroupCreateName] = useState("");
+  const [groupCreateRulePrompt, setGroupCreateRulePrompt] = useState("");
+  const [groupCreateMemberIds, setGroupCreateMemberIds] = useState([]);
+  const [groupCreateSearch, setGroupCreateSearch] = useState("");
+  const [groupCreateCover, setGroupCreateCover] = useState("");
+  const [groupEditOpen, setGroupEditOpen] = useState(false);
+  const [groupEditGroupId, setGroupEditGroupId] = useState(null);
+  const [groupEditName, setGroupEditName] = useState("");
+  const [groupEditRulePrompt, setGroupEditRulePrompt] = useState("");
+  const [groupEditUseRealTime, setGroupEditUseRealTime] = useState(true);
+  const [groupEditMemberIds, setGroupEditMemberIds] = useState([]);
+  const [groupEditSearch, setGroupEditSearch] = useState("");
+  const [groupEditCover, setGroupEditCover] = useState("");
+  const [groupCoverCrop, setGroupCoverCrop] = useState(null);
+  const [groupEditCoverCrop, setGroupEditCoverCrop] = useState(null);
+  const characterList = Array.isArray(characters) ? characters : [];
+
+  const getGroupMembers = (group) => {
+    const ids = Array.isArray(group?.memberIds) && group.memberIds.length ? group.memberIds : characterList.map((c) => c.id);
+    return characterList.filter((c) => ids.includes(c.id));
+  };
+
+  const openGroupCoverCrop = (file, mode = "create") => {
+    if (!file) return;
+    const r = new FileReader();
+    r.onload = () => {
+      const safe = sanitizeImageUrl(String(r.result || ""));
+      if (!safe) return showToast(tr("圖片格式不支援", "Unsupported image format", "画像形式に対応していません", "이미지 형식을 지원하지 않습니다"));
+      const img = new Image();
+      img.onload = () => {
+        const crop = createImageCropState({ src: safe, width: img.width, height: img.height });
+        if (mode === "edit") setGroupEditCoverCrop(crop);
+        else setGroupCoverCrop(crop);
+      };
+      img.onerror = () => showToast(tr("圖片讀取失敗", "Image load failed", "画像の読み込みに失敗しました", "이미지 읽기에 실패했습니다"));
+      img.src = safe;
+    };
+    r.readAsDataURL(file);
+  };
+  const applyGroupCoverCrop = (mode = "create") => {
+    const crop = mode === "edit" ? groupEditCoverCrop : groupCoverCrop;
+    if (!crop?.src) return;
+    const img = new Image();
+    img.onload = () => {
+      const size = 320;
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return showToast("圖片處理失敗");
+      drawCoverCrop(ctx, img, crop, size);
+      const out = canvas.toDataURL("image/jpeg", 0.84);
+      const safe = sanitizeImageUrl(out);
+      if (!safe) return showToast("圖片處理失敗");
+      if (mode === "edit") {
+        setGroupEditCover(safe);
+        setGroupEditCoverCrop(null);
+      } else {
+        setGroupCreateCover(safe);
+        setGroupCoverCrop(null);
+      }
+    notify(tr("群組圖片已更新", "Group cover updated", "グループ画像を更新しました", "그룹 이미지가 업데이트되었습니다"), "Group cover updated");
+    };
+    img.onerror = () => showToast(tr("圖片讀取失敗", "Image load failed", "画像の読み込みに失敗しました", "이미지 읽기에 실패했습니다"));
+    img.src = crop.src;
+  };
+
+  const openCreateGroup = () => {
+    setGroupCreateName("");
+    setGroupCreateRulePrompt("");
+    setGroupCreateMemberIds([]);
+    setGroupCreateSearch("");
+    setGroupCreateCover("");
+    setGroupCreateOpen(true);
+  };
+  const openEditGroup = (group) => {
+    if (!group) return;
+    setGroupEditGroupId(group.id);
+    setGroupEditName(group.name || "");
+    setGroupEditRulePrompt(group.rulePrompt || "");
+    setGroupEditUseRealTime(group.useRealTime !== false);
+    setGroupEditMemberIds(Array.isArray(group.memberIds) ? group.memberIds.slice(0, 5) : []);
+    setGroupEditSearch("");
+    setGroupEditCover(group.cover || "");
+    setGroupEditOpen(true);
+  };
+  const handleGroupCreateCoverUp = (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    openGroupCoverCrop(f, "create");
+    e.target.value = "";
+  };
+  const handleGroupEditCoverUp = (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    openGroupCoverCrop(f, "edit");
+    e.target.value = "";
+  };
+  const saveEditGroup = () => {
+    if (!groupEditGroupId) return;
+    const members = characterList.filter((c) => groupEditMemberIds.includes(c.id)).slice(0, 5);
+    if (members.length === 0) {
+      showToast(tr("請至少選擇 1 位角色", "Select at least 1 character", "少なくとも1人のキャラを選択してください", "캐릭터를 1명 이상 선택해주세요"));
+      return;
+    }
+    const memberLabel = members.map((m) => m.name).join("、");
+    const fallbackName = tr(`${memberLabel}的群組聊天室`, `${memberLabel}'s group chat`, `${memberLabel}のグループチャット`, `${memberLabel}의 그룹 채팅`);
+    const name = sanitizeText(groupEditName.trim() || fallbackName, 80);
+    setGroupChats((prev) => prev.map((g) => g.id === groupEditGroupId ? {
+      ...g,
+      name,
+      rulePrompt: sanitizeText(groupEditRulePrompt.trim(), 3000),
+      useRealTime: groupEditUseRealTime !== false,
+      memberIds: members.map((m) => m.id),
+      cover: groupEditCover || "",
+      updatedAt: Date.now(),
+    } : g));
+    if (currentChatGroup?.id === groupEditGroupId) {
+      setCurrentChatGroup((prev) => prev ? {
+        ...prev,
+        name,
+        rulePrompt: sanitizeText(groupEditRulePrompt.trim(), 3000),
+        useRealTime: groupEditUseRealTime !== false,
+        memberIds: members.map((m) => m.id),
+        cover: groupEditCover || "",
+        updatedAt: Date.now(),
+      } : prev);
+    }
+    setGroupEditOpen(false);
+    showToast(tr("群組已更新", "Group updated", "グループを更新しました", "그룹이 업데이트되었습니다"));
+  };
+  const deleteGroupChat = () => {
+    if (!groupEditGroupId) return;
+    const confirmed = window.confirm(tr(
+      `確定要刪除「${groupEditName || "這個群組"}」嗎？群組內的所有聊天紀錄都會一併刪除，且無法復原。`,
+      `Delete “${groupEditName || "this group"}”? All messages in the group will be permanently deleted.`,
+      `「${groupEditName || "このグループ"}」を削除しますか？グループ内のすべてのメッセージも完全に削除されます。`,
+      `“${groupEditName || "이 그룹"}”을 삭제할까요? 그룹의 모든 메시지도 영구적으로 삭제됩니다.`
+    ));
+    if (!confirmed) return;
+    const deletedId = groupEditGroupId;
+    setGroupChats((previous) => previous.filter((group) => group.id !== deletedId));
+    setGroupScenes?.((previous) => {
+      if (!previous || typeof previous !== "object" || !(deletedId in previous)) return previous;
+      const next = { ...previous };
+      delete next[deletedId];
+      return next;
+    });
+    if (currentChatGroup?.id === deletedId) setCurrentChatGroup(null);
+    setGroupEditOpen(false);
+    setGroupEditGroupId(null);
+    showToast(tr("群組已刪除", "Group deleted", "グループを削除しました", "그룹이 삭제되었습니다"));
+  };
+  const createGroupChat = () => {
+    if (groupCreateMemberIds.length === 0) {
+      showToast(tr("請至少選擇 1 位角色", "Select at least 1 character", "少なくとも1人のキャラを選択してください", "캐릭터를 1명 이상 선택해주세요"));
+      return;
+    }
+    const members = characterList.filter((c) => groupCreateMemberIds.includes(c.id)).slice(0, 5);
+    const memberLabel = members.map((m) => m.name).join("、");
+    const fallbackName = tr(`${memberLabel}的群組聊天室`, `${memberLabel}'s group chat`, `${memberLabel}のグループチャット`, `${memberLabel}의 그룹 채팅`);
+    const name = sanitizeText(groupCreateName.trim() || fallbackName, 80);
+    const payload = {
+      id: gid(),
+      name,
+      rulePrompt: sanitizeText(groupCreateRulePrompt.trim(), 3000),
+      useRealTime: true,
+      memberIds: members.map((m) => m.id),
+      cover: groupCreateCover || "",
+      pinned: false,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      messages: [],
+    };
+    setGroupChats((prev) => [...prev, payload]);
+    setGroupCreateOpen(false);
+    setCurrentChatGroup(payload);
+    notify(tr("已建立群組", "Group created", "グループを作成しました", "그룹이 생성되었습니다"), `Group created: ${name || fallbackName}`);
+  };
+
+  const getGroupChatModalProps = ({ displayCharacters = characterList } = {}) => ({
+    open: Boolean(groupCreateOpen || groupEditOpen || groupCoverCrop || groupEditCoverCrop),
+    props: {
+      characters: displayCharacters,
+      tr,
+      showToast,
+      create: {
+        open: groupCreateOpen,
+        name: groupCreateName,
+        setName: setGroupCreateName,
+        cover: groupCreateCover,
+        setCover: setGroupCreateCover,
+        memberIds: groupCreateMemberIds,
+        setMemberIds: setGroupCreateMemberIds,
+        search: groupCreateSearch,
+        setSearch: setGroupCreateSearch,
+        rulePrompt: groupCreateRulePrompt,
+        setRulePrompt: setGroupCreateRulePrompt,
+        onCoverUpload: handleGroupCreateCoverUp,
+        onClose: () => setGroupCreateOpen(false),
+        onSubmit: createGroupChat,
+      },
+      edit: {
+        open: groupEditOpen,
+        name: groupEditName,
+        setName: setGroupEditName,
+        cover: groupEditCover,
+        setCover: setGroupEditCover,
+        memberIds: groupEditMemberIds,
+        setMemberIds: setGroupEditMemberIds,
+        search: groupEditSearch,
+        setSearch: setGroupEditSearch,
+        rulePrompt: groupEditRulePrompt,
+        setRulePrompt: setGroupEditRulePrompt,
+        useRealTime: groupEditUseRealTime,
+        setUseRealTime: setGroupEditUseRealTime,
+        onCoverUpload: handleGroupEditCoverUp,
+        onClose: () => setGroupEditOpen(false),
+        onSubmit: saveEditGroup,
+        onDelete: deleteGroupChat,
+      },
+      crop: {
+        createValue: groupCoverCrop,
+        setCreateValue: setGroupCoverCrop,
+        editValue: groupEditCoverCrop,
+        setEditValue: setGroupEditCoverCrop,
+        onApply: applyGroupCoverCrop,
+        onClose: () => {
+          setGroupCoverCrop(null);
+          setGroupEditCoverCrop(null);
+        },
+      },
+    },
+  });
+
+  return {
+    groupCreateOpen,
+    groupCreateName,
+    groupCreateRulePrompt,
+    groupCreateMemberIds,
+    groupCreateSearch,
+    groupCreateCover,
+    groupEditOpen,
+    groupEditGroupId,
+    groupEditName,
+    groupEditRulePrompt,
+    groupEditUseRealTime,
+    groupEditMemberIds,
+    groupEditSearch,
+    groupEditCover,
+    groupCoverCrop,
+    groupEditCoverCrop,
+    setGroupCreateOpen,
+    setGroupCreateName,
+    setGroupCreateRulePrompt,
+    setGroupCreateMemberIds,
+    setGroupCreateSearch,
+    setGroupCreateCover,
+    setGroupEditOpen,
+    setGroupEditGroupId,
+    setGroupEditName,
+    setGroupEditRulePrompt,
+    setGroupEditUseRealTime,
+    setGroupEditMemberIds,
+    setGroupEditSearch,
+    setGroupEditCover,
+    setGroupCoverCrop,
+    setGroupEditCoverCrop,
+    getGroupMembers,
+    openCreateGroup,
+    openEditGroup,
+    handleGroupCreateCoverUp,
+    handleGroupEditCoverUp,
+    saveEditGroup,
+    deleteGroupChat,
+    createGroupChat,
+    applyGroupCoverCrop,
+    getGroupChatModalProps,
+  };
+}

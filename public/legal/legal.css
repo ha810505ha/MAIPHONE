@@ -1,0 +1,28 @@
+:root { --bg:#fdf3f7; --card:#ffffff; --txt:#3a3340; --muted:#7a6f80; --accent:#e0558f; --line:#f1dbe5; --soft:#fbeef4; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#1d1a20; --card:#27232b; --txt:#efe8f2; --muted:#b3a9b9; --accent:#f08cb6; --line:#3a3340; --soft:#302a35; }
+}
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--txt); font:15px/1.75 system-ui,-apple-system,"Segoe UI","Noto Sans TC","Noto Sans JP","Noto Sans KR",sans-serif; }
+main { max-width:760px; margin:0 auto; padding:24px 16px 48px; }
+header { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
+.brand { display:flex; align-items:center; gap:10px; font-weight:700; font-size:18px; color:var(--txt); text-decoration:none; }
+.brand img { width:36px; height:36px; border-radius:10px; }
+.langs, .docs { display:flex; flex-wrap:wrap; gap:6px; }
+.docs { margin-bottom:14px; }
+.langs button, .docs a { border:1px solid var(--line); background:var(--card); color:var(--muted); border-radius:999px; padding:4px 12px; font:inherit; font-size:13px; cursor:pointer; text-decoration:none; }
+.langs button[aria-pressed="true"], .docs a[aria-current="page"] { background:var(--accent); border-color:var(--accent); color:#fff; }
+article { background:var(--card); border:1px solid var(--line); border-radius:18px; padding:24px 20px; }
+h1 { font-size:24px; margin:0 0 4px; }
+.updated { color:var(--muted); font-size:13px; margin:0 0 16px; }
+.summary { background:var(--soft); border-radius:12px; padding:10px 14px; margin:14px 0; }
+h2 { font-size:17px; margin:26px 0 6px; color:var(--accent); }
+p, li { margin:6px 0; }
+ul { padding-left:20px; margin:6px 0; }
+a { color:var(--accent); }
+.table-wrap { overflow-x:auto; margin:8px 0; }
+table { width:100%; border-collapse:collapse; font-size:14px; }
+th, td { border:1px solid var(--line); padding:8px 10px; text-align:left; vertical-align:top; }
+th { background:var(--soft); }
+footer { color:var(--muted); font-size:13px; text-align:center; margin-top:20px; }
+th:first-child, td:first-child { min-width:6.5em; }

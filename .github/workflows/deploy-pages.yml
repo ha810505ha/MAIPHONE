@@ -1,0 +1,97 @@
+name: Deploy To GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # Third-party actions are pinned to commit SHAs so a moved tag cannot swap in
+      # malicious code. This job handles secrets.ASSETS_PAT, so a compromised action
+      # could exfiltrate it. Version comments are for humans; Dependabot
+      # (github-actions ecosystem, see .github/dependabot.yml) opens update PRs.
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install Dependencies
+        run: npm ci
+
+      # Unreleased dating character profiles are intentionally not stored in
+      # this public repository. Empty modules keep the disabled feature buildable.
+      - name: Prepare disabled dating data
+        shell: bash
+        run: |
+          mkdir -p data/dating/profileGroups
+          test -f data/dating/profileGroups/localOne.js || printf 'export const LOCAL_ONE_PROFILES = Object.freeze([]);\n' > data/dating/profileGroups/localOne.js
+          test -f data/dating/profileGroups/localTwo.js || printf 'export const LOCAL_TWO_PROFILES = Object.freeze([]);\n' > data/dating/profileGroups/localTwo.js
+          test -f data/dating/profileGroups/international.js || printf 'export const INTERNATIONAL_PROFILES = Object.freeze([]);\n' > data/dating/profileGroups/international.js
+          test -f data/dating/profileGroups/community.js || printf 'export const COMMUNITY_PROFILES = Object.freeze([]);\n' > data/dating/profileGroups/community.js
+
+      # Gate the deploy on the regression suite. Runs before the private-asset fetch
+      # because no test reads yunyin/assets, dist/, or any secret - so a failure here
+      # is fast and works even when the asset secrets are absent.
+      - name: Run regression tests
+        run: npm run test:regression
+
+      # Fetch private Yunyin assets at build time. Keep yunyin/assets out of Git.
+      - name: Fetch private game assets
+        env:
+          ASSETS_PAT: ${{ secrets.ASSETS_PAT }}
+          ASSETS_REPO: ${{ secrets.ASSETS_REPO }}
+        run: |
+          if [ -z "$ASSETS_PAT" ] || [ -z "$ASSETS_REPO" ]; then
+            echo "::error::ASSETS_PAT and ASSETS_REPO repository secrets are required for the Pages build."
+            exit 1
+          fi
+          git clone --depth 1 "https://x-access-token:${ASSETS_PAT}@github.com/${ASSETS_REPO}.git" tmp-assets
+          rm -rf tmp-assets/.git
+          mkdir -p yunyin/assets
+          cp -r tmp-assets/* yunyin/assets/
+          rm -rf tmp-assets
+
+      - name: Build
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_CLOUDFLARE_DATA_API_URL: ${{ vars.VITE_CLOUDFLARE_DATA_API_URL }}
+          # GitHub Pages 只開放登入與手動上傳／下載，不自動同步。
+          VITE_CLOUD_AUTO_SYNC_ENABLED: "false"
+        run: npm run build
+
+      - name: Setup Pages
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
+
+      - name: Upload Artifact
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
+        with:
+          path: ./dist
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy To Pages
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5

@@ -1,0 +1,185 @@
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import ChatMessageRenderer from "./ChatMessageRenderer";
+import { downloadImageFile } from "../../utils/exportFile";
+import { createScreenshotFilename } from "../../utils/screenshotFilename.js";
+import {
+  containsScreenshotRedactionKeyword,
+  normalizeScreenshotRedactionKeywords,
+  redactScreenshotText,
+} from "../../utils/screenshotRedaction";
+import { normalizeScreenshotTree } from "../../utils/screenshotColors.js";
+import MotionPresence from "../motion/MotionPresence.jsx";
+
+const LIMITS = { messages: 15, images: 4, outputHeight: 8000, width: 430, scale: 2 };
+
+const canvasToPngBlob = (canvas, errorMessage) => new Promise((resolve, reject) => {
+  canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error(errorMessage)), "image/png");
+});
+
+const sanitizeScreenshotClone = (clonedDocument, redactionKeywords = []) => {
+  const root = clonedDocument.querySelector("[data-chat-screenshot-capture]");
+  if (!root) return;
+  if (redactionKeywords.length) {
+    const nodeFilter = clonedDocument.defaultView?.NodeFilter;
+    if (nodeFilter) {
+      const walker = clonedDocument.createTreeWalker(root, nodeFilter.SHOW_TEXT);
+      const textNodes = [];
+      while (walker.nextNode()) textNodes.push(walker.currentNode);
+      textNodes.forEach((node) => {
+        if (["STYLE", "SCRIPT", "NOSCRIPT"].includes(node.parentElement?.tagName)) return;
+        node.nodeValue = redactScreenshotText(node.nodeValue, redactionKeywords);
+      });
+    }
+  }
+  normalizeScreenshotTree(root);
+};
+
+const captureSafeCss = `.mp-chat-capture,.mp-chat-capture *,.mp-chat-capture *::before,.mp-chat-capture *::after{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}`;
+
+export default function ChatScreenshotModal({ open, onClose, onReselect, messages, initialSelectedIds = [], character, playerName = "", modelShort, sceneBar, mode, rendererProps, backgroundUrl, isNightTheme = false, tr }) {
+  const captureRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [redactionInput, setRedactionInput] = useState("");
+  const [renderedOutputHeight, setRenderedOutputHeight] = useState(0);
+  const redactionKeywords = useMemo(() => normalizeScreenshotRedactionKeywords(redactionInput), [redactionInput]);
+  const candidates = useMemo(() => (messages || []).filter((message) => message?.id), [messages]);
+  const selected = useMemo(() => {
+    const ids = new Set(initialSelectedIds);
+    return candidates.filter((message) => ids.has(message.id));
+  }, [candidates, initialSelectedIds]);
+  const stats = useMemo(() => ({
+    chars: selected.reduce((sum, message) => sum + String(message.content || "").length, 0),
+    images: selected.filter((message) => message.image).length,
+  }), [selected]);
+
+  useEffect(() => {
+    if (!open) {
+      setRenderedOutputHeight(0);
+      return undefined;
+    }
+    const element = captureRef.current;
+    if (!element) return undefined;
+    const measure = () => setRenderedOutputHeight(Math.ceil(element.scrollHeight * LIMITS.scale));
+    const frame = requestAnimationFrame(measure);
+    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(measure) : null;
+    observer?.observe(element);
+    const images = Array.from(element.querySelectorAll("img"));
+    images.forEach((image) => {
+      image.addEventListener("load", measure);
+      image.addEventListener("error", measure);
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      observer?.disconnect();
+      images.forEach((image) => {
+        image.removeEventListener("load", measure);
+        image.removeEventListener("error", measure);
+      });
+    };
+  }, [open, selected]);
+
+  const validate = () => {
+    if (!selected.length) return tr("沒有可截圖的訊息，請重新選取", "No messages selected; choose the range again", "メッセージが選択されていません。選び直してください", "선택된 메시지가 없습니다. 다시 선택하세요");
+    if (selected.length > LIMITS.messages) return tr("選取範圍超過 15 則，請縮短範圍", "The range exceeds 15 messages", "範囲が15件を超えています", "선택 범위가 15개를 넘습니다");
+    if (stats.images > LIMITS.images) return tr("選取範圍超過 4 張圖片，請縮短範圍", "The range contains more than 4 images", "画像が4枚を超えています", "이미지가 4장을 넘습니다");
+    if (renderedOutputHeight > LIMITS.outputHeight) return tr("截圖內容過長，請縮短選取範圍", "The screenshot is too tall; shorten the selected range", "画像が長すぎます。選択範囲を短くしてください", "캡처가 너무 깁니다. 선택 범위를 줄여 주세요");
+    return "";
+  };
+  const issue = validate();
+
+  const addRedactionKeyword = (value) => {
+    const keyword = String(value || "").trim();
+    if (!keyword || containsScreenshotRedactionKeyword(keyword, redactionKeywords)) return;
+    setRedactionInput((current) => current.trim() ? `${current.trim()}\n${keyword}` : keyword);
+  };
+
+  const capture = async () => {
+    if (issue) { setError(issue); return; }
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const element = captureRef.current;
+      if (!element) throw new Error(tr("截圖畫面尚未準備完成", "Screenshot is not ready", "画像の準備ができていません", "캡처 화면이 준비되지 않았습니다"));
+      const images = Array.from(element.querySelectorAll("img"));
+      await Promise.all(images.map((image) => image.complete ? Promise.resolve() : new Promise((resolve) => { image.onload = resolve; image.onerror = resolve; })));
+      if (element.scrollHeight * LIMITS.scale > LIMITS.outputHeight) throw new Error(tr("截圖內容過長，請縮短選取範圍", "The screenshot is too tall; shorten the selected range", "画像が長すぎます。選択範囲を短くしてください", "캡처가 너무 깁니다. 선택 범위를 줄여 주세요"));
+      const pageBackground = window.getComputedStyle(element.closest(".mp-page") || element).background;
+      if (pageBackground && pageBackground !== "none") element.style.background = pageBackground;
+      const { default: html2canvas } = await import("html2canvas");
+      const canvas = await html2canvas(element, { backgroundColor: null, scale: LIMITS.scale, useCORS: true, logging: false, width: LIMITS.width, windowWidth: LIMITS.width, onclone: (clonedDocument) => sanitizeScreenshotClone(clonedDocument, redactionKeywords) });
+      const blob = await canvasToPngBlob(canvas, tr("PNG 圖片產生失敗", "Failed to create PNG", "PNGの作成に失敗しました", "PNG 생성에 실패했습니다"));
+      const characterName = String(character?.name || "");
+      const safeName = (containsScreenshotRedactionKeyword(characterName, redactionKeywords) ? "redacted-chat" : (characterName || "chat")).replace(/[\\/:*?"<>|]+/g, "_");
+      const result = await downloadImageFile(blob, createScreenshotFilename(safeName), { preferBrowserDownload: true });
+      if (result?.method === "native-filesystem") setNotice(result.album
+        ? tr(`已存入相簿：${result.location}`, `Saved to your gallery: ${result.location}`, `アルバムに保存しました：${result.location}`, `갤러리에 저장했습니다: ${result.location}`)
+        : tr(`已儲存到 ${result.location}`, `Saved to ${result.location}`, `${result.location} に保存しました`, `${result.location}에 저장했습니다`));
+      else if (result?.method !== "cancelled") setNotice(tr("PNG 已下載", "PNG downloaded", "PNGを保存しました", "PNG를 저장했습니다"));
+    } catch (reason) {
+      setError(reason?.message || tr("截圖產生或儲存失敗", "Failed to create or save screenshot", "画像の作成または保存に失敗しました", "캡처 생성 또는 저장에 실패했습니다"));
+    } finally { setBusy(false); }
+  };
+
+  const staticRendererProps = { ...rendererProps, messages: selected, activeMessageId: null, setActiveMessageId: () => {}, highlightedThoughtMessageId: null, isTyping: false, startNoticeLongPress: () => {}, cancelNoticeLongPress: () => {}, retryChatFromNotice: () => {}, deleteChatMessage: () => {}, setMessageEditor: () => {}, renderCharacterVoiceAction: () => null };
+
+  return <MotionPresence show={open}>
+  {open && <div className="mp-overlay" style={{ zIndex: 120 }} onClick={busy ? undefined : onClose}>
+    <div className="mp-modal" style={{ width: "min(86%,360px)", padding: 16 }} onClick={(event) => event.stopPropagation()}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div className="mp-modal-t" style={{ flex: 1, margin: 0 }}>{tr("確認聊天截圖", "Confirm screenshot", "チャット画像の確認", "채팅 캡처 확인")}</div>
+        <button type="button" aria-label={tr("關閉", "Close", "閉じる", "닫기")} disabled={busy} onClick={onClose} style={{ width: 30, height: 30, border: 0, borderRadius: "50%", background: "var(--mp-pink-lt)", color: "var(--mp-txt)", fontSize: 17 }}>×</button>
+      </div>
+      <div style={{ marginTop: 12, padding: "11px 12px", borderRadius: 13, background: "color-mix(in srgb,var(--mp-pink) 8%,var(--mp-surface))", color: "var(--mp-txt)", fontSize: 12, lineHeight: 1.7 }}>
+        已選取 <b>{selected.length}</b> 則 · <b>{stats.chars}</b> 字 · <b>{stats.images}</b> 張圖片
+        {renderedOutputHeight > 0 && <> · 輸出高度 <b>{renderedOutputHeight.toLocaleString()}</b> / {LIMITS.outputHeight.toLocaleString()} px</>}
+      </div>
+      <div style={{ marginTop: 10, padding: "10px 11px", borderRadius: 13, border: "1px solid var(--mp-line)", background: "var(--mp-surface)" }}>
+        <div className="mp-lbl">{tr("遮蔽關鍵字（只影響這張截圖）", "Hide keywords (this screenshot only)", "非表示キーワード（この画像のみ）", "가림 키워드(이 캡처에만 적용)")}</div>
+        <textarea
+          className="mp-sinp"
+          rows={3}
+          value={redactionInput}
+          disabled={busy}
+          onChange={(event) => setRedactionInput(event.target.value)}
+          placeholder={tr("每行一個，也可用逗號分隔", "One per line, or separate with commas", "1行に1つ、またはカンマで区切る", "한 줄에 하나씩 또는 쉼표로 구분")}
+          style={{ width: "100%", minHeight: 64, resize: "vertical", marginTop: 7, boxSizing: "border-box" }}
+        />
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 7 }}>
+          {character?.name && <button type="button" className="mp-ibtn" disabled={busy || containsScreenshotRedactionKeyword(character.name, redactionKeywords)} onClick={() => addRedactionKeyword(character.name)}>＋ {tr("角色名稱", "Character name", "キャラクター名", "캐릭터 이름")}</button>}
+          {playerName && <button type="button" className="mp-ibtn" disabled={busy || containsScreenshotRedactionKeyword(playerName, redactionKeywords)} onClick={() => addRedactionKeyword(playerName)}>＋ {tr("玩家名稱", "Player name", "プレイヤー名", "플레이어 이름")}</button>}
+        </div>
+        {redactionKeywords.length > 0 && <div style={{ marginTop: 7, color: "var(--mp-txt-l)", fontSize: 10 }}>{tr("將遮蔽", "Will hide", "非表示", "가림 예정")} {redactionKeywords.length} {tr("個關鍵字；原始聊天不會變更。", "keywords; the original chat will not change.", "件。元のチャットは変更されません。", "개 키워드이며 원본 채팅은 변경되지 않습니다.")}</div>}
+      </div>
+      {(issue || error) && <div style={{ marginTop: 9, color: "#d94b68", fontSize: 11, lineHeight: 1.5 }}>{error || issue}</div>}
+      {notice && <div style={{ marginTop: 9, color: "#4a9b68", fontSize: 11, lineHeight: 1.5 }}>{notice}</div>}
+      <div style={{ display: "flex", gap: 8, marginTop: 13 }}>
+        <button type="button" className="mp-save" style={{ flex: 1, background: "linear-gradient(135deg,#b0bec5,#90a4ae)" }} disabled={busy} onClick={onReselect}>{tr("重新選取", "Reselect", "選び直す", "다시 선택")}</button>
+        <button type="button" className="mp-save" style={{ flex: 1 }} disabled={busy || !!issue} onClick={capture}>{busy ? tr("產生中…", "Creating…", "作成中…", "생성 중…") : tr("儲存 PNG", "Save PNG", "PNGを保存", "PNG 저장")}</button>
+      </div>
+    </div>
+    <div aria-hidden="true" style={{ position: "fixed", left: -12000, top: 0, width: LIMITS.width, pointerEvents: "none" }}>
+      <div ref={captureRef} data-chat-screenshot-capture className={`mp-chat-capture mp-chat-mode-${mode}`} style={{ boxSizing: "border-box", width: LIMITS.width, minHeight: 860, display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--mp-page-bg)", color: "var(--mp-txt)" }}>
+        <style>{captureSafeCss}</style>
+        <div className="mp-hdr" style={{ minHeight: 64, boxSizing: "border-box" }}>
+          <div className="mp-back">←</div>
+          <span style={{ color: "var(--mp-pink-dk)", fontSize: 17 }}>♥</span>
+          <div className="mp-htitle" style={{ flex: 1, minWidth: 0 }}>{character?.name || ""}</div>
+          <div style={{ minWidth: 62, height: 38, display: "grid", placeItems: "center", border: "1px solid var(--mp-line)", borderRadius: 12, background: "var(--mp-glass)", color: "var(--mp-txt)", fontSize: 11, fontWeight: 800 }}>{modelShort || "AI"}</div>
+          <div style={{ minWidth: 54, height: 38, display: "grid", placeItems: "center", border: "1px solid var(--mp-line)", borderRadius: 12, background: "var(--mp-glass)", color: "var(--mp-txt)", fontSize: 11, fontWeight: 800 }}>{tr("設定", "Settings", "設定", "설정")}</div>
+        </div>
+        <div style={{ position: "relative", minHeight: 0, overflow: "hidden", flex: "1 0 auto", display: "flex", flexDirection: "column" }}>
+          {backgroundUrl && <><div style={{ position: "absolute", inset: 0, background: `url(${backgroundUrl}) center/cover`, zIndex: 0 }} /><div style={{ position: "absolute", inset: 0, background: isNightTheme ? "rgba(18,12,28,.46)" : "rgba(255,255,255,.52)", zIndex: 0 }} /></>}
+          {sceneBar && <div style={{ position: "relative", zIndex: 1 }}>{sceneBar}</div>}
+          <div className="mp-msgs" style={{ position: "relative", zIndex: 1, height: "auto", minHeight: 650, overflow: "visible", flex: "1 0 auto", paddingTop: 12, paddingBottom: 18 }}><ChatMessageRenderer {...staticRendererProps} tr={tr} /></div>
+        </div>
+        <div className="mp-inp-bar" style={{ minHeight: 68, boxSizing: "border-box" }}>
+          <div className="mp-btn mp-btn-img" style={{ display: "grid", placeItems: "center" }}>＋</div>
+          <div className="mp-inp" style={{ flex: 1, color: "var(--mp-txt-l)", display: "flex", alignItems: "center" }}>{tr("輸入訊息...", "Type a message...", "メッセージを入力...", "메시지를 입력...")}</div>
+          <div className="mp-btn mp-btn-send" style={{ display: "grid", placeItems: "center" }}><span className="mp-btn-send-glyph">➤</span></div>
+        </div>
+      </div>
+    </div>
+  </div>}
+  </MotionPresence>;
+}
